@@ -1,4 +1,5 @@
 .omc/
+prompt_used/
 node_modules/
 dist/
 # compiled artifacts that leak into src/ when tsc runs without outDir
