@@ -89,7 +89,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   await app.register(async (api) => {
     await authRoutes(api, { users: userRepo });
     await printerRoutes(api, { printers: printerRepo, createPrinter, getPrinterStatus, registry });
-    await jobRoutes(api, { jobs: jobRepo, traces: traceRepo, createJob });
+    await jobRoutes(api, { jobs: jobRepo, traces: traceRepo, createJob, executeJob });
     await runnerRoutes(api, { runners: runnerRepo, registerRunner, runnerHeartbeat });
     await auditRoutes(api, { audit: auditRepo });
     await exportRoutes(api, { exportJobs });

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { CreatePrintJobService } from '../services/create-print-job.service.js';
+import type { ExecuteJobService } from '../services/execute-job.service.js';
 import type { JobRepositoryPort, TraceRepositoryPort } from '@printerops/domain';
 
 export async function jobRoutes(
@@ -8,6 +9,7 @@ export async function jobRoutes(
     jobs: JobRepositoryPort;
     traces: TraceRepositoryPort;
     createJob: CreatePrintJobService;
+    executeJob: ExecuteJobService;
   }
 ): Promise<void> {
   const auth = { onRequest: [app.authenticate] };
@@ -43,5 +45,12 @@ export async function jobRoutes(
     const trace = await deps.traces.findByJobId(id);
     if (!trace) return reply.status(404).send({ error: 'Trace not found' });
     return trace;
+  });
+
+  app.post('/jobs/:id/execute', auth, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { runnerId } = req.body as { runnerId: string };
+    const job = await deps.executeJob.execute(id, runnerId);
+    return reply.send(job);
   });
 }
