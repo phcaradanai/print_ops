@@ -1,0 +1,58 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: printerops
+      POSTGRES_PASSWORD: printerops
+      POSTGRES_DB: printerops
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  api:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.api
+    ports:
+      - '3001:3001'
+    environment:
+      PORT: '3001'
+      JWT_SECRET: change-me-in-production
+    depends_on:
+      - postgres
+      - redis
+
+  runner:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.runner
+    environment:
+      API_URL: http://api:3001
+      RUNNER_NAME: runner-docker
+      SUPPORTED_PROTOCOLS: fake,ipp,cups
+    depends_on:
+      - api
+
+  web:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.web
+    ports:
+      - '3000:80'
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
