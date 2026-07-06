@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"git reset HEAD .omc/ && git commit -m \\\"$(cat <<'EOF'\\nfeat: PrinterOps MVP foundation scaffold (Day 1)\\n\\nMonorepo with Clean Architecture + DDD for printer job management:\\n- packages/do...",
-  "error": "Exit code 128\nfatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'",
-  "timestamp": "2026-07-06T05:42:52.164Z",
-  "retry_count": 1
-}
