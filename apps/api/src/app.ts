@@ -102,16 +102,23 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // API key middleware
   const apiKeyHook = buildApiKeyAuth(serviceAccountRepo);
 
-  // Seed default admin user
-  userRepo.seed({
-    id: generateId(),
-    email: 'admin@printerops.local',
-    name: 'Admin',
-    role: 'ADMIN',
-    isActive: true,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
+  // Seed default local users. MVP auth accepts any password for these accounts.
+  for (const user of [
+    { email: 'sysadmin@printerops.local', name: 'Sysadmin', role: 'OWNER' as const },
+    { email: 'admin@printerops.local', name: 'Admin', role: 'ADMIN' as const },
+    { email: 'user@printerops.local', name: 'User', role: 'OPERATOR' as const },
+    { email: 'viewer@printerops.local', name: 'Viewer', role: 'VIEWER' as const },
+  ]) {
+    userRepo.seed({
+      id: generateId(),
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
 
   // Seed dev service account
   const devKey = DEV_API_KEY;

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { apiFetch } from '../api/client.js';
 
 interface DiscoveredPrinter {
   id: string;
@@ -12,23 +13,6 @@ interface DiscoveredPrinter {
   firstSeenAt: string;
   lastSeenAt: string;
   registeredPrinterId?: string;
-}
-
-const API_BASE = 'http://localhost:3001';
-
-async function getToken(): Promise<string | null> {
-  try {
-    const res = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'admin@printerops.local', password: 'dev-password' }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as { token: string };
-    return data.token;
-  } catch {
-    return null;
-  }
 }
 
 const CONNECTION_BADGE: Record<string, { label: string; color: string }> = {
@@ -51,14 +35,7 @@ export default function DiscoveredPrinters() {
     setLoading(true);
     setError(null);
     try {
-      const token = await getToken();
-      if (!token) { setError('Authentication failed'); return; }
-      const res = await fetch(`${API_BASE}/api/v1/discovered-printers`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as DiscoveredPrinter[];
-      setPrinters(data);
+      setPrinters(await apiFetch<DiscoveredPrinter[]>('/v1/discovered-printers'));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch');
     } finally {
@@ -73,17 +50,10 @@ export default function DiscoveredPrinters() {
     setRegistering(id);
     setMessage(null);
     try {
-      const token = await getToken();
-      if (!token) throw new Error('Authentication failed');
-      const res = await fetch(`${API_BASE}/api/v1/discovered-printers/${id}/register`, {
+      await apiFetch(`/v1/discovered-printers/${id}/register`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
-      if (!res.ok) {
-        const err = await res.json() as { error: string };
-        throw new Error(err.error ?? `HTTP ${res.status}`);
-      }
       setMessage(`"${name}" registered successfully.`);
       void fetchPrinters();
     } catch (e) {

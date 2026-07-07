@@ -4,9 +4,9 @@
   "version": "0.0.1",
   "identifier": "com.printerops.desktop",
   "build": {
-    "beforeDevCommand": "npm run dev -w apps/web",
+    "beforeDevCommand": "npm --prefix ../.. run dev --workspace @printerops/web",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "npm run build -w apps/web",
+    "beforeBuildCommand": "npm --prefix ../.. run build --workspace @printerops/web",
     "frontendDist": "../../apps/web/dist"
   },
   "app": {

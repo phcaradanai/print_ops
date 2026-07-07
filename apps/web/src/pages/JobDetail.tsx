@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { apiFetch } from '../api/client.js';
 
 interface TraceStep {
   stepName: string;
@@ -31,9 +32,9 @@ export default function JobDetail() {
   const [trace, setTrace] = useState<Trace | null>(null);
 
   useEffect(() => {
-    fetch(`/api/jobs/${id}/trace`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` } })
-      .then((r) => r.ok ? r.json() : null)
-      .then((data: Trace | null) => setTrace(data))
+    if (!id) return;
+    apiFetch<Trace>(`/jobs/${id}/trace`)
+      .then(setTrace)
       .catch(() => {});
   }, [id]);
 

@@ -33,8 +33,8 @@ The single source of truth for all UI is `apps/web`. New pages (e.g., Local Diag
 | Trade-off | Notes |
 |---|---|
 | No duplicate page components | Any UI change is made once |
-| Desktop requires web app running in dev mode | Use `beforeDevCommand: npm run dev -w apps/web` |
-| Desktop build requires web app built first | Use `beforeBuildCommand: npm run build -w apps/web` |
+| Desktop requires web app running in dev mode | Use `beforeDevCommand: npm --prefix ../.. run dev --workspace @printerops/web` |
+| Desktop build requires web app built first | Use `beforeBuildCommand: npm --prefix ../.. run build --workspace @printerops/web` |
 | Tauri Rust commands not available in browser | Only needed if we later add native OS APIs (file system, tray, etc.) |
 | Desktop has no `test` script | Excluded from `npm test --workspaces --if-present` chain |
 

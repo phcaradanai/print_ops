@@ -15,6 +15,20 @@ logger.info('PrinterOps Runner starting', { runnerName: config.runnerName });
 
 let runnerId: string | null = null;
 
+async function loginWithRetry(): Promise<void> {
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      await api.login();
+      logger.info('Runner dev login complete');
+      return;
+    } catch {
+      logger.warn(`Login attempt ${attempt} failed, retrying in 3s...`);
+      await sleep(3000);
+    }
+  }
+  throw new Error('Failed to login runner after 10 attempts');
+}
+
 async function registerWithRetry(): Promise<string> {
   for (let attempt = 1; attempt <= 10; attempt++) {
     try {
@@ -66,16 +80,20 @@ async function pollLoop(id: string): Promise<void> {
 
 async function discoveryLoop(id: string): Promise<void> {
   while (true) {
-    await sleep(config.discoveryIntervalMs);
     try {
       const items = await discoverPrinters(config.discoveryAdapter);
       if (items.length > 0) {
         await api.syncDiscovery(id, items);
         logger.info('Discovery sync complete', { runnerId: id, count: items.length });
+      } else {
+        logger.info('Discovery complete with no printers found', { runnerId: id, adapter: config.discoveryAdapter });
       }
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('Discovery failed', { runnerId: id, error: msg });
       // Discovery errors must never propagate to the print path
     }
+    await sleep(config.discoveryIntervalMs);
   }
 }
 
@@ -83,10 +101,9 @@ function sleep(ms: number): Promise<void> {
   return new Promise((res) => setTimeout(res, ms));
 }
 
-// Auto-login with dev credentials if no static token provided
 if (!config.apiToken) {
   logger.info('No RUNNER_API_TOKEN set — logging in with dev credentials');
-  await api.login();
+  await loginWithRetry();
 }
 
 runnerId = await registerWithRetry();

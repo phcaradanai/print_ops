@@ -46,7 +46,7 @@ export default function LocalDiagnostics() {
   const load = useCallback(() => {
     Promise.all([
       apiFetch<Runner[]>('/runners'),
-      apiFetch<DiscoveredPrinter[]>('/discovered-printers'),
+      apiFetch<DiscoveredPrinter[]>('/v1/discovered-printers'),
     ])
       .then(([r, p]) => { setRunners(r); setPrinters(p); setLoading(false); })
       .catch(() => setLoading(false));
@@ -62,7 +62,7 @@ export default function LocalDiagnostics() {
     setRefreshing((prev) => ({ ...prev, [runnerId]: true }));
     try {
       const res = await apiFetch<{ queued: boolean; knownPrinters: number }>(
-        `/runners/${runnerId}/printers/discover`,
+        `/v1/runners/${runnerId}/printers/discover`,
         { method: 'POST' }
       );
       setRefreshResult((prev) => ({ ...prev, [runnerId]: `Queued — ${res.knownPrinters} known printers` }));
