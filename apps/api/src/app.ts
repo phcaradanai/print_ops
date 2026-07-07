@@ -9,6 +9,7 @@ import { InMemoryRunnerRepository } from './infra/repos/in-memory-runner.repo.js
 import { InMemoryAuditRepository } from './infra/repos/in-memory-audit.repo.js';
 import { InMemoryUserRepository } from './infra/repos/in-memory-user.repo.js';
 import { InMemoryServiceAccountRepository } from './infra/repos/in-memory-service-account.repo.js';
+import { InMemoryDiscoveredPrinterRepository } from './infra/repos/in-memory-discovered-printer.repo.js';
 import { InMemoryEventBus } from './infra/eventbus/in-memory-eventbus.js';
 import { InMemoryJobQueue } from './infra/queue/in-memory-queue.js';
 import { InMemoryExportAdapter } from './infra/export/in-memory-export.adapter.js';
@@ -28,6 +29,8 @@ import { RegisterRunnerService } from './services/register-runner.service.js';
 import { RunnerHeartbeatService } from './services/runner-heartbeat.service.js';
 import { ExportJobsService } from './services/export-jobs.service.js';
 import { CheckPermissionService } from './services/check-permission.service.js';
+import { SyncPrinterDiscoveryService } from './services/sync-printer-discovery.service.js';
+import { RegisterDiscoveredPrinterService } from './services/register-discovered-printer.service.js';
 
 import { authRoutes } from './routes/auth.routes.js';
 import { printerRoutes } from './routes/printer.routes.js';
@@ -38,6 +41,7 @@ import { exportRoutes } from './routes/export.routes.js';
 import { v1PrintJobRoutes } from './routes/v1/print-jobs.routes.js';
 import { v1PrinterRoutes } from './routes/v1/printers.routes.js';
 import { v1ExportRoutes } from './routes/v1/exports.routes.js';
+import { v1RunnerPrinterRoutes } from './routes/v1/runner-printers.routes.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -71,6 +75,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const auditRepo = new InMemoryAuditRepository();
   const userRepo = new InMemoryUserRepository();
   const serviceAccountRepo = new InMemoryServiceAccountRepository();
+  const discoveredPrinterRepo = new InMemoryDiscoveredPrinterRepository();
   const eventBus = new InMemoryEventBus();
   const queue = new InMemoryJobQueue();
   const exporter = new InMemoryExportAdapter();
@@ -91,6 +96,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const runnerHeartbeat = new RunnerHeartbeatService(runnerRepo, eventBus);
   const exportJobs = new ExportJobsService(jobRepo, exporter);
   const checkPermission = new CheckPermissionService(permissionPolicy, eventBus);
+  const syncDiscovery = new SyncPrinterDiscoveryService(discoveredPrinterRepo, runnerRepo);
+  const registerDiscovered = new RegisterDiscoveredPrinterService(discoveredPrinterRepo, printerRepo, auditRepo, checkPermission);
 
   // API key middleware
   const apiKeyHook = buildApiKeyAuth(serviceAccountRepo);
@@ -162,6 +169,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, acceptExternalJob, cancelJob, executeJob, apiKeyHook });
     await v1PrinterRoutes(v1, { printers: printerRepo, getPrinterStatus, apiKeyHook });
     await v1ExportRoutes(v1, { exportJobs, audit: auditRepo, exporter, apiKeyHook });
+    await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
   }, { prefix: '/api/v1' });
 
   return { app, executeJob, queue, jobRepo, printerRepo, serviceAccountRepo, DEV_API_KEY: devKey };

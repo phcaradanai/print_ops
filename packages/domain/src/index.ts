@@ -5,6 +5,7 @@ export * from './models/runner.js';
 export * from './models/user.js';
 export * from './models/audit.js';
 export * from './models/service-account.js';
+export * from './models/discovered-printer.js';
 
 // Events
 export * from './events/index.js';

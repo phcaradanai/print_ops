@@ -4,6 +4,7 @@ import type { Runner, RegisterRunnerInput } from '../models/runner.js';
 import type { AuditLog, CreateAuditLogInput } from '../models/audit.js';
 import type { User } from '../models/user.js';
 import type { ServiceAccount, CreateServiceAccountInput } from '../models/service-account.js';
+import type { DiscoveredPrinter, CreateDiscoveredPrinterInput } from '../models/discovered-printer.js';
 
 export interface ListOptions {
   limit?: number;
@@ -60,4 +61,11 @@ export interface ServiceAccountRepositoryPort {
   findAll(opts?: ListOptions): Promise<ServiceAccount[]>;
   create(input: CreateServiceAccountInput): Promise<ServiceAccount>;
   update(id: string, patch: Partial<ServiceAccount>): Promise<ServiceAccount>;
+}
+
+export interface DiscoveredPrinterRepositoryPort {
+  findById(id: string): Promise<DiscoveredPrinter | undefined>;
+  findAll(opts?: ListOptions & { runnerId?: string }): Promise<DiscoveredPrinter[]>;
+  upsert(input: CreateDiscoveredPrinterInput): Promise<DiscoveredPrinter>;
+  update(id: string, patch: Partial<DiscoveredPrinter>): Promise<DiscoveredPrinter>;
 }

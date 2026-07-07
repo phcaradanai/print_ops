@@ -9,10 +9,12 @@ import AuditLogs from './pages/AuditLogs.js';
 import UsersRoles from './pages/UsersRoles.js';
 import ExportCenter from './pages/ExportCenter.js';
 import Settings from './pages/Settings.js';
+import DiscoveredPrinters from './pages/DiscoveredPrinters.js';
 
 const navItems = [
   { to: '/', label: 'Dashboard' },
   { to: '/printers', label: 'Printers' },
+  { to: '/discovered-printers', label: 'Discovery' },
   { to: '/jobs', label: 'Job Queue' },
   { to: '/runners', label: 'Runners' },
   { to: '/audit-logs', label: 'Audit Logs' },
@@ -52,6 +54,7 @@ export default function App() {
           <Route path="/jobs" element={<JobQueue />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/runners" element={<Runners />} />
+          <Route path="/discovered-printers" element={<DiscoveredPrinters />} />
           <Route path="/audit-logs" element={<AuditLogs />} />
           <Route path="/users" element={<UsersRoles />} />
           <Route path="/export" element={<ExportCenter />} />

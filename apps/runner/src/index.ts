@@ -2,6 +2,7 @@ import { AdapterRegistry, FakePrinterAdapter } from '@printerops/adapters';
 import { consoleLogger } from '@printerops/shared';
 import { loadConfig } from './config.js';
 import { ApiClient } from './api-client.js';
+import { discoverPrinters } from './printer-discovery.js';
 
 const config = loadConfig();
 const logger = consoleLogger;
@@ -63,6 +64,21 @@ async function pollLoop(id: string): Promise<void> {
   }
 }
 
+async function discoveryLoop(id: string): Promise<void> {
+  while (true) {
+    await sleep(config.discoveryIntervalMs);
+    try {
+      const items = await discoverPrinters();
+      if (items.length > 0) {
+        await api.syncDiscovery(id, items);
+        logger.info('Discovery sync complete', { runnerId: id, count: items.length });
+      }
+    } catch {
+      // Discovery errors must never propagate to the print path
+    }
+  }
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((res) => setTimeout(res, ms));
 }
@@ -76,3 +92,4 @@ if (!config.apiToken) {
 runnerId = await registerWithRetry();
 void heartbeatLoop(runnerId);
 void pollLoop(runnerId);
+void discoveryLoop(runnerId);

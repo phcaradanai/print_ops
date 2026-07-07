@@ -20,7 +20,8 @@ export type AuditAction =
   | 'user.login'
   | 'user.created'
   | 'user.updated'
-  | 'permission.denied';
+  | 'permission.denied'
+  | 'printer.registered_from_discovery';
 
 export interface AuditLog {
   id: string;

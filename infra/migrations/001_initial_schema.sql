@@ -218,3 +218,25 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- ============================================================
+-- discovered_printers  (runner printer discovery — read-only, no spooler changes)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS discovered_printers (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  runner_id             TEXT NOT NULL REFERENCES runners(id) ON DELETE CASCADE,
+  local_printer_name    TEXT NOT NULL,
+  driver_name           TEXT,
+  port_name             TEXT,
+  connection_type       TEXT NOT NULL DEFAULT 'unknown',
+  is_default            BOOLEAN NOT NULL DEFAULT FALSE,
+  is_shared             BOOLEAN NOT NULL DEFAULT FALSE,
+  attributes            JSONB NOT NULL DEFAULT '{}',
+  first_seen_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  registered_printer_id UUID REFERENCES printers(id) ON DELETE SET NULL,
+  UNIQUE (runner_id, local_printer_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovered_runner ON discovered_printers (runner_id);
+CREATE INDEX IF NOT EXISTS idx_discovered_last_seen ON discovered_printers (last_seen_at DESC);

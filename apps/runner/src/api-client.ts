@@ -1,4 +1,4 @@
-import type { Runner, Job } from '@printerops/domain';
+import type { Runner, Job, DiscoveryItem } from '@printerops/domain';
 import type { RunnerConfig } from './config.js';
 
 export class ApiClient {
@@ -58,6 +58,14 @@ export class ApiClient {
     });
     if (!res.ok) throw new Error(`Execute failed: ${res.status}`);
     return res.json() as Promise<Job>;
+  }
+
+  async syncDiscovery(runnerId: string, items: DiscoveryItem[]): Promise<void> {
+    await fetch(`${this.config.apiUrl}/api/v1/runners/${runnerId}/printers/discovery`, {
+      method: 'POST',
+      headers: this.authHeaders(),
+      body: JSON.stringify({ items }),
+    });
   }
 
   private authHeaders(): Record<string, string> {

@@ -108,7 +108,26 @@ Internal API (JWT auth, same data):
 Runner auto-logins with dev credentials (`admin@printerops.local`) when `RUNNER_API_TOKEN` env is not set.
 `npm run dev -w apps/runner` works out of the box in dev mode.
 
-### Tests: 23/23 pass
+### Runner Printer Discovery (Windows)
+Runner discovers installed printers on the local PC every 60s (configurable via `DISCOVERY_INTERVAL_MS`).
+
+- Windows: PowerShell `Get-Printer` — read-only, no spooler restart, no config changes
+- Linux/macOS: `lpstat -a` best-effort fallback
+- Syncs to API via `POST /api/v1/runners/:id/printers/discovery` (JWT)
+- Upsert on `(runner_id, local_printer_name)` — no duplicates
+- Discovery loop runs independently and never blocks the print path
+
+#### New API Endpoints (JWT auth)
+- `POST /api/v1/runners/:id/printers/discovery` — runner syncs discovered list
+- `GET /api/v1/runners/:id/printers` — get discovered printers for a runner
+- `GET /api/v1/discovered-printers` — list all discovered printers
+- `POST /api/v1/discovered-printers/:id/register` — Admin/Owner registers as real Printer
+
+#### Dashboard
+- New "Discovery" nav item → `/discovered-printers` page with table, connection type badges, Register button
+- Register action guarded by ADMIN/OWNER role; audited on success
+
+### Tests: 42/42 pass
 - Idempotency (duplicate request_id prevention)
 - Different source_system = separate jobs
 - Invalid printer_code rejection
