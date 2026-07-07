@@ -67,6 +67,12 @@ function sleep(ms: number): Promise<void> {
   return new Promise((res) => setTimeout(res, ms));
 }
 
+// Auto-login with dev credentials if no static token provided
+if (!config.apiToken) {
+  logger.info('No RUNNER_API_TOKEN set — logging in with dev credentials');
+  await api.login();
+}
+
 runnerId = await registerWithRetry();
 void heartbeatLoop(runnerId);
 void pollLoop(runnerId);

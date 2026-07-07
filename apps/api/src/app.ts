@@ -37,6 +37,7 @@ import { auditRoutes } from './routes/audit.routes.js';
 import { exportRoutes } from './routes/export.routes.js';
 import { v1PrintJobRoutes } from './routes/v1/print-jobs.routes.js';
 import { v1PrinterRoutes } from './routes/v1/printers.routes.js';
+import { v1ExportRoutes } from './routes/v1/exports.routes.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -160,6 +161,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   await app.register(async (v1) => {
     await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, acceptExternalJob, cancelJob, executeJob, apiKeyHook });
     await v1PrinterRoutes(v1, { printers: printerRepo, getPrinterStatus, apiKeyHook });
+    await v1ExportRoutes(v1, { exportJobs, audit: auditRepo, exporter, apiKeyHook });
   }, { prefix: '/api/v1' });
 
   return { app, executeJob, queue, jobRepo, printerRepo, serviceAccountRepo, DEV_API_KEY: devKey };

@@ -6,6 +6,8 @@ export interface RunnerConfig {
   supportedProtocols: string[];
   pollIntervalMs: number;
   heartbeatIntervalMs: number;
+  devEmail: string;
+  devPassword: string;
 }
 
 export function loadConfig(): RunnerConfig {
@@ -17,5 +19,7 @@ export function loadConfig(): RunnerConfig {
     supportedProtocols: (process.env['SUPPORTED_PROTOCOLS'] ?? 'fake,ipp,cups').split(','),
     pollIntervalMs: Number(process.env['POLL_INTERVAL_MS'] ?? 2000),
     heartbeatIntervalMs: Number(process.env['HEARTBEAT_INTERVAL_MS'] ?? 10000),
+    devEmail: process.env['RUNNER_DEV_EMAIL'] ?? 'admin@printerops.local',
+    devPassword: process.env['RUNNER_DEV_PASSWORD'] ?? 'dev-password',
   };
 }

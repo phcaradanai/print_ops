@@ -2,7 +2,22 @@ import type { Runner, Job } from '@printerops/domain';
 import type { RunnerConfig } from './config.js';
 
 export class ApiClient {
-  constructor(private config: RunnerConfig) {}
+  private token: string;
+
+  constructor(private config: RunnerConfig) {
+    this.token = config.apiToken;
+  }
+
+  async login(): Promise<void> {
+    const res = await fetch(`${this.config.apiUrl}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: this.config.devEmail, password: this.config.devPassword }),
+    });
+    if (!res.ok) throw new Error(`Login failed: ${res.status}`);
+    const data = await res.json() as { token: string };
+    this.token = data.token;
+  }
 
   async register(): Promise<Runner> {
     const res = await fetch(`${this.config.apiUrl}/runners/register`, {
@@ -48,7 +63,7 @@ export class ApiClient {
   private authHeaders(): Record<string, string> {
     return {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.config.apiToken}`,
+      Authorization: `Bearer ${this.token}`,
     };
   }
 }

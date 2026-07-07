@@ -96,10 +96,17 @@ Computed latency: `totalLatencyMs`, `validationMs`, `queueWaitMs`, `dispatchMs`,
 - Export Center: jobs CSV/JSON, audit CSV, printer status CSV
 
 ### Export
-- `GET /exports/jobs.csv` — all jobs with fast-path timing columns
-- `GET /exports/jobs.json` — full job JSON
-- `GET /exports/audit.csv` — audit log CSV
-- `GET /exports/printers.csv` — printer list CSV
+External API (X-Api-Key auth):
+- `GET /api/v1/exports/jobs.csv`
+- `GET /api/v1/exports/jobs.json`
+- `GET /api/v1/exports/audit.csv`
+
+Internal API (JWT auth, same data):
+- `GET /exports/jobs.csv`, `/exports/jobs.json`, `/exports/audit.csv`, `/exports/printers.csv`
+
+### Runner Auto-Login
+Runner auto-logins with dev credentials (`admin@printerops.local`) when `RUNNER_API_TOKEN` env is not set.
+`npm run dev -w apps/runner` works out of the box in dev mode.
 
 ### Tests: 23/23 pass
 - Idempotency (duplicate request_id prevention)
