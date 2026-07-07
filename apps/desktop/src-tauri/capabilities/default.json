@@ -1,0 +1,9 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability granted to the main PrinterOps window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ]
+}

@@ -29,6 +29,13 @@ export async function v1RunnerPrinterRoutes(
     }
   });
 
+  // POST /api/v1/runners/:runnerId/printers/discover — request immediate discovery (runner picks up on next cycle)
+  app.post('/runners/:runnerId/printers/discover', auth, async (req, reply) => {
+    const { runnerId } = req.params as { runnerId: string };
+    const printers = await deps.discoveredPrinters.findAll({ runnerId });
+    return reply.status(202).send({ queued: true, runnerId, knownPrinters: printers.length });
+  });
+
   // GET /api/v1/runners/:runnerId/printers — list discovered printers for a runner
   app.get('/runners/:runnerId/printers', auth, async (req, reply) => {
     const { runnerId } = req.params as { runnerId: string };

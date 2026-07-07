@@ -108,26 +108,46 @@ Internal API (JWT auth, same data):
 Runner auto-logins with dev credentials (`admin@printerops.local`) when `RUNNER_API_TOKEN` env is not set.
 `npm run dev -w apps/runner` works out of the box in dev mode.
 
-### Runner Printer Discovery (Windows)
+### Runner Printer Discovery (Cross-Platform)
 Runner discovers installed printers on the local PC every 60s (configurable via `DISCOVERY_INTERVAL_MS`).
 
 - Windows: PowerShell `Get-Printer` — read-only, no spooler restart, no config changes
-- Linux/macOS: `lpstat -a` best-effort fallback
+- macOS: `lpstat -p`, `lpstat -v`, `lpstat -d` — CUPS-based discovery
+- Fake adapter: configurable via `DISCOVERY_ADAPTER=fake` — returns hardcoded printers for dev/test
+- Discovery data includes `computerName` and `osName` per item
 - Syncs to API via `POST /api/v1/runners/:id/printers/discovery` (JWT)
 - Upsert on `(runner_id, local_printer_name)` — no duplicates
 - Discovery loop runs independently and never blocks the print path
 
-#### New API Endpoints (JWT auth)
+#### OS Adapter Modes
+| `DISCOVERY_ADAPTER` | Behaviour |
+|---|---|
+| `auto` (default) | Windows → Get-Printer; macOS/Linux → lpstat |
+| `macos` | Force CUPS lpstat |
+| `windows` | Force PowerShell Get-Printer |
+| `fake` | Return hardcoded fake printers |
+
+#### API Endpoints (JWT auth)
 - `POST /api/v1/runners/:id/printers/discovery` — runner syncs discovered list
+- `POST /api/v1/runners/:id/printers/discover` — request manual discovery refresh
 - `GET /api/v1/runners/:id/printers` — get discovered printers for a runner
 - `GET /api/v1/discovered-printers` — list all discovered printers
 - `POST /api/v1/discovered-printers/:id/register` — Admin/Owner registers as real Printer
+- `GET /api/v1/print-jobs` — list all jobs with optional `?status=&limit=&offset=` filters
 
 #### Dashboard
-- New "Discovery" nav item → `/discovered-printers` page with table, connection type badges, Register button
+- "Discovery" nav item → `/discovered-printers` page
+- "Diagnostics" nav item → `/diagnostics` page (Local Diagnostics — per-runner printer view, Refresh button)
 - Register action guarded by ADMIN/OWNER role; audited on success
 
-### Tests: 42/42 pass
+### Tauri Desktop App (shell scaffold)
+- `apps/desktop/src-tauri/` — minimal Rust shell, loads `apps/web` frontend
+- Dev: `npm run tauri:dev -w apps/desktop` → opens native window at `http://localhost:3000`
+- All 12 web pages available in the desktop app (single source of truth)
+- `cargo check` passes; production bundle requires `tauri build`
+- No duplicate React code — Tauri is a shell only
+
+### Tests: 67/67 pass
 - Idempotency (duplicate request_id prevention)
 - Different source_system = separate jobs
 - Invalid printer_code rejection

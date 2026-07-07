@@ -36,6 +36,8 @@ export class InMemoryDiscoveredPrinterRepository implements DiscoveredPrinterRep
         isDefault: input.isDefault,
         isShared: input.isShared,
         attributes: input.attributes ?? existing.attributes,
+        computerName: input.computerName ?? existing.computerName,
+        osName: input.osName ?? existing.osName,
         lastSeenAt: now,
       };
       this.store.set(existing.id, updated);
@@ -51,6 +53,8 @@ export class InMemoryDiscoveredPrinterRepository implements DiscoveredPrinterRep
       isDefault: input.isDefault,
       isShared: input.isShared,
       attributes: input.attributes ?? {},
+      computerName: input.computerName,
+      osName: input.osName,
       firstSeenAt: now,
       lastSeenAt: now,
     };

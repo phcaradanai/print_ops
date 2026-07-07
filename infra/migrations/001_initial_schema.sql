@@ -232,6 +232,8 @@ CREATE TABLE IF NOT EXISTS discovered_printers (
   is_default            BOOLEAN NOT NULL DEFAULT FALSE,
   is_shared             BOOLEAN NOT NULL DEFAULT FALSE,
   attributes            JSONB NOT NULL DEFAULT '{}',
+  computer_name         TEXT,
+  os_name               TEXT,
   first_seen_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_seen_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   registered_printer_id UUID REFERENCES printers(id) ON DELETE SET NULL,

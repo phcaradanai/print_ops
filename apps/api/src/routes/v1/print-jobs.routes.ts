@@ -64,6 +64,17 @@ export async function v1PrintJobRoutes(
     return reply.status(status).send(result);
   });
 
+  // GET /api/v1/print-jobs — list with optional ?status=&limit=&offset=
+  app.get('/print-jobs', guard, async (req, reply) => {
+    const { status, limit, offset } = req.query as { status?: string; limit?: string; offset?: string };
+    const jobs = await deps.jobs.findAll({
+      status: status as import('@printerops/domain').JobStatus | undefined,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+    });
+    return reply.send(jobs);
+  });
+
   // GET /api/v1/print-jobs/:id
   app.get('/print-jobs/:id', guard, async (req, reply) => {
     const { id } = req.params as { id: string };

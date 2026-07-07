@@ -20,6 +20,8 @@ export class SyncPrinterDiscoveryService {
         isDefault: item.isDefault,
         isShared: item.isShared,
         attributes: item.attributes,
+        computerName: item.computerName,
+        osName: item.osName,
       });
     }
 

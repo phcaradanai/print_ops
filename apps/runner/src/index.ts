@@ -68,7 +68,7 @@ async function discoveryLoop(id: string): Promise<void> {
   while (true) {
     await sleep(config.discoveryIntervalMs);
     try {
-      const items = await discoverPrinters();
+      const items = await discoverPrinters(config.discoveryAdapter);
       if (items.length > 0) {
         await api.syncDiscovery(id, items);
         logger.info('Discovery sync complete', { runnerId: id, count: items.length });

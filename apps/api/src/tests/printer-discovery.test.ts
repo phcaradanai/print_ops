@@ -155,3 +155,32 @@ describe('DiscoveredPrinterRepository', () => {
     expect(r2[0]?.localPrinterName).toBe('Zebra ZD420');
   });
 });
+
+describe('computerName / osName enrichment', () => {
+  it('stores and retrieves computerName and osName from discovery items', async () => {
+    const itemWithMeta: DiscoveryItem = {
+      ...sampleItems[0]!,
+      computerName: 'nurse-station-pc',
+      osName: 'win32',
+    };
+    await syncDiscovery.execute('runner-1', [itemWithMeta]);
+    const all = await discoveredRepo.findAll({ runnerId: 'runner-1' });
+    expect(all[0]?.computerName).toBe('nurse-station-pc');
+    expect(all[0]?.osName).toBe('win32');
+  });
+
+  it('updates computerName on re-sync', async () => {
+    await syncDiscovery.execute('runner-1', [{ ...sampleItems[0]!, computerName: 'old-hostname' }]);
+    await syncDiscovery.execute('runner-1', [{ ...sampleItems[0]!, computerName: 'new-hostname' }]);
+    const all = await discoveredRepo.findAll({ runnerId: 'runner-1' });
+    expect(all).toHaveLength(1);
+    expect(all[0]?.computerName).toBe('new-hostname');
+  });
+
+  it('leaves computerName undefined when not sent', async () => {
+    await syncDiscovery.execute('runner-1', [sampleItems[0]!]);
+    const all = await discoveredRepo.findAll({ runnerId: 'runner-1' });
+    expect(all[0]?.computerName).toBeUndefined();
+    expect(all[0]?.osName).toBeUndefined();
+  });
+});

@@ -10,6 +10,8 @@ export interface DiscoveredPrinter {
   isDefault: boolean;
   isShared: boolean;
   attributes: Record<string, unknown>;
+  computerName?: string;
+  osName?: string;
   firstSeenAt: Date;
   lastSeenAt: Date;
   registeredPrinterId?: string;
@@ -24,6 +26,8 @@ export interface CreateDiscoveredPrinterInput {
   isDefault: boolean;
   isShared: boolean;
   attributes?: Record<string, unknown>;
+  computerName?: string;
+  osName?: string;
 }
 
 /** Raw item sent by the runner to the API in a discovery sync */
@@ -35,4 +39,6 @@ export interface DiscoveryItem {
   isDefault: boolean;
   isShared: boolean;
   attributes?: Record<string, unknown>;
+  computerName?: string;
+  osName?: string;
 }
