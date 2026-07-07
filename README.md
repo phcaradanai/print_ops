@@ -323,6 +323,262 @@ Operators can also retrieve:
 - Docker Compose references Dockerfiles that are not present in this repo.
 - Production service account creation, key rotation, and deployment steps are TBD / ต้องยืนยัน.
 
+## คู่มือภาษาไทย
+
+PrintOps คือระบบกลางสำหรับรับคำสั่งพิมพ์จากโปรแกรม integration ภายนอก แล้วส่งต่อไปยัง printer ผ่าน API และ local runner
+
+ระบบนี้ไม่ได้เชื่อม HIS หรือระบบธุรกิจโดยตรง โปรแกรม integration ภายนอกต้องเป็นตัวอ่านข้อมูลจากระบบต้นทาง สร้างคำสั่งพิมพ์ แล้วเรียก PrintOps API
+
+### สำหรับนักพัฒนา
+
+#### สิ่งที่ต้องมี
+
+- Node.js `>=20.0.0`
+- npm `>=10.0.0`
+- ถ้าจะรัน desktop app: ต้องมี Rust และ Tauri CLI
+- ถ้าจะทดสอบ printer discovery:
+  - macOS/Linux ใช้ `lpstat`
+  - Windows ใช้ PowerShell `Get-Printer`
+- Docker, PostgreSQL, Redis เป็นงานอนาคต/ต้องยืนยันก่อนใช้จริง
+
+#### ติดตั้ง
+
+รันจาก root ของ repo:
+
+```bash
+npm install
+```
+
+repo นี้ยังไม่มีไฟล์ `.env.example` ที่ commit ไว้ ค่า config หลักอ่านจาก environment variable และมีค่า default สำหรับ local development อยู่แล้ว
+
+#### ค่า config สำคัญ
+
+API:
+
+| ตัวแปร | ค่าเริ่มต้น | ความหมาย |
+| --- | --- | --- |
+| `PORT` | `3001` | port ของ API |
+| `HOST` | `0.0.0.0` | host ที่ API bind |
+| `JWT_SECRET` | `dev-secret-change-in-production` | secret สำหรับ dev JWT |
+| `PRINTOPS_DEV_API_KEY` | `printops-dev-apikey-2026` | API key สำหรับ external API ใน dev |
+
+Runner:
+
+| ตัวแปร | ค่าเริ่มต้น | ความหมาย |
+| --- | --- | --- |
+| `API_URL` | `http://localhost:3001` | URL ของ API ที่ runner จะเชื่อม |
+| `RUNNER_API_TOKEN` | ว่าง | ถ้าว่าง runner จะ login ด้วย dev account |
+| `RUNNER_NAME` | `runner-{HOSTNAME}` | ชื่อ runner ที่แสดงใน dashboard |
+| `SUPPORTED_PROTOCOLS` | `fake,ipp,cups` | protocol ที่ runner รายงานว่ารองรับ |
+| `POLL_INTERVAL_MS` | `2000` | รอบเวลาที่ runner poll งาน |
+| `HEARTBEAT_INTERVAL_MS` | `10000` | รอบเวลาส่ง heartbeat |
+| `DISCOVERY_INTERVAL_MS` | `60000` | รอบเวลาค้นหา printer |
+| `DISCOVERY_ADAPTER` | `auto` | `auto`, `windows`, `macos`, หรือ `fake` |
+
+ค่า dev ที่ seed มาให้:
+
+| รายการ | ค่า |
+| --- | --- |
+| email สำหรับ dashboard | `admin@printerops.local` |
+| password สำหรับ dashboard | ใส่อะไรก็ได้ใน MVP ปัจจุบัน |
+| dev API key | `printops-dev-apikey-2026` |
+| fake printer | `LAB_LABEL_01` |
+| fake printer | `OFFICE_LASER_01` |
+
+#### รันระบบตอนพัฒนา
+
+รัน API, web, และ runner พร้อมกัน:
+
+```bash
+npm run dev
+```
+
+หรือแยกรันคนละ terminal:
+
+```bash
+npm run dev -w apps/api
+npm run dev -w apps/web
+npm run dev -w apps/runner
+```
+
+URL หลัก:
+
+| Service | URL |
+| --- | --- |
+| Dashboard | `http://localhost:3000` |
+| API | `http://localhost:3001` |
+| Runner | ไม่มีหน้าเว็บ เชื่อม API โดยตรง |
+
+รัน desktop shell:
+
+```bash
+npm run tauri:dev -w apps/desktop
+```
+
+ต้องเปิด web dev server ที่ `http://localhost:3000` ก่อน
+
+#### ทดสอบและ build
+
+```bash
+npm test
+npm run build
+```
+
+มีคำสั่ง typecheck ด้วย:
+
+```bash
+npm run typecheck
+```
+
+แต่ตอนเขียน README นี้ `npm run typecheck` ยัง fail ที่ `apps/web/src/pages/LocalDiagnostics.tsx` เพราะเรียก `apiFetch` ด้วย argument ตัวที่สอง ทั้งที่ helper รับ argument เดียว นี่เป็น issue ใน application code ไม่ใช่ขั้นตอน setup
+
+#### ตัวอย่างส่งงานพิมพ์สำหรับ dev
+
+ต้องเปิด API และ runner ก่อน:
+
+```bash
+curl -X POST http://localhost:3001/api/v1/print-jobs \
+  -H "X-Api-Key: printops-dev-apikey-2026" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "request_id": "REQ-TEST-001",
+    "source_system": "integration-service",
+    "printer_code": "LAB_LABEL_01",
+    "payload": { "label": "test", "barcode": "ABC123" },
+    "copies": 1,
+    "priority": "normal"
+  }'
+```
+
+ถ้าส่ง `request_id` และ `source_system` ซ้ำ ระบบควรคืน job เดิม ไม่สร้างงานพิมพ์ซ้ำ
+
+#### Troubleshooting ที่พบบ่อย
+
+| ปัญหา | ตรวจอะไร |
+| --- | --- |
+| runner ขึ้น `Register attempt 1 failed` | ตรวจว่า API เปิดที่ `http://localhost:3001` หรือ set `API_URL` ถูกต้อง |
+| dashboard เรียก API ไม่ได้ | ตรวจว่า `npm run dev -w apps/api` เปิดอยู่ |
+| runner login เอง | `RUNNER_API_TOKEN` ว่าง จึงใช้ dev login flow |
+| ไม่เจอ printer discovery | ลอง `DISCOVERY_ADAPTER=fake npm run dev -w apps/runner` |
+| restart แล้วข้อมูลหาย | runtime ปัจจุบันใช้ in-memory storage |
+| printer จริงไม่พิมพ์ | real printer adapters ยังไม่ยืนยันว่า production-ready |
+| Docker Compose build ไม่ได้ | `infra/docker/docker-compose.yml` อ้างถึง Dockerfile ที่ยังไม่มี ต้องยืนยัน |
+
+### สำหรับลูกค้า/ผู้ใช้งาน
+
+#### ระบบนี้ทำอะไร
+
+PrintOps รับคำสั่งพิมพ์ผ่าน HTTP API, ตรวจสอบสิทธิ์และข้อมูล, queue งาน, ให้ runner รับงานไปดำเนินการ, และเก็บ trace/audit สำหรับตรวจสอบย้อนหลัง
+
+ภาพรวมการใช้งานที่ตั้งใจไว้:
+
+```text
+ระบบต้นทางหรือ HIS
+  -> โปรแกรม integration ภายนอก
+  -> PrintOps API
+  -> local runner ใน network ที่เห็น printer
+  -> printer
+```
+
+ใน repo ปัจจุบัน path ที่ verify ได้คือ fake printer สำหรับ local MVP ส่วน printer จริง เช่น raw TCP 9100, Windows spooler, CUPS, IPP ยังต้องยืนยันก่อนใช้งานจริง
+
+#### เริ่มใช้งานแบบ local MVP
+
+1. เปิด API, web UI, และ runner
+2. เข้า `http://localhost:3000`
+3. login ด้วย `admin@printerops.local` และ password อะไรก็ได้
+4. ดูหน้า **Printers** ว่ามี fake printer ที่ seed มา
+5. ดูหน้า **Runners** ว่า runner online
+6. ให้โปรแกรม integration หรือ curl ส่ง print job เข้า external API
+7. ติดตามงานที่ **Dashboard**, **Job Queue**, **Job Detail**, **Audit Logs**, และ **Export**
+
+#### Workflow หลัก
+
+1. โปรแกรม integration ภายนอกสร้าง print request
+2. เรียก `POST /api/v1/print-jobs` พร้อม header `X-Api-Key`
+3. PrintOps ตรวจ API key, `request_id`, `source_system`, printer code, template code, payload size, และจำนวน copies
+4. PrintOps สร้าง job และนำเข้า queue
+5. runner register, ส่ง heartbeat, poll งาน, และ execute job path
+6. PrintOps บันทึก status, timing trace, และ audit event
+7. operator ดูสถานะผ่าน dashboard หรือ API
+8. operator export ข้อมูล jobs, audit logs, และ printer status ได้
+
+สถานะงานหลัก:
+
+```text
+ACCEPTED -> VALIDATED -> QUEUED -> DISPATCHED -> PRINTING -> SUCCESS
+```
+
+สถานะอื่นที่เป็นไปได้ ได้แก่ `FAILED`, `TIMEOUT`, `CANCELLED`, และ `DUPLICATE_RETURNED`
+
+#### Input ที่คาดหวัง
+
+ตัวอย่าง request:
+
+```json
+{
+  "request_id": "REQ-20260707-0001",
+  "source_system": "integration-service",
+  "source_reference": "ORDER-123456",
+  "printer_code": "LAB_LABEL_01",
+  "template_code": "default-label",
+  "payload": {
+    "patient_name": "Example",
+    "barcode": "ABC123"
+  },
+  "copies": 1,
+  "priority": "normal",
+  "metadata": {}
+}
+```
+
+field ที่ยืนยันจาก route code ว่าจำเป็น:
+
+- `request_id`
+- `printer_code`
+- `payload` ควรเป็น object
+- header `X-Api-Key`
+
+ถ้าไม่ส่ง `source_system` ระบบจะใช้ค่าจาก service account
+
+#### Output ที่คาดหวัง
+
+งานใหม่:
+
+```json
+{
+  "print_job_id": "uuid",
+  "request_id": "REQ-20260707-0001",
+  "status": "QUEUED",
+  "trace_id": "trace_uuid",
+  "accepted_at": "2026-07-07T10:00:00Z",
+  "duplicate": false
+}
+```
+
+งานซ้ำ:
+
+```json
+{
+  "print_job_id": "original-uuid",
+  "request_id": "REQ-20260707-0001",
+  "status": "DUPLICATE_RETURNED",
+  "duplicate": true,
+  "existing_job_id": "original-uuid"
+}
+```
+
+#### ข้อจำกัดและสิ่งที่ต้องยืนยัน
+
+- ข้อมูล runtime เป็น in-memory และหายเมื่อ restart
+- PostgreSQL persistence ยังต้องยืนยัน
+- queue ยังเป็น in-memory ไม่ใช่ Redis/BullMQ
+- auth ปัจจุบันยังรับ password อะไรก็ได้สำหรับ admin dev user
+- external API มี API key auth และมี dev key ที่ seed มา
+- real printer adapters ยังไม่ยืนยันว่าใช้งาน production ได้
+- runner-side local execution ยังอยู่ใน next step ต้องยืนยัน
+- production service account, key rotation, network setup, และ deployment steps ยัง TBD / ต้องยืนยัน
+
 ## More Documentation
 
 - `docs/operations/local-dev.md`
