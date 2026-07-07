@@ -21,7 +21,7 @@ import { RbacPermissionPolicy } from './infra/permission/rbac-permission.policy.
 import { buildApiKeyAuth, hashApiKey, apiKeyPrefix } from './infra/middleware/api-key.js';
 import { SimpleTemplateRenderer } from './infra/template/simple-template-renderer.js';
 
-import { AdapterRegistry, FakePrinterAdapter } from '@printerops/adapters';
+import { AdapterRegistry, FakePrinterAdapter, WindowsSpoolerAdapter } from '@printerops/adapters';
 import { generateId } from '@printerops/shared';
 
 import { CreatePrinterService } from './services/create-printer.service.js';
@@ -98,6 +98,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // Adapter registry
   const registry = new AdapterRegistry();
   registry.registerAdapter(new FakePrinterAdapter());
+  registry.registerAdapter(new WindowsSpoolerAdapter());
 
   // Services
   const createPrinter = new CreatePrinterService(printerRepo, eventBus, auditRepo);
@@ -293,7 +294,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1ExportRoutes(v1, { exportJobs, audit: auditRepo, exporter, apiKeyHook });
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
-    await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo });
+    await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob });
   }, { prefix: '/api/v1' });
 
   return { app, executeJob, queue, jobRepo, printerRepo, serviceAccountRepo, DEV_API_KEY: devKey };

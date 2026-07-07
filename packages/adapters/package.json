@@ -19,6 +19,7 @@
     "@printerops/shared": "*"
   },
   "devDependencies": {
+    "@types/node": "^20.19.43",
     "vitest": "^1.6.0"
   }
 }

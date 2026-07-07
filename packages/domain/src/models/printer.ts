@@ -54,8 +54,10 @@ export interface PrintCommand {
   jobId: string;
   printerId: string;
   traceId: string;
+  connectionUri?: string;
   documentUrl?: string;
   documentBase64?: string;
+  renderedPrintPayload?: string;
   mimeType: string;
   copies: number;
   duplex: boolean;

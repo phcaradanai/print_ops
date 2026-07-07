@@ -82,15 +82,17 @@ export class ExecuteJobService {
         jobId,
         printerId: printer.id,
         traceId: job.traceId,
+        connectionUri: printer.connectionUri,
         documentUrl: job.documentUrl,
         documentBase64: job.documentBase64,
+        renderedPrintPayload: job.renderedPrintPayload,
         mimeType: job.mimeType,
         copies: job.copies,
         duplex: job.duplex,
         colorMode: job.colorMode,
         mediaType: job.mediaType,
         resolution: job.resolution,
-        metadata: job.metadata,
+        metadata: { ...job.metadata, printerName: printer.name, printerCode: printer.code },
       });
 
       const printerAckAt = new Date();

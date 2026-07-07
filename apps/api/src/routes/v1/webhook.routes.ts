@@ -6,9 +6,16 @@ import type {
   PrintTemplateRepositoryPort,
   WebhookEndpointRepositoryPort,
   WebhookRoutePolicyRepositoryPort,
+  JobPriority,
 } from '@printerops/domain';
 import type { DynamicIntakeService } from '../../services/dynamic-intake.service.js';
+import type { CreatePrintJobService } from '../../services/create-print-job.service.js';
+import type { ExecuteJobService } from '../../services/execute-job.service.js';
 import { actor, requirePermission } from './permission-guard.js';
+
+const PRIORITY_MAP: Record<string, JobPriority> = {
+  low: 'low', normal: 'normal', high: 'high', urgent: 'urgent',
+};
 
 export async function webhookRoutes(
   app: FastifyInstance,
@@ -20,6 +27,8 @@ export async function webhookRoutes(
     renderer: TemplateRendererPort;
     intake: DynamicIntakeService;
     audit: AuditRepositoryPort;
+    createJob: CreatePrintJobService;
+    executeJob: ExecuteJobService;
   }
 ): Promise<void> {
   app.get('/webhook-endpoints', { onRequest: [requirePermission('webhook:read')] }, async () => deps.endpoints.findAll());
@@ -77,8 +86,91 @@ export async function webhookRoutes(
     return deps.renderer.renderPreview(template, body.samplePayload ?? {}, paper);
   });
   app.post('/sandbox/test-webhook', { onRequest: [requirePermission('webhook:test')] }, async (req) => req.body);
-  app.post('/sandbox/test-print', { onRequest: [requirePermission('sandbox:send-test-print')] }, async (req) => {
-    await deps.audit.create({ traceId: 'sandbox', action: 'sandbox.test_print', actorId: actor(req), resourceType: 'sandbox', resourceId: 'test-print', metadata: {} });
-    return { accepted: true };
+  app.post('/sandbox/test-print', { onRequest: [requirePermission('sandbox:send-test-print')] }, async (req, reply) => {
+    const body = req.body as {
+      templateId?: string;
+      templateCode?: string;
+      paperProfileId?: string;
+      printerId?: string;
+      printerCode?: string;
+      copies?: number;
+      duplex?: boolean;
+      colorMode?: 'color' | 'monochrome' | 'auto';
+      priority?: string;
+      samplePayload?: Record<string, unknown>;
+    };
+
+    // Resolve template
+    const template = body.templateId
+      ? await deps.templates.findById(body.templateId)
+      : body.templateCode
+        ? await deps.templates.findByCode(body.templateCode)
+        : undefined;
+    if (!template) return reply.status(404).send({ error: 'Template not found' });
+
+    // Resolve paper profile
+    const paper = body.paperProfileId
+      ? await deps.papers.findById(body.paperProfileId)
+      : template.paperProfileId
+        ? await deps.papers.findById(template.paperProfileId)
+        : undefined;
+    if (!paper) return reply.status(404).send({ error: 'Paper profile not found' });
+
+    // Render the actual print payload
+    const rendered = await deps.renderer.renderPrintPayload(template, body.samplePayload ?? {}, paper);
+
+    const actorId = actor(req);
+
+    // Create a real print job
+    const job = await deps.createJob.execute(
+      {
+        printerId: body.printerId ?? '',
+        printerCode: body.printerCode,
+        templateCode: template.templateCode,
+        paperProfileId: paper.id,
+        renderedPrintPayload: rendered.renderedPrintPayload,
+        payloadSnapshot: JSON.stringify(body.samplePayload ?? {}),
+        copies: body.copies ?? 1,
+        duplex: body.duplex ?? false,
+        colorMode: body.colorMode ?? 'auto',
+        priorityLabel: PRIORITY_MAP[body.priority ?? 'normal'] ?? 'normal',
+        mimeType:
+          template.engine === 'HTML' ? 'text/html' :
+          template.engine === 'RAW_TEXT' ? 'text/plain' :
+          template.engine === 'PDF_LIKE_PREVIEW' ? 'application/pdf' :
+          `application/${template.engine.toLowerCase()}`,
+        createdBy: actorId,
+        sourceSystem: 'sandbox',
+        sourceReference: 'sandbox.test-print',
+        metadata: { warnings: rendered.warnings, sandbox: true },
+      },
+      actorId
+    );
+
+    // Execute immediately (synchronous for MVP)
+    const completed = await deps.executeJob.execute(job.id, 'sandbox-runner');
+
+    await deps.audit.create({
+      traceId: job.traceId,
+      action: 'sandbox.test_print',
+      actorId,
+      resourceType: 'sandbox',
+      resourceId: job.id,
+      metadata: {
+        printerCode: body.printerCode,
+        templateCode: template.templateCode,
+        copies: body.copies ?? 1,
+        status: completed.status,
+        warnings: rendered.warnings,
+      },
+    });
+
+    return {
+      accepted: true,
+      jobId: job.id,
+      traceId: job.traceId,
+      status: completed.status,
+      warnings: rendered.warnings,
+    };
   });
 }
