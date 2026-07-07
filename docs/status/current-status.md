@@ -1,150 +1,178 @@
 # PrintOps — Current Status
 
-**Project:** PrintOps — Universal Printer Operations & Observability Platform  
-**Goal:** Centralised management, observability, and job-routing for heterogeneous printer fleets  
-**Current phase:** Day 1 Foundation Complete  
-**Last updated:** 2026-07-06  
-**Branch:** `printerops-foundation`
+**Project:** PrintOps — Generic Print Gateway Service
+**Goal:** Accept print commands from external integration programs and deliver to local printers via runners
+**Current phase:** MVP Nippon Complete
+**Last updated:** 2026-07-07
+**Branch:** `mvp_nippon`
 
 ---
 
-## What is done
+## Architecture Summary
 
-### Architecture scaffold
-- npm monorepo: `packages/{domain,shared,adapters}` + `apps/{api,web,runner}`
-- Clean Architecture layers: Domain → Application → Infrastructure → Interface
-- TypeScript strict mode throughout (NodeNext modules, no `any`)
+PrintOps is a **generic print gateway**. It does NOT connect to HIS directly.
 
-### Domain layer (`packages/domain`)
-- Models: `Printer`, `PrinterCapability`, `PrinterStatus`, `PrintCommand`, `Job` (8 statuses), `JobTrace`, `AuditLog`, `Runner`, `User`
-- RBAC: 4 roles (OWNER / ADMIN / OPERATOR / VIEWER), 15 permissions via `ROLE_PERMISSIONS`
-- 14 domain events + `EventBusPort` interface
-- 8 port interfaces: `PrinterAdapterPort`, `JobQueuePort`, 5 repository ports, `PermissionPolicyPort`, `ExportPort`, `NotificationPort`
-
-### Shared utilities (`packages/shared`)
-- `generateId()`, typed error classes (`NotFoundError`, `PermissionError`, `AppError`)
-
-### Adapter layer (`packages/adapters`)
-- `AdapterRegistry` — register/lookup adapters by protocol or printer
-- `FakePrinterAdapter` — configurable `shouldFail` + `latencyMs`, full in-memory queue
-- Placeholder stubs: IPP, CUPS, SNMP, Windows Spooler
-
-### API app (`apps/api`)
-- Fastify server with JWT auth + CORS
-- 10 application services wired with in-memory infrastructure
-- 18 REST routes across 6 route groups (auth, printers, jobs, runners, audit, export)
-- `POST /jobs/:id/execute` — triggers `ExecuteJobService` directly
-- Full in-memory implementations for all 5 repos, queue, event bus
-- Seeded default admin: `admin@printerops.local`
-
-### Runner app (`apps/runner`)
-- Registers with API on startup
-- Heartbeat loop every 30 s
-- Poll loop every 5 s — dequeues jobs, calls `POST /jobs/:id/execute`
-
-### Web app (`apps/web`)
-- React + Vite + React Router v6
-- 10 page skeletons: Dashboard, Printers, Jobs, JobDetail (trace timeline), Runners, Audit, Export, Settings, Login, NotFound
-- Proxy `/api` → `http://localhost:3001`
-
-### Tests
-- `job-lifecycle.test.ts` — happy path PENDING→QUEUED→RUNNING→SUCCESS + failure path (2 tests)
-- `permission.test.ts` — RBAC policy + CheckPermissionService (7 tests)
-- **Total: 9/9 pass**
-
-### Build
-- `npm run build` — all 5 TypeScript packages compile clean (zero errors)
-- `npm run build -w apps/web` — Vite builds successfully
-
-### Docs
-- `docs/architecture/` — overview, domain model, event catalog, ports & adapters, service catalog
-- `docs/adr/0001-clean-architecture.md`
-- `docs/operations/local-dev.md`
+```
+[HIS]
+  ↓ (external integration program — separate team)
+[External Integration Program]
+  ↓  POST /api/v1/print-jobs  (X-Api-Key auth)
+[PrintOps API]  ←→  [In-memory / PostgreSQL]
+  ↓  poll /runners/:id/poll
+[Local Runner]  (PC on LAN with printer access)
+  ↓
+[Printer — Zebra / POSTEK / Windows Spooler / CUPS / raw TCP 9100]
+```
 
 ---
 
-## What is not done yet (Day 2+)
+## What is Done
 
-- PostgreSQL repository implementations (all repos are in-memory)
-- BullMQ/Redis queue adapter
-- Real password hashing (MVP accepts any password)
-- `CheckPermissionService.assertCan()` not wired into API route handlers
-- IPP, CUPS, SNMP, Windows Spooler adapter implementations
-- Frontend state management and real API integration (pages are skeletons)
-- E2E / integration tests
-- Docker Compose service definitions
-- Notification adapter implementation
+### External Print API (`/api/v1/`)
+- `POST /api/v1/print-jobs` — accept from external integration program
+- `GET /api/v1/print-jobs/:id` — job detail
+- `GET /api/v1/print-jobs/by-request-id/:requestId` — lookup by request_id
+- `POST /api/v1/print-jobs/:id/cancel` — cancel ACCEPTED/VALIDATED/QUEUED/DISPATCHED
+- `GET /api/v1/print-jobs/:id/trace` — full trace timeline
+- `GET /api/v1/printers` — list active printers
+- `GET /api/v1/printers/:id/status` — printer status
+- API key authentication (`X-Api-Key` header, SHA-256 hashed at rest)
+
+### Job Lifecycle (10 statuses)
+`ACCEPTED → VALIDATED → QUEUED → DISPATCHED → PRINTING → SUCCESS`
+(alternatives: `FAILED`, `TIMEOUT`, `CANCELLED`, `DUPLICATE_RETURNED`)
+
+### Idempotency
+- `request_id + source_system` is unique — DB UNIQUE index enforced
+- Duplicate requests return existing job with `status: DUPLICATE_RETURNED`
+- No duplicate prints — guaranteed at service + DB layer
+
+### Fast Print Path Timing
+All jobs record: `receivedAt`, `validatedAt`, `queuedAt`, `dispatchedAt`,
+`runnerReceivedAt`, `spoolerSentAt`, `printerAckAt`, `completedAt`
+
+Computed latency: `totalLatencyMs`, `validationMs`, `queueWaitMs`, `dispatchMs`, `runnerExecMs`
+
+### Safety
+- API key auth for external callers (service accounts with per-caller printer/template allowlists)
+- JWT + RBAC for internal dashboard (OWNER / ADMIN / OPERATOR / VIEWER)
+- Payload never stored raw — only `payloadSnapshot` (keys + length)
+- Auth headers and payloads redacted from Fastify logger
+- Copies limit enforced per printer (`maxCopiesPerJob`)
+- Template allowlist enforced per printer (`allowedTemplates`)
+- All cancellations + config changes audited
+
+### Printer Adapters
+- `FakePrinterAdapter` — full implementation (configurable latency/failure)
+- `RawTcp9100Adapter` — skeleton for Zebra/POSTEK/raw port 9100
+- `WindowsSpoolerAdapter` — skeleton
+- `CupsPrinterAdapter` — skeleton
+- `IppPrinterAdapter` — skeleton
+- `ZplBuilder` — ZPL II command builder helper
+- `TsplBuilder` — TSPL command builder helper
+
+### Runner App
+- Registers on startup (10 retry attempts with 3s backoff)
+- Heartbeat every 10s
+- Polls `/runners/:id/poll` every 2s for QUEUED jobs
+- Executes via API → adapter registry → printer
+- Reports timing + status
+- Continues on heartbeat/poll failure (reconnect-ready)
+
+### DB Schema (SQL DDL)
+- Migration: `infra/migrations/001_initial_schema.sql`
+- Tables: `service_accounts`, `printers`, `printer_status_snapshots`,
+  `runners`, `runner_heartbeats`, `print_jobs`, `print_job_events`,
+  `print_job_traces`, `audit_logs`, `users`
+- Idempotency enforced by UNIQUE index on `(request_id, source_system)`
+
+### Dashboard / Web
+- Dashboard: total jobs, runners online, active printers, failed count, avg/p95 latency, recent jobs
+- Job Queue: status, printerCode, sourceSystem, latency, priority
+- Job Detail: trace timeline with step-by-step timing
+- Printers: list with code, protocol, status, maxCopies
+- Runners: list with status, heartbeat age, hostname (auto-refreshes 15s)
+- Audit Logs: paginated table with action, actor, resource
+- Export Center: jobs CSV/JSON, audit CSV, printer status CSV
+
+### Export
+- `GET /exports/jobs.csv` — all jobs with fast-path timing columns
+- `GET /exports/jobs.json` — full job JSON
+- `GET /exports/audit.csv` — audit log CSV
+- `GET /exports/printers.csv` — printer list CSV
+
+### Tests: 23/23 pass
+- Idempotency (duplicate request_id prevention)
+- Different source_system = separate jobs
+- Invalid printer_code rejection
+- Copies limit enforcement
+- Template validation
+- Fake printer job success + failure
+- Trace timeline with all steps
+- Audit log creation
+- Latency fields populated
+- Job cancellation (valid + invalid state)
+- Runner heartbeat updates status
+
+### Build: All packages clean
+`npm run build` — 5 packages, zero TypeScript errors
 
 ---
 
-## Known limitations
+## Known Limitations
 
 | Limitation | Impact |
 |---|---|
-| In-memory storage | All data lost on restart; no persistence across runs |
-| No password verification | Any password accepted at `/auth/login` in MVP |
-| Permission guards not applied to routes | RBAC policy exists and is tested but routes don't call `assertCan` |
-| Runner polls API via HTTP | Runs in-process with API in dev; separate process needs network |
+| In-memory storage | All data lost on restart |
+| No real password hashing | Any password accepted at `/auth/login` |
+| Permission guards not on internal routes | RBAC exists but not wired to `/jobs`, `/printers` |
+| RawTcp9100/Windows/CUPS adapters are skeletons | Cannot print to real printers yet |
+| In-memory queue | No BullMQ/Redis persistence or distributed workers |
 
 ---
 
-## How to run locally
+## How to Run Locally
 
 ```bash
-# Install dependencies
 npm install
 
-# Start API (port 3001) + Runner
-npm run dev
-
-# Start web (port 5173)
-npm run dev -w apps/web
-
-# Default login
-# Email: admin@printerops.local
-# Password: anything (MVP)
-```
-
----
-
-## How to test the fake printer flow
-
-```bash
-# 1. Start the API
+# API on port 3001
 npm run dev -w apps/api
 
-# 2. Login and get a token
-curl -s -X POST http://localhost:3001/auth/login \
+# Local runner
+npm run dev -w apps/runner
+
+# Dashboard on port 3000
+npm run dev -w apps/web
+
+# Login: admin@printerops.local / any-password
+# Dev API key: printops-dev-apikey-2026
+```
+
+## How to Test Fake Print (External API)
+
+```bash
+export API_KEY="printops-dev-apikey-2026"
+
+curl -X POST http://localhost:3001/api/v1/print-jobs \
+  -H "X-Api-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@printerops.local","password":"any"}' | jq .token
+  -d '{
+    "request_id": "REQ-TEST-001",
+    "source_system": "integration-service",
+    "printer_code": "LAB_LABEL_01",
+    "payload": { "patient": "test", "barcode": "ABC123" },
+    "copies": 1,
+    "priority": "normal"
+  }'
 
-# 3. Create a printer (replace TOKEN)
-curl -s -X POST http://localhost:3001/printers \
-  -H "Authorization: Bearer TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Test Printer","protocol":"fake","host":"localhost"}' | jq .
+# Trace timeline
+curl http://localhost:3001/api/v1/print-jobs/<ID>/trace \
+  -H "X-Api-Key: $API_KEY" | jq .steps
 
-# 4. Create a print job (replace PRINTER_ID)
-curl -s -X POST http://localhost:3001/jobs \
-  -H "Authorization: Bearer TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"printerId":"PRINTER_ID","mimeType":"application/pdf","copies":1}' | jq .
-
-# 5. Execute the job (replace JOB_ID)
-curl -s -X POST http://localhost:3001/jobs/JOB_ID/execute \
-  -H "Authorization: Bearer TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"runnerId":"runner-local"}' | jq .status
-
-# Expected: "SUCCESS"
-
-# 6. Inspect trace
-curl -s http://localhost:3001/jobs/JOB_ID/trace \
-  -H "Authorization: Bearer TOKEN" | jq .steps
+# Test idempotency — send same request_id again → DUPLICATE_RETURNED
 ```
 
 ---
 
-## Next step: Day 2 Backend Core
-
-See [`docs/status/next-steps.md`](./next-steps.md)
+See [`docs/status/next-steps.md`](./next-steps.md) for next prompt.

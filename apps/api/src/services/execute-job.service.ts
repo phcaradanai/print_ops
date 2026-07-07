@@ -7,6 +7,7 @@ import type {
   JobQueuePort,
   Job,
   TraceStep,
+  JobLatency,
 } from '@printerops/domain';
 import type { AdapterRegistry } from '@printerops/adapters';
 import { generateId, NotFoundError } from '@printerops/shared';
@@ -29,10 +30,38 @@ export class ExecuteJobService {
     const printer = await this.printers.findById(job.printerId);
     if (!printer) throw new NotFoundError('Printer', job.printerId);
 
-    const startedAt = new Date();
-    await this.jobs.update(jobId, { status: 'RUNNING', startedAt });
+    const dispatchedAt = new Date();
+    const queueWaitMs = job.queuedAt
+      ? dispatchedAt.getTime() - job.queuedAt.getTime()
+      : undefined;
 
-    const trace = await this.traces.findByJobId(jobId);
+    // QUEUED → DISPATCHED
+    await this.jobs.update(jobId, {
+      status: 'DISPATCHED',
+      dispatchedAt,
+      runnerReceivedAt: dispatchedAt,
+      runnerId,
+      latency: { ...job.latency, queueWaitMs },
+    });
+
+    this.events.publish({
+      eventId: generateId(),
+      eventType: 'JobDispatched',
+      traceId: job.traceId,
+      correlationId: job.correlationId,
+      occurredAt: dispatchedAt,
+      jobId,
+      runnerId,
+      printerId: printer.id,
+    });
+
+    const startedAt = new Date();
+    // DISPATCHED → PRINTING
+    await this.jobs.update(jobId, {
+      status: 'PRINTING',
+      startedAt,
+      spoolerSentAt: startedAt,
+    });
 
     this.events.publish({
       eventId: generateId(),
@@ -44,6 +73,8 @@ export class ExecuteJobService {
       runnerId,
       printerId: printer.id,
     });
+
+    const trace = await this.traces.findByJobId(jobId);
 
     try {
       const adapter = this.registry.getAdapterForPrinter(printer);
@@ -62,13 +93,31 @@ export class ExecuteJobService {
         metadata: job.metadata,
       });
 
-      const finishedAt = new Date();
-      const durationMs = finishedAt.getTime() - startedAt.getTime();
+      const printerAckAt = new Date();
+      const finishedAt = printerAckAt;
+      const runnerExecMs = finishedAt.getTime() - startedAt.getTime();
+      const dispatchMs = startedAt.getTime() - dispatchedAt.getTime();
+      const totalLatencyMs = job.receivedAt
+        ? finishedAt.getTime() - job.receivedAt.getTime()
+        : undefined;
 
       if (result.success) {
+        const latency: JobLatency = {
+          ...(job.latency ?? {}),
+          queueWaitMs,
+          dispatchMs,
+          runnerExecMs,
+          printerAckMs: 0,
+          totalLatencyMs,
+        };
+
         const completed = await this.jobs.update(jobId, {
           status: 'SUCCESS',
           finishedAt,
+          completedAt: finishedAt,
+          printerAckAt,
+          adapterUsed: adapter.adapterName,
+          latency,
         });
 
         if (trace) {
@@ -77,15 +126,23 @@ export class ExecuteJobService {
             adapterName: adapter.adapterName,
             startedAt,
             finishedAt,
-            durationMs,
+            durationMs: runnerExecMs,
             status: 'SUCCESS',
             steps: [
               ...trace.steps,
               {
+                stepName: 'job_dispatched',
+                startedAt: dispatchedAt,
+                finishedAt: startedAt,
+                durationMs: dispatchMs,
+                status: 'success',
+                outputSummary: `Dispatched to runner ${runnerId}`,
+              },
+              {
                 stepName: 'adapter_execute',
                 startedAt,
                 finishedAt,
-                durationMs,
+                durationMs: runnerExecMs,
                 status: 'success',
                 outputSummary: result.message,
               },
@@ -99,7 +156,7 @@ export class ExecuteJobService {
           resourceType: 'job',
           resourceId: jobId,
           after: completed as unknown as Record<string, unknown>,
-          metadata: { runnerId, durationMs },
+          metadata: { runnerId, durationMs: runnerExecMs, totalLatencyMs, adapter: adapter.adapterName },
         });
 
         this.events.publish({
@@ -109,17 +166,22 @@ export class ExecuteJobService {
           correlationId: job.correlationId,
           occurredAt: finishedAt,
           jobId,
-          durationMs,
+          durationMs: runnerExecMs,
         });
 
         await this.queue.ack(jobId);
         return completed;
       } else {
-        return await this.handleFailure(job, runnerId, result.errorCode ?? 'UNKNOWN', result.message ?? 'Adapter failed', startedAt, trace ?? undefined);
+        return await this.handleFailure(
+          job, runnerId, result.errorCode ?? 'UNKNOWN', result.message ?? 'Adapter failed',
+          startedAt, dispatchedAt, queueWaitMs, trace ?? undefined, adapter.adapterName
+        );
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      return await this.handleFailure(job, runnerId, 'EXECUTION_ERROR', errMsg, startedAt, trace ?? undefined);
+      return await this.handleFailure(
+        job, runnerId, 'EXECUTION_ERROR', errMsg, startedAt, dispatchedAt, queueWaitMs, trace ?? undefined, 'unknown'
+      );
     }
   }
 
@@ -129,16 +191,34 @@ export class ExecuteJobService {
     errorCode: string,
     errorMessage: string,
     startedAt: Date,
-    trace?: { id: string; steps: TraceStep[] }
+    dispatchedAt: Date,
+    queueWaitMs: number | undefined,
+    trace?: { id: string; steps: TraceStep[] },
+    adapterName?: string
   ): Promise<Job> {
     const finishedAt = new Date();
-    const durationMs = finishedAt.getTime() - startedAt.getTime();
+    const runnerExecMs = finishedAt.getTime() - startedAt.getTime();
+    const dispatchMs = startedAt.getTime() - dispatchedAt.getTime();
+    const totalLatencyMs = job.receivedAt
+      ? finishedAt.getTime() - job.receivedAt.getTime()
+      : undefined;
+
+    const latency: JobLatency = {
+      ...(job.latency ?? {}),
+      queueWaitMs,
+      dispatchMs,
+      runnerExecMs,
+      totalLatencyMs,
+    };
 
     const failed = await this.jobs.update(job.id, {
       status: 'FAILED',
       finishedAt,
+      completedAt: finishedAt,
       errorCode,
       errorMessage,
+      adapterUsed: adapterName,
+      latency,
     });
 
     if (trace) {
@@ -146,17 +226,25 @@ export class ExecuteJobService {
         runnerId,
         startedAt,
         finishedAt,
-        durationMs,
+        durationMs: runnerExecMs,
         status: 'FAILED',
         errorCode,
         errorMessage,
         steps: [
           ...trace.steps,
           {
+            stepName: 'job_dispatched',
+            startedAt: dispatchedAt,
+            finishedAt: startedAt,
+            durationMs: dispatchMs,
+            status: 'success',
+            outputSummary: `Dispatched to runner ${runnerId}`,
+          },
+          {
             stepName: 'adapter_execute',
             startedAt,
             finishedAt,
-            durationMs,
+            durationMs: runnerExecMs,
             status: 'failed',
             error: errorMessage,
           },
@@ -170,7 +258,7 @@ export class ExecuteJobService {
       resourceType: 'job',
       resourceId: job.id,
       after: failed as unknown as Record<string, unknown>,
-      metadata: { runnerId, errorCode, errorMessage },
+      metadata: { runnerId, errorCode, errorMessage, totalLatencyMs },
     });
 
     this.events.publish({

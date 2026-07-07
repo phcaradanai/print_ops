@@ -3,6 +3,7 @@ import type { Job, JobTrace, CreateJobInput, JobStatus } from '../models/job.js'
 import type { Runner, RegisterRunnerInput } from '../models/runner.js';
 import type { AuditLog, CreateAuditLogInput } from '../models/audit.js';
 import type { User } from '../models/user.js';
+import type { ServiceAccount, CreateServiceAccountInput } from '../models/service-account.js';
 
 export interface ListOptions {
   limit?: number;
@@ -11,6 +12,7 @@ export interface ListOptions {
 
 export interface PrinterRepositoryPort {
   findById(id: string): Promise<Printer | undefined>;
+  findByCode(code: string): Promise<Printer | undefined>;
   findAll(opts?: ListOptions): Promise<Printer[]>;
   create(input: CreatePrinterInput): Promise<Printer>;
   update(id: string, patch: Partial<Printer>): Promise<Printer>;
@@ -19,7 +21,8 @@ export interface PrinterRepositoryPort {
 
 export interface JobRepositoryPort {
   findById(id: string): Promise<Job | undefined>;
-  findAll(opts?: ListOptions & { status?: JobStatus }): Promise<Job[]>;
+  findByRequestId(requestId: string, sourceSystem: string): Promise<Job | undefined>;
+  findAll(opts?: ListOptions & { status?: JobStatus; printerId?: string }): Promise<Job[]>;
   create(input: CreateJobInput & { id: string; traceId: string; correlationId: string }): Promise<Job>;
   update(id: string, patch: Partial<Job>): Promise<Job>;
 }
@@ -39,7 +42,7 @@ export interface RunnerRepositoryPort {
 
 export interface AuditRepositoryPort {
   create(input: CreateAuditLogInput): Promise<AuditLog>;
-  findAll(opts?: ListOptions & { resourceType?: string; resourceId?: string }): Promise<AuditLog[]>;
+  findAll(opts?: ListOptions & { resourceType?: string; resourceId?: string; actorId?: string }): Promise<AuditLog[]>;
 }
 
 export interface UserRepositoryPort {
@@ -48,4 +51,13 @@ export interface UserRepositoryPort {
   findAll(opts?: ListOptions): Promise<User[]>;
   create(user: Omit<User, 'id' | 'createdAt' | 'updatedAt'>): Promise<User>;
   update(id: string, patch: Partial<User>): Promise<User>;
+  seed(user: User): void;
+}
+
+export interface ServiceAccountRepositoryPort {
+  findById(id: string): Promise<ServiceAccount | undefined>;
+  findBySourceSystem(sourceSystem: string): Promise<ServiceAccount | undefined>;
+  findAll(opts?: ListOptions): Promise<ServiceAccount[]>;
+  create(input: CreateServiceAccountInput): Promise<ServiceAccount>;
+  update(id: string, patch: Partial<ServiceAccount>): Promise<ServiceAccount>;
 }

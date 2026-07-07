@@ -4,6 +4,7 @@ export * from './models/job.js';
 export * from './models/runner.js';
 export * from './models/user.js';
 export * from './models/audit.js';
+export * from './models/service-account.js';
 
 // Events
 export * from './events/index.js';

@@ -3,4 +3,7 @@ export * from './ipp/ipp-printer.adapter.js';
 export * from './snmp/snmp-printer-status.adapter.js';
 export * from './cups/cups-printer.adapter.js';
 export * from './windows/windows-spooler.adapter.js';
+export * from './raw-tcp-9100/raw-tcp-9100.adapter.js';
+export * from './zpl/zpl.helper.js';
+export * from './tspl/tspl.helper.js';
 export * from './registry/adapter-registry.js';

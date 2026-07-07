@@ -20,7 +20,7 @@ async function registerWithRetry(): Promise<string> {
       const runner = await api.register();
       logger.info('Runner registered', { runnerId: runner.id });
       return runner.id;
-    } catch (err) {
+    } catch {
       logger.warn(`Register attempt ${attempt} failed, retrying in 3s...`);
       await sleep(3000);
     }
@@ -32,7 +32,7 @@ async function heartbeatLoop(id: string): Promise<void> {
   while (true) {
     try {
       await api.heartbeat(id);
-    } catch (err) {
+    } catch {
       logger.warn('Heartbeat failed', { runnerId: id });
     }
     await sleep(config.heartbeatIntervalMs);
@@ -42,11 +42,18 @@ async function heartbeatLoop(id: string): Promise<void> {
 async function pollLoop(id: string): Promise<void> {
   while (true) {
     try {
-      const job = await api.pollJob();
+      const job = await api.pollJob(id);
       if (job) {
+        const t0 = Date.now();
         logger.info('Picked up job', { jobId: job.id, runnerId: id, traceId: job.traceId });
-        await api.reportSuccess(job.id, id);
-        logger.info('Job reported to API for execution', { jobId: job.id, traceId: job.traceId });
+        const result = await api.executeJob(job.id, id);
+        const ms = Date.now() - t0;
+        logger.info('Job complete', {
+          jobId: result.id,
+          status: result.status,
+          totalMs: ms,
+          traceId: result.traceId,
+        });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

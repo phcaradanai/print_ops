@@ -12,11 +12,26 @@ export interface PrinterRegistered extends DomainEvent {
   printerName: string;
 }
 
+export interface JobAccepted extends DomainEvent {
+  eventType: 'JobAccepted';
+  jobId: string;
+  printerId: string;
+  requestId?: string;
+  sourceSystem?: string;
+  createdBy: string;
+}
+
 export interface JobCreated extends DomainEvent {
   eventType: 'JobCreated';
   jobId: string;
   printerId: string;
   createdBy: string;
+}
+
+export interface JobValidated extends DomainEvent {
+  eventType: 'JobValidated';
+  jobId: string;
+  validationMs: number;
 }
 
 export interface JobQueued extends DomainEvent {
@@ -25,11 +40,25 @@ export interface JobQueued extends DomainEvent {
   printerId: string;
 }
 
+export interface JobDispatched extends DomainEvent {
+  eventType: 'JobDispatched';
+  jobId: string;
+  runnerId: string;
+  printerId: string;
+}
+
 export interface JobStarted extends DomainEvent {
   eventType: 'JobStarted';
   jobId: string;
   runnerId: string;
   printerId: string;
+}
+
+export interface JobPrinting extends DomainEvent {
+  eventType: 'JobPrinting';
+  jobId: string;
+  runnerId: string;
+  adapterName: string;
 }
 
 export interface JobSucceeded extends DomainEvent {
@@ -54,6 +83,13 @@ export interface JobCancelled extends DomainEvent {
   eventType: 'JobCancelled';
   jobId: string;
   cancelledBy: string;
+}
+
+export interface JobDuplicateReturned extends DomainEvent {
+  eventType: 'JobDuplicateReturned';
+  existingJobId: string;
+  requestId: string;
+  sourceSystem: string;
 }
 
 export interface RunnerRegistered extends DomainEvent {
@@ -88,13 +124,18 @@ export interface TraceRecorded extends DomainEvent {
 
 export type AnyDomainEvent =
   | PrinterRegistered
+  | JobAccepted
   | JobCreated
+  | JobValidated
   | JobQueued
+  | JobDispatched
   | JobStarted
+  | JobPrinting
   | JobSucceeded
   | JobFailed
   | JobTimedOut
   | JobCancelled
+  | JobDuplicateReturned
   | RunnerRegistered
   | RunnerHeartbeatReceived
   | PermissionDenied

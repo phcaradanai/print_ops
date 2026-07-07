@@ -8,6 +8,10 @@ export class InMemoryPrinterRepository implements PrinterRepositoryPort {
     return this.store.get(id);
   }
 
+  async findByCode(code: string): Promise<Printer | undefined> {
+    return Array.from(this.store.values()).find((p) => p.code === code && p.isActive);
+  }
+
   async findAll(opts?: ListOptions): Promise<Printer[]> {
     const all = Array.from(this.store.values());
     const offset = opts?.offset ?? 0;
@@ -17,9 +21,12 @@ export class InMemoryPrinterRepository implements PrinterRepositoryPort {
 
   async create(input: CreatePrinterInput): Promise<Printer> {
     const now = new Date();
+    const code = input.code ?? input.name.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
     const printer: Printer = {
       ...input,
       id: generateId(),
+      code,
+      isActive: input.isActive ?? true,
       createdAt: now,
       updatedAt: now,
     };

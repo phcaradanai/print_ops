@@ -1,5 +1,8 @@
-import type { Job, CreateJobInput, JobRepositoryPort, ListOptions, JobStatus } from '@printerops/domain';
-import { generateId, generateTraceId, generateCorrelationId } from '@printerops/shared';
+import type { Job, CreateJobInput, JobRepositoryPort, ListOptions, JobStatus, JobPriority } from '@printerops/domain';
+
+const PRIORITY_MAP: Record<JobPriority, number> = {
+  urgent: 100, high: 75, normal: 50, low: 25,
+};
 
 export class InMemoryJobRepository implements JobRepositoryPort {
   private store = new Map<string, Job>();
@@ -8,11 +11,17 @@ export class InMemoryJobRepository implements JobRepositoryPort {
     return this.store.get(id);
   }
 
-  async findAll(opts?: ListOptions & { status?: JobStatus }): Promise<Job[]> {
+  async findByRequestId(requestId: string, sourceSystem: string): Promise<Job | undefined> {
+    return Array.from(this.store.values()).find(
+      (j) => j.requestId === requestId && j.sourceSystem === sourceSystem
+    );
+  }
+
+  async findAll(opts?: ListOptions & { status?: JobStatus; printerId?: string }): Promise<Job[]> {
     let all = Array.from(this.store.values());
-    if (opts?.status) {
-      all = all.filter((j) => j.status === opts.status);
-    }
+    if (opts?.status) all = all.filter((j) => j.status === opts.status);
+    if (opts?.printerId) all = all.filter((j) => j.printerId === opts.printerId);
+    all.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     const offset = opts?.offset ?? 0;
     const limit = opts?.limit ?? all.length;
     return all.slice(offset, offset + limit);
@@ -25,13 +34,20 @@ export class InMemoryJobRepository implements JobRepositoryPort {
     const job: Job = {
       id: input.id,
       printerId: input.printerId,
+      printerCode: input.printerCode,
+      templateCode: input.templateCode,
       createdBy: input.createdBy,
-      status: 'PENDING',
-      priority: input.priority ?? 0,
+      sourceSystem: input.sourceSystem,
+      sourceReference: input.sourceReference,
+      requestId: input.requestId,
+      status: 'ACCEPTED',
+      priority: input.priority ?? PRIORITY_MAP[input.priorityLabel ?? 'normal'],
+      priorityLabel: input.priorityLabel ?? 'normal',
       traceId: input.traceId,
       correlationId: input.correlationId,
       documentUrl: input.documentUrl,
       documentBase64: input.documentBase64,
+      payloadSnapshot: input.payloadSnapshot,
       mimeType: input.mimeType,
       copies: input.copies,
       duplex: input.duplex,
@@ -40,6 +56,7 @@ export class InMemoryJobRepository implements JobRepositoryPort {
       resolution: input.resolution,
       retryCount: 0,
       maxRetries: input.maxRetries ?? 3,
+      receivedAt: now,
       metadata: input.metadata,
       createdAt: now,
       updatedAt: now,
