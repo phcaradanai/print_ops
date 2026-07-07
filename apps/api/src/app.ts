@@ -10,11 +10,16 @@ import { InMemoryAuditRepository } from './infra/repos/in-memory-audit.repo.js';
 import { InMemoryUserRepository } from './infra/repos/in-memory-user.repo.js';
 import { InMemoryServiceAccountRepository } from './infra/repos/in-memory-service-account.repo.js';
 import { InMemoryDiscoveredPrinterRepository } from './infra/repos/in-memory-discovered-printer.repo.js';
+import { InMemoryPrintTemplateRepository } from './infra/repos/in-memory-template.repo.js';
+import { InMemoryPaperProfileRepository } from './infra/repos/in-memory-paper-profile.repo.js';
+import { InMemoryPrinterTemplateBindingRepository } from './infra/repos/in-memory-template-binding.repo.js';
+import { InMemoryWebhookEndpointRepository, InMemoryWebhookRoutePolicyRepository } from './infra/repos/in-memory-webhook.repo.js';
 import { InMemoryEventBus } from './infra/eventbus/in-memory-eventbus.js';
 import { InMemoryJobQueue } from './infra/queue/in-memory-queue.js';
 import { InMemoryExportAdapter } from './infra/export/in-memory-export.adapter.js';
 import { RbacPermissionPolicy } from './infra/permission/rbac-permission.policy.js';
 import { buildApiKeyAuth, hashApiKey, apiKeyPrefix } from './infra/middleware/api-key.js';
+import { SimpleTemplateRenderer } from './infra/template/simple-template-renderer.js';
 
 import { AdapterRegistry, FakePrinterAdapter } from '@printerops/adapters';
 import { generateId } from '@printerops/shared';
@@ -31,6 +36,7 @@ import { ExportJobsService } from './services/export-jobs.service.js';
 import { CheckPermissionService } from './services/check-permission.service.js';
 import { SyncPrinterDiscoveryService } from './services/sync-printer-discovery.service.js';
 import { RegisterDiscoveredPrinterService } from './services/register-discovered-printer.service.js';
+import { DynamicIntakeService } from './services/dynamic-intake.service.js';
 
 import { authRoutes } from './routes/auth.routes.js';
 import { printerRoutes } from './routes/printer.routes.js';
@@ -42,6 +48,8 @@ import { v1PrintJobRoutes } from './routes/v1/print-jobs.routes.js';
 import { v1PrinterRoutes } from './routes/v1/printers.routes.js';
 import { v1ExportRoutes } from './routes/v1/exports.routes.js';
 import { v1RunnerPrinterRoutes } from './routes/v1/runner-printers.routes.js';
+import { templateRoutes } from './routes/v1/template.routes.js';
+import { webhookRoutes } from './routes/v1/webhook.routes.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -76,10 +84,16 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const userRepo = new InMemoryUserRepository();
   const serviceAccountRepo = new InMemoryServiceAccountRepository();
   const discoveredPrinterRepo = new InMemoryDiscoveredPrinterRepository();
+  const templateRepo = new InMemoryPrintTemplateRepository();
+  const paperRepo = new InMemoryPaperProfileRepository();
+  const bindingRepo = new InMemoryPrinterTemplateBindingRepository();
+  const webhookEndpointRepo = new InMemoryWebhookEndpointRepository();
+  const webhookPolicyRepo = new InMemoryWebhookRoutePolicyRepository();
   const eventBus = new InMemoryEventBus();
   const queue = new InMemoryJobQueue();
   const exporter = new InMemoryExportAdapter();
   const permissionPolicy = new RbacPermissionPolicy();
+  const templateRenderer = new SimpleTemplateRenderer();
 
   // Adapter registry
   const registry = new AdapterRegistry();
@@ -98,6 +112,20 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const checkPermission = new CheckPermissionService(permissionPolicy, eventBus);
   const syncDiscovery = new SyncPrinterDiscoveryService(discoveredPrinterRepo, runnerRepo);
   const registerDiscovered = new RegisterDiscoveredPrinterService(discoveredPrinterRepo, printerRepo, auditRepo, checkPermission);
+  const dynamicIntake = new DynamicIntakeService(
+    webhookEndpointRepo,
+    webhookPolicyRepo,
+    templateRepo,
+    paperRepo,
+    bindingRepo,
+    jobRepo,
+    printerRepo,
+    queue,
+    traceRepo,
+    auditRepo,
+    eventBus,
+    templateRenderer
+  );
 
   // API key middleware
   const apiKeyHook = buildApiKeyAuth(serviceAccountRepo);
@@ -145,7 +173,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     protocol: 'fake',
     connectionUri: 'fake://lab-label-01',
     isActive: true,
-    allowedTemplates: ['default-label', 'barcode-label', 'patient-label'],
+    allowedTemplates: ['default-label', 'barcode-label', 'patient-label', 'LAB_LABEL_DEFAULT', 'BARCODE_LABEL_DEFAULT', 'TEST_LABEL'],
     maxCopiesPerJob: 10,
     metadata: { model: 'FakeZebra', dpi: 203 },
   });
@@ -159,6 +187,93 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     isActive: true,
     maxCopiesPerJob: 50,
     metadata: { model: 'FakeLaser' },
+  });
+
+  const label100x50 = await paperRepo.create({
+    code: 'LABEL_100X50',
+    name: 'Label 100 x 50 mm',
+    widthMm: 100,
+    heightMm: 50,
+    marginTopMm: 2,
+    marginRightMm: 2,
+    marginBottomMm: 2,
+    marginLeftMm: 2,
+    dpi: 203,
+    orientation: 'portrait',
+    unit: 'mm',
+  });
+
+  await paperRepo.create({
+    code: 'LABEL_80X50',
+    name: 'Label 80 x 50 mm',
+    widthMm: 80,
+    heightMm: 50,
+    marginTopMm: 2,
+    marginRightMm: 2,
+    marginBottomMm: 2,
+    marginLeftMm: 2,
+    dpi: 203,
+    orientation: 'portrait',
+    unit: 'mm',
+  });
+
+  await templateRepo.create({
+    templateCode: 'LAB_LABEL_DEFAULT',
+    name: 'Lab Label Default',
+    description: 'Default lab label template',
+    engine: 'RAW_TEXT',
+    content: 'LAB {{label}}\nBARCODE {{barcode}}\nHN {{hn_masked}}',
+    paperProfileId: label100x50.id,
+    status: 'PUBLISHED',
+    createdBy: 'seed',
+  });
+
+  await templateRepo.create({
+    templateCode: 'BARCODE_LABEL_DEFAULT',
+    name: 'Barcode Label Default',
+    engine: 'ZPL',
+    content: '^XA\n^FO40,40^FD{{label}}^FS\n^FO40,80^BCN,80,Y,N,N^FD{{barcode}}^FS\n^XZ',
+    paperProfileId: label100x50.id,
+    status: 'PUBLISHED',
+    createdBy: 'seed',
+  });
+
+  await templateRepo.create({
+    templateCode: 'TEST_LABEL',
+    name: 'Test Label',
+    engine: 'RAW_TEXT',
+    content: 'TEST {{label}}\n{{barcode}}',
+    paperProfileId: label100x50.id,
+    status: 'PUBLISHED',
+    createdBy: 'seed',
+  });
+
+  await bindingRepo.create({
+    printerCode: 'LAB_LABEL_01',
+    templateCode: 'LAB_LABEL_DEFAULT',
+    paperProfileId: label100x50.id,
+    isDefault: true,
+    enabled: true,
+  });
+
+  const labPolicy = await webhookPolicyRepo.create({
+    policyCode: 'lab-label-static',
+    name: 'Lab Label Static',
+    matchRules: { when: [{ field: 'type', op: 'eq', value: 'lab_label' }] },
+    printerMapping: { strategy: 'static', printer_code: 'LAB_LABEL_01' },
+    templateMapping: { strategy: 'static', template_code: 'LAB_LABEL_DEFAULT' },
+    payloadMapping: { barcode: '$.barcode', label: '$.label', hn_masked: '$.hn' },
+    priorityMapping: { strategy: 'static', priority: 'normal' },
+    enabled: true,
+  });
+
+  await webhookEndpointRepo.create({
+    endpointCode: 'dev-intake',
+    name: 'Development Intake',
+    sourceSystem: 'integration-service',
+    authMode: 'NONE',
+    enabled: true,
+    routePolicyId: labPolicy.id,
   });
 
   // Routes — legacy internal API
@@ -177,6 +292,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1PrinterRoutes(v1, { printers: printerRepo, getPrinterStatus, apiKeyHook });
     await v1ExportRoutes(v1, { exportJobs, audit: auditRepo, exporter, apiKeyHook });
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
+    await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
+    await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo });
   }, { prefix: '/api/v1' });
 
   return { app, executeJob, queue, jobRepo, printerRepo, serviceAccountRepo, DEV_API_KEY: devKey };

@@ -68,6 +68,10 @@ export interface Job {
   printerId: string;
   printerCode?: string;
   templateCode?: string;
+  resolvedTemplateCode?: string;
+  paperProfileId?: string;
+  routePolicyId?: string;
+  renderedPrintPayload?: string;
   createdBy: string;
   sourceSystem?: string;
   sourceReference?: string;
@@ -99,6 +103,15 @@ export interface Job {
   finishedAt?: Date;
   completedAt?: Date;
   latency?: JobLatency;
+  templateTiming?: {
+    intakeReceivedAt?: Date;
+    routeResolvedAt?: Date;
+    templateResolvedAt?: Date;
+    renderedAt?: Date;
+    queuedAt?: Date;
+    routeResolveMs?: number;
+    renderMs?: number;
+  };
   errorCode?: string;
   errorMessage?: string;
   runnerId?: string;
@@ -127,6 +140,11 @@ export type CreateJobInput = Pick<
   resolution?: string;
   printerCode?: string;
   templateCode?: string;
+  resolvedTemplateCode?: string;
+  paperProfileId?: string;
+  routePolicyId?: string;
+  renderedPrintPayload?: string;
+  templateTiming?: Job['templateTiming'];
   sourceSystem?: string;
   sourceReference?: string;
   requestId?: string;

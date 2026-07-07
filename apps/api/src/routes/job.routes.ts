@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { CreatePrintJobService } from '../services/create-print-job.service.js';
 import type { ExecuteJobService } from '../services/execute-job.service.js';
 import type { JobRepositoryPort, TraceRepositoryPort } from '@printerops/domain';
+import { redactJob, redactJobs } from './job-redaction.js';
 
 export async function jobRoutes(
   app: FastifyInstance,
@@ -20,11 +21,12 @@ export async function jobRoutes(
       limit?: string;
       offset?: string;
     };
-    return deps.jobs.findAll({
+    const jobs = await deps.jobs.findAll({
       status: status as import('@printerops/domain').JobStatus | undefined,
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
     });
+    return redactJobs(jobs);
   });
 
   app.post('/jobs', auth, async (req, reply) => {
@@ -37,7 +39,7 @@ export async function jobRoutes(
     const { id } = req.params as { id: string };
     const job = await deps.jobs.findById(id);
     if (!job) return reply.status(404).send({ error: 'Job not found' });
-    return job;
+    return redactJob(job);
   });
 
   app.get('/jobs/:id/trace', auth, async (req, reply) => {

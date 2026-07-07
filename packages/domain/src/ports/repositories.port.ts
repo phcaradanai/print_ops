@@ -5,6 +5,18 @@ import type { AuditLog, CreateAuditLogInput } from '../models/audit.js';
 import type { User } from '../models/user.js';
 import type { ServiceAccount, CreateServiceAccountInput } from '../models/service-account.js';
 import type { DiscoveredPrinter, CreateDiscoveredPrinterInput } from '../models/discovered-printer.js';
+import type {
+  PrintTemplate,
+  CreatePrintTemplateInput,
+  PaperProfile,
+  CreatePaperProfileInput,
+  PrinterTemplateBinding,
+  CreatePrinterTemplateBindingInput,
+  WebhookEndpoint,
+  CreateWebhookEndpointInput,
+  WebhookRoutePolicy,
+  CreateWebhookRoutePolicyInput,
+} from '../models/template.js';
 
 export interface ListOptions {
   limit?: number;
@@ -68,4 +80,43 @@ export interface DiscoveredPrinterRepositoryPort {
   findAll(opts?: ListOptions & { runnerId?: string }): Promise<DiscoveredPrinter[]>;
   upsert(input: CreateDiscoveredPrinterInput): Promise<DiscoveredPrinter>;
   update(id: string, patch: Partial<DiscoveredPrinter>): Promise<DiscoveredPrinter>;
+}
+
+export interface PrintTemplateRepositoryPort {
+  findById(id: string): Promise<PrintTemplate | undefined>;
+  findByCode(templateCode: string): Promise<PrintTemplate | undefined>;
+  findAll(opts?: ListOptions & { status?: string }): Promise<PrintTemplate[]>;
+  create(input: CreatePrintTemplateInput): Promise<PrintTemplate>;
+  update(id: string, patch: Partial<PrintTemplate>): Promise<PrintTemplate>;
+}
+
+export interface PaperProfileRepositoryPort {
+  findById(id: string): Promise<PaperProfile | undefined>;
+  findByCode(code: string): Promise<PaperProfile | undefined>;
+  findAll(opts?: ListOptions): Promise<PaperProfile[]>;
+  create(input: CreatePaperProfileInput): Promise<PaperProfile>;
+  update(id: string, patch: Partial<PaperProfile>): Promise<PaperProfile>;
+}
+
+export interface PrinterTemplateBindingRepositoryPort {
+  findById(id: string): Promise<PrinterTemplateBinding | undefined>;
+  findAll(opts?: ListOptions & { printerCode?: string; templateCode?: string }): Promise<PrinterTemplateBinding[]>;
+  create(input: CreatePrinterTemplateBindingInput): Promise<PrinterTemplateBinding>;
+  update(id: string, patch: Partial<PrinterTemplateBinding>): Promise<PrinterTemplateBinding>;
+}
+
+export interface WebhookEndpointRepositoryPort {
+  findById(id: string): Promise<WebhookEndpoint | undefined>;
+  findByCode(endpointCode: string): Promise<WebhookEndpoint | undefined>;
+  findAll(opts?: ListOptions): Promise<WebhookEndpoint[]>;
+  create(input: CreateWebhookEndpointInput): Promise<WebhookEndpoint>;
+  update(id: string, patch: Partial<WebhookEndpoint>): Promise<WebhookEndpoint>;
+}
+
+export interface WebhookRoutePolicyRepositoryPort {
+  findById(id: string): Promise<WebhookRoutePolicy | undefined>;
+  findByCode(policyCode: string): Promise<WebhookRoutePolicy | undefined>;
+  findAll(opts?: ListOptions): Promise<WebhookRoutePolicy[]>;
+  create(input: CreateWebhookRoutePolicyInput): Promise<WebhookRoutePolicy>;
+  update(id: string, patch: Partial<WebhookRoutePolicy>): Promise<WebhookRoutePolicy>;
 }

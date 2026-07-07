@@ -1,4 +1,5 @@
 import type { JobRepositoryPort, ExportPort, ExportFormat, Job } from '@printerops/domain';
+import { redactJobs } from '../routes/job-redaction.js';
 
 export class ExportJobsService {
   constructor(
@@ -8,6 +9,6 @@ export class ExportJobsService {
 
   async execute(format: ExportFormat): Promise<string> {
     const jobs = await this.jobs.findAll({ limit: 10000 });
-    return this.exporter.exportJobs(jobs, format);
+    return this.exporter.exportJobs(redactJobs(jobs) as Job[], format);
   }
 }

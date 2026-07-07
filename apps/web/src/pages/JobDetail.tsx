@@ -20,6 +20,17 @@ interface Trace {
   steps: TraceStep[];
 }
 
+interface Job {
+  id: string;
+  resolvedTemplateCode?: string;
+  paperProfileId?: string;
+  routePolicyId?: string;
+  templateTiming?: {
+    routeResolveMs?: number;
+    renderMs?: number;
+  };
+}
+
 const STEP_COLOR: Record<string, string> = {
   success: '#a6e3a1',
   failed: '#f38ba8',
@@ -30,9 +41,11 @@ const STEP_COLOR: Record<string, string> = {
 export default function JobDetail() {
   const { id } = useParams<{ id: string }>();
   const [trace, setTrace] = useState<Trace | null>(null);
+  const [job, setJob] = useState<Job | null>(null);
 
   useEffect(() => {
     if (!id) return;
+    apiFetch<Job>(`/jobs/${id}`).then(setJob).catch(() => {});
     apiFetch<Trace>(`/jobs/${id}/trace`)
       .then(setTrace)
       .catch(() => {});
@@ -42,6 +55,15 @@ export default function JobDetail() {
     <div>
       <h1>Job Detail</h1>
       <p style={{ color: '#888' }}>Job ID: <code>{id}</code></p>
+      {job && (
+        <div style={{ background: '#fff', padding: '1rem', borderRadius: 8 }}>
+          <h2 style={{ fontSize: '1rem' }}>Template Resolution</h2>
+          <p>Template: <code>{job.resolvedTemplateCode ?? '—'}</code></p>
+          <p>Paper Profile: <code>{job.paperProfileId ?? '—'}</code></p>
+          <p>Route Policy: <code>{job.routePolicyId ?? '—'}</code></p>
+          <p>Route: {job.templateTiming?.routeResolveMs ?? '—'}ms · Render: {job.templateTiming?.renderMs ?? '—'}ms</p>
+        </div>
+      )}
 
       {trace && (
         <div style={{ marginTop: '1.5rem' }}>

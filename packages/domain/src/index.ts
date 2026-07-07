@@ -6,6 +6,7 @@ export * from './models/user.js';
 export * from './models/audit.js';
 export * from './models/service-account.js';
 export * from './models/discovered-printer.js';
+export * from './models/template.js';
 
 // Events
 export * from './events/index.js';
@@ -17,3 +18,4 @@ export * from './ports/queue.port.js';
 export * from './ports/permission.port.js';
 export * from './ports/export.port.js';
 export * from './ports/notification.port.js';
+export * from './ports/template-renderer.port.js';

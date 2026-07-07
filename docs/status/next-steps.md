@@ -1,7 +1,20 @@
 # PrintOps — Next Steps
 
-**Phase:** MVP Nippon → Day 3: Real Printer Adapters + Persistence
-**Prerequisite:** MVP Nippon on branch `mvp_nippon` complete and passing (23/23 tests, clean build).
+**Phase:** MVP Nippon → Real Printer Template Execution + Persistence
+**Prerequisite:** Template Management + Preview Sandbox + Dynamic Webhook Intake merged on `mvp_nippon`, tests/build passing.
+
+## Priority 0: Real Printer Template Execution
+
+Current template rendering creates preview/print payload but real printer adapters are still skeletons.
+
+Next implementation should:
+
+- execute `renderedPrintPayload` in the local runner, not the API process
+- route ZPL payload to Raw TCP 9100 for Zebra-compatible printers
+- route TSPL payload to POSTEK/TSPL printers
+- validate label output with real 100x50 mm and 80x50 mm media
+- keep generated payload visible only in Sysadmin/Owner sandbox
+- add hardware-safe retry and printer offline handling
 
 ---
 

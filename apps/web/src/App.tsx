@@ -12,6 +12,12 @@ import ExportCenter from './pages/ExportCenter.js';
 import Settings from './pages/Settings.js';
 import DiscoveredPrinters from './pages/DiscoveredPrinters.js';
 import LocalDiagnostics from './pages/LocalDiagnostics.js';
+import Templates from './pages/Templates.js';
+import PaperProfiles from './pages/PaperProfiles.js';
+import TemplateSandbox from './pages/TemplateSandbox.js';
+import Webhooks from './pages/Webhooks.js';
+import RoutePolicies from './pages/RoutePolicies.js';
+import PrinterBindings from './pages/PrinterBindings.js';
 import { getCurrentUser, login, logout, type SessionUser } from './api/client.js';
 
 const navItems = [
@@ -19,6 +25,12 @@ const navItems = [
   { to: '/printers', label: 'Printers', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] },
   { to: '/discovered-printers', label: 'Discovery', roles: ['OWNER', 'ADMIN'] },
   { to: '/diagnostics', label: 'Diagnostics', roles: ['OWNER', 'ADMIN', 'OPERATOR'] },
+  { to: '/templates', label: 'Templates', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] },
+  { to: '/paper-profiles', label: 'Paper Profiles', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] },
+  { to: '/template-sandbox', label: 'Sandbox', roles: ['OWNER'] },
+  { to: '/webhooks', label: 'Webhooks', roles: ['OWNER', 'ADMIN'] },
+  { to: '/route-policies', label: 'Route Policies', roles: ['OWNER', 'ADMIN'] },
+  { to: '/printer-bindings', label: 'Bindings', roles: ['OWNER', 'ADMIN'] },
   { to: '/jobs', label: 'Job Queue', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] },
   { to: '/runners', label: 'Runners', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] },
   { to: '/audit-logs', label: 'Audit Logs', roles: ['OWNER', 'ADMIN'] },
@@ -154,6 +166,12 @@ export default function App() {
           <Route path="/runners" element={<Runners />} />
           <Route path="/discovered-printers" element={<DiscoveredPrinters />} />
           <Route path="/diagnostics" element={<LocalDiagnostics />} />
+          <Route path="/templates" element={<Templates />} />
+          <Route path="/paper-profiles" element={<PaperProfiles />} />
+          <Route path="/template-sandbox" element={<TemplateSandbox />} />
+          <Route path="/webhooks" element={<Webhooks />} />
+          <Route path="/route-policies" element={<RoutePolicies />} />
+          <Route path="/printer-bindings" element={<PrinterBindings />} />
           <Route path="/audit-logs" element={<AuditLogs />} />
           <Route path="/users" element={<UsersRoles />} />
           <Route path="/export" element={<ExportCenter />} />

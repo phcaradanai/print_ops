@@ -3,6 +3,7 @@ import type { AcceptExternalJobService } from '../../services/accept-external-jo
 import type { CancelJobService } from '../../services/cancel-job.service.js';
 import type { ExecuteJobService } from '../../services/execute-job.service.js';
 import type { JobRepositoryPort, TraceRepositoryPort, ServiceAccount } from '@printerops/domain';
+import { redactJob, redactJobs } from '../job-redaction.js';
 
 type ReqWithServiceAccount = { serviceAccount: ServiceAccount };
 
@@ -72,7 +73,7 @@ export async function v1PrintJobRoutes(
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
     });
-    return reply.send(jobs);
+    return reply.send(redactJobs(jobs));
   });
 
   // GET /api/v1/print-jobs/:id
@@ -80,7 +81,7 @@ export async function v1PrintJobRoutes(
     const { id } = req.params as { id: string };
     const job = await deps.jobs.findById(id);
     if (!job) return reply.status(404).send({ error: 'Job not found' });
-    return job;
+    return redactJob(job);
   });
 
   // GET /api/v1/print-jobs/by-request-id/:requestId?source_system=...
@@ -91,7 +92,7 @@ export async function v1PrintJobRoutes(
     const sourceSystem = source_system ?? sa.sourceSystem;
     const job = await deps.acceptExternalJob.getJobByRequestId(requestId, sourceSystem);
     if (!job) return reply.status(404).send({ error: 'Job not found for given request_id' });
-    return job;
+    return redactJob(job);
   });
 
   // POST /api/v1/print-jobs/:id/cancel
@@ -99,7 +100,7 @@ export async function v1PrintJobRoutes(
     const { id } = req.params as { id: string };
     const sa = (req as unknown as ReqWithServiceAccount).serviceAccount;
     const job = await deps.cancelJob.execute(id, sa.id);
-    return reply.send(job);
+    return reply.send(redactJob(job));
   });
 
   // GET /api/v1/print-jobs/:id/trace

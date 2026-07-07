@@ -2,7 +2,7 @@
 
 **Project:** PrintOps — Generic Print Gateway Service
 **Goal:** Accept print commands from external integration programs and deliver to local printers via runners
-**Current phase:** MVP Nippon Complete
+**Current phase:** MVP Nippon — Template Management + Dynamic Intake MVP
 **Last updated:** 2026-07-07
 **Branch:** `mvp_nippon`
 
@@ -27,6 +27,22 @@ PrintOps is a **generic print gateway**. It does NOT connect to HIS directly.
 ---
 
 ## What is Done
+
+### Template Management + Preview Sandbox
+- Admin ขึ้นไปจัดการ `PrintTemplate`, `PaperProfile`, `PrinterTemplateBinding`, `WebhookEndpoint` และ `WebhookRoutePolicy`
+- Owner/Sysadmin เห็น `Template Preview Sandbox` เท่านั้น
+- Sandbox render visual preview ตาม paper/label size ได้
+- Sandbox แสดง missing field warning, render time และ generated print payload
+- Generated print payload ไม่ expose ผ่าน job detail/export ปกติ
+- Sample defaults: `LAB_LABEL_DEFAULT`, `BARCODE_LABEL_DEFAULT`, `TEST_LABEL`, `LABEL_100X50`, `LABEL_80X50`
+
+### Dynamic Webhook Intake
+- `POST /api/v1/intake/:endpointCode` รับ dynamic webhook/API จาก external integration program
+- route policy map printer/template/payload แบบ static หรือ field-based
+- ไม่มี raw JavaScript eval ใน policy
+- idempotency by `source_system + request_id`; duplicate คืน job เดิมและไม่พิมพ์ซ้ำ
+- intake flow เพิ่ม trace steps: route resolved, template resolved, template rendered
+- job เก็บ `resolvedTemplateCode`, `paperProfileId`, `routePolicyId` และ render/route timing
 
 ### External Print API (`/api/v1/`)
 - `POST /api/v1/print-jobs` — accept from external integration program
@@ -83,7 +99,9 @@ Computed latency: `totalLatencyMs`, `validationMs`, `queueWaitMs`, `dispatchMs`,
 - Migration: `infra/migrations/001_initial_schema.sql`
 - Tables: `service_accounts`, `printers`, `printer_status_snapshots`,
   `runners`, `runner_heartbeats`, `print_jobs`, `print_job_events`,
-  `print_job_traces`, `audit_logs`, `users`
+  `print_job_traces`, `audit_logs`, `users`, `print_templates`,
+  `print_template_versions`, `paper_profiles`, `printer_template_bindings`,
+  `webhook_endpoints`, `webhook_route_policies`, `template_render_logs`
 - Idempotency enforced by UNIQUE index on `(request_id, source_system)`
 
 ### Dashboard / Web
@@ -147,7 +165,7 @@ Runner discovers installed printers on the local PC every 60s (configurable via 
 - `cargo check` passes; production bundle requires `tauri build`
 - No duplicate React code — Tauri is a shell only
 
-### Tests: 67/67 pass
+### Tests: 72/72 pass
 - Idempotency (duplicate request_id prevention)
 - Different source_system = separate jobs
 - Invalid printer_code rejection
@@ -159,6 +177,11 @@ Runner discovers installed printers on the local PC every 60s (configurable via 
 - Latency fields populated
 - Job cancellation (valid + invalid state)
 - Runner heartbeat updates status
+- Template/paper/webhook RBAC
+- Preview render warning for missing payload field
+- Dynamic intake static + field-based mapping
+- Duplicate dynamic intake does not create another job
+- Route policy rejects raw JS eval patterns
 
 ### Build: All packages clean
 `npm run build` — 5 packages, zero TypeScript errors
@@ -174,6 +197,8 @@ Runner discovers installed printers on the local PC every 60s (configurable via 
 | Permission guards not on internal routes | RBAC exists but not wired to `/jobs`, `/printers` |
 | RawTcp9100/Windows/CUPS adapters are skeletons | Cannot print to real printers yet |
 | In-memory queue | No BullMQ/Redis persistence or distributed workers |
+| Template renderer is MVP simple renderer | ZPL/TSPL execution needs real-printer validation |
+| Webhook endpoint secret storage is skeleton | Production auth hardening still required |
 
 ---
 

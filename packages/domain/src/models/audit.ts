@@ -21,7 +21,20 @@ export type AuditAction =
   | 'user.created'
   | 'user.updated'
   | 'permission.denied'
-  | 'printer.registered_from_discovery';
+  | 'printer.registered_from_discovery'
+  | 'template.created'
+  | 'template.updated'
+  | 'template.published'
+  | 'template.test_print.requested'
+  | 'paper_profile.created'
+  | 'paper_profile.updated'
+  | 'webhook_endpoint.created'
+  | 'webhook_endpoint.updated'
+  | 'webhook_endpoint.tested'
+  | 'webhook_policy.created'
+  | 'webhook_policy.updated'
+  | 'webhook.intake.accepted'
+  | 'sandbox.test_print';
 
 export interface AuditLog {
   id: string;
