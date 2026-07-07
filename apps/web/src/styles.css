@@ -48,17 +48,6 @@ body {
   min-width: 0;
 }
 
-.app-main h1,
-.app-main h2,
-.app-main h3,
-.app-main p,
-.app-main div,
-.app-main span,
-.app-main td,
-.app-main th {
-  overflow-wrap: anywhere;
-}
-
 .app-main button,
 .app-main input {
   max-width: 100%;
@@ -68,6 +57,13 @@ body {
   width: 100% !important;
   max-width: 100%;
   min-width: min(760px, 100%);
+  table-layout: fixed;
+}
+
+.app-main th,
+.app-main td {
+  min-width: 0;
+  vertical-align: middle;
 }
 
 .app-main div:has(> table) {
@@ -82,6 +78,70 @@ body {
 
 .app-main a {
   overflow-wrap: anywhere;
+}
+
+.truncate {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.truncate-wrap {
+  position: relative;
+}
+
+.hover-popover {
+  position: fixed;
+  z-index: 1000;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 2rem));
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #111827;
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  white-space: normal;
+}
+
+.truncate-inline {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.cell-name {
+  max-width: 220px;
+}
+
+.cell-driver {
+  max-width: 180px;
+}
+
+.cell-uri {
+  max-width: 240px;
+}
+
+.cell-id {
+  max-width: 96px;
+}
+
+.cell-time {
+  max-width: 150px;
 }
 
 .app-main [style*="display: grid"] {

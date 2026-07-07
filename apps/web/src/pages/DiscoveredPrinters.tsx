@@ -24,6 +24,30 @@ const CONNECTION_BADGE: Record<string, { label: string; color: string }> = {
   unknown: { label: 'Unknown', color: '#6b7280' },
 };
 
+function Truncate({ value, display, className = '' }: { value?: string; display?: string; className?: string }) {
+  const fullText = value && value.length > 0 ? value : '—';
+  const displayText = display ?? fullText;
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+
+  return (
+    <span
+      className="truncate-wrap"
+      onMouseEnter={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        setPosition({ left: Math.min(rect.left, window.innerWidth - 580), top: rect.bottom + 8 });
+      }}
+      onMouseLeave={() => setPosition(null)}
+    >
+      <span className={`truncate ${className}`} title={fullText}>{displayText}</span>
+      {position && fullText !== '—' && (
+        <span className="hover-popover" style={{ left: Math.max(16, position.left), top: position.top }}>
+          {fullText}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function DiscoveredPrinters() {
   const [printers, setPrinters] = useState<DiscoveredPrinter[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,6 +127,16 @@ export default function DiscoveredPrinters() {
       {!loading && printers.length > 0 && (
         <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+            <colgroup>
+              <col style={{ width: '21%' }} />
+              <col style={{ width: '17%' }} />
+              <col style={{ width: '22%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '10%' }} />
+            </colgroup>
             <thead>
               <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
                 {['Printer Name', 'Driver', 'Port', 'Connection', 'Runner', 'Last Seen', 'Status', 'Action'].map((h) => (
@@ -116,20 +150,26 @@ export default function DiscoveredPrinters() {
                 return (
                   <tr key={p.id} style={{ borderBottom: i < printers.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
                     <td style={{ padding: '0.75rem 1rem', fontWeight: 500, color: '#111827' }}>
-                      {p.localPrinterName}
+                      <Truncate value={p.localPrinterName} className="cell-name" />
                       {p.isDefault && <span style={{ marginLeft: 6, fontSize: '0.75rem', color: '#6b7280' }}>(default)</span>}
                     </td>
-                    <td style={{ padding: '0.75rem 1rem', color: '#6b7280' }}>{p.driverName ?? '—'}</td>
-                    <td style={{ padding: '0.75rem 1rem', color: '#6b7280', fontFamily: 'monospace' }}>{p.portName ?? '—'}</td>
+                    <td style={{ padding: '0.75rem 1rem', color: '#6b7280' }}>
+                      <Truncate value={p.driverName} className="cell-driver" />
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem', color: '#6b7280', fontFamily: 'monospace' }}>
+                      <Truncate value={p.portName} className="cell-uri" />
+                    </td>
                     <td style={{ padding: '0.75rem 1rem' }}>
                       <span style={{ padding: '0.25rem 0.5rem', borderRadius: 4, background: badge.color + '20', color: badge.color, fontSize: '0.75rem', fontWeight: 600 }}>
                         {badge.label}
                       </span>
                     </td>
                     <td style={{ padding: '0.75rem 1rem', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                      {p.runnerId.slice(0, 8)}…
+                      <Truncate value={p.runnerId} display={`${p.runnerId.slice(0, 8)}...`} className="cell-id" />
                     </td>
-                    <td style={{ padding: '0.75rem 1rem', color: '#6b7280', whiteSpace: 'nowrap' }}>{formatTime(p.lastSeenAt)}</td>
+                    <td style={{ padding: '0.75rem 1rem', color: '#6b7280', whiteSpace: 'nowrap' }}>
+                      <Truncate value={formatTime(p.lastSeenAt)} className="cell-time" />
+                    </td>
                     <td style={{ padding: '0.75rem 1rem' }}>
                       {p.registeredPrinterId ? (
                         <span style={{ color: '#16a34a', fontSize: '0.75rem', fontWeight: 600 }}>Registered</span>

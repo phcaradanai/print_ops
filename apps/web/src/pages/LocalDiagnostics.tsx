@@ -36,6 +36,30 @@ function relativeTime(ts: string): string {
   return `${Math.round(ms / 3600000)}h ago`;
 }
 
+function Truncate({ value, display, className = '' }: { value?: string; display?: string; className?: string }) {
+  const fullText = value && value.length > 0 ? value : '—';
+  const displayText = display ?? fullText;
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+
+  return (
+    <span
+      className="truncate-wrap"
+      onMouseEnter={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        setPosition({ left: Math.min(rect.left, window.innerWidth - 580), top: rect.bottom + 8 });
+      }}
+      onMouseLeave={() => setPosition(null)}
+    >
+      <span className={`truncate ${className}`} title={fullText}>{displayText}</span>
+      {position && fullText !== '—' && (
+        <span className="hover-popover" style={{ left: Math.max(16, position.left), top: position.top }}>
+          {fullText}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function LocalDiagnostics() {
   const [runners, setRunners] = useState<Runner[]>([]);
   const [printers, setPrinters] = useState<DiscoveredPrinter[]>([]);
@@ -98,7 +122,9 @@ export default function LocalDiagnostics() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
               <div>
                 <span style={{ fontWeight: 700, fontSize: '1rem' }}>{runner.name}</span>
-                <span style={{ marginLeft: '1rem', fontFamily: 'monospace', fontSize: '0.85rem', color: '#666' }}>{computerName}</span>
+                <span style={{ marginLeft: '1rem', fontFamily: 'monospace', fontSize: '0.85rem', color: '#666' }}>
+                  <Truncate value={computerName} className="cell-driver" />
+                </span>
                 {osName && (
                   <span style={{ marginLeft: '0.75rem', fontSize: '0.75rem', background: '#e8eaf6', color: '#3949ab', padding: '2px 8px', borderRadius: '12px' }}>{osName}</span>
                 )}
@@ -132,6 +158,15 @@ export default function LocalDiagnostics() {
               <p style={{ color: '#aaa', fontSize: '0.85rem' }}>No printers discovered yet. Waits up to 60s for next discovery cycle.</p>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <colgroup>
+                  <col style={{ width: '24%' }} />
+                  <col style={{ width: '19%' }} />
+                  <col style={{ width: '25%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '7%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '10%' }} />
+                </colgroup>
                 <thead>
                   <tr style={{ background: '#f5f5f5' }}>
                     {['Printer Name', 'Driver', 'Port / URI', 'Type', 'Default', 'Last Seen', 'Registered'].map((h) => (
@@ -142,9 +177,15 @@ export default function LocalDiagnostics() {
                 <tbody>
                   {runnerPrinters.map((p) => (
                     <tr key={p.id} style={{ borderTop: '1px solid #f0f0f0' }}>
-                      <td style={{ padding: '0.5rem 0.75rem', fontWeight: 600, fontSize: '0.85rem' }}>{p.localPrinterName}</td>
-                      <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: '#555' }}>{p.driverName ?? '—'}</td>
-                      <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: '#666' }}>{p.portName ?? '—'}</td>
+                      <td style={{ padding: '0.5rem 0.75rem', fontWeight: 600, fontSize: '0.85rem' }}>
+                        <Truncate value={p.localPrinterName} className="cell-name" />
+                      </td>
+                      <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: '#555' }}>
+                        <Truncate value={p.driverName} className="cell-driver" />
+                      </td>
+                      <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: '#666' }}>
+                        <Truncate value={p.portName} className="cell-uri" />
+                      </td>
                       <td style={{ padding: '0.5rem 0.75rem' }}>
                         <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', background: CONN_COLOR[p.connectionType] ?? '#e0e0e0', color: '#1e1e2e' }}>
                           {p.connectionType}
