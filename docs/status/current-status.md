@@ -1,249 +1,49 @@
-# PrintOps — Current Status
+# Current Status
 
-**Project:** PrintOps — Generic Print Gateway Service
-**Goal:** Accept print commands from external integration programs and deliver to local printers via runners
-**Current phase:** MVP Nippon — Template Management + Dynamic Intake MVP
-**Last updated:** 2026-07-07
-**Branch:** `mvp_nippon`
+## Architecture
 
----
+| Component | Language | Status | Role |
+|---|---|---|---|
+| `apps/api` | TypeScript | **Production** | REST API, job queue, runner management, audit |
+| `apps/web` | TypeScript (React) | **Production** | Admin UI |
+| `apps/desktop` | TypeScript (Electron) | **Existing** | Desktop app |
+| `apps/runner` | TypeScript | **Dev/Reference** | Mock/reference runner |
+| `apps/runner-go` | Go | **Production Candidate** | Parallel production runner |
 
-## Architecture Summary
+## Key Decision (2025-07)
 
-PrintOps is a **generic print gateway**. It does NOT connect to HIS directly.
+Added **Go Runner** (`apps/runner-go`) as a production candidate alongside the TypeScript runner. The API/Web/Desktop stack remains TypeScript. See [ADR-0003](../decisions/0003-go-runner-production-candidate.md).
 
-```
-[HIS]
-  ↓ (external integration program — separate team)
-[External Integration Program]
-  ↓  POST /api/v1/print-jobs  (X-Api-Key auth)
-[PrintOps API]  ←→  [In-memory / PostgreSQL]
-  ↓  poll /runners/:id/poll
-[Local Runner]  (PC on LAN with printer access)
-  ↓
-[Printer — Zebra / POSTEK / Windows Spooler / CUPS / raw TCP 9100]
-```
+## Go Runner Capabilities (MVP)
 
----
+- ✅ Register with API
+- ✅ Heartbeat loop (configurable interval)
+- ✅ Printer discovery (fake / macOS / Windows)
+- ✅ Discovery sync to API
+- ✅ Job polling with backoff
+- ✅ Fake print execution
+- ✅ Trace/event reporting (6 event types)
+- ✅ Result reporting
+- ✅ Performance metrics (6 metrics)
+- ✅ CLI stubs for Windows Service
+- ✅ Raw TCP 9100 / ZPL / TSPL skeletons
+- ✅ Tests passing (`go test ./...`)
+- ✅ Build passing (`go build ./cmd/printops-runner`)
 
-## What is Done
+## What Has NOT Changed
 
-### Template Management + Preview Sandbox
-- Admin ขึ้นไปจัดการ `PrintTemplate`, `PaperProfile`, `PrinterTemplateBinding`, `WebhookEndpoint` และ `WebhookRoutePolicy`
-- Owner/Sysadmin เห็น `Template Preview Sandbox` เท่านั้น
-- Sandbox render visual preview ตาม paper/label size ได้
-- Sandbox แสดง missing field warning, render time และ generated print payload
-- Generated print payload ไม่ expose ผ่าน job detail/export ปกติ
-- Sample defaults: `LAB_LABEL_DEFAULT`, `BARCODE_LABEL_DEFAULT`, `TEST_LABEL`, `LABEL_100X50`, `LABEL_80X50`
+- TypeScript API — no breaking changes, only backward-compatible additions
+- TypeScript runner — fully functional, untouched
+- Web/Desktop — untouched
+- Database schema — no migrations required for Go runner MVP
 
-### Dynamic Webhook Intake
-- `POST /api/v1/intake/:endpointCode` รับ dynamic webhook/API จาก external integration program
-- route policy map printer/template/payload แบบ static หรือ field-based
-- ไม่มี raw JavaScript eval ใน policy
-- idempotency by `source_system + request_id`; duplicate คืน job เดิมและไม่พิมพ์ซ้ำ
-- intake flow เพิ่ม trace steps: route resolved, template resolved, template rendered
-- job เก็บ `resolvedTemplateCode`, `paperProfileId`, `routePolicyId` และ render/route timing
+## API Endpoints Added (Backward Compatible)
 
-### External Print API (`/api/v1/`)
-- `POST /api/v1/print-jobs` — accept from external integration program
-- `GET /api/v1/print-jobs/:id` — job detail
-- `GET /api/v1/print-jobs/by-request-id/:requestId` — lookup by request_id
-- `POST /api/v1/print-jobs/:id/cancel` — cancel ACCEPTED/VALIDATED/QUEUED/DISPATCHED
-- `GET /api/v1/print-jobs/:id/trace` — full trace timeline
-- `GET /api/v1/printers` — list active printers
-- `GET /api/v1/printers/:id/status` — printer status
-- API key authentication (`X-Api-Key` header, SHA-256 hashed at rest)
+| Endpoint | Method | Notes |
+|---|---|---|
+| `/api/v1/runners/:runnerId/jobs/next` | POST | Claim next available job |
+| `/api/v1/runners/:runnerId/jobs/:jobId/events` | POST | Report trace events |
+| `/api/v1/runners/:runnerId/jobs/:jobId/result` | POST | Report final job result |
+| `/api/v1/runners/:runnerId/printers/discovery` | POST | Sync discovered printers |
 
-### Job Lifecycle (10 statuses)
-`ACCEPTED → VALIDATED → QUEUED → DISPATCHED → PRINTING → SUCCESS`
-(alternatives: `FAILED`, `TIMEOUT`, `CANCELLED`, `DUPLICATE_RETURNED`)
-
-### Idempotency
-- `request_id + source_system` is unique — DB UNIQUE index enforced
-- Duplicate requests return existing job with `status: DUPLICATE_RETURNED`
-- No duplicate prints — guaranteed at service + DB layer
-
-### Fast Print Path Timing
-All jobs record: `receivedAt`, `validatedAt`, `queuedAt`, `dispatchedAt`,
-`runnerReceivedAt`, `spoolerSentAt`, `printerAckAt`, `completedAt`
-
-Computed latency: `totalLatencyMs`, `validationMs`, `queueWaitMs`, `dispatchMs`, `runnerExecMs`
-
-### Safety
-- API key auth for external callers (service accounts with per-caller printer/template allowlists)
-- JWT + RBAC for internal dashboard (OWNER / ADMIN / OPERATOR / VIEWER)
-- Payload never stored raw — only `payloadSnapshot` (keys + length)
-- Auth headers and payloads redacted from Fastify logger
-- Copies limit enforced per printer (`maxCopiesPerJob`)
-- Template allowlist enforced per printer (`allowedTemplates`)
-- All cancellations + config changes audited
-
-### Printer Adapters
-- `FakePrinterAdapter` — full implementation (configurable latency/failure)
-- `RawTcp9100Adapter` — skeleton for Zebra/POSTEK/raw port 9100
-- `WindowsSpoolerAdapter` — skeleton
-- `CupsPrinterAdapter` — skeleton
-- `IppPrinterAdapter` — skeleton
-- `ZplBuilder` — ZPL II command builder helper
-- `TsplBuilder` — TSPL command builder helper
-
-### Runner App
-- Registers on startup (10 retry attempts with 3s backoff)
-- Heartbeat every 10s
-- Polls `/runners/:id/poll` every 2s for QUEUED jobs
-- Executes via API → adapter registry → printer
-- Reports timing + status
-- Continues on heartbeat/poll failure (reconnect-ready)
-
-### DB Schema (SQL DDL)
-- Migration: `infra/migrations/001_initial_schema.sql`
-- Tables: `service_accounts`, `printers`, `printer_status_snapshots`,
-  `runners`, `runner_heartbeats`, `print_jobs`, `print_job_events`,
-  `print_job_traces`, `audit_logs`, `users`, `print_templates`,
-  `print_template_versions`, `paper_profiles`, `printer_template_bindings`,
-  `webhook_endpoints`, `webhook_route_policies`, `template_render_logs`
-- Idempotency enforced by UNIQUE index on `(request_id, source_system)`
-
-### Dashboard / Web
-- Dashboard: total jobs, runners online, active printers, failed count, avg/p95 latency, recent jobs
-- Job Queue: status, printerCode, sourceSystem, latency, priority
-- Job Detail: trace timeline with step-by-step timing
-- Printers: list with code, protocol, status, maxCopies
-- Runners: list with status, heartbeat age, hostname (auto-refreshes 15s)
-- Audit Logs: paginated table with action, actor, resource
-- Export Center: jobs CSV/JSON, audit CSV, printer status CSV
-
-### Export
-External API (X-Api-Key auth):
-- `GET /api/v1/exports/jobs.csv`
-- `GET /api/v1/exports/jobs.json`
-- `GET /api/v1/exports/audit.csv`
-
-Internal API (JWT auth, same data):
-- `GET /exports/jobs.csv`, `/exports/jobs.json`, `/exports/audit.csv`, `/exports/printers.csv`
-
-### Runner Auto-Login
-Runner auto-logins with dev credentials (`admin@printerops.local`) when `RUNNER_API_TOKEN` env is not set.
-`npm run dev -w apps/runner` works out of the box in dev mode.
-
-### Runner Printer Discovery (Cross-Platform)
-Runner discovers installed printers on the local PC every 60s (configurable via `DISCOVERY_INTERVAL_MS`).
-
-- Windows: PowerShell `Get-Printer` — read-only, no spooler restart, no config changes
-- macOS: `lpstat -p`, `lpstat -v`, `lpstat -d` — CUPS-based discovery
-- Fake adapter: configurable via `DISCOVERY_ADAPTER=fake` — returns hardcoded printers for dev/test
-- Discovery data includes `computerName` and `osName` per item
-- Syncs to API via `POST /api/v1/runners/:id/printers/discovery` (JWT)
-- Upsert on `(runner_id, local_printer_name)` — no duplicates
-- Discovery loop runs independently and never blocks the print path
-
-#### OS Adapter Modes
-| `DISCOVERY_ADAPTER` | Behaviour |
-|---|---|
-| `auto` (default) | Windows → Get-Printer; macOS/Linux → lpstat |
-| `macos` | Force CUPS lpstat |
-| `windows` | Force PowerShell Get-Printer |
-| `fake` | Return hardcoded fake printers |
-
-#### API Endpoints (JWT auth)
-- `POST /api/v1/runners/:id/printers/discovery` — runner syncs discovered list
-- `POST /api/v1/runners/:id/printers/discover` — request manual discovery refresh
-- `GET /api/v1/runners/:id/printers` — get discovered printers for a runner
-- `GET /api/v1/discovered-printers` — list all discovered printers
-- `POST /api/v1/discovered-printers/:id/register` — Admin/Owner registers as real Printer
-- `GET /api/v1/print-jobs` — list all jobs with optional `?status=&limit=&offset=` filters
-
-#### Dashboard
-- "Discovery" nav item → `/discovered-printers` page
-- "Diagnostics" nav item → `/diagnostics` page (Local Diagnostics — per-runner printer view, Refresh button)
-- Register action guarded by ADMIN/OWNER role; audited on success
-
-### Tauri Desktop App (shell scaffold)
-- `apps/desktop/src-tauri/` — minimal Rust shell, loads `apps/web` frontend
-- Dev: `npm run tauri:dev -w apps/desktop` → opens native window at `http://localhost:3000`
-- All 12 web pages available in the desktop app (single source of truth)
-- `cargo check` passes; production bundle requires `tauri build`
-- No duplicate React code — Tauri is a shell only
-
-### Tests: 72/72 pass
-- Idempotency (duplicate request_id prevention)
-- Different source_system = separate jobs
-- Invalid printer_code rejection
-- Copies limit enforcement
-- Template validation
-- Fake printer job success + failure
-- Trace timeline with all steps
-- Audit log creation
-- Latency fields populated
-- Job cancellation (valid + invalid state)
-- Runner heartbeat updates status
-- Template/paper/webhook RBAC
-- Preview render warning for missing payload field
-- Dynamic intake static + field-based mapping
-- Duplicate dynamic intake does not create another job
-- Route policy rejects raw JS eval patterns
-
-### Build: All packages clean
-`npm run build` — 5 packages, zero TypeScript errors
-
----
-
-## Known Limitations
-
-| Limitation | Impact |
-|---|---|
-| In-memory storage | All data lost on restart |
-| No real password hashing | Any password accepted at `/auth/login` |
-| Permission guards not on internal routes | RBAC exists but not wired to `/jobs`, `/printers` |
-| RawTcp9100/Windows/CUPS adapters are skeletons | Cannot print to real printers yet |
-| In-memory queue | No BullMQ/Redis persistence or distributed workers |
-| Template renderer is MVP simple renderer | ZPL/TSPL execution needs real-printer validation |
-| Webhook endpoint secret storage is skeleton | Production auth hardening still required |
-
----
-
-## How to Run Locally
-
-```bash
-npm install
-
-# API on port 3001
-npm run dev -w apps/api
-
-# Local runner
-npm run dev -w apps/runner
-
-# Dashboard on port 3000
-npm run dev -w apps/web
-
-# Login: admin@printerops.local / any-password
-# Dev API key: printops-dev-apikey-2026
-```
-
-## How to Test Fake Print (External API)
-
-```bash
-export API_KEY="printops-dev-apikey-2026"
-
-curl -X POST http://localhost:3001/api/v1/print-jobs \
-  -H "X-Api-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "request_id": "REQ-TEST-001",
-    "source_system": "integration-service",
-    "printer_code": "LAB_LABEL_01",
-    "payload": { "patient": "test", "barcode": "ABC123" },
-    "copies": 1,
-    "priority": "normal"
-  }'
-
-# Trace timeline
-curl http://localhost:3001/api/v1/print-jobs/<ID>/trace \
-  -H "X-Api-Key: $API_KEY" | jq .steps
-
-# Test idempotency — send same request_id again → DUPLICATE_RETURNED
-```
-
----
-
-See [`docs/status/next-steps.md`](./next-steps.md) for next prompt.
+These are additive and do not affect existing TypeScript runner behavior.

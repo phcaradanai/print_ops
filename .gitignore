@@ -19,3 +19,11 @@ coverage/
 .DS_Store
 *.tsbuildinfo
 .turbo/
+
+# Go runner artifacts
+apps/runner-go/printops-runner
+apps/runner-go/printops-runner.exe
+apps/runner-go/*.exe
+apps/runner-go/runner.env
+.claude/
+CLAUDE.md
