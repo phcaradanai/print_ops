@@ -1,0 +1,274 @@
+import type { Database } from 'sql.js';
+
+/** Run CREATE TABLE IF NOT EXISTS for all entities. Idempotent — safe to call every boot. */
+export function runSchemaMigration(db: Database): void {
+  db.run('PRAGMA journal_mode=WAL');
+  db.run('PRAGMA foreign_keys=ON');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS printers (
+      id TEXT PRIMARY KEY NOT NULL,
+      code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      location TEXT,
+      protocol TEXT NOT NULL DEFAULT 'fake',
+      connection_uri TEXT NOT NULL,
+      capabilities TEXT,          -- JSON: PrinterCapability
+      status TEXT,                -- JSON: PrinterStatus
+      allowed_templates TEXT,     -- JSON array of strings
+      max_copies_per_job INTEGER,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS jobs (
+      id TEXT PRIMARY KEY NOT NULL,
+      printer_id TEXT NOT NULL,
+      printer_code TEXT,
+      template_code TEXT,
+      resolved_template_code TEXT,
+      paper_profile_id TEXT,
+      route_policy_id TEXT,
+      rendered_print_payload TEXT,
+      created_by TEXT NOT NULL,
+      source_system TEXT,
+      source_reference TEXT,
+      request_id TEXT,
+      status TEXT NOT NULL DEFAULT 'ACCEPTED',
+      priority INTEGER NOT NULL DEFAULT 50,
+      priority_label TEXT NOT NULL DEFAULT 'normal',
+      trace_id TEXT NOT NULL,
+      correlation_id TEXT NOT NULL,
+      document_url TEXT,
+      document_base64 TEXT,
+      payload_snapshot TEXT,
+      mime_type TEXT NOT NULL,
+      copies INTEGER NOT NULL DEFAULT 1,
+      duplex INTEGER NOT NULL DEFAULT 0,
+      color_mode TEXT NOT NULL DEFAULT 'auto',
+      media_type TEXT,
+      resolution TEXT,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      max_retries INTEGER NOT NULL DEFAULT 3,
+      received_at TEXT,
+      validated_at TEXT,
+      queued_at TEXT,
+      dispatched_at TEXT,
+      runner_received_at TEXT,
+      spooler_sent_at TEXT,
+      printer_ack_at TEXT,
+      started_at TEXT,
+      finished_at TEXT,
+      completed_at TEXT,
+      latency TEXT,               -- JSON: JobLatency
+      template_timing TEXT,       -- JSON
+      error_code TEXT,
+      error_message TEXT,
+      runner_id TEXT,
+      adapter_used TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_jobs_printer_id ON jobs(printer_id);
+    CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+    CREATE INDEX IF NOT EXISTS idx_jobs_request_id ON jobs(request_id, source_system);
+    CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at);
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS traces (
+      id TEXT PRIMARY KEY NOT NULL,
+      job_id TEXT NOT NULL,
+      trace_id TEXT NOT NULL,
+      correlation_id TEXT NOT NULL,
+      source TEXT NOT NULL,
+      destination TEXT NOT NULL,
+      runner_id TEXT,
+      printer_id TEXT NOT NULL,
+      adapter_name TEXT NOT NULL,
+      queued_at TEXT,
+      started_at TEXT,
+      finished_at TEXT,
+      duration_ms REAL,
+      status TEXT NOT NULL DEFAULT 'ACCEPTED',
+      error_code TEXT,
+      error_message TEXT,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      evidence TEXT NOT NULL DEFAULT '{}',
+      steps TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS runners (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      hostname TEXT NOT NULL,
+      ip_address TEXT,
+      status TEXT NOT NULL DEFAULT 'offline',
+      supported_protocols TEXT NOT NULL DEFAULT '[]',
+      last_heartbeat_at TEXT,
+      registered_at TEXT NOT NULL,
+      metadata TEXT NOT NULL DEFAULT '{}'
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY NOT NULL,
+      trace_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      actor_id TEXT,
+      actor_email TEXT,
+      resource_type TEXT NOT NULL,
+      resource_id TEXT NOT NULL,
+      before_snapshot TEXT,       -- JSON
+      after_snapshot TEXT,        -- JSON
+      metadata TEXT NOT NULL DEFAULT '{}',
+      occurred_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_audit_resource ON audit_logs(resource_type, resource_id);
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'VIEWER',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS service_accounts (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      source_system TEXT NOT NULL UNIQUE,
+      api_key_hash TEXT NOT NULL,
+      api_key_prefix TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      allowed_printer_codes TEXT NOT NULL DEFAULT '[]',
+      allowed_template_codes TEXT NOT NULL DEFAULT '[]',
+      max_copies_per_job INTEGER NOT NULL DEFAULT 100,
+      max_payload_bytes INTEGER NOT NULL DEFAULT 65536,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS discovered_printers (
+      id TEXT PRIMARY KEY NOT NULL,
+      runner_id TEXT NOT NULL,
+      local_printer_name TEXT NOT NULL,
+      driver_name TEXT,
+      port_name TEXT,
+      connection_type TEXT NOT NULL DEFAULT 'unknown',
+      is_default INTEGER NOT NULL DEFAULT 0,
+      is_shared INTEGER NOT NULL DEFAULT 0,
+      attributes TEXT NOT NULL DEFAULT '{}',
+      computer_name TEXT,
+      os_name TEXT,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      registered_printer_id TEXT
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS print_templates (
+      id TEXT PRIMARY KEY NOT NULL,
+      template_code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      description TEXT,
+      engine TEXT NOT NULL DEFAULT 'RAW_TEXT',
+      content TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      paper_profile_id TEXT,
+      created_by TEXT NOT NULL,
+      updated_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS paper_profiles (
+      id TEXT PRIMARY KEY NOT NULL,
+      code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      width_mm REAL NOT NULL,
+      height_mm REAL NOT NULL,
+      margin_top_mm REAL NOT NULL DEFAULT 0,
+      margin_right_mm REAL NOT NULL DEFAULT 0,
+      margin_bottom_mm REAL NOT NULL DEFAULT 0,
+      margin_left_mm REAL NOT NULL DEFAULT 0,
+      dpi INTEGER NOT NULL DEFAULT 203,
+      orientation TEXT NOT NULL DEFAULT 'portrait',
+      unit TEXT NOT NULL DEFAULT 'mm',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS printer_template_bindings (
+      id TEXT PRIMARY KEY NOT NULL,
+      printer_code TEXT NOT NULL,
+      template_code TEXT NOT NULL,
+      paper_profile_id TEXT NOT NULL,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS webhook_endpoints (
+      id TEXT PRIMARY KEY NOT NULL,
+      endpoint_code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      source_system TEXT NOT NULL,
+      auth_mode TEXT NOT NULL DEFAULT 'NONE',
+      api_key TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      route_policy_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS webhook_route_policies (
+      id TEXT PRIMARY KEY NOT NULL,
+      policy_code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      match_rules TEXT NOT NULL DEFAULT '{}',
+      printer_mapping TEXT NOT NULL DEFAULT '{}',
+      template_mapping TEXT NOT NULL DEFAULT '{}',
+      payload_mapping TEXT NOT NULL DEFAULT '{}',
+      priority_mapping TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+}

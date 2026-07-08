@@ -14,6 +14,21 @@ import { InMemoryPrintTemplateRepository } from './infra/repos/in-memory-templat
 import { InMemoryPaperProfileRepository } from './infra/repos/in-memory-paper-profile.repo.js';
 import { InMemoryPrinterTemplateBindingRepository } from './infra/repos/in-memory-template-binding.repo.js';
 import { InMemoryWebhookEndpointRepository, InMemoryWebhookRoutePolicyRepository } from './infra/repos/in-memory-webhook.repo.js';
+
+import { SqlitePrinterRepository } from './infra/repos/sqlite/sqlite-printer.repo.js';
+import { SqliteJobRepository } from './infra/repos/sqlite/sqlite-job.repo.js';
+import { SqliteTraceRepository } from './infra/repos/sqlite/sqlite-trace.repo.js';
+import { SqliteRunnerRepository } from './infra/repos/sqlite/sqlite-runner.repo.js';
+import { SqliteAuditRepository } from './infra/repos/sqlite/sqlite-audit.repo.js';
+import { SqliteUserRepository } from './infra/repos/sqlite/sqlite-user.repo.js';
+import { SqliteServiceAccountRepository } from './infra/repos/sqlite/sqlite-service-account.repo.js';
+import { SqliteDiscoveredPrinterRepository } from './infra/repos/sqlite/sqlite-discovered-printer.repo.js';
+import { SqlitePrintTemplateRepository } from './infra/repos/sqlite/sqlite-template.repo.js';
+import { SqlitePaperProfileRepository } from './infra/repos/sqlite/sqlite-paper-profile.repo.js';
+import { SqlitePrinterTemplateBindingRepository } from './infra/repos/sqlite/sqlite-printer-template-binding.repo.js';
+import { SqliteWebhookEndpointRepository } from './infra/repos/sqlite/sqlite-webhook-endpoint.repo.js';
+import { SqliteWebhookRoutePolicyRepository } from './infra/repos/sqlite/sqlite-webhook-route-policy.repo.js';
+
 import { InMemoryEventBus } from './infra/eventbus/in-memory-eventbus.js';
 import { InMemoryJobQueue } from './infra/queue/in-memory-queue.js';
 import { InMemoryExportAdapter } from './infra/export/in-memory-export.adapter.js';
@@ -76,20 +91,23 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     }
   });
 
-  // Infra
-  const printerRepo = new InMemoryPrinterRepository();
-  const jobRepo = new InMemoryJobRepository();
-  const traceRepo = new InMemoryTraceRepository();
-  const runnerRepo = new InMemoryRunnerRepository();
-  const auditRepo = new InMemoryAuditRepository();
-  const userRepo = new InMemoryUserRepository();
-  const serviceAccountRepo = new InMemoryServiceAccountRepository();
-  const discoveredPrinterRepo = new InMemoryDiscoveredPrinterRepository();
-  const templateRepo = new InMemoryPrintTemplateRepository();
-  const paperRepo = new InMemoryPaperProfileRepository();
-  const bindingRepo = new InMemoryPrinterTemplateBindingRepository();
-  const webhookEndpointRepo = new InMemoryWebhookEndpointRepository();
-  const webhookPolicyRepo = new InMemoryWebhookRoutePolicyRepository();
+  // Infra — use SQLite when DB_MODE=sqlite, otherwise in-memory
+  const dbMode = process.env['DB_MODE'] ?? 'memory';
+  const useSqlite = dbMode === 'sqlite';
+
+  const printerRepo = useSqlite ? new SqlitePrinterRepository() : new InMemoryPrinterRepository();
+  const jobRepo = useSqlite ? new SqliteJobRepository() : new InMemoryJobRepository();
+  const traceRepo = useSqlite ? new SqliteTraceRepository() : new InMemoryTraceRepository();
+  const runnerRepo = useSqlite ? new SqliteRunnerRepository() : new InMemoryRunnerRepository();
+  const auditRepo = useSqlite ? new SqliteAuditRepository() : new InMemoryAuditRepository();
+  const userRepo = useSqlite ? new SqliteUserRepository() : new InMemoryUserRepository();
+  const serviceAccountRepo = useSqlite ? new SqliteServiceAccountRepository() : new InMemoryServiceAccountRepository();
+  const discoveredPrinterRepo = useSqlite ? new SqliteDiscoveredPrinterRepository() : new InMemoryDiscoveredPrinterRepository();
+  const templateRepo = useSqlite ? new SqlitePrintTemplateRepository() : new InMemoryPrintTemplateRepository();
+  const paperRepo = useSqlite ? new SqlitePaperProfileRepository() : new InMemoryPaperProfileRepository();
+  const bindingRepo = useSqlite ? new SqlitePrinterTemplateBindingRepository() : new InMemoryPrinterTemplateBindingRepository();
+  const webhookEndpointRepo = useSqlite ? new SqliteWebhookEndpointRepository() : new InMemoryWebhookEndpointRepository();
+  const webhookPolicyRepo = useSqlite ? new SqliteWebhookRoutePolicyRepository() : new InMemoryWebhookRoutePolicyRepository();
   const eventBus = new InMemoryEventBus();
   const queue = new InMemoryJobQueue();
   const exporter = new InMemoryExportAdapter();

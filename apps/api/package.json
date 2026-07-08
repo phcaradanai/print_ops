@@ -17,10 +17,12 @@
     "@printerops/adapters": "*",
     "@printerops/domain": "*",
     "@printerops/shared": "*",
-    "fastify": "^4.28.1"
+    "fastify": "^4.28.1",
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "@types/sql.js": "^1.4.11",
     "tsx": "^4.15.7",
     "vitest": "^1.6.0"
   }
