@@ -156,20 +156,20 @@ func (c *Client) ReportExecution(ctx context.Context, jobID, runnerID string) er
 }
 
 // NextJob claims the next queued job via the new runner-scoped endpoint
-// POST /api/v1/runners/:runnerId/jobs/next. Returns (nil, nil) when no job is
-// available. This endpoint is backward compatible (added alongside the legacy
+// POST /api/v1/runners/:runnerId/jobs/next. Returns (nil, nil, nil) when no job
+// is available. This endpoint is backward compatible (added alongside the legacy
 // poll route; the TS runner is unaffected).
-func (c *Client) NextJob(ctx context.Context, runnerID string, waitMillis int) (*Job, error) {
+func (c *Client) NextJob(ctx context.Context, runnerID string, waitMillis int) (*Job, *PrinterInfo, error) {
 	body := NextJobRequest{RunnerID: runnerID, WaitMillis: waitMillis}
 	var resp NextJobResponse
 	if _, err := c.doJSON(ctx, http.MethodPost, fmt.Sprintf("/api/v1/runners/%s/jobs/next", runnerID), body, &resp, true); err != nil {
 		// Treat 404/409 as "no job available" to avoid noisy logs.
 		if strings.Contains(err.Error(), "HTTP 204") || strings.Contains(err.Error(), "HTTP 404") {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, fmt.Errorf("next job: %w", err)
+		return nil, nil, fmt.Errorf("next job: %w", err)
 	}
-	return resp.Job, nil
+	return resp.Job, resp.Printer, nil
 }
 
 // ReportEvent sends a trace/timing/audit event for a job.

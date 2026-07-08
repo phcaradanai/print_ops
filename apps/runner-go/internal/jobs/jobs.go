@@ -130,7 +130,7 @@ func (l *Looper) pollOnce(ctx context.Context) (bool, error) {
 	defer cancel()
 
 	pollTimer := telemetry.StartTimer()
-	job, err := l.Client.PollJob(pollCtx, l.RunnerID)
+	job, printerInfo, err := l.Client.NextJob(pollCtx, l.RunnerID, l.Cfg.LongPollWaitMs)
 	pollLatency := pollTimer.ElapsedMs()
 	l.Metrics.Observe(telemetry.MetricAPIRoundtripMs, pollLatency)
 	l.Metrics.Observe(telemetry.MetricJobPickupLatencyMs, pollLatency)
@@ -160,15 +160,36 @@ func (l *Looper) pollOnce(ctx context.Context) (bool, error) {
 	// Trace: execution started.
 	l.reportEvent(ctx, log, job.ID, traceID, "RUNNER_EXECUTION_STARTED", executionStartedAt, 0, "starting", "executor starting")
 
+	// Build PrintJob with the rendered payload and printer metadata from the
+	// NextJob response. This is the critical fix: the API now sends the actual
+	// rendered bytes and printer connection info so the runner can execute
+	// against the real printer instead of using the fake executor.
 	pj := printer.PrintJob{
-		JobID:       job.ID,
-		TraceID:     traceID,
-		PrinterID:   job.PrinterID,
-		PrinterCode: job.PrinterCode,
-		MimeType:    job.MimeType,
-		Copies:      job.Copies,
-		// RenderedPayload: left nil for fake; real executors populate from job.
-		Options: map[string]string{},
+		JobID:           job.ID,
+		TraceID:         traceID,
+		PrinterID:       job.PrinterID,
+		PrinterCode:     job.PrinterCode,
+		MimeType:        job.MimeType,
+		Copies:          job.Copies,
+		RenderedPayload: []byte(job.RenderedPrintPayload),
+		Options:         map[string]string{},
+	}
+
+	// Populate printer connection options from the printer info returned by
+	// the API. These are used by the multi-executor dispatcher to select the
+	// correct executor and by the concrete executors to connect.
+	if printerInfo != nil {
+		pj.Options["printer_protocol"] = printerInfo.Protocol
+		pj.Options["printer_connection_uri"] = printerInfo.ConnectionURI
+		pj.Options["windows_printer_name"] = printerInfo.Code
+
+		// Parse rawtcp address:port from connection URI (e.g. tcp://1.2.3.4:9100).
+		if printerInfo.ConnectionURI != "" {
+			if addr, port, ok := parseTCPAddress(printerInfo.ConnectionURI); ok {
+				pj.Options["rawtcp_address"] = addr
+				pj.Options["rawtcp_port"] = port
+			}
+		}
 	}
 
 	execCtx, execCancel := context.WithTimeout(ctx, 30*time.Second)
@@ -258,6 +279,7 @@ func (l *Looper) reportResult(ctx context.Context, log *logging.Logger, jobID, t
 		FinishedAt:  finishedAt,
 		Evidence: map[string]any{
 			"discovery_mode": l.Discovery,
+			"executor_mode":  l.Mode,
 		},
 	}
 	t := telemetry.StartTimer()

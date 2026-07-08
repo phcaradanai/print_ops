@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type {
   JobRepositoryPort,
+  PrinterRepositoryPort,
   TraceRepositoryPort,
   AuditRepositoryPort,
   EventBusPort,
@@ -26,6 +27,7 @@ export async function v1RunnerJobRoutes(
   app: FastifyInstance,
   deps: {
     jobs: JobRepositoryPort;
+    printers: PrinterRepositoryPort;
     traces: TraceRepositoryPort;
     audit: AuditRepositoryPort;
     events: EventBusPort;
@@ -74,7 +76,16 @@ export async function v1RunnerJobRoutes(
       printerId: job.printerId,
     });
 
-    return reply.status(200).send({ job: sanitizeForRunner(claimed) });
+    // Include printer protocol + connectionUri so the runner can select the
+    // correct executor (fake, windows-spooler, raw-tcp-9100, etc.).
+    const printer = claimed.printerId ? await deps.printers.findById(claimed.printerId) : undefined;
+
+    return reply.status(200).send({ job: sanitizeForRunner(claimed), printer: printer ? {
+      id: printer.id,
+      code: printer.code,
+      protocol: printer.protocol,
+      connectionUri: printer.connectionUri,
+    } : undefined });
   });
 
   // ---- Report a trace/audit event -------------------------------------
@@ -310,7 +321,11 @@ function sanitizeEvidence(ev?: Record<string, unknown>): Record<string, unknown>
   return out;
 }
 
-/** Project the job to the fields the runner needs; omit large/sensitive blobs. */
+/** Project the job to the fields the runner needs for local execution.
+ *
+ * Includes renderedPrintPayload so the Go runner can execute the job locally.
+ * The runner treats this as SENSITIVE and must never log it raw.
+ */
 function sanitizeForRunner(job: Job): Partial<Job> {
   return {
     id: job.id,
@@ -326,8 +341,7 @@ function sanitizeForRunner(job: Job): Partial<Job> {
     trace_id: job.traceId,
     createdAt: job.createdAt,
     queuedAt: job.queuedAt,
-    // NOTE: payload/renderedData are intentionally omitted here. The runner
-    // uses template_code + payload mapping or a pre-rendered blob fetched
-    // separately. This keeps the claim response small and safe.
+    // Payload for local execution on the runner side.
+    renderedPrintPayload: job.renderedPrintPayload,
   } as Partial<Job>;
 }

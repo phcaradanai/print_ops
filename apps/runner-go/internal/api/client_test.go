@@ -153,7 +153,7 @@ func TestNextJob_ReturnsJob(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := NewClient(srv.URL)
-	job, err := c.NextJob(context.Background(), "r-1", 500)
+	job, _, err := c.NextJob(context.Background(), "r-1", 500)
 	if err != nil {
 		t.Fatalf("NextJob failed: %v", err)
 	}
@@ -165,13 +165,37 @@ func TestNextJob_ReturnsJob(t *testing.T) {
 	}
 }
 
+func TestNextJob_ReturnsPrinterInfo(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"job":{"id":"job-3","status":"QUEUED"},"printer":{"id":"p1","code":"LAB_LABEL_01","protocol":"raw-tcp-9100","connectionUri":"tcp://192.168.1.50:9100"}}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := NewClient(srv.URL)
+	job, printer, err := c.NextJob(context.Background(), "r-1", 0)
+	if err != nil {
+		t.Fatalf("NextJob failed: %v", err)
+	}
+	if job == nil || job.ID != "job-3" {
+		t.Fatalf("expected job job-3, got %+v", job)
+	}
+	if printer == nil {
+		t.Fatal("expected printer info, got nil")
+	}
+	if printer.Protocol != "raw-tcp-9100" {
+		t.Errorf("printer.Protocol = %q, want raw-tcp-9100", printer.Protocol)
+	}
+	if printer.ConnectionURI != "tcp://192.168.1.50:9100" {
+		t.Errorf("printer.ConnectionURI = %q", printer.ConnectionURI)
+	}
+}
+
 func TestNextJob_204ReturnsNil(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	t.Cleanup(srv.Close)
 	c := NewClient(srv.URL)
-	job, err := c.NextJob(context.Background(), "r-1", 0)
+	job, _, err := c.NextJob(context.Background(), "r-1", 0)
 	if err != nil {
 		t.Fatalf("NextJob should not error on 204: %v", err)
 	}
@@ -186,7 +210,7 @@ func TestNextJob_404ReturnsNil(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	c := NewClient(srv.URL)
-	job, err := c.NextJob(context.Background(), "r-1", 0)
+	job, _, err := c.NextJob(context.Background(), "r-1", 0)
 	if err != nil {
 		t.Fatalf("NextJob should not error on 404: %v", err)
 	}

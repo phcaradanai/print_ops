@@ -23,8 +23,10 @@ import (
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/heartbeat"
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/jobs"
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/logging"
-	"github.com/phcaradanai/print_ops/apps/runner-go/internal/printer"
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/printer/fake"
+	"github.com/phcaradanai/print_ops/apps/runner-go/internal/printer/multi"
+	"github.com/phcaradanai/print_ops/apps/runner-go/internal/printer/rawtcp"
+	"github.com/phcaradanai/print_ops/apps/runner-go/internal/printer/winpool"
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/service"
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/telemetry"
 )
@@ -71,7 +73,7 @@ func runRunner(ctx context.Context) error {
 	reg, err := client.Register(regCtx, api.RegisterRequest{
 		Name:               cfg.RunnerName,
 		Hostname:           cfg.Hostname,
-		SupportedProtocols: []string{"fake", "rawtcp", "zpl", "tspl"},
+		SupportedProtocols: []string{"fake", "raw-tcp-9100", "windows-spooler", "zpl", "tspl"},
 		Metadata: map[string]any{
 			"os":             cfg.OS,
 			"arch":           cfg.Arch,
@@ -102,11 +104,10 @@ func runRunner(ctx context.Context) error {
 		return err
 	}
 
-	// Select executor. MVP defaults to fake; rawtcp is non-default.
-	executor, err := buildExecutor(cfg, log)
-	if err != nil {
-		return err
-	}
+	// Build the multi-executor dispatcher. This registers ALL available
+	// executors so the runner can dispatch per-job based on printer protocol.
+	// This fixes the root cause of the "fake executor always used" bug.
+	executor := buildDispatcher(log)
 
 	// Graceful shutdown on SIGINT/SIGTERM.
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
@@ -160,25 +161,35 @@ func buildDiscovery(mode config.DiscoveryMode, log *logging.Logger) (discovery.P
 	}
 }
 
-// buildExecutor constructs the print executor. For the MVP, fake is the only
-// fully supported executor; rawtcp/windows-spooler/cups are gated behind flags
-// and documented as future work.
-func buildExecutor(cfg *config.Config, log *logging.Logger) (printer.PrintExecutor, error) {
-	switch cfg.ExecutorMode {
-	case config.ExecutorFake:
-		return fake.New(), nil
-	case config.ExecutorRawTCP:
-		log.Warn("rawtcp executor requested but not yet enabled for MVP; using fake", "requested", cfg.ExecutorMode)
-		return fake.New(), nil
-	case config.ExecutorWindowsSpooler:
-		log.Warn("windows-spooler executor not yet enabled for MVP; using fake", "requested", cfg.ExecutorMode)
-		return fake.New(), nil
-	case config.ExecutorCUPS:
-		log.Warn("cups executor not yet enabled for MVP; using fake", "requested", cfg.ExecutorMode)
-		return fake.New(), nil
-	default:
-		return fake.New(), nil
-	}
+// buildDispatcher constructs a multi-executor dispatcher that selects the
+// correct executor per-job based on the printer protocol from the API.
+//
+// Registered executors:
+//   - fake: no-op success executor (default fallback for dev/testing)
+//   - raw-tcp-9100: sends raw bytes to network printers (ZPL/TSPL over TCP)
+//   - windows-spooler: sends raw bytes via Windows spooler API (P/Invoke)
+//
+// The multi-dispatcher resolves aliases (e.g. "zpl" → rawtcp since ZPL is a
+// payload format, not a transport protocol).
+func buildDispatcher(log *logging.Logger) *multi.Dispatcher {
+	fakeExec := fake.New()
+	rawTCPExec := rawtcp.New()
+	winSpoolerExec := winpool.New()
+
+	dispatcher := multi.New(fakeExec)
+	dispatcher.Register("raw-tcp-9100", rawTCPExec)
+	dispatcher.Register("raw_tcp_9100", rawTCPExec)
+	dispatcher.Register("rawtcp", rawTCPExec)
+	dispatcher.Register("zpl", rawTCPExec)  // ZPL is payload format; transport is raw TCP
+	dispatcher.Register("tspl", rawTCPExec) // TSPL is payload format; transport is raw TCP
+	dispatcher.Register("windows-spooler", winSpoolerExec)
+	dispatcher.Register("windows_spooler", winSpoolerExec)
+	dispatcher.Register("winspool", winSpoolerExec)
+
+	log.Info("executor dispatcher configured",
+		"protocols", []string{"fake", "raw-tcp-9100", "windows-spooler", "zpl", "tspl"})
+
+	return dispatcher
 }
 
 // runDiscoveryLoop periodically discovers and syncs printers until ctx cancels.

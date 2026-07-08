@@ -22,24 +22,32 @@ const (
 // Job is the runner-facing projection of the API's Job model. Only fields the
 // runner needs are decoded; unknown fields are ignored.
 //
-// Payload is decoded as json.RawMessage and treated as SENSITIVE: it must never
-// be logged in raw form.
+// RenderedPrintPayload holds the bytes to send to the printer. It is treated
+// as SENSITIVE and must never be logged in raw form.
 type Job struct {
-	ID           string          `json:"id"`
-	RequestID    string          `json:"request_id"`
-	Status       JobStatus       `json:"status"`
-	PrinterCode  string          `json:"printer_code"`
-	PrinterID    string          `json:"printer_id,omitempty"`
-	TemplateCode string          `json:"template_code,omitempty"`
-	Copies       int             `json:"copies,omitempty"`
-	Payload      json.RawMessage `json:"payload,omitempty"`
-	RenderedData []byte          `json:"renderedData,omitempty"`
-	MimeType     string          `json:"mimeType,omitempty"`
-	Priority     string          `json:"priority,omitempty"`
-	SourceSystem string          `json:"source_system,omitempty"`
-	TraceID      string          `json:"trace_id,omitempty"`
-	CreatedAt    time.Time       `json:"createdAt,omitempty"`
-	QueuedAt     *time.Time      `json:"queuedAt,omitempty"`
+	ID                   string          `json:"id"`
+	RequestID            string          `json:"request_id"`
+	Status               JobStatus       `json:"status"`
+	PrinterCode          string          `json:"printer_code"`
+	PrinterID            string          `json:"printer_id,omitempty"`
+	TemplateCode         string          `json:"template_code,omitempty"`
+	Copies               int             `json:"copies,omitempty"`
+	Payload              json.RawMessage `json:"payload,omitempty"`
+	RenderedPrintPayload string          `json:"renderedPrintPayload,omitempty"`
+	MimeType             string          `json:"mimeType,omitempty"`
+	Priority             string          `json:"priority,omitempty"`
+	SourceSystem         string          `json:"source_system,omitempty"`
+	TraceID              string          `json:"trace_id,omitempty"`
+	CreatedAt            time.Time       `json:"createdAt,omitempty"`
+	QueuedAt             *time.Time      `json:"queuedAt,omitempty"`
+}
+
+// PrinterInfo carries the printer metadata needed for local execution.
+type PrinterInfo struct {
+	ID            string `json:"id"`
+	Code          string `json:"code"`
+	Protocol      string `json:"protocol"`
+	ConnectionURI string `json:"connectionUri"`
 }
 
 // JobEventRequest is the payload for runner job event reporting. It is sent to
@@ -56,8 +64,8 @@ type JobEventRequest struct {
 	Evidence    map[string]any `json:"evidence,omitempty"`
 }
 
-// JobResultRequest is the payload for runner job result reporting. It is sent
-// to the new POST /api/v1/runners/:runnerId/jobs/:jobId/result endpoint.
+// JobResultRequest is the payload for runner job result reporting. It is sent to
+// the new POST /api/v1/runners/:runnerId/jobs/:jobId/result endpoint.
 type JobResultRequest struct {
 	TraceID     string         `json:"trace_id"`
 	JobID       string         `json:"job_id"`
@@ -77,7 +85,9 @@ type NextJobRequest struct {
 	WaitMillis int    `json:"wait_ms,omitempty"`
 }
 
-// NextJobResponse is returned by the next-job endpoint.
+// NextJobResponse is returned by the next-job endpoint. It includes the job
+// and the printer metadata needed for local execution.
 type NextJobResponse struct {
-	Job *Job `json:"job"`
+	Job     *Job         `json:"job"`
+	Printer *PrinterInfo `json:"printer,omitempty"`
 }

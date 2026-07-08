@@ -294,7 +294,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1PrinterRoutes(v1, { printers: printerRepo, getPrinterStatus, apiKeyHook });
     await v1ExportRoutes(v1, { exportJobs, audit: auditRepo, exporter, apiKeyHook });
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
-    await v1RunnerJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, audit: auditRepo, events: eventBus });
+    await v1RunnerJobRoutes(v1, { jobs: jobRepo, printers: printerRepo, traces: traceRepo, audit: auditRepo, events: eventBus });
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
     await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob });
   }, { prefix: '/api/v1' });
