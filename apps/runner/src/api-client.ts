@@ -35,10 +35,12 @@ export class ApiClient {
   }
 
   async heartbeat(runnerId: string): Promise<void> {
-    await fetch(`${this.config.apiUrl}/runners/${runnerId}/heartbeat`, {
+    const res = await fetch(`${this.config.apiUrl}/runners/${runnerId}/heartbeat`, {
       method: 'POST',
       headers: this.authHeaders(),
+      body: JSON.stringify({}),
     });
+    if (!res.ok) throw new Error(`Heartbeat failed: ${res.status}`);
   }
 
   async pollJob(runnerId: string): Promise<Job | null> {

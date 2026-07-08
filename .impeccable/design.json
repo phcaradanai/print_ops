@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-08T17:26:00+07:00",
+  "title": "Design System: PrintOps",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "Action Blue", "canonical": "#1e66f5", "tonalRamp": ["#0d2f7a", "#123d9e", "#174cc4", "#1e66f5", "#4d85f7", "#7da4f9", "#aec3fb", "#d6e2fd"] },
+      "neutral-deep": { "role": "neutral", "displayName": "Deep Navy", "canonical": "#1e1e2e", "tonalRamp": ["#0a0a10", "#10101a", "#161626", "#1e1e2e", "#3a3a4a", "#585868", "#7a7a88", "#9e9ea8"] },
+      "neutral-page": { "role": "neutral", "displayName": "Page Gray", "canonical": "#f5f5f5", "tonalRamp": ["#1a1a1a", "#3d3d3d", "#666666", "#8f8f8f", "#b8b8b8", "#d1d1d1", "#e5e5e5", "#f5f5f5"] },
+      "neutral-surface": { "role": "neutral", "displayName": "White", "canonical": "#ffffff", "tonalRamp": ["#111111", "#333333", "#555555", "#777777", "#999999", "#bbbbbb", "#dddddd", "#ffffff"] },
+      "neutral-subtle": { "role": "neutral", "displayName": "Warm Gray", "canonical": "#f0f0f0", "tonalRamp": ["#1a1a1a", "#3d3d3d", "#606060", "#858585", "#aaaaaa", "#c8c8c8", "#dedede", "#f0f0f0"] },
+      "neutral-border": { "role": "neutral", "displayName": "Muted Gray", "canonical": "#e5e7eb", "tonalRamp": ["#181a1c", "#3a3d42", "#5d6269", "#828890", "#a6abb2", "#c3c7cc", "#d6d9dc", "#e5e7eb"] },
+      "neutral-border-strong": { "role": "neutral", "displayName": "Soft Gray", "canonical": "#d1d5db", "tonalRamp": ["#16181b", "#373b40", "#5a6067", "#7f8790", "#a3a9b2", "#bfc3c8", "#d1d5db", "#e0e3e7"] },
+      "neutral-text": { "role": "neutral", "displayName": "Dark Gray", "canonical": "#374151", "tonalRamp": ["#040507", "#0e1116", "#181d24", "#2a323f", "#374151", "#556073", "#788292", "#a3aab6"] },
+      "neutral-text-muted": { "role": "neutral", "displayName": "Medium Gray", "canonical": "#6b7280", "tonalRamp": ["#08090b", "#1a1c20", "#2f3339", "#4b5059", "#6b7280", "#8d92a0", "#b0b5bf", "#d1d4d9"] },
+      "neutral-inverse": { "role": "neutral", "displayName": "Almost Black", "canonical": "#111827", "tonalRamp": ["#010205", "#050810", "#0b1220", "#111827", "#2a334a", "#475570", "#6b7a98", "#979fba"] },
+      "semantic-success": { "role": "semantic", "displayName": "Soft Green", "canonical": "#a6e3a1", "tonalRamp": ["#142b12", "#254a21", "#366b31", "#479c42", "#6cc664", "#a6e3a1", "#c6eed8", "#dff5e8"] },
+      "semantic-warning": { "role": "semantic", "displayName": "Pale Amber", "canonical": "#f9e2af", "tonalRamp": ["#3d2e0a", "#6b4f12", "#9a711b", "#c89624", "#e7b93b", "#f9e2af", "#fceec6", "#fdf5de"] },
+      "semantic-error": { "role": "semantic", "displayName": "Muted Rose", "canonical": "#f38ba8", "tonalRamp": ["#3d0a1a", "#6b122f", "#9a1b44", "#c8245a", "#e63e74", "#f38ba8", "#f7b3c6", "#fcd5de"] },
+      "semantic-info": { "role": "semantic", "displayName": "Powder Blue", "canonical": "#89b4fa", "tonalRamp": ["#0a1a3d", "#122f6b", "#1b449a", "#245ac8", "#3d74e6", "#89b4fa", "#b3cffc", "#d6e5fd"] },
+      "semantic-neutral": { "role": "semantic", "displayName": "Slate", "canonical": "#9399b2", "tonalRamp": ["#0e0e13", "#1e1f28", "#31343f", "#4b4f5e", "#6b7085", "#9399b2", "#b3b8cc", "#d1d4e0"] },
+      "semantic-progress": { "role": "semantic", "displayName": "Warm Peach", "canonical": "#fab387", "tonalRamp": ["#3d1a0a", "#6b2e12", "#9a431b", "#c85824", "#e6713d", "#fab387", "#fcc6b3", "#fddcd5"] },
+      "nav-bg": { "role": "surface", "displayName": "Deep Navy (Nav)", "canonical": "#1e1e2e", "tonalRamp": ["#0a0a10", "#10101a", "#161626", "#1e1e2e", "#3a3a4a", "#585868", "#7a7a88", "#9e9ea8"] },
+      "nav-text": { "role": "surface", "displayName": "Lavender Tint", "canonical": "#cdd6f4", "tonalRamp": ["#0e0e13", "#1e1f28", "#31343f", "#4b4f5e", "#6b7085", "#9399b2", "#b3b8cc", "#cdd6f4"] },
+      "nav-active": { "role": "surface", "displayName": "Powder Blue (Nav Active)", "canonical": "#89b4fa", "tonalRamp": ["#0a1a3d", "#122f6b", "#1b449a", "#245ac8", "#3d74e6", "#89b4fa", "#b3cffc", "#d6e5fd"] },
+      "nav-button": { "role": "surface", "displayName": "Dark Slate", "canonical": "#313244", "tonalRamp": ["#050509", "#0e0e14", "#191921", "#262630", "#313244", "#535570", "#7a7d9e", "#a8aac4"] }
+    },
+    "typographyMeta": {
+      "body": { "displayName": "Body", "purpose": "Table cells, list items, paragraph text. Comfortable reading under fluorescent light." },
+      "mono": { "displayName": "Code", "purpose": "Job IDs, URIs, code blocks, technical values." },
+      "heading": { "displayName": "Heading", "purpose": "Page titles. One per page." },
+      "stat": { "displayName": "Stat Value", "purpose": "Dashboard metric values. At-a-glance scanning." },
+      "label": { "displayName": "Label", "purpose": "Stat labels, table headers, form labels. Uppercase, letter-spaced." }
+    },
+    "shadows": [
+      { "name": "card-rest", "value": "0 1px 3px rgba(0,0,0,0.1)", "purpose": "Stat cards on the dashboard. Barely perceptible lift." },
+      { "name": "panel-float", "value": "0 8px 24px rgba(0,0,0,0.08)", "purpose": "Login panel, dialog overlays. Clear gentle lift." },
+      { "name": "popover", "value": "0 10px 24px rgba(0,0,0,0.18)", "purpose": "Hover tooltips and popovers. Darker shadow for dark background." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "opacity 0.2s ease", "purpose": "Default state-change fade. Only motion permitted." }
+    ],
+    "breakpoints": [
+      { "name": "tablet", "value": "760px" },
+      { "name": "mobile", "value": "520px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Full-width form button. Deep Navy on White text. 700 weight.",
+      "html": "<button class=\"ds-btn-primary\">Sign in</button>",
+      "css": ".ds-btn-primary { background: #1e1e2e; color: #fff; padding: 0.7rem 0.9rem; border: none; border-radius: 6px; font-family: system-ui, sans-serif; font-weight: 700; font-size: 0.875rem; cursor: pointer; width: 100%; transition: opacity 0.2s ease; } .ds-btn-primary:hover { opacity: 0.9; } .ds-btn-primary:disabled { opacity: 0.7; cursor: wait; } .ds-btn-primary:focus-visible { outline: 2px solid #1e66f5; outline-offset: 2px; }"
+    },
+    {
+      "name": "Nav Button (Secondary)",
+      "kind": "button",
+      "refersTo": "nav-button",
+      "description": "Sign-out button in the navigation sidebar. Dark Slate on Deep Navy.",
+      "html": "<button class=\"ds-btn-nav\">Sign out</button>",
+      "css": ".ds-btn-nav { display: block; width: 100%; padding: 0.45rem 0.6rem; border: none; border-radius: 6px; background: #313244; color: #fff; cursor: pointer; font-family: system-ui, sans-serif; font-size: 0.8rem; transition: opacity 0.2s ease; } .ds-btn-nav:hover { opacity: 0.85; } .ds-btn-nav:focus-visible { outline: 2px solid #89b4fa; outline-offset: 1px; }"
+    },
+    {
+      "name": "Stat Card",
+      "kind": "card",
+      "refersTo": "stat-card",
+      "description": "Dashboard metric card. White surface, subtle shadow, label above large value.",
+      "html": "<div class=\"ds-stat-card\"><div class=\"ds-stat-card-label\">ACTIVE PRINTERS</div><div class=\"ds-stat-card-value\">12</div></div>",
+      "css": ".ds-stat-card { background: #fff; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); } .ds-stat-card-label { font-family: system-ui, sans-serif; font-size: 0.75rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; } .ds-stat-card-value { font-family: system-ui, sans-serif; font-size: 2rem; font-weight: 700; margin-top: 0.5rem; color: #1e1e2e; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "status-badge",
+      "description": "Compact inline job-status badge. White text on a semantic background color.",
+      "html": "<span class=\"ds-status-badge ds-status-success\">SUCCESS</span>",
+      "css": ".ds-status-badge { padding: 2px 8px; border-radius: 4px; font-family: system-ui, sans-serif; font-size: 0.75rem; color: #fff; display: inline-block; } .ds-status-success { background: #a6e3a1; } .ds-status-warning { background: #f9e2af; } .ds-status-error { background: #f38ba8; } .ds-status-info { background: #89b4fa; } .ds-status-progress { background: #fab387; } .ds-status-neutral { background: #9399b2; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input-text",
+      "description": "Form text input. Soft Gray border, Action Blue focus ring.",
+      "html": "<input type=\"text\" class=\"ds-input\" placeholder=\"Email\" value=\"sysadmin@printerops.local\" />",
+      "css": ".ds-input { display: block; width: 100%; padding: 0.65rem 0.75rem; border: 1px solid #d1d5db; border-radius: 6px; font-family: system-ui, sans-serif; font-size: 0.875rem; background: #fff; color: #1e1e2e; transition: border-color 0.2s ease; } .ds-input:focus { outline: none; border-color: #1e66f5; } .ds-input::placeholder { color: #6b7280; }"
+    },
+    {
+      "name": "Navigation Sidebar",
+      "kind": "nav",
+      "refersTo": "nav-sidebar",
+      "description": "Left sidebar navigation. Deep Navy background, Catppuccin Mocha link colors.",
+      "html": "<nav class=\"ds-nav\"><h2 class=\"ds-nav-brand\">PrinterOps</h2><ul class=\"ds-nav-list\"><li><a class=\"ds-nav-link\" href=\"#\">Dashboard</a></li><li><a class=\"ds-nav-link ds-nav-link-active\" href=\"#\">Printers</a></li><li><a class=\"ds-nav-link\" href=\"#\">Job Queue</a></li></ul></nav>",
+      "css": ".ds-nav { width: 200px; height: 100%; background: #1e1e2e; color: #cdd6f4; padding: 1rem; display: flex; flex-direction: column; font-family: system-ui, sans-serif; } .ds-nav-brand { font-size: 1rem; margin-bottom: 1.5rem; color: #89b4fa; font-weight: 600; } .ds-nav-list { list-style: none; padding: 0; margin: 0; } .ds-nav-link { color: #cdd6f4; text-decoration: none; font-size: 0.875rem; display: block; margin-bottom: 0.5rem; transition: color 0.2s ease; } .ds-nav-link:hover { color: #89b4fa; } .ds-nav-link-active, .ds-nav-link-active:hover { color: #89b4fa; } .ds-nav-link:focus-visible { outline: 2px solid #89b4fa; outline-offset: 2px; border-radius: 2px; }"
+    },
+    {
+      "name": "Table",
+      "kind": "custom",
+      "refersTo": "table-data",
+      "description": "Data table with Warm Gray header and white rows. No zebra striping.",
+      "html": "<table class=\"ds-table\"><thead><tr><th>Job ID</th><th>Status</th><th>Latency</th></tr></thead><tbody><tr><td><code class=\"ds-table-mono\">abc123de…</code></td><td><span class=\"ds-status-badge ds-status-success\">SUCCESS</span></td><td>245ms</td></tr></tbody></table>",
+      "css": ".ds-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; font-family: system-ui, sans-serif; font-size: 0.8rem; } .ds-table thead { background: #f0f0f0; } .ds-table th { padding: 0.75rem; text-align: left; font-size: 0.8rem; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.05em; } .ds-table td { padding: 0.75rem; color: #374151; border-top: 1px solid #eee; } .ds-table tr:hover td { background: #fafafa; } .ds-table-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.8rem; }"
+    },
+    {
+      "name": "Login Panel",
+      "kind": "card",
+      "refersTo": "login-panel",
+      "description": "Centered login form panel. White card with gentle shadow on Page Gray background.",
+      "html": "<div class=\"ds-login-screen\"><form class=\"ds-login-panel\"><h1>PrinterOps</h1><p>Sign in to manage local printing operations.</p><label>Email<input type=\"text\" class=\"ds-input\" /></label><label>Password<input type=\"password\" class=\"ds-input\" /></label><button class=\"ds-btn-primary\">Sign in</button><p class=\"ds-login-hint\">Dev accounts available.</p></form></div>",
+      "css": ".ds-login-screen { display: grid; min-height: 100vh; place-items: center; padding: 1rem; background: #f5f5f5; font-family: system-ui, sans-serif; } .ds-login-panel { width: min(100%, 380px); padding: 1.25rem; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; box-shadow: 0 8px 24px rgba(0,0,0,0.08); } .ds-login-panel h1 { margin: 0; color: #1e1e2e; font-size: 1.5rem; font-weight: 600; } .ds-login-panel p { margin: 0.35rem 0 1.25rem; color: #6b7280; font-size: 0.9rem; } .ds-login-panel label { display: block; margin-bottom: 0.85rem; color: #374151; font-size: 0.8rem; font-weight: 600; } .ds-login-hint { margin-top: 0.85rem; color: #6b7280; font-size: 0.75rem; line-height: 1.4; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Lab Notebook",
+    "overview": "PrintOps feels like a well-kept clinical notebook — precise, clean, and trustworthy. Nothing decorative. Every element is a deliberate record, placed with care and easy to read at a glance. The interface recedes into the background of the operator's workflow, present only when needed.\n\nThe aesthetic is quiet and restrained. Colors are muted — Catppuccin-inspired pastels tightened into a hospital-appropriate palette. Typography is system-native, fast to render, comfortable to read under fluorescent light. Cards and surfaces are flat at rest; the only shadows are the faintest lift on panels that float above the page (login, popovers). Motion is reduced to state-change fades — no choreography, no entrance animations.\n\nThis system explicitly rejects: flashy SaaS gradients, terminal-dense data walls, generic Material Design defaults, and dark interfaces that strain eyes under hospital lighting.",
+    "keyCharacteristics": [
+      "Light-first, dark-optional color scheme tuned for fluorescent-lit clinical environments",
+      "Flat-by-default elevation; shadows reserved for floating surfaces",
+      "Single system sans-serif font stack — no display/body pairing",
+      "6-color semantic palette for job status, down from 10 — clarity over decoration",
+      "Restrained rounded corners (4–8px) — clinical precision, not soft-playfulness",
+      "WCAG 2.1 AA contrast minimum; all motion respects prefers-reduced-motion"
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "Action Blue (#1e66f5) is the only accent color outside the semantic palette. No secondary accent, no tertiary. Its restraint signals precision.", "section": "colors" },
+      { "name": "The Five-Color Status Rule", "body": "Job status uses exactly six semantic colors (green/amber/rose/blue/peach/slate), never more. The original ten-color system is prohibited.", "section": "colors" },
+      { "name": "The Single Family Rule", "body": "One font family for everything except code. No display/body pairing. No web font loading — system fonts render instantly and never shift layout.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest. Shadows appear only as a response to context (floating above the page). If it's not a card, popover, or overlay, it has no shadow.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use White (#ffffff) for all content surfaces (cards, tables, panels) on Page Gray (#f5f5f5) background",
+      "Do use exactly six semantic colors for job status — never revert to the ten-color system",
+      "Do use Action Blue (#1e66f5) as the sole accent color; ≤5% of any screen",
+      "Do keep surfaces flat at rest; only stat cards, panels, and popovers get shadows",
+      "Do use system fonts only — no web font imports, no display/body pairing",
+      "Do respect prefers-reduced-motion — all transitions must have an instant fallback",
+      "Do pair color with shape/text for every status indicator (badge text, not just colored dot)",
+      "Do use the 4–8px rounded corner range; never exceed 8px"
+    ],
+    "donts": [
+      "Don't use flashy SaaS gradients — no purple-to-blue hero sections, no over-animated landing-page patterns, no consumer-app delight at the expense of clarity",
+      "Don't create terminal-dense data walls — no Datadog-style dashboards, no Grafana sprawl. Hospital operators are not SREs",
+      "Don't use generic Material Design defaults — no MUI/Blueprint component library look. PrintOps should feel purpose-built",
+      "Don't default to dark mode — the hospital environment is lit; dark interfaces increase eye strain under fluorescent light",
+      "Don't add shadows to elements that don't float above the page — no shadow on table rows, inline elements, or section headers",
+      "Don't introduce new accent colors beyond Action Blue — no secondary accent, no tertiary accent",
+      "Don't use rounded corners above 8px — larger radii read as playful or consumer-facing, not clinical",
+      "Don't animate entrance or scroll-driven sequences — motion is limited to state-change fades (opacity transitions under 200ms)",
+      "Don't use display fonts, serif fonts, or web fonts — system-ui only. No FOUT, no layout shift"
+    ]
+  }
+}

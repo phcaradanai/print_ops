@@ -188,10 +188,10 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // Seed sample printers for dev
   await printerRepo.create({
     code: 'LAB_LABEL_01',
-    name: 'Lab Label Printer (Fake)',
+    name: 'Lab Label Printer (EPSON L15160)',
     location: 'Lab Room A',
-    protocol: 'fake',
-    connectionUri: 'fake://lab-label-01',
+    protocol: 'windows_spooler',
+    connectionUri: 'spooler://sandbox-runner/' + encodeURIComponent('EPSON4F6A3C (L15160 Series)'),
     isActive: true,
     allowedTemplates: ['default-label', 'barcode-label', 'patient-label', 'LAB_LABEL_DEFAULT', 'BARCODE_LABEL_DEFAULT', 'TEST_LABEL'],
     maxCopiesPerJob: 10,

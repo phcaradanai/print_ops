@@ -194,15 +194,14 @@ func (c *Client) ReportResult(ctx context.Context, runnerID string, req JobResul
 
 // doJSON is the shared request helper. When auth=true it adds the bearer token.
 func (c *Client) doJSON(ctx context.Context, method, path string, body any, out any, auth bool) (*http.Response, error) {
-	var reader io.Reader
-	if body != nil {
-		buf, err := json.Marshal(body)
-		if err != nil {
-			return nil, fmt.Errorf("marshal body: %w", err)
-		}
-		reader = bytes.NewReader(buf)
+	if body == nil {
+		body = map[string]any{}
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, reader)
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal body: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, bytes.NewReader(buf))
 	if err != nil {
 		return nil, err
 	}
