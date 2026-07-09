@@ -1,3 +1,5 @@
+use std::net::TcpStream;
+use std::time::Duration;
 use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -7,8 +9,8 @@ pub fn run() {
             let resource_dir = app.path().resource_dir()
                 .expect("failed to resolve resource dir");
 
-            let api_exe = resource_dir.join("apps/api/dist/server.exe");
-            let runner_exe = resource_dir.join("apps/runner-go/printops-runner.exe");
+            let api_exe = resource_dir.join("resources/server.exe");
+            let runner_exe = resource_dir.join("resources/printops-runner.exe");
 
             // Start API server (standalone exe — no Node.js required)
             let api_exe_clone = api_exe.clone();
@@ -31,6 +33,29 @@ pub fn run() {
                 };
                 let _ = child.wait();
             });
+
+            // Wait for API server to be ready (health check via TCP)
+            println!("Waiting for API server on 127.0.0.1:3001...");
+            let start = std::time::Instant::now();
+            let timeout = Duration::from_secs(120);
+            loop {
+                match TcpStream::connect_timeout(
+                    &"127.0.0.1:3001".parse().unwrap(),
+                    Duration::from_secs(1),
+                ) {
+                    Ok(_) => {
+                        println!("API server is ready");
+                        break;
+                    }
+                    Err(_) => {
+                        if start.elapsed() > timeout {
+                            eprintln!("API server did not start within 120s");
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(500));
+                    }
+                }
+            }
 
             // Start Runner in background if binary exists
             if runner_exe.exists() {
