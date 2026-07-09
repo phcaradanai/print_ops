@@ -296,6 +296,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     routePolicyId: labPolicy.id,
   });
 
+  // Health check (no auth)
+  app.get('/health', async () => ({ status: 'ok', uptime: process.uptime() }));
+
   // Routes — legacy internal API
   await app.register(async (api) => {
     await authRoutes(api, { users: userRepo });

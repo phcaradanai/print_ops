@@ -46,6 +46,48 @@ const ROLE_LABEL: Record<SessionUser['role'], string> = {
   VIEWER: 'Viewer',
 };
 
+function SplashScreen() {
+  const [status, setStatus] = useState('PrintOps is starting...');
+
+  useEffect(() => {
+    let cancelled = false;
+    let attempts = 0;
+
+    async function waitForApi() {
+      while (!cancelled && attempts < 120) {
+        attempts++;
+        try {
+          const res = await fetch('/api/health');
+          if (res.ok) {
+            if (!cancelled) setStatus('System Ready');
+            return;
+          }
+        } catch {
+          // retrying...
+        }
+        if (!cancelled) {
+          setStatus(`Starting... (${attempts}/120)`);
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+      if (!cancelled) setStatus('Unable to connect to server');
+    }
+    void waitForApi();
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <div className="splash-screen">
+      <div className="splash-content">
+        <div className="splash-logo">PrinterOps</div>
+        <p className="splash-tagline">Print Gateway for Hospitals</p>
+        <div className="splash-status">{status}</div>
+        <div className="splash-spinner" />
+      </div>
+    </div>
+  );
+}
+
 function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void }) {
   const [email, setEmail] = useState('sysadmin@printerops.local');
   const [password, setPassword] = useState('dev-password');
@@ -97,24 +139,52 @@ function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void }) {
   );
 }
 
+
 export default function App() {
+  const [apiReady, setApiReady] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
+    if (apiReady) return;
+    let cancelled = false;
+
+    async function checkApi() {
+      for (let i = 0; i < 120; i++) {
+        if (cancelled) return;
+        try {
+          const res = await fetch('/api/health');
+          if (res.ok) {
+            if (!cancelled) setApiReady(true);
+            return;
+          }
+        } catch {
+          // API not ready yet
+        }
+        if (!cancelled) await new Promise((r) => setTimeout(r, 1000));
+      }
+      if (!cancelled) setApiReady(true);
+    }
+
+    void checkApi();
+    return () => { cancelled = true; };
+  }, [apiReady]);
+
+  useEffect(() => {
+    if (!apiReady) return;
     getCurrentUser()
       .then(setUser)
       .catch(() => logout())
       .finally(() => setCheckingSession(false));
-  }, []);
+  }, [apiReady]);
 
   const visibleNav = useMemo(
     () => navItems.filter((item) => user && item.roles.includes(user.role)),
     [user]
   );
 
-  if (checkingSession) {
-    return <div className="login-screen"><p style={{ color: '#6b7280' }}>Loading...</p></div>;
+  if (!apiReady || checkingSession) {
+    return <SplashScreen />;
   }
 
   if (!user) {
