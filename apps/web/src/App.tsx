@@ -18,7 +18,7 @@ import TemplateSandbox from './pages/TemplateSandbox.js';
 import Webhooks from './pages/Webhooks.js';
 import RoutePolicies from './pages/RoutePolicies.js';
 import PrinterBindings from './pages/PrinterBindings.js';
-import { getCurrentUser, login, logout, type SessionUser } from './api/client.js';
+import { getCurrentUser, login, logout, healthUrl, type SessionUser } from './api/client.js';
 
 const navItems = [
   { to: '/', label: 'Dashboard', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] },
@@ -57,7 +57,7 @@ function SplashScreen() {
       while (!cancelled && attempts < 120) {
         attempts++;
         try {
-          const res = await fetch('/api/health');
+          const res = await fetch(healthUrl());
           if (res.ok) {
             if (!cancelled) setStatus('System Ready');
             return;
@@ -153,7 +153,7 @@ export default function App() {
       for (let i = 0; i < 120; i++) {
         if (cancelled) return;
         try {
-          const res = await fetch('/api/health');
+          const res = await fetch(healthUrl());
           if (res.ok) {
             if (!cancelled) setApiReady(true);
             return;

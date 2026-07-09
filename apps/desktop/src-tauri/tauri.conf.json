@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm --prefix ../.. run dev --workspace @printerops/web",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "npm --prefix ../.. run build --workspace @printerops/web",
+    "beforeBuildCommand": "npm --prefix ../.. run build --workspace @printerops/web && npm --prefix ../.. run bundle --workspace @printerops/api",
     "frontendDist": "../../../apps/web/dist"
   },
   "app": {
@@ -45,7 +45,8 @@
       "icons/icon.png"
     ],
     "resources": [
-      "../../../apps/api/dist/**/*.js",
+      "../../../apps/api/dist/server.bundle.cjs",
+      "../../../apps/api/dist/sql-wasm.wasm",
       "../../../apps/api/package.json",
       "../../../apps/runner-go/printops-runner.exe"
     ],

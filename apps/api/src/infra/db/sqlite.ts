@@ -42,7 +42,15 @@ export function saveDb(): void {
 export async function initDatabase(): Promise<void> {
   if (_initialised) return;
 
-  const SQL = await initSqlJs();
+  const SQL = await initSqlJs({
+    // When bundled, locate the WASM file relative to the bundle.
+    // Falls back to default behaviour (node_modules) for dev.
+    locateFile: (file: string) => {
+      const envPath = process.env['SQL_WASM_PATH'];
+      if (envPath) return envPath;
+      return file;
+    },
+  });
 
   const target = dbPath();
   if (existsSync(target)) {

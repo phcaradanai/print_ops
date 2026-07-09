@@ -8,6 +8,7 @@ pub fn run() {
                 .expect("failed to resolve resource dir");
 
             let api_dist = resource_dir.join("apps/api/dist");
+            let wasm_path = api_dist.join("sql-wasm.wasm");
             let runner_exe = resource_dir.join("apps/runner-go/printops-runner.exe");
 
             // Find Node.js - check common install locations
@@ -23,14 +24,16 @@ pub fn run() {
 
             // Start API server in background
             let api_dist_clone = api_dist.clone();
+            let wasm_path_clone = wasm_path.clone();
             std::thread::spawn(move || {
                 let mut child = match std::process::Command::new(&node_exe)
-                    .arg("dist/server.js")
+                    .arg("server.bundle.cjs")
                     .current_dir(&api_dist_clone)
                     .env("PORT", "3001")
                     .env("HOST", "127.0.0.1")
                     .env("JWT_SECRET", "printops-installer-secret-2026")
                     .env("PRINTOPS_DEV_API_KEY", "printops-dev-apikey-2026")
+                    .env("SQL_WASM_PATH", &wasm_path_clone)
                     .spawn()
                 {
                     Ok(c) => {

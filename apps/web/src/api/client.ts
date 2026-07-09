@@ -17,11 +17,16 @@ function authHeaders(): HeadersInit {
 }
 
 // API base: dev=Vite-proxy, prod/Tauri=http://127.0.0.1:3001
-function apiBase(): string {
+export function apiBase(): string {
   if (import.meta.env.DEV) return '';
   if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE as string;
   return 'http://127.0.0.1:3001';
 }
+export function healthUrl(): string {
+  var base = apiBase();
+  return base ? base + '/health' : '/api/health';
+}
+
 
 function apiUrl(path: string): string {
   var base = apiBase();
