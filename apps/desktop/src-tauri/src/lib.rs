@@ -7,33 +7,17 @@ pub fn run() {
             let resource_dir = app.path().resource_dir()
                 .expect("failed to resolve resource dir");
 
-            let api_dist = resource_dir.join("apps/api/dist");
-            let wasm_path = api_dist.join("sql-wasm.wasm");
+            let api_exe = resource_dir.join("apps/api/dist/server.exe");
             let runner_exe = resource_dir.join("apps/runner-go/printops-runner.exe");
 
-            // Find Node.js - check common install locations
-            let node_paths = [
-                "C:\\Program Files\\nodejs\\node.exe",
-                "C:\\Program Files (x86)\\nodejs\\node.exe",
-            ];
-
-            let node_exe = node_paths.iter()
-                .find(|p| std::path::Path::new(p).exists())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "node.exe".to_string());
-
-            // Start API server in background
-            let api_dist_clone = api_dist.clone();
-            let wasm_path_clone = wasm_path.clone();
+            // Start API server (standalone exe — no Node.js required)
+            let api_exe_clone = api_exe.clone();
             std::thread::spawn(move || {
-                let mut child = match std::process::Command::new(&node_exe)
-                    .arg("server.bundle.cjs")
-                    .current_dir(&api_dist_clone)
+                let mut child = match std::process::Command::new(&api_exe_clone)
                     .env("PORT", "3001")
                     .env("HOST", "127.0.0.1")
                     .env("JWT_SECRET", "printops-installer-secret-2026")
                     .env("PRINTOPS_DEV_API_KEY", "printops-dev-apikey-2026")
-                    .env("SQL_WASM_PATH", &wasm_path_clone)
                     .spawn()
                 {
                     Ok(c) => {

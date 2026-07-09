@@ -10,11 +10,12 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "bundle": "tsc -p tsconfig.json && esbuild dist/server.js --bundle --platform=node --target=node20 --outfile=dist/server.bundle.cjs --format=cjs --external:sql.js && node -e \"var f=require('fs');var w=require.resolve('sql.js/dist/sql-wasm.wasm');f.copyFileSync(w,'dist/sql-wasm.wasm')\""
+    "bundle": "tsc -p tsconfig.json && esbuild dist/server.js --bundle --platform=node --target=node20 --outfile=dist/server.bundle.cjs --format=cjs && node -e \"var f=require('fs');var w=require.resolve('sql.js/dist/sql-wasm.wasm');f.copyFileSync(w,'dist/sql-wasm.wasm')\" && pkg dist/server.bundle.cjs --targets node18-win-x64 --output dist/server.exe"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
     "@fastify/jwt": "^8.0.1",
+    "@fastify/static": "^9.3.0",
     "@printerops/adapters": "*",
     "@printerops/domain": "*",
     "@printerops/shared": "*",
@@ -25,7 +26,11 @@
     "@types/node": "^20.14.0",
     "@types/sql.js": "^1.4.11",
     "esbuild": "^0.28.1",
+    "pkg": "^5.8.1",
     "tsx": "^4.15.7",
     "vitest": "^1.6.0"
+  },
+  "pkg": {
+    "assets": "dist/sql-wasm.wasm"
   }
 }

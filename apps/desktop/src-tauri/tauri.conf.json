@@ -6,14 +6,14 @@
   "build": {
     "beforeDevCommand": "npm --prefix ../.. run dev --workspace @printerops/web",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "npm --prefix ../.. run build --workspace @printerops/web && npm --prefix ../.. run bundle --workspace @printerops/api",
-    "frontendDist": "../../../apps/web/dist"
+    "beforeBuildCommand": "npm --prefix ../.. run build --workspace @printerops/web && npm --prefix ../.. run bundle --workspace @printerops/api && node -e \"require('fs').cpSync('../../web/dist','../api/dist/static',{recursive:true})\""
   },
   "app": {
     "withGlobalTauri": false,
     "windows": [
       {
         "title": "PrinterOps",
+        "url": "http://127.0.0.1:3001",
         "width": 1280,
         "height": 800,
         "resizable": true,
@@ -45,9 +45,7 @@
       "icons/icon.png"
     ],
     "resources": [
-      "../../../apps/api/dist/server.bundle.cjs",
-      "../../../apps/api/dist/sql-wasm.wasm",
-      "../../../apps/api/package.json",
+      "../../../apps/api/dist/server.exe",
       "../../../apps/runner-go/printops-runner.exe"
     ],
     "externalBin": []

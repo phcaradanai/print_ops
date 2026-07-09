@@ -66,6 +66,8 @@ import { v1RunnerPrinterRoutes } from './routes/v1/runner-printers.routes.js';
 import { v1RunnerJobRoutes } from './routes/v1/runner-jobs.routes.js';
 import { templateRoutes } from './routes/v1/template.routes.js';
 import { webhookRoutes } from './routes/v1/webhook.routes.js';
+import { join, dirname, extname } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -319,6 +321,37 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
     await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob });
   }, { prefix: '/api/v1' });
+
+  // Serve static frontend (desktop app loads from API URL for same-origin)
+  const staticDir = process.env['STATIC_DIR'] ?? join(dirname(process.execPath), 'static');
+  const indexHtml = join(staticDir, 'index.html');
+  if (existsSync(indexHtml)) {
+    const mimeTypes: Record<string,string> = {
+      '.html': 'text/html; charset=utf-8',
+      '.js': 'application/javascript; charset=utf-8',
+      '.css': 'text/css; charset=utf-8',
+      '.json': 'application/json; charset=utf-8',
+      '.svg': 'image/svg+xml',
+      '.png': 'image/png',
+      '.ico': 'image/x-icon',
+      '.woff2': 'font/woff2',
+    };
+    app.get('*', async (req, reply) => {
+      const urlPath = new URL(req.url, 'http://x').pathname;
+      let filePath = join(staticDir, urlPath === '/' ? 'index.html' : urlPath);
+      if (!existsSync(filePath) || !filePath.startsWith(staticDir)) {
+        filePath = indexHtml;
+      }
+      const ext = (extname(filePath) || '.html').toLowerCase();
+      const mime = mimeTypes[ext] || 'application/octet-stream';
+      try {
+        const buf = readFileSync(filePath);
+        return reply.header('content-type', mime).send(buf);
+      } catch {
+        return reply.status(404).send('Not found');
+      }
+    });
+  }
 
   return { app, executeJob, queue, jobRepo, printerRepo, serviceAccountRepo, DEV_API_KEY: devKey };
 }
