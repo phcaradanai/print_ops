@@ -16,8 +16,17 @@ function authHeaders(): HeadersInit {
     : { 'Content-Type': 'application/json' };
 }
 
+// API base: dev=Vite-proxy, prod/Tauri=http://127.0.0.1:3001
+function apiBase(): string {
+  if (import.meta.env.DEV) return '';
+  if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE as string;
+  return 'http://127.0.0.1:3001';
+}
+
 function apiUrl(path: string): string {
-  return path.startsWith('/v1/') ? `/api/api${path}` : `/api${path}`;
+  var base = apiBase();
+  var rel = path.startsWith('/v1/') ? '/api/api' + path : '/api' + path;
+  return base ? base + rel.replace(/^\/api/, '') : rel;
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -29,7 +38,9 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 }
 
 export async function login(email: string, password: string): Promise<SessionUser> {
-  const res = await fetch('/api/auth/login', {
+  var base = apiBase();
+  var url = base ? base + '/auth/login' : '/api/auth/login';
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
