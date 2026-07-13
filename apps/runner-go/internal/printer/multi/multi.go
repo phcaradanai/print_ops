@@ -10,12 +10,19 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/printer"
 )
 
 // Dispatcher maps printer protocols to concrete executors.
+//
+// All exported fields (Default, Executors) are visible for API compatibility
+// but direct concurrent mutation of them is unsupported. Use Register or
+// construct the Dispatcher before any concurrent method calls.
 type Dispatcher struct {
+	mu sync.RWMutex
+
 	// Default is used when no protocol is specified or no executor matches.
 	Default printer.PrintExecutor
 	// Executors maps protocol name → executor (e.g. "raw-tcp-9100" → rawtcp).
@@ -31,9 +38,14 @@ func New(def printer.PrintExecutor) *Dispatcher {
 }
 
 // Register associates a protocol with an executor. Multiple protocol aliases
-// can point to the same executor.
+// can point to the same executor. Safe on zero-value Dispatchers.
 func (d *Dispatcher) Register(protocol string, exec printer.PrintExecutor) {
-	d.Executors[strings.ToLower(protocol)] = exec
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.Executors == nil {
+		d.Executors = map[string]printer.PrintExecutor{}
+	}
+	d.Executors[strings.ToLower(strings.TrimSpace(protocol))] = exec
 }
 
 // Name implements PrintExecutor.
@@ -55,7 +67,12 @@ func (d *Dispatcher) Execute(ctx context.Context, job printer.PrintJob) (*printe
 }
 
 // selectExecutor resolves the executor for this job.
+// The read lock is released before returning — callers must not rely on
+// the executor staying registered for the duration of the Execute call.
 func (d *Dispatcher) selectExecutor(job printer.PrintJob) printer.PrintExecutor {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
 	protocol := strings.ToLower(strings.TrimSpace(job.Options["printer_protocol"]))
 	if protocol == "" {
 		if d.Default != nil {
