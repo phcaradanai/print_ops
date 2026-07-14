@@ -119,8 +119,8 @@ function SplashScreen() {
 
 function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void }) {
   const { t } = useLocale();
-  const [email, setEmail] = useState('sysadmin@printerops.local');
-  const [password, setPassword] = useState('dev-password');
+  const [email, setEmail] = useState(import.meta.env.DEV ? 'sysadmin@printerops.local' : '');
+  const [password, setPassword] = useState(import.meta.env.DEV ? 'dev-password' : '');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 

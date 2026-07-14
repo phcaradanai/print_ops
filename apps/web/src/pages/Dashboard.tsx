@@ -1,17 +1,11 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
+import { getStatusBadgeColors } from '../statusColors.js';
 
 interface Job { id: string; status: string; latency?: { totalLatencyMs?: number } }
 interface Printer { id: string; isActive: boolean }
 interface Runner { id: string; status: string }
-
-const STATUS_COLORS: Record<string, string> = {
-  ACCEPTED: '#74c7ec', VALIDATED: '#89dceb', QUEUED: '#89b4fa',
-  DISPATCHED: '#cba6f7', PRINTING: '#fab387', SUCCESS: '#a6e3a1',
-  FAILED: '#f38ba8', TIMEOUT: '#f9e2af', CANCELLED: '#9399b2',
-  DUPLICATE_RETURNED: '#bac2de',
-};
 
 function StatCard({ label, value, color }: { label: string; value: string | number; color?: string }) {
   return (
@@ -70,7 +64,7 @@ export default function Dashboard() {
             <thead>
               <tr style={{ background: '#f0f0f0' }}>
                 {[t('page.dashboard.jobId'), t('page.dashboard.status'), t('page.dashboard.totalLatencyMs')].map((h) => (
-                  <th key={h} style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.8rem' }}>{h}</th>
+                  <th key={h} scope="col" style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.8rem' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -81,7 +75,7 @@ export default function Dashboard() {
                     <a href={`/jobs/${j.id}`} style={{ color: '#1e66f5' }}>{j.id.slice(0, 12)}…</a>
                   </td>
                   <td style={{ padding: '0.75rem' }}>
-                    <span style={{ background: STATUS_COLORS[j.status] ?? '#ccc', color: '#fff', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
+                    <span style={{ background: getStatusBadgeColors(j.status).bg, color: getStatusBadgeColors(j.status).text, padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
                       {j.status}
                     </span>
                   </td>
