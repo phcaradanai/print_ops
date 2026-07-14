@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 
@@ -317,6 +317,8 @@ export default function PaperProfiles() {
   const [stickyNote, setStickyNote] = useState<string | null>(null);
   const previewSheetRef = useRef<HTMLDivElement>(null);
   const previewCanvasRef = useRef<HTMLDivElement>(null);
+  const modalStageRef = useRef<HTMLDivElement>(null);
+  const [modalStageSize, setModalStageSize] = useState({ width: 0, height: 0 });
 
   // ── Section tracking (for sticky index & collapse/expand all) ──────
   type SectionKey = 'basicInfo' | 'dimensions' | 'margins' | 'fields';
@@ -454,11 +456,33 @@ export default function PaperProfiles() {
     };
   }, [previewOpen]);
 
-  const modalScale = Math.max(0.35, Math.min(
-    5,
-    ((viewport.width <= 820 ? viewport.width * 0.92 : viewport.width * 0.62) - 80) / previewWidthMm,
-    (viewport.height - (viewport.width <= 820 ? 420 : 190)) / previewHeightMm,
-  ));
+  useEffect(() => {
+    if (!previewOpen || !modalStageRef.current) return;
+    const el = modalStageRef.current;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) {
+        setModalStageSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [previewOpen]);
+
+  const modalScale = useMemo(() => {
+    const { width: stageW, height: stageH } = modalStageSize;
+    if (stageW === 0 || stageH === 0) {
+      return Math.max(0.35, Math.min(
+        20,
+        ((viewport.width <= 820 ? viewport.width * 0.92 : viewport.width * 0.62) - 80) / previewWidthMm,
+        (viewport.height - (viewport.width <= 820 ? 420 : 190)) / previewHeightMm,
+      ));
+    }
+    const margin = 24; // small breathing room so the sheet doesn't touch the edges
+    const availableW = Math.max(1, stageW - margin * 2);
+    const availableH = Math.max(1, stageH - margin * 2);
+    const scale = Math.min(availableW / previewWidthMm, availableH / previewHeightMm);
+    return Math.max(0.5, Math.min(20, scale));
+  }, [modalStageSize, previewWidthMm, previewHeightMm, viewport.width, viewport.height]);
 
   useEffect(() => {
     if (!draggingFieldId) return;
@@ -813,7 +837,7 @@ export default function PaperProfiles() {
                   <span>{t('page.paperProfiles.previewCanvas')}</span>
                   <span>{form.widthMm} × {form.heightMm} mm · {form.dpi} DPI</span>
                 </div>
-                <div className="paper-preview-modal__sheet-stage">
+                <div ref={modalStageRef} className="paper-preview-modal__sheet-stage">
                   <PreviewSheet
                     form={form}
                     ux={ux}
