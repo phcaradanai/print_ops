@@ -264,3 +264,77 @@ func searchString(s, substr string) bool {
 	}
 	return false
 }
+
+// ── deriveCommandContext behaviour tests ────────────────────────────────
+//
+// These tests exercise the context helper directly, without PowerShell or
+// mock injection.  TestDeriveCommandContext_DeadlineDoesNotCancelChild
+// would FAIL with the previous implementation that cancelled the child
+// context whenever parent.Done() fired — including on deadline expiry.
+// TestDeriveCommandContext_CancelPropagation verifies the safety valve
+// (SIGINT / explicit cancel) still works.
+
+// TestDeriveCommandContext_DeadlineDoesNotCancelChild proves that a parent
+// context whose deadline has already expired does NOT cancel the child
+// context.  The child keeps its full timeout budget.  This is the core
+// starvation fix: when the syncDiscoveryOnce 5s deadline fires during the
+// first command, subsequent commands are not immediately killed.
+func TestDeriveCommandContext_DeadlineDoesNotCancelChild(t *testing.T) {
+	// Parent with an already-expired deadline.
+	parent, pcancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
+	time.Sleep(time.Millisecond) // guarantee deadline is in the past
+	defer pcancel()
+
+	child, ccancel := deriveCommandContext(parent, 2*time.Second)
+	defer ccancel()
+
+	// The child context must NOT be cancelled — its Done channel must NOT
+	// be closed by the parent's deadline.
+	select {
+	case <-child.Done():
+		t.Fatalf("child context was cancelled by parent deadline (context cause: %v)", context.Cause(child))
+	case <-time.After(100 * time.Millisecond):
+		// Expected: child is still alive because parent only expired, didn't cancel.
+	}
+}
+
+// TestDeriveCommandContext_CancelPropagation proves that an explicitly
+// cancelled parent (context.Canceled) DOES cancel the child context.
+// This preserves SIGINT / shutdown responsiveness.
+func TestDeriveCommandContext_CancelPropagation(t *testing.T) {
+	parent, pcancel := context.WithCancel(context.Background())
+
+	child, ccancel := deriveCommandContext(parent, 1*time.Second)
+	defer ccancel()
+
+	// Cancel the parent — the goroutine should propagate.
+	pcancel()
+
+	// The child should be cancelled promptly.
+	select {
+	case <-child.Done():
+		if context.Cause(child) != context.Canceled {
+			t.Errorf("expected context.Canceled, got %v", context.Cause(child))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("child context was NOT cancelled after parent cancellation")
+	}
+}
+
+// TestDeriveCommandContext_ChildOwnTimeout proves the child's own
+// timeout fires independently of the parent.
+func TestDeriveCommandContext_ChildOwnTimeout(t *testing.T) {
+	parent := context.Background()
+
+	child, ccancel := deriveCommandContext(parent, 50*time.Millisecond)
+	defer ccancel()
+
+	select {
+	case <-child.Done():
+		if context.Cause(child) != context.DeadlineExceeded {
+			t.Errorf("expected context.DeadlineExceeded, got %v", context.Cause(child))
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("child's own timeout did NOT fire")
+	}
+}

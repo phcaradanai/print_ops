@@ -131,33 +131,42 @@ func (d *Discovery) safeRun(ctx context.Context, label, script string) string {
 	return out
 }
 
+// deriveCommandContext creates an independent context with the given timeout,
+// scoped to a single command invocation.  It derives from context.Background()
+// so each command gets its full timeout budget regardless of how much of the
+// parent's deadline was consumed by earlier commands.
+//
+// Parent cancellation (context.Canceled — explicit cancel / SIGINT) is bridged
+// so shutdown interrupts a hung process promptly.  Parent deadline expiry
+// (context.DeadlineExceeded) is NOT bridged — the command keeps its full
+// timeout and the next bounded command is never starved.
+func deriveCommandContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	cctx, cancel := context.WithTimeout(context.Background(), timeout)
+
+	go func() {
+		select {
+		case <-parent.Done():
+			// Only propagate explicit cancellation (SIGINT / ctx cancel),
+			// not deadline expiry — each command owns its budget.
+			if context.Cause(parent) == context.Canceled {
+				cancel()
+			}
+		case <-cctx.Done():
+		}
+	}()
+
+	return cctx, cancel
+}
+
 // runPowerShell executes a read-only PowerShell script with a bounded timeout.
 // It captures both stdout and stderr for diagnostics. PowerShell errors on
 // stderr are surfaced in the returned error so operators can troubleshoot.
 //
-// The timeout is derived from context.Background() — NOT the parent ctx — so
-// each PowerShell invocation gets its own independent 5-second budget.
-// Without this, a parent deadline (e.g. the 5-second syncDiscoveryOnce
-// timeout in main.go) would be consumed by the first command (DefaultPrinter
-// CIM lookup), starving subsequent Get-Printer and CIM fallback commands
-// with "context deadline exceeded" even though powershell.exe itself
-// succeeds.
-//
-// Parent cancellation (SIGINT / context cancel) is bridged via a goroutine
-// so shutdown still interrupts a hung PowerShell process promptly.
+// Each invocation gets an independent timeout via deriveCommandContext,
+// protecting against parent-deadline starvation.
 func runPowerShell(ctx context.Context, script string) (string, error) {
-	cctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	cctx, cancel := deriveCommandContext(ctx, commandTimeout)
 	defer cancel()
-
-	// Bridge parent cancellation: if the parent ctx is cancelled (SIGINT),
-	// cancel our independent timeout context so the OS process is killed.
-	go func() {
-		select {
-		case <-ctx.Done():
-			cancel()
-		case <-cctx.Done():
-		}
-	}()
 
 	cmd := exec.CommandContext(cctx, "powershell.exe",
 		"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
