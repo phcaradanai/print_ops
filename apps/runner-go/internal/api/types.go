@@ -154,7 +154,7 @@ func ToDiscoverySyncItem(dp discovery.DiscoveredPrinter, computerName, osName st
 // ToDiscoverySyncItem for field mapping details.
 func ToDiscoverySyncItems(printers []discovery.DiscoveredPrinter, computerName, osName string) []DiscoverySyncItem {
 	if len(printers) == 0 {
-		return nil
+		return []DiscoverySyncItem{}
 	}
 	items := make([]DiscoverySyncItem, len(printers))
 	for i, dp := range printers {

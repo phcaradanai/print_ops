@@ -300,6 +300,36 @@ func TestSyncDiscovery_SendsItems(t *testing.T) {
 	}
 }
 
+// TestToDiscoverySyncItems_ZeroPrintersReturnsEmptyArray ensures that when
+// zero printers are discovered, ToDiscoverySyncItems returns a non-nil empty
+// slice so JSON serialization produces "items":[] rather than "items":null.
+// The API discovery sync route requires body.items to be an array.
+func TestToDiscoverySyncItems_ZeroPrintersReturnsEmptyArray(t *testing.T) {
+	items := ToDiscoverySyncItems(
+		[]discovery.DiscoveredPrinter{},
+		"PC-NIPPON", "windows",
+	)
+	if items == nil {
+		t.Fatal("expected non-nil slice for zero printers, got nil")
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected empty slice, got %d items", len(items))
+	}
+
+	// Verify JSON serialization produces items: [] (not null).
+	req := DiscoverySyncRequest{Items: items}
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if !strings.Contains(string(raw), `"items":[]`) {
+		t.Errorf("expected items:[], got %s", raw)
+	}
+	if strings.Contains(string(raw), `"items":null`) {
+		t.Errorf("unexpected items:null in %s", raw)
+	}
+}
+
 func TestReportExecution_LegacyEndpoint(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
