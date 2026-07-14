@@ -164,8 +164,43 @@ function withMeta(items: DiscoveryItem[]): DiscoveryItem[] {
   return items.map((item) => ({ ...item, ...meta }));
 }
 
+
+// ── wmic fallback parser (for Windows when PrintManagement module is unavailable) ──
+
+/** Parses `wmic printer get ... /format:csv` output into DiscoveryItem[]. */
+function parseWmicOutput(raw: string): DiscoveryItem[] {
+  const lines = raw.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  // First line is header row, subsequent lines are data rows
+  const header = lines[0]!.split(',');
+  const nameIdx = header.findIndex((h) => h.toLowerCase() === 'name');
+  const driverIdx = header.findIndex((h) => h.toLowerCase() === 'drivername');
+  const portIdx = header.findIndex((h) => h.toLowerCase() === 'portname');
+  const sharedIdx = header.findIndex((h) => h.toLowerCase() === 'shared');
+  const defaultIdx = header.findIndex((h) => h.toLowerCase() === 'default');
+  if (nameIdx < 0) return [];
+  const items: DiscoveryItem[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i]!.split(',');
+    const name = cols[nameIdx]?.trim();
+    if (!name) continue;
+    const portName = portIdx >= 0 ? cols[portIdx]?.trim() : undefined;
+    items.push({
+      localPrinterName: name,
+      driverName: driverIdx >= 0 ? cols[driverIdx]?.trim() : undefined,
+      portName,
+      connectionType: detectConnectionType(portName),
+      isDefault: defaultIdx >= 0 && cols[defaultIdx]?.trim().toUpperCase() === 'TRUE',
+      isShared: sharedIdx >= 0 && cols[sharedIdx]?.trim().toUpperCase() === 'TRUE',
+      attributes: { source: 'wmic' },
+    });
+  }
+  return items;
+}
+
 async function discoverWindows(): Promise<DiscoveryItem[]> {
-  const stdout = await exec(
+  // Tier 1: Try Get-Printer first (PrintManagement module - best data)
+  let stdout = await exec(
     'powershell.exe',
     [
       '-NonInteractive', '-NoProfile', '-Command',
@@ -173,7 +208,29 @@ async function discoverWindows(): Promise<DiscoveryItem[]> {
     ],
     10000
   );
-  return withMeta(parseGetPrinterOutput(stdout));
+  let items = parseGetPrinterOutput(stdout);
+  if (items.length > 0) return withMeta(items);
+
+  // Tier 2: Fallback to Get-CimInstance Win32_Printer (WMI - works on all Windows editions)
+  stdout = await exec(
+    'powershell.exe',
+    [
+      '-NonInteractive', '-NoProfile', '-Command',
+      'Get-CimInstance -Class Win32_Printer -ErrorAction SilentlyContinue | Select-Object Name,DriverName,PortName,Shared,Default | ConvertTo-Json -Compress',
+    ],
+    10000
+  );
+  items = parseGetPrinterOutput(stdout);
+  if (items.length > 0) return withMeta(items);
+
+  // Tier 3: Last resort via wmic (works on every Windows version)
+  stdout = await exec(
+    'wmic',
+    ['printer', 'get', 'name,drivername,portname,shared,default', '/format:csv'],
+    10000
+  );
+  items = parseWmicOutput(stdout);
+  return withMeta(items);
 }
 
 async function discoverMacOs(): Promise<DiscoveryItem[]> {
