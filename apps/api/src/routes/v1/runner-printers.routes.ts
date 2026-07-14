@@ -1,7 +1,30 @@
 import type { FastifyInstance } from 'fastify';
-import type { DiscoveredPrinterRepositoryPort, DiscoveryItem } from '@printerops/domain';
+import type { DiscoveredPrinter, DiscoveredPrinterRepositoryPort, DiscoveryItem } from '@printerops/domain';
 import type { SyncPrinterDiscoveryService } from '../../services/sync-printer-discovery.service.js';
 import type { RegisterDiscoveredPrinterService } from '../../services/register-discovered-printer.service.js';
+
+/**
+ * Deduplicate discovered printers for the global (all-runners) view.
+ *
+ * When computerName is available, the identity is (computerName, localPrinterName) —
+ * the same physical printer on the same host, even if seen by different runner
+ * incarnations. When computerName is missing, fall back to (runnerId,
+ * localPrinterName) so unrelated printers are not collapsed.
+ *
+ * Among duplicates the most recently seen record (lastSeenAt) wins.
+ */
+export function deduplicateForGlobalView(printers: DiscoveredPrinter[]): DiscoveredPrinter[] {
+  const seen = new Map<string, DiscoveredPrinter>();
+  for (const p of printers) {
+    const hostKey = p.computerName ?? p.runnerId;
+    const key = `${hostKey}::${p.localPrinterName}`;
+    const existing = seen.get(key);
+    if (!existing || p.lastSeenAt > existing.lastSeenAt) {
+      seen.set(key, p);
+    }
+  }
+  return Array.from(seen.values());
+}
 
 export async function v1RunnerPrinterRoutes(
   app: FastifyInstance,
@@ -43,10 +66,10 @@ export async function v1RunnerPrinterRoutes(
     return reply.send(printers);
   });
 
-  // GET /api/v1/discovered-printers — list all discovered printers (all runners)
+  // GET /api/v1/discovered-printers — list all discovered printers (all runners), deduplicated
   app.get('/discovered-printers', auth, async (_req, reply) => {
     const printers = await deps.discoveredPrinters.findAll();
-    return reply.send(printers);
+    return reply.send(deduplicateForGlobalView(printers));
   });
 
   // POST /api/v1/discovered-printers/:id/register — admin/owner registers as real Printer
