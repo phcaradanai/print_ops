@@ -1,11 +1,3 @@
-// Package windows implements read-only printer discovery on Windows using
-// PowerShell (Get-Printer / Get-PrinterPort) with ConvertTo-Json output.
-//
-// The JSON parsing logic in this file is pure and OS-independent so it can be
-// unit-tested on any platform with mock PowerShell JSON.
-//
-// This package is strictly READ-ONLY: it never restarts the spooler and never
-// changes printer configuration.
 package windows
 
 import (
@@ -15,25 +7,88 @@ import (
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/discovery"
 )
 
-// psPrinter mirrors the fields we request from Get-Printer via ConvertTo-Json.
-type psPrinter struct {
-	Name         string `json:"Name"`
-	DriverName   string `json:"DriverName"`
-	PortName     string `json:"PortName"`
-	Shared       bool   `json:"Shared"`
-	ShareName    string `json:"ShareName"`
-	Location     string `json:"Location"`
-	Comment      string `json:"Comment"`
-	PrinterState string `json:"PrinterStatus"`
-	Type         string `json:"Type"`
+// printerStatus handles both string and integer PrinterStatus from PowerShell.
+// PowerShell 5.1 ConvertTo-Json serializes enums as integers;
+// PowerShell 7+ uses the enum name string.
+type printerStatus struct {
+	Raw string
 }
 
-// psPort mirrors the fields we request from Get-PrinterPort via ConvertTo-Json.
+func (p *printerStatus) UnmarshalJSON(b []byte) error {
+	// Try string value first (PowerShell 7+)
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		p.Raw = s
+		return nil
+	}
+	// Try integer value (PowerShell 5.1)
+	var n int
+	if err := json.Unmarshal(b, &n); err == nil {
+		p.Raw = intToStatus(n)
+		return nil
+	}
+	p.Raw = ""
+	return nil
+}
+
+// intToStatus maps Win32_Printer.Status enum values to human-readable strings.
+func intToStatus(n int) string {
+	switch n {
+	case 1:
+		return "idle"
+	case 2, 3:
+		return "busy"
+	case 4, 5:
+		return "offline"
+	case 6:
+		return "busy"
+	case 7:
+		return "offline"
+	default:
+		return "unknown"
+	}
+}
+
+// psPrinter mirrors the fields we request from Get-Printer via ConvertTo-Json.
+type psPrinter struct {
+	Name         string        `json:"Name"`
+	DriverName   string        `json:"DriverName"`
+	PortName     string        `json:"PortName"`
+	Shared       bool          `json:"Shared"`
+	ShareName    string        `json:"ShareName"`
+	Location     string        `json:"Location"`
+	Comment      string        `json:"Comment"`
+	PrinterState printerStatus `json:"PrinterStatus"`
+	Type         string        `json:"Type"`
+}
+
+// psPort mirrors the fields we request from Get-PrinterPort or
+// Get-CimInstance Win32_TCPIPPrinterPort (CIM fallback).
+//
+// Field mapping:
+//
+//	Get-PrinterPort          Win32_TCPIPPrinterPort (CIM)
+//	─────────────────────    ───────────────────────────
+//	PrinterHostAddress       HostAddress
+//	PortNumber               PortNumber
+//
+// We decode both names via json tags and unify into PrinterHostAddr / PortNumber
+// after unmarshalling so ParsePrinters works with either source.
 type psPort struct {
 	Name            string `json:"Name"`
 	Description     string `json:"Description"`
 	PrinterHostAddr string `json:"PrinterHostAddress"`
+	HostAddress     string `json:"HostAddress"`
 	PortNumber      int    `json:"PortNumber"`
+}
+
+// hostAddr returns the resolved host address, preferring PrinterHostAddress
+// (Get-PrinterPort) and falling back to HostAddress (CIM).
+func (p psPort) hostAddr() string {
+	if p.PrinterHostAddr != "" {
+		return p.PrinterHostAddr
+	}
+	return p.HostAddress
 }
 
 // unmarshalMaybeArray decodes JSON that may be a single object OR an array of
@@ -76,7 +131,7 @@ func ParsePrinters(printersJSON, portsJSON, defaultName string) ([]discovery.Dis
 			DisplayName:    p.Name,
 			DriverName:     p.DriverName,
 			PortName:       p.PortName,
-			Status:         normalizeStatus(p.PrinterState),
+			Status:         normalizeStatus(p.PrinterState.Raw),
 			IsShared:       p.Shared,
 			ShareName:      p.ShareName,
 			Location:       p.Location,
@@ -88,9 +143,9 @@ func ParsePrinters(printersJSON, portsJSON, defaultName string) ([]discovery.Dis
 
 		if port, ok := portByName[p.PortName]; ok {
 			dp.ConnectionType = classifyPort(port)
-			if port.PrinterHostAddr != "" {
+			if port.hostAddr() != "" {
 				dp.URI = buildURI(port)
-				dp.Raw["host_address"] = port.PrinterHostAddr
+				dp.Raw["host_address"] = port.hostAddr()
 			}
 		} else {
 			dp.ConnectionType = classifyPortName(p.PortName)
@@ -119,7 +174,7 @@ func normalizeStatus(s string) string {
 
 // classifyPort derives a connection type from a port descriptor.
 func classifyPort(p psPort) discovery.ConnectionType {
-	if p.PrinterHostAddr != "" || p.PortNumber == 9100 {
+	if p.hostAddr() != "" || p.PortNumber == 9100 {
 		return discovery.ConnTCPIP
 	}
 	return classifyPortName(p.Name)
@@ -150,7 +205,7 @@ func buildURI(p psPort) string {
 	if port == 0 {
 		port = 9100
 	}
-	return "socket://" + p.PrinterHostAddr + ":" + itoa(port)
+	return "socket://" + p.hostAddr() + ":" + itoa(port)
 }
 
 func itoa(n int) string {

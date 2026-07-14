@@ -205,6 +205,10 @@ func runDiscoveryLoop(
 	if interval <= 0 {
 		interval = 60 * time.Second
 	}
+
+	// Run immediate discovery on startup (do not wait for first tick)
+	syncDiscoveryOnce(ctx, client, d, runnerID, hostname, osName, metrics, log)
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
