@@ -18,9 +18,10 @@ const commandTimeout = 5 * time.Second
 // emit JSON so the parser can be deterministic.
 //
 // We use a layered approach so discovery works on every Windows edition:
-//   Tier 1  Get-Printer (PrintManagement module – richer data)
-//   Tier 2  Get-CimInstance Win32_Printer (WMI, available everywhere)
-//   Tier 3  wmic (pre-WMI fallback, very wide compatibility)
+//
+//	Tier 1  Get-Printer (PrintManagement module – richer data)
+//	Tier 2  Get-CimInstance Win32_Printer (WMI, available everywhere)
+//	Tier 3  wmic (pre-WMI fallback, very wide compatibility)
 //
 // Tier 1 requires the PrintManagement module which ships with RSAT and is NOT
 // present on Windows Home by default. Tier 2 is always available and returns
@@ -133,9 +134,30 @@ func (d *Discovery) safeRun(ctx context.Context, label, script string) string {
 // runPowerShell executes a read-only PowerShell script with a bounded timeout.
 // It captures both stdout and stderr for diagnostics. PowerShell errors on
 // stderr are surfaced in the returned error so operators can troubleshoot.
+//
+// The timeout is derived from context.Background() — NOT the parent ctx — so
+// each PowerShell invocation gets its own independent 5-second budget.
+// Without this, a parent deadline (e.g. the 5-second syncDiscoveryOnce
+// timeout in main.go) would be consumed by the first command (DefaultPrinter
+// CIM lookup), starving subsequent Get-Printer and CIM fallback commands
+// with "context deadline exceeded" even though powershell.exe itself
+// succeeds.
+//
+// Parent cancellation (SIGINT / context cancel) is bridged via a goroutine
+// so shutdown still interrupts a hung PowerShell process promptly.
 func runPowerShell(ctx context.Context, script string) (string, error) {
-	cctx, cancel := context.WithTimeout(ctx, commandTimeout)
+	cctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 	defer cancel()
+
+	// Bridge parent cancellation: if the parent ctx is cancelled (SIGINT),
+	// cancel our independent timeout context so the OS process is killed.
+	go func() {
+		select {
+		case <-ctx.Done():
+			cancel()
+		case <-cctx.Done():
+		}
+	}()
 
 	cmd := exec.CommandContext(cctx, "powershell.exe",
 		"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
