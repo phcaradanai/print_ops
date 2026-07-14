@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { t } from './i18n/translations.js';
 
 interface Props {
   children: ReactNode;
@@ -7,6 +8,22 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+}
+
+// The standalone ErrorBoundary cannot use useLocale() because it's a class component.
+// It uses a simple locale detection matching the LocaleProvider default.
+function detectLocale(): 'en' | 'th' {
+  try {
+    const stored = localStorage.getItem('printops-locale');
+    if (stored === 'th' || stored === 'en') return stored;
+  } catch {
+    // ignore
+  }
+  return 'th';
+}
+
+function te(key: string): string {
+  return t(detectLocale(), key);
 }
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -38,10 +55,9 @@ export class ErrorBoundary extends Component<Props, State> {
           background: '#f5f5f5',
           color: '#1e1e2e',
         }}>
-          <h1 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Something went wrong</h1>
+          <h1 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{te('error.standalone.title')}</h1>
           <p style={{ color: '#6b7280', marginBottom: '1rem', maxWidth: '480px', textAlign: 'center' }}>
-            An unexpected error occurred while rendering the page.
-            Please try restarting the application.
+            {te('error.standalone.message')}
           </p>
           {this.state.error && (
             <pre style={{
@@ -73,7 +89,7 @@ export class ErrorBoundary extends Component<Props, State> {
               fontWeight: 600,
             }}
           >
-            Restart App
+            {te('error.standalone.restart')}
           </button>
         </div>
       );

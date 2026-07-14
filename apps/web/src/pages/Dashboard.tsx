@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client.js';
+import { useLocale } from '../i18n/index.js';
 
 interface Job { id: string; status: string; latency?: { totalLatencyMs?: number } }
 interface Printer { id: string; isActive: boolean }
@@ -22,6 +23,7 @@ function StatCard({ label, value, color }: { label: string; value: string | numb
 }
 
 export default function Dashboard() {
+  const { t } = useLocale();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [printers, setPrinters] = useState<Printer[]>([]);
   const [runners, setRunners] = useState<Runner[]>([]);
@@ -47,27 +49,27 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 style={{ marginBottom: '1.5rem' }}>Dashboard</h1>
-      {loading ? <p style={{ color: '#888' }}>Loading…</p> : (
+      <h1 style={{ marginBottom: '1.5rem' }}>{t('page.dashboard.title')}</h1>
+      {loading ? <p style={{ color: '#888' }}>{t('common.loading')}</p> : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-            <StatCard label="Active Printers" value={activePrinters} />
-            <StatCard label="Runners Online" value={onlineRunners} color="#40a02b" />
-            <StatCard label="Jobs Queued" value={queued} color="#1e66f5" />
-            <StatCard label="Failed Jobs" value={failed} color={failed > 0 ? '#f38ba8' : undefined} />
+            <StatCard label={t('page.dashboard.activePrinters')} value={activePrinters} />
+            <StatCard label={t('page.dashboard.runnersOnline')} value={onlineRunners} color="#40a02b" />
+            <StatCard label={t('page.dashboard.jobsQueued')} value={queued} color="#1e66f5" />
+            <StatCard label={t('page.dashboard.failedJobs')} value={failed} color={failed > 0 ? '#f38ba8' : undefined} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginTop: '1rem' }}>
-            <StatCard label="Total Jobs" value={jobs.length} />
-            <StatCard label="Currently Printing" value={printing} color="#fab387" />
-            <StatCard label="Avg Latency (ms)" value={avgMs ?? '—'} />
-            <StatCard label="P95 Latency (ms)" value={p95Ms ?? '—'} />
+            <StatCard label={t('page.dashboard.totalJobs')} value={jobs.length} />
+            <StatCard label={t('page.dashboard.currentlyPrinting')} value={printing} color="#fab387" />
+            <StatCard label={t('page.dashboard.avgLatencyMs')} value={avgMs ?? t('common.noData')} />
+            <StatCard label={t('page.dashboard.p95LatencyMs')} value={p95Ms ?? t('common.noData')} />
           </div>
 
-          <h2 style={{ marginTop: '2rem', marginBottom: '0.75rem', fontSize: '1rem' }}>Recent Jobs</h2>
+          <h2 style={{ marginTop: '2rem', marginBottom: '0.75rem', fontSize: '1rem' }}>{t('page.dashboard.recentJobs')}</h2>
           <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '8px', overflow: 'hidden' }}>
             <thead>
               <tr style={{ background: '#f0f0f0' }}>
-                {['Job ID', 'Status', 'Total Latency (ms)'].map((h) => (
+                {[t('page.dashboard.jobId'), t('page.dashboard.status'), t('page.dashboard.totalLatencyMs')].map((h) => (
                   <th key={h} style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.8rem' }}>{h}</th>
                 ))}
               </tr>
@@ -84,12 +86,12 @@ export default function Dashboard() {
                     </span>
                   </td>
                   <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#666' }}>
-                    {j.latency?.totalLatencyMs != null ? j.latency.totalLatencyMs : '—'}
+                    {j.latency?.totalLatencyMs != null ? j.latency.totalLatencyMs : t('common.noData')}
                   </td>
                 </tr>
               ))}
               {jobs.length === 0 && (
-                <tr><td colSpan={3} style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>No jobs yet. Send a print job via the API.</td></tr>
+                <tr><td colSpan={3} style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>{t('page.dashboard.emptyJobs')}</td></tr>
               )}
             </tbody>
           </table>

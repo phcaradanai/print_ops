@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../api/client.js';
+import { useLocale } from '../i18n/index.js';
 
 interface Runner {
   id: string;
@@ -29,13 +30,6 @@ const CONN_COLOR: Record<string, string> = {
   lpt_com: '#fab387', unknown: '#9399b2',
 };
 
-function relativeTime(ts: string): string {
-  const ms = Date.now() - new Date(ts).getTime();
-  if (ms < 60000) return `${Math.round(ms / 1000)}s ago`;
-  if (ms < 3600000) return `${Math.round(ms / 60000)}m ago`;
-  return `${Math.round(ms / 3600000)}h ago`;
-}
-
 function Truncate({ value, display, className = '' }: { value?: string; display?: string; className?: string }) {
   const fullText = value && value.length > 0 ? value : '—';
   const displayText = display ?? fullText;
@@ -61,11 +55,19 @@ function Truncate({ value, display, className = '' }: { value?: string; display?
 }
 
 export default function LocalDiagnostics() {
+  const { t } = useLocale();
   const [runners, setRunners] = useState<Runner[]>([]);
   const [printers, setPrinters] = useState<DiscoveredPrinter[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState<Record<string, boolean>>({});
   const [refreshResult, setRefreshResult] = useState<Record<string, string>>({});
+
+  const relativeTime = (ts: string): string => {
+    const ms = Date.now() - new Date(ts).getTime();
+    if (ms < 60000) return t('status.secondsAgo').replace('{n}', String(Math.round(ms / 1000)));
+    if (ms < 3600000) return t('status.minutesAgo').replace('{n}', String(Math.round(ms / 60000)));
+    return t('status.hoursAgo').replace('{n}', String(Math.round(ms / 3600000)));
+  };
 
   const load = useCallback(() => {
     Promise.all([
@@ -89,26 +91,26 @@ export default function LocalDiagnostics() {
         `/v1/runners/${runnerId}/printers/discover`,
         { method: 'POST' }
       );
-      setRefreshResult((prev) => ({ ...prev, [runnerId]: `Queued — ${res.knownPrinters} known printers` }));
+      setRefreshResult((prev) => ({ ...prev, [runnerId]: t('page.diagnostics.queuedKnown').replace('{n}', String(res.knownPrinters)) }));
       setTimeout(() => load(), 3000);
     } catch {
-      setRefreshResult((prev) => ({ ...prev, [runnerId]: 'Request failed' }));
+      setRefreshResult((prev) => ({ ...prev, [runnerId]: t('page.diagnostics.requestFailed') }));
     } finally {
       setRefreshing((prev) => ({ ...prev, [runnerId]: false }));
     }
   }
 
-  if (loading) return <p style={{ color: '#888' }}>Loading…</p>;
+  if (loading) return <p style={{ color: '#888' }}>{t('common.loading')}</p>;
 
   return (
     <div>
-      <h1 style={{ marginBottom: '0.5rem' }}>Local Diagnostics</h1>
+      <h1 style={{ marginBottom: '0.5rem' }}>{t('page.diagnostics.title')}</h1>
       <p style={{ color: '#666', marginBottom: '2rem', fontSize: '0.9rem' }}>
-        Printers discovered on each runner machine. Refreshes automatically every 30s.
+        {t('page.diagnostics.description')}
       </p>
 
       {runners.length === 0 && (
-        <p style={{ color: '#888' }}>No runners connected. Start the runner app to see diagnostics.</p>
+        <p style={{ color: '#888' }}>{t('page.diagnostics.noRunners')}</p>
       )}
 
       {runners.map((runner) => {
@@ -149,13 +151,13 @@ export default function LocalDiagnostics() {
                     fontSize: '0.8rem', fontWeight: 600,
                   }}
                 >
-                  {refreshing[runner.id] ? 'Requesting…' : 'Refresh Discovery'}
+                  {refreshing[runner.id] ? t('page.diagnostics.requesting') : t('page.diagnostics.refreshDiscovery')}
                 </button>
               </div>
             </div>
 
             {runnerPrinters.length === 0 ? (
-              <p style={{ color: '#aaa', fontSize: '0.85rem' }}>No printers discovered yet. Waits up to 60s for next discovery cycle.</p>
+              <p style={{ color: '#aaa', fontSize: '0.85rem' }}>{t('page.diagnostics.noPrinters')}</p>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <colgroup>
@@ -169,7 +171,7 @@ export default function LocalDiagnostics() {
                 </colgroup>
                 <thead>
                   <tr style={{ background: '#f5f5f5' }}>
-                    {['Printer Name', 'Driver', 'Port / URI', 'Type', 'Default', 'Last Seen', 'Registered'].map((h) => (
+                    {[t('page.diagnostics.printerName'), t('page.diagnostics.driver'), t('page.diagnostics.portUri'), t('page.diagnostics.type'), t('page.diagnostics.default'), t('page.diagnostics.lastSeen'), t('page.diagnostics.registered')].map((h) => (
                       <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontSize: '0.75rem', color: '#555' }}>{h}</th>
                     ))}
                   </tr>
@@ -195,9 +197,9 @@ export default function LocalDiagnostics() {
                       <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: '#888' }}>{relativeTime(p.lastSeenAt)}</td>
                       <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem' }}>
                         {p.registeredPrinterId ? (
-                          <span style={{ color: '#059669' }}>Registered</span>
+                          <span style={{ color: '#059669' }}>{t('status.registered')}</span>
                         ) : (
-                          <span style={{ color: '#aaa' }}>—</span>
+                          <span style={{ color: '#aaa' }}>{t('common.noData')}</span>
                         )}
                       </td>
                     </tr>

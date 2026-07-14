@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../api/client.js';
+import { useLocale } from '../i18n/index.js';
 
 interface Printer {
   id: string;
@@ -87,6 +88,7 @@ const cardStyle: React.CSSProperties = {
 };
 
 export default function TemplateSandbox() {
+  const { t } = useLocale();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [papers, setPapers] = useState<Paper[]>([]);
   const [printers, setPrinters] = useState<Printer[]>([]);
@@ -127,13 +129,13 @@ export default function TemplateSandbox() {
   // ---- toast auto-dismiss ----
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
   }, [toast]);
 
   // ---- JSON validation ----
   const payloadError = useMemo(() => {
-    try { JSON.parse(payload); return ''; } catch { return 'JSON ไม่ถูกต้อง — ตรวจสอบรูปแบบอีกครั้ง'; }
+    try { JSON.parse(payload); return ''; } catch { return t('page.sandbox.jsonError'); }
   }, [payload]);
 
   const printerMaxCopies = selectedPrinter?.maxCopiesPerJob ?? selectedPrinter?.capabilities?.maxCopies;
@@ -144,7 +146,7 @@ export default function TemplateSandbox() {
   // ---- actions ----
   async function renderPreview() {
     setError('');
-    if (!templateId) { setError('กรุณาเลือก Template ก่อน'); return; }
+    if (!templateId) { setError(t('page.sandbox.selectTemplateFirst')); return; }
     if (payloadError) { setError(payloadError); return; }
     setLoading((s) => ({ ...s, render: true }));
     try {
@@ -158,7 +160,7 @@ export default function TemplateSandbox() {
       });
       setPreview(res);
     } catch {
-      setError('Render ไม่สำเร็จ — ตรวจสอบ Template และ Payload');
+      setError(t('page.sandbox.renderFailed'));
     } finally {
       setLoading((s) => ({ ...s, render: false }));
     }
@@ -166,7 +168,7 @@ export default function TemplateSandbox() {
 
   async function testPrint() {
     setError('');
-    if (!canPrint) { setError('กรุณาเลือก Printer และ Template ให้ครบ'); return; }
+    if (!canPrint) { setError(t('page.sandbox.printIncomplete')); return; }
     setLoading((s) => ({ ...s, print: true }));
     try {
       const res = await apiFetch<{ accepted: boolean; jobId: string; traceId: string; status: string; warnings: string[] }>('/v1/sandbox/test-print', {
@@ -184,12 +186,12 @@ export default function TemplateSandbox() {
         }),
       });
       if (res.status === 'SUCCESS') {
-        setToast({ type: 'success', msg: `✅ พิมพ์สำเร็จ! Job ID: ${res.jobId.slice(0, 8)}… (${copies} ชุด ที่ "${selectedPrinter?.name}")` });
+        setToast({ type: 'success', msg: t('page.sandbox.printSuccess').replace('{jobId}', res.jobId.slice(0, 8)).replace('{copies}', String(copies)).replace('{printer}', selectedPrinter?.name ?? '') });
       } else {
-        setToast({ type: 'error', msg: `❌ พิมพ์ล้มเหลว (สถานะ: ${res.status}) — ตรวจสอบเครื่องพิมพ์` });
+        setToast({ type: 'error', msg: t('page.sandbox.printFailed').replace('{status}', res.status) });
       }
     } catch {
-      setToast({ type: 'error', msg: '❌ ส่งคำสั่งพิมพ์ไม่สำเร็จ — ลองอีกครั้ง' });
+      setToast({ type: 'error', msg: t('page.sandbox.printError') });
     } finally {
       setLoading((s) => ({ ...s, print: false }));
     }
@@ -197,9 +199,9 @@ export default function TemplateSandbox() {
 
   return (
     <div style={{ position: 'relative' }}>
-      <h1 style={{ marginBottom: '0.25rem' }}>🖨️ Template Sandbox</h1>
+      <h1 style={{ marginBottom: '0.25rem' }}>{t('page.sandbox.title')}</h1>
       <p style={{ color: '#6b7280', marginBottom: '1rem', fontSize: '0.9rem' }}>
-        เลือกเครื่องพิมพ์ ทดลองพิมพ์ และดูตัวอย่างจาก Template — เหมือนหน้าต่างควบคุมก่อนสั่งพิมพ์จริง
+        {t('page.sandbox.description')}
       </p>
 
       {/* ===== Toast ===== */}
@@ -216,17 +218,17 @@ export default function TemplateSandbox() {
       )}
 
       {loading.init ? (
-        <p style={{ color: '#888' }}>กำลังโหลดข้อมูล…</p>
+        <p style={{ color: '#888' }}>{t('page.sandbox.loading')}</p>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: '1rem', alignItems: 'start' }}>
           {/* ===================== Config Panel ===================== */}
           <section style={cardStyle}>
             {/* --- Printer --- */}
             <div style={{ ...sectionStyle, paddingTop: '1.1rem' }}>
-              <div style={sectionTitleStyle}>🖨️ Printer</div>
-              <label style={labelStyle}>เลือกเครื่องพิมพ์ *</label>
+              <div style={sectionTitleStyle}>{t('page.sandbox.printer')}</div>
+              <label style={labelStyle}>{t('page.sandbox.selectPrinter')}</label>
               <select style={inputStyle} value={printerId} onChange={(e) => setPrinterId(e.target.value)}>
-                <option value="">— เลือกเครื่องพิมพ์ —</option>
+                <option value="">{t('page.sandbox.selectPrinterPlaceholder')}</option>
                 {printers.filter((p) => p.isActive).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.code}){p.location ? ` · ${p.location}` : ''}
@@ -243,25 +245,25 @@ export default function TemplateSandbox() {
                     </span>
                   )}
                   <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: '#f3f4f6', borderRadius: 4 }}>{selectedPrinter.protocol}</span>
-                  {selectedPrinter.capabilities?.duplexSupported && <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: '#f3f4f6', borderRadius: 4 }}>Duplex</span>}
-                  {selectedPrinter.capabilities?.colorSupported && <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: '#f3f4f6', borderRadius: 4 }}>Color</span>}
-                  {printerMaxCopies != null && <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: '#f3f4f6', borderRadius: 4 }}>Max {printerMaxCopies} ชุด</span>}
+                  {selectedPrinter.capabilities?.duplexSupported && <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: '#f3f4f6', borderRadius: 4 }}>{t('page.sandbox.duplexLabel')}</span>}
+                  {selectedPrinter.capabilities?.colorSupported && <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: '#f3f4f6', borderRadius: 4 }}>{t('page.sandbox.colorLabel')}</span>}
+                  {printerMaxCopies != null && <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: '#f3f4f6', borderRadius: 4 }}>{t('page.sandbox.maxCopiesLabel').replace('{n}', String(printerMaxCopies))}</span>}
                 </div>
               )}
               {!templateAllowed && (
                 <div style={{ marginTop: '0.4rem', padding: '0.4rem 0.55rem', background: '#fef3c7', color: '#92400e', borderRadius: 4, fontSize: '0.75rem' }}>
-                  ⚠️ Template "{selectedTemplate?.templateCode}" ไม่อยู่ในรายการที่อนุญาตของเครื่องพิมพ์นี้
+                  ⚠️ {t('page.sandbox.templateNotAllowed').replace('{code}', selectedTemplate?.templateCode ?? '')}
                 </div>
               )}
             </div>
 
             {/* --- Template & Paper --- */}
             <div style={sectionStyle}>
-              <div style={sectionTitleStyle}>📄 Template & Paper</div>
+              <div style={sectionTitleStyle}>{t('page.sandbox.templatePaper')}</div>
               <div style={{ marginBottom: '0.5rem' }}>
-                <label style={labelStyle}>Template *</label>
+                <label style={labelStyle}>{t('page.sandbox.template')}</label>
                 <select style={inputStyle} value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-                  <option value="">— เลือก Template —</option>
+                  <option value="">{t('page.sandbox.selectTemplatePlaceholder')}</option>
                   {templates.map((t) => (
                     <option key={t.id} value={t.id}>{t.templateCode} — {t.name}</option>
                   ))}
@@ -274,9 +276,9 @@ export default function TemplateSandbox() {
                 )}
               </div>
               <div>
-                <label style={labelStyle}>Paper Profile</label>
+                <label style={labelStyle}>{t('page.sandbox.paperProfile')}</label>
                 <select style={inputStyle} value={paperProfileId} onChange={(e) => setPaperProfileId(e.target.value)}>
-                  <option value="">Default (จาก Template)</option>
+                  <option value="">{t('page.sandbox.paperProfileDefault')}</option>
                   {papers.map((p) => (
                     <option key={p.id} value={p.id}>{p.code} ({p.widthMm}×{p.heightMm}mm, {p.dpi}dpi)</option>
                   ))}
@@ -288,9 +290,9 @@ export default function TemplateSandbox() {
             <div style={sectionStyle}>
               <div style={sectionTitleStyle}>⚙️ Print Options</div>
 
-              {/* Copies */}
+              <div style={sectionTitleStyle}>{t('page.sandbox.printOptions')}</div>
               <div style={{ marginBottom: '0.6rem' }}>
-                <label style={labelStyle}>Copies (จำนวนชุด)</label>
+                <label style={labelStyle}>{t('page.sandbox.copies')}</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <button
                     type="button"
@@ -316,31 +318,31 @@ export default function TemplateSandbox() {
                 </div>
                 {copiesExceeded && (
                   <div style={{ marginTop: '0.3rem', padding: '0.35rem 0.5rem', background: '#fee2e2', color: '#991b1b', borderRadius: 4, fontSize: '0.72rem' }}>
-                    เกินจำนวนสูงสุดของเครื่องพิมพ์ (สูงสุด {printerMaxCopies} ชุด)
+                    {t('page.sandbox.copiesExceeded').replace('{max}', String(printerMaxCopies))}
                   </div>
                 )}
               </div>
 
               {/* Duplex */}
               <div style={{ marginBottom: '0.6rem' }}>
-                <label style={labelStyle}>Duplex (พิมพ์สองหน้า)</label>
+                <label style={labelStyle}>{t('page.sandbox.duplex')}</label>
                 <div style={{ display: 'flex', gap: '0.4rem' }}>
                   <button type="button" style={{ ...fieldBtn, ...(!duplex ? activeFieldBtn : {}) }} onClick={() => setDuplex(false)}>
-                    ▯ หน้าเดียว
+                    {t('page.sandbox.singleSided')}
                   </button>
                   <button
                     type="button"
                     style={{ ...fieldBtn, ...(duplex ? activeFieldBtn : {}), ...(!selectedPrinter?.capabilities?.duplexSupported ? { opacity: 0.4 } : {}) }}
                     onClick={() => selectedPrinter?.capabilities?.duplexSupported && setDuplex(true)}
                   >
-                    ⇄ สองหน้า
+                    ⇄ {t('page.sandbox.doubleSidedShort')}
                   </button>
                 </div>
               </div>
 
               {/* Color Mode */}
               <div style={{ marginBottom: '0.6rem' }}>
-                <label style={labelStyle}>Color Mode</label>
+                <label style={labelStyle}>{t('page.sandbox.colorMode')}</label>
                 <div style={{ display: 'flex', gap: '0.4rem' }}>
                   {(['auto', 'color', 'monochrome'] as const).map((m) => (
                     <button
@@ -349,7 +351,7 @@ export default function TemplateSandbox() {
                       style={{ ...fieldBtn, ...(colorMode === m ? activeFieldBtn : {}) }}
                       onClick={() => setColorMode(m)}
                     >
-                      {m === 'auto' ? 'Auto' : m === 'color' ? '🎨 สี' : '⚪ ขาวดำ'}
+                      {m === 'auto' ? t('page.sandbox.auto') : m === 'color' ? t('page.sandbox.color') : t('page.sandbox.monochrome')}
                     </button>
                   ))}
                 </div>
@@ -357,7 +359,7 @@ export default function TemplateSandbox() {
 
               {/* Priority */}
               <div>
-                <label style={labelStyle}>Priority</label>
+                <label style={labelStyle}>{t('page.sandbox.priority')}</label>
                 <div style={{ display: 'flex', gap: '0.4rem' }}>
                   {(['low', 'normal', 'high', 'urgent'] as const).map((p) => (
                     <button
@@ -375,7 +377,7 @@ export default function TemplateSandbox() {
 
             {/* --- Payload --- */}
             <div style={sectionLastStyle}>
-              <div style={sectionTitleStyle}>📦 Sample Payload (JSON)</div>
+              <div style={sectionTitleStyle}>{t('page.sandbox.samplePayload')}</div>
               <textarea
                 value={payload}
                 onChange={(e) => setPayload(e.target.value)}
@@ -399,14 +401,14 @@ export default function TemplateSandbox() {
             )}
             <div style={{ display: 'flex', gap: '0.5rem', paddingBottom: '1.1rem' }}>
               <button style={primaryBtn} onClick={() => void renderPreview()} disabled={loading.render}>
-                {loading.render ? '⏳ Rendering…' : '👁️ Render Preview'}
+                {loading.render ? t('page.sandbox.rendering') : t('page.sandbox.renderPreview')}
               </button>
               <button
                 style={{ ...primaryBtn, ...(canPrint && !loading.print ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
                 onClick={() => void testPrint()}
                 disabled={!canPrint || loading.print}
               >
-                {loading.print ? '⏳ กำลังส่ง…' : '📤 สั่งพิมพ์ทดสอบ'}
+                {loading.print ? t('page.sandbox.sending') : t('page.sandbox.testPrint')}
               </button>
             </div>
           </section>
@@ -414,7 +416,7 @@ export default function TemplateSandbox() {
           {/* ===================== Preview Panel ===================== */}
           <section style={{ ...cardStyle, padding: '1.25rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <h2 style={{ fontSize: '1rem', margin: 0 }}>👁️ Preview</h2>
+              <h2 style={{ fontSize: '1rem', margin: 0 }}>{t('page.sandbox.preview')}</h2>
               {preview && (
                 <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>render {preview.renderTimeMs}ms</span>
               )}
@@ -426,7 +428,7 @@ export default function TemplateSandbox() {
                 background: '#f9fafb', borderRadius: 8, color: '#9ca3af', textAlign: 'center', padding: '2rem',
               }}>
                 <span style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🖨️</span>
-                <p style={{ fontSize: '0.85rem' }}>เลือก Template และกด <strong>Render Preview</strong> เพื่อดูตัวอย่าง</p>
+                <p style={{ fontSize: '0.85rem' }}>{t('page.sandbox.previewEmpty')}</p>
               </div>
             ) : (
               <>
@@ -441,7 +443,7 @@ export default function TemplateSandbox() {
                 {/* Warnings */}
                 {preview.warnings.length > 0 && (
                   <div style={{ marginTop: '0.6rem', padding: '0.55rem 0.7rem', background: '#fef3c7', color: '#92400e', borderRadius: 6, fontSize: '0.78rem' }}>
-                    <strong>⚠️ Warnings:</strong>
+                    <strong>{t('page.sandbox.warnings')}:</strong>
                     <ul style={{ margin: '0.3rem 0 0 1rem', padding: 0 }}>
                       {preview.warnings.map((w, i) => <li key={i}>{w}</li>)}
                     </ul>
@@ -452,14 +454,14 @@ export default function TemplateSandbox() {
                 <div style={{ marginTop: '0.8rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
                     <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e1e2e', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
-                      📋 Generated Print Payload
+                      {t('page.sandbox.generatedPayload')}
                     </h3>
                     <button
                       type="button"
                       style={{ ...secondaryBtn, padding: '0.25rem 0.55rem', fontSize: '0.72rem' }}
                       onClick={() => navigator.clipboard.writeText(preview.renderedPrintPayload)}
                     >
-                      📋 Copy
+                      {t('common.copy')}
                     </button>
                   </div>
                   <pre style={{
@@ -476,14 +478,14 @@ export default function TemplateSandbox() {
             {/* Print summary */}
             {(selectedPrinter || selectedTemplate) && (
               <div style={{ marginTop: '0.8rem', padding: '0.6rem 0.75rem', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, fontSize: '0.78rem', color: '#075985' }}>
-                <strong>สรุปคำสั่งพิมพ์:</strong>{' '}
-                {selectedPrinter?.name ?? '— ยังไม่เลือกเครื่องพิมพ์'}
+                <strong>{t('page.sandbox.printSummary')}:</strong>{' '}
+                {selectedPrinter?.name ?? t('page.sandbox.summaryNoPrinter')}
                 {' · '}
-                {copies} ชุด
+                {t('page.sandbox.copiesUnit').replace('{n}', String(copies))}
                 {' · '}
-                {duplex ? 'สองหน้า' : 'หน้าเดียว'}
+                {duplex ? t('page.sandbox.doubleSidedShort') : t('page.sandbox.singleSidedShort')}
                 {' · '}
-                {colorMode === 'color' ? 'สี' : colorMode === 'monochrome' ? 'ขาวดำ' : 'Auto'}
+                {colorMode === 'color' ? t('page.sandbox.colorShort') : colorMode === 'monochrome' ? t('page.sandbox.monochromeShort') : t('page.sandbox.auto')}
                 {' · '}
                 {priority}
                 {selectedTemplate && ` · ${selectedTemplate.templateCode}`}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../api/client.js';
+import { useLocale } from '../i18n/index.js';
 
 interface DiscoveredPrinter {
   id: string;
@@ -49,6 +50,7 @@ function Truncate({ value, display, className = '' }: { value?: string; display?
 }
 
 export default function DiscoveredPrinters() {
+  const { t } = useLocale();
   const [printers, setPrinters] = useState<DiscoveredPrinter[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +63,7 @@ export default function DiscoveredPrinters() {
     try {
       setPrinters(await apiFetch<DiscoveredPrinter[]>('/v1/discovered-printers'));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to fetch');
+      setError(e instanceof Error ? e.message : t('page.discovery.failedToFetch'));
     } finally {
       setLoading(false);
     }
@@ -70,7 +72,7 @@ export default function DiscoveredPrinters() {
   useEffect(() => { void fetchPrinters(); }, []);
 
   const handleRegister = async (id: string, name: string) => {
-    if (!confirm(`Register "${name}" as a printer in the registry?`)) return;
+    if (!confirm(t('page.discovery.confirmRegister').replace('{name}', name))) return;
     setRegistering(id);
     setMessage(null);
     try {
@@ -78,10 +80,10 @@ export default function DiscoveredPrinters() {
         method: 'POST',
         body: JSON.stringify({}),
       });
-      setMessage(`"${name}" registered successfully.`);
+      setMessage(t('page.discovery.registerSuccess').replace('{name}', name));
       void fetchPrinters();
     } catch (e) {
-      setMessage(`Error: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      setMessage(t('page.discovery.registerError').replace('{message}', e instanceof Error ? e.message : t('page.discovery.unknownError')));
     } finally {
       setRegistering(null);
     }
@@ -96,31 +98,31 @@ export default function DiscoveredPrinters() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: '#1e1e2e' }}>Discovered Printers</h1>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: '#1e1e2e' }}>{t('page.discovery.title')}</h1>
           <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>
-            Printers found on runner machines — read-only discovery. Register to add to Printer Registry.
+            {t('page.discovery.description')}
           </p>
         </div>
         <button
           onClick={() => void fetchPrinters()}
           style={{ padding: '0.5rem 1rem', background: '#1e1e2e', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.875rem' }}
         >
-          Refresh
+          {t('common.refresh')}
         </button>
       </div>
 
       {message && (
-        <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', borderRadius: 6, background: message.startsWith('Error') ? '#fee2e2' : '#dcfce7', color: message.startsWith('Error') ? '#dc2626' : '#16a34a', fontSize: '0.875rem' }}>
+        <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', borderRadius: 6, background: message.startsWith(t('page.discovery.error')) ? '#fee2e2' : '#dcfce7', color: message.startsWith(t('page.discovery.error')) ? '#dc2626' : '#16a34a', fontSize: '0.875rem' }}>
           {message}
         </div>
       )}
 
-      {loading && <p style={{ color: '#6b7280' }}>Loading...</p>}
-      {error && <p style={{ color: '#dc2626' }}>Error: {error}</p>}
+      {loading && <p style={{ color: '#6b7280' }}>{t('page.discovery.loading')}</p>}
+      {error && <p style={{ color: '#dc2626' }}>{t('page.discovery.error')}: {error}</p>}
 
       {!loading && !error && printers.length === 0 && (
         <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280', background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-          No discovered printers yet. Start a runner on a Windows machine to populate this list.
+          {t('page.discovery.empty')}
         </div>
       )}
 
@@ -139,7 +141,7 @@ export default function DiscoveredPrinters() {
             </colgroup>
             <thead>
               <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                {['Printer Name', 'Driver', 'Port', 'Connection', 'Runner', 'Last Seen', 'Status', 'Action'].map((h) => (
+                {[t('page.discovery.printerName'), t('page.discovery.driver'), t('page.discovery.port'), t('page.discovery.connection'), t('page.discovery.runner'), t('page.discovery.lastSeen'), t('page.discovery.status'), t('page.discovery.action')].map((h) => (
                   <th key={h} style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -151,7 +153,7 @@ export default function DiscoveredPrinters() {
                   <tr key={p.id} style={{ borderBottom: i < printers.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
                     <td style={{ padding: '0.75rem 1rem', fontWeight: 500, color: '#111827' }}>
                       <Truncate value={p.localPrinterName} className="cell-name" />
-                      {p.isDefault && <span style={{ marginLeft: 6, fontSize: '0.75rem', color: '#6b7280' }}>(default)</span>}
+                      {p.isDefault && <span style={{ marginLeft: 6, fontSize: '0.75rem', color: '#6b7280' }}>{t('page.discovery.default')}</span>}
                     </td>
                     <td style={{ padding: '0.75rem 1rem', color: '#6b7280' }}>
                       <Truncate value={p.driverName} className="cell-driver" />
@@ -172,9 +174,9 @@ export default function DiscoveredPrinters() {
                     </td>
                     <td style={{ padding: '0.75rem 1rem' }}>
                       {p.registeredPrinterId ? (
-                        <span style={{ color: '#16a34a', fontSize: '0.75rem', fontWeight: 600 }}>Registered</span>
+                        <span style={{ color: '#16a34a', fontSize: '0.75rem', fontWeight: 600 }}>{t('status.registered')}</span>
                       ) : (
-                        <span style={{ color: '#d97706', fontSize: '0.75rem', fontWeight: 600 }}>Unregistered</span>
+                        <span style={{ color: '#d97706', fontSize: '0.75rem', fontWeight: 600 }}>{t('status.unregistered')}</span>
                       )}
                     </td>
                     <td style={{ padding: '0.75rem 1rem' }}>
@@ -184,7 +186,7 @@ export default function DiscoveredPrinters() {
                           onClick={() => void handleRegister(p.id, p.localPrinterName)}
                           style={{ padding: '0.375rem 0.75rem', background: '#1e1e2e', color: '#fff', border: 'none', borderRadius: 4, cursor: registering === p.id ? 'not-allowed' : 'pointer', fontSize: '0.75rem', opacity: registering === p.id ? 0.6 : 1 }}
                         >
-                          {registering === p.id ? 'Registering…' : 'Register'}
+                          {registering === p.id ? t('page.discovery.registering') : t('page.discovery.register')}
                         </button>
                       )}
                     </td>

@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { apiFetch } from '../api/client.js';
+import { useLocale } from '../i18n/index.js';
 
 // ── Types ──────────────────────────────────────────────────────────
 interface PaperProfile {
@@ -167,6 +168,7 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
 
 // ── Main Page ──────────────────────────────────────────────────────
 export default function PaperProfiles() {
+  const { t } = useLocale();
   const [profiles, setProfiles] = useState<PaperProfile[]>([]);
   const [form, setForm] = useState<PaperForm>(DEFAULT_FORM);
   const [ux, setUx] = useState<UxOptions>(DEFAULT_UX);
@@ -295,13 +297,13 @@ export default function PaperProfiles() {
         <h1 style={{ margin: 0, fontSize: '1.25rem' }}>Paper Profiles</h1>
         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
           <button style={s.btnSmall} onClick={() => setShowPreview(!showPreview)}>
-            {showPreview ? '☰ Hide Preview' : '☰ Show Preview'}
+            {showPreview ? t('page.paperProfiles.hidePreview') : t('page.paperProfiles.showPreview')}
           </button>
           <button style={s.btnSmall} onClick={() => setShowDrawer(showDrawer === 'fields' ? null : 'fields')}>
-            {showDrawer === 'fields' ? '✕ Close Fields' : '⚡ Fields'}
+            {showDrawer === 'fields' ? t('page.paperProfiles.closeFields') : t('page.paperProfiles.fields')}
           </button>
           <button style={s.btnSmall} onClick={() => setShowDrawer(showDrawer === 'appearance' ? null : 'appearance')}>
-            {showDrawer === 'appearance' ? '✕ Close Style' : '🎨 Style'}
+            {showDrawer === 'appearance' ? t('page.paperProfiles.closeStyle') : t('page.paperProfiles.style')}
           </button>
         </div>
       </div>
@@ -314,7 +316,7 @@ export default function PaperProfiles() {
           <div style={{ padding: '0.6rem 0.75rem', borderBottom: '1px solid #e5e7eb' }}>
             <button style={{ ...s.btnSmall, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
               onClick={() => setPresetsOpen(!presetsOpen)}>
-              <span>📋 Presets</span> <span>{presetsOpen ? '▲' : '▼'}</span>
+              <span>{t('page.paperProfiles.presets')}</span> <span>{presetsOpen ? '▲' : '▼'}</span>
             </button>
             {presetsOpen && (
               <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -326,7 +328,7 @@ export default function PaperProfiles() {
             )}
           </div>
 
-          <Section title="Basic Info" icon="📄">
+          <Section title={t('page.paperProfiles.basicInfo')} icon="📄">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
               <div>
                 <label style={s.label}>Code</label>
@@ -339,7 +341,7 @@ export default function PaperProfiles() {
             </div>
           </Section>
 
-          <Section title="Dimensions" icon="📐">
+          <Section title={t('page.paperProfiles.dimensions')} icon="📐">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
               <div>
                 <label style={s.label}>Display unit</label>
@@ -376,7 +378,7 @@ export default function PaperProfiles() {
             </div>
           </Section>
 
-          <Section title="Margins" icon="⬜" defaultOpen={false}>
+          <Section title={t('page.paperProfiles.margins')} icon="⬜" defaultOpen={false}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
               {dimInput('marginTopMm', 'Top (' + du + ')')}
               {dimInput('marginRightMm', 'Right (' + du + ')')}
@@ -388,10 +390,10 @@ export default function PaperProfiles() {
           </Section>
 
           {/* ── Dynamic fields (inline in form) ── */}
-          <Section title={'Fields (' + ux.dynamicFields.length + ')'} icon='⚡'>
+          <Section title={t('page.paperProfiles.fieldsCount').replace('{n}', String(ux.dynamicFields.length))} icon='⚡'>
             {ux.dynamicFields.length === 0 && (
               <p style={{ fontSize: '0.8rem', color: '#9ca3af', margin: '0.5rem 0' }}>
-                No custom fields yet. Click <strong>+ Add Field</strong> below.
+                {t('page.paperProfiles.noCustomFields')}. {t('page.paperProfiles.clickAddField')}
               </p>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -436,17 +438,17 @@ export default function PaperProfiles() {
               ))}
             </div>
             <button style={{ ...s.btnSmall, marginTop: '0.5rem', width: '100%', borderStyle: 'dashed', color: '#1e66f5', borderColor: '#93c5fd' }}
-              onClick={addField}>+ Add Field</button>
+              onClick={addField}>{t('page.paperProfiles.addField')}</button>
           </Section>
 
           {/* ── Save ── */}
           <div style={{ padding: '0.75rem', display: 'flex', gap: '0.5rem' }}>
             <button style={s.btn} onClick={() => void save()}>
-              {editingId ? '✏️ Update Profile' : '💾 Save Profile'}
+              {editingId ? t('page.paperProfiles.updateProfile') : t('page.paperProfiles.saveProfile')}
             </button>
             {editingId && (
               <button style={{ ...s.btnSmall, padding: '0.5rem 1rem' }} onClick={() => { setEditingId(null); setForm(DEFAULT_FORM); }}>
-                Cancel
+                {t('common.cancel')}
               </button>
             )}
           </div>
@@ -566,13 +568,13 @@ export default function PaperProfiles() {
           animation: 'slideInRight 0.25s ease',
         }}>
           <div style={{ padding: '0.75rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>⚡ Dynamic Fields Editor</span>
-            <button style={s.btnSmall} onClick={() => setShowDrawer(null)}>✕ Close</button>
+            <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('page.paperProfiles.dynamicFieldsEditor')}</span>
+            <button style={s.btnSmall} onClick={() => setShowDrawer(null)}>{t('page.paperProfiles.close')}</button>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem' }}>
             {ux.dynamicFields.length === 0 && (
               <p style={{ fontSize: '0.85rem', color: '#9ca3af', textAlign: 'center', marginTop: '2rem' }}>
-                No fields yet.<br />Click <strong>+ Add Field</strong> to start.
+                {t('page.paperProfiles.fieldsDrawerEmpty')}<br />{t('page.paperProfiles.clickAddField')}
               </p>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -580,7 +582,7 @@ export default function PaperProfiles() {
                 <div key={f.id} style={{ padding: '0.65rem', border: '1px solid #e5e7eb', borderRadius: 6, background: '#f9fafb' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                     <code style={{ fontSize: '0.8rem', fontWeight: 600 }}>{f.key || '(no key)'}</code>
-                    <button style={s.btnDanger} onClick={() => delField(f.id)}>🗑 Remove</button>
+                    <button style={s.btnDanger} onClick={() => delField(f.id)}>{t('page.paperProfiles.remove')}</button>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem', fontSize: '0.75rem' }}>
                     <div><label style={{ color: '#6b7280' }}>Label</label><input value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })} style={s.smallInput} /></div>
@@ -600,7 +602,7 @@ export default function PaperProfiles() {
               ))}
             </div>
             <button style={{ ...s.btnSmall, marginTop: '0.75rem', width: '100%', borderStyle: 'dashed', color: '#1e66f5', borderColor: '#93c5fd' }}
-              onClick={addField}>+ Add Field</button>
+              onClick={addField}>{t('page.paperProfiles.addField')}</button>
           </div>
         </div>
       )}
@@ -614,8 +616,8 @@ export default function PaperProfiles() {
           animation: 'slideInRight 0.25s ease',
         }}>
           <div style={{ padding: '0.75rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>🎨 Appearance & Style</span>
-            <button style={s.btnSmall} onClick={() => setShowDrawer(null)}>✕ Close</button>
+            <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{t('page.paperProfiles.appearanceStyle')}</span>
+            <button style={s.btnSmall} onClick={() => setShowDrawer(null)}>{t('page.paperProfiles.close')}</button>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -660,7 +662,7 @@ export default function PaperProfiles() {
       {/* ─── Profile list ─── */}
       <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
         <div style={{ padding: '0.65rem 0.85rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '0.95rem', margin: 0 }}>Saved Profiles ({profiles.length})</h2>
+          <h2 style={{ fontSize: '0.95rem', margin: 0 }}>{t('page.paperProfiles.savedProfiles').replace('{n}', String(profiles.length))}</h2>
         </div>
         <div style={{ overflowX: 'auto', maxHeight: 200, overflowY: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>

@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client.js';
+import { useLocale } from '../i18n/index.js';
 
 interface TraceStep {
   stepName: string;
@@ -39,6 +40,7 @@ const STEP_COLOR: Record<string, string> = {
 };
 
 export default function JobDetail() {
+  const { t } = useLocale();
   const { id } = useParams<{ id: string }>();
   const [trace, setTrace] = useState<Trace | null>(null);
   const [job, setJob] = useState<Job | null>(null);
@@ -53,21 +55,21 @@ export default function JobDetail() {
 
   return (
     <div>
-      <h1>Job Detail</h1>
-      <p style={{ color: '#888' }}>Job ID: <code>{id}</code></p>
+      <h1>{t('page.jobDetail.title')}</h1>
+      <p style={{ color: '#888' }}>{t('page.jobDetail.jobId')}: <code>{id}</code></p>
       {job && (
         <div style={{ background: '#fff', padding: '1rem', borderRadius: 8 }}>
-          <h2 style={{ fontSize: '1rem' }}>Template Resolution</h2>
-          <p>Template: <code>{job.resolvedTemplateCode ?? '—'}</code></p>
-          <p>Paper Profile: <code>{job.paperProfileId ?? '—'}</code></p>
-          <p>Route Policy: <code>{job.routePolicyId ?? '—'}</code></p>
-          <p>Route: {job.templateTiming?.routeResolveMs ?? '—'}ms · Render: {job.templateTiming?.renderMs ?? '—'}ms</p>
+          <h2 style={{ fontSize: '1rem' }}>{t('page.jobDetail.templateResolution')}</h2>
+          <p>{t('page.jobDetail.template')}: <code>{job.resolvedTemplateCode ?? t('common.noData')}</code></p>
+          <p>{t('page.jobDetail.paperProfile')}: <code>{job.paperProfileId ?? t('common.noData')}</code></p>
+          <p>{t('page.jobDetail.routePolicy')}: <code>{job.routePolicyId ?? t('common.noData')}</code></p>
+          <p>{t('page.jobDetail.route')}: {job.templateTiming?.routeResolveMs ?? t('common.noData')}ms · Render: {job.templateTiming?.renderMs ?? t('common.noData')}ms</p>
         </div>
       )}
 
       {trace && (
         <div style={{ marginTop: '1.5rem' }}>
-          <h2 style={{ fontSize: '1rem' }}>Trace Timeline</h2>
+          <h2 style={{ fontSize: '1rem' }}>{t('page.jobDetail.traceTimeline')}</h2>
           <div style={{ marginTop: '1rem' }}>
             {trace.steps.map((step, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
@@ -90,7 +92,7 @@ export default function JobDetail() {
         </div>
       )}
 
-      {!trace && <p style={{ color: '#888', marginTop: '1rem' }}>No trace data available.</p>}
+      {!trace && <p style={{ color: '#888', marginTop: '1rem' }}>{t('page.jobDetail.noTrace')}</p>}
     </div>
   );
 }

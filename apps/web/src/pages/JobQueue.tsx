@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client.js';
+import { useLocale } from '../i18n/index.js';
 
 interface Job {
   id: string; printerCode?: string; printerId: string; status: string;
@@ -16,6 +17,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function JobQueue() {
+  const { t } = useLocale();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -27,19 +29,19 @@ export default function JobQueue() {
 
   return (
     <div>
-      <h1 style={{ marginBottom: '1.5rem' }}>Job Queue</h1>
-      {loading ? <p style={{ color: '#888' }}>Loading…</p> : (
+      <h1 style={{ marginBottom: '1.5rem' }}>{t('page.jobQueue.title')}</h1>
+      {loading ? <p style={{ color: '#888' }}>{t('common.loading')}</p> : (
         <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '8px', overflow: 'hidden' }}>
           <thead>
             <tr style={{ background: '#f0f0f0' }}>
-              {['Job ID', 'Printer', 'Source', 'Status', 'Priority', 'Copies', 'Latency (ms)', 'Created'].map((h) => (
+              {[t('page.jobQueue.jobId'), t('page.jobQueue.printer'), t('page.jobQueue.source'), t('page.jobQueue.status'), t('page.jobQueue.priority'), t('page.jobQueue.copies'), t('page.jobQueue.latencyMs'), t('page.jobQueue.created')].map((h) => (
                 <th key={h} style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.8rem' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {jobs.length === 0 && (
-              <tr><td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>No jobs</td></tr>
+              <tr><td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>{t('page.jobQueue.noJobs')}</td></tr>
             )}
             {jobs.map((j) => (
               <tr key={j.id} style={{ borderTop: '1px solid #eee' }}>
@@ -49,16 +51,16 @@ export default function JobQueue() {
                 <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.85rem', fontWeight: 600 }}>
                   {j.printerCode ?? j.printerId.slice(0, 8)}
                 </td>
-                <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#666' }}>{j.sourceSystem ?? '—'}</td>
+                <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#666' }}>{j.sourceSystem ?? t('common.noData')}</td>
                 <td style={{ padding: '0.75rem' }}>
                   <span style={{ background: STATUS_COLORS[j.status] ?? '#ccc', color: '#fff', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
                     {j.status}
                   </span>
                 </td>
-                <td style={{ padding: '0.75rem', fontSize: '0.8rem' }}>{j.priorityLabel ?? '—'}</td>
+                <td style={{ padding: '0.75rem', fontSize: '0.8rem' }}>{j.priorityLabel ?? t('common.noData')}</td>
                 <td style={{ padding: '0.75rem', fontSize: '0.8rem' }}>{j.copies}</td>
                 <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#666' }}>
-                  {j.latency?.totalLatencyMs != null ? j.latency.totalLatencyMs : '—'}
+                  {j.latency?.totalLatencyMs != null ? j.latency.totalLatencyMs : t('common.noData')}
                 </td>
                 <td style={{ padding: '0.75rem', fontSize: '0.75rem', color: '#888' }}>{new Date(j.createdAt).toLocaleString()}</td>
               </tr>

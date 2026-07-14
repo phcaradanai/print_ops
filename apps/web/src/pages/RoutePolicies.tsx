@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client.js';
+import { useLocale } from '../i18n/index.js';
 
 interface Policy { id: string; policyCode: string; name: string; enabled: boolean }
 
@@ -15,6 +16,7 @@ const DEFAULT_POLICY = `{
 }`;
 
 export default function RoutePolicies() {
+  const { t } = useLocale();
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [raw, setRaw] = useState(DEFAULT_POLICY);
   const load = () => apiFetch<Policy[]>('/v1/webhook-route-policies').then(setPolicies).catch(() => {});
@@ -27,16 +29,16 @@ export default function RoutePolicies() {
 
   return (
     <div>
-      <h1>Route Policies</h1>
+      <h1>{t('page.routePolicies.title')}</h1>
       <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
         <div style={{ background: '#fff', padding: '1rem', borderRadius: 8 }}>
-          <h2 style={{ fontSize: '1rem' }}>Policy JSON</h2>
+          <h2 style={{ fontSize: '1rem' }}>{t('page.routePolicies.policyJson')}</h2>
           <textarea value={raw} onChange={(e) => setRaw(e.target.value)} rows={16} style={{ width: '100%', fontFamily: 'monospace' }} />
-          <button onClick={() => void create()}>Create Policy</button>
+          <button onClick={() => void create()}>{t('page.routePolicies.createPolicy')}</button>
         </div>
         <div style={{ background: '#fff', padding: '1rem', borderRadius: 8 }}>
-          <h2 style={{ fontSize: '1rem' }}>Policies</h2>
-          {policies.map((p) => <p key={p.id}><code>{p.policyCode}</code> {p.name} {p.enabled ? 'enabled' : 'disabled'}</p>)}
+          <h2 style={{ fontSize: '1rem' }}>{t('page.routePolicies.policies')}</h2>
+          {policies.map((p) => <p key={p.id}><code>{p.policyCode}</code> {p.name} {p.enabled ? t('status.enabled') : t('status.disabled')}</p>)}
         </div>
       </section>
     </div>

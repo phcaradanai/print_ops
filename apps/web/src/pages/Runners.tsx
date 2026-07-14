@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client.js';
+import { useLocale } from '../i18n/index.js';
 
 interface Runner {
   id: string; name: string; hostname: string; ipAddress?: string;
@@ -11,17 +12,18 @@ const STATUS_COLOR: Record<string, string> = {
   online: '#a6e3a1', offline: '#f38ba8', busy: '#fab387', draining: '#f9e2af',
 };
 
-function heartbeatAge(ts?: string): string {
-  if (!ts) return 'never';
-  const ms = Date.now() - new Date(ts).getTime();
-  if (ms < 60000) return `${Math.round(ms / 1000)}s ago`;
-  if (ms < 3600000) return `${Math.round(ms / 60000)}m ago`;
-  return `${Math.round(ms / 3600000)}h ago`;
-}
-
 export default function Runners() {
+  const { t } = useLocale();
   const [runners, setRunners] = useState<Runner[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const heartbeatAge = (ts?: string): string => {
+    if (!ts) return t('status.never');
+    const ms = Date.now() - new Date(ts).getTime();
+    if (ms < 60000) return t('status.secondsAgo').replace('{n}', String(Math.round(ms / 1000)));
+    if (ms < 3600000) return t('status.minutesAgo').replace('{n}', String(Math.round(ms / 60000)));
+    return t('status.hoursAgo').replace('{n}', String(Math.round(ms / 3600000)));
+  };
 
   useEffect(() => {
     apiFetch<Runner[]>('/runners')
@@ -35,19 +37,19 @@ export default function Runners() {
 
   return (
     <div>
-      <h1 style={{ marginBottom: '1.5rem' }}>Runners</h1>
-      {loading ? <p style={{ color: '#888' }}>Loading…</p> : (
+      <h1 style={{ marginBottom: '1.5rem' }}>{t('page.runners.title')}</h1>
+      {loading ? <p style={{ color: '#888' }}>{t('common.loading')}</p> : (
         <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '8px', overflow: 'hidden' }}>
           <thead>
             <tr style={{ background: '#f0f0f0' }}>
-              {['Name', 'Hostname', 'Protocols', 'Status', 'Last Heartbeat', 'Registered'].map((h) => (
+              {[t('page.runners.name'), t('page.runners.hostname'), t('page.runners.protocols'), t('page.runners.status'), t('page.runners.lastHeartbeat'), t('page.runners.registered')].map((h) => (
                 <th key={h} style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.8rem' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {runners.length === 0 && (
-              <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>No runners registered. Start the runner app to connect.</td></tr>
+              <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>{t('page.runners.noRunners')}</td></tr>
             )}
             {runners.map((r) => (
               <tr key={r.id} style={{ borderTop: '1px solid #eee' }}>

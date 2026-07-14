@@ -1,8 +1,11 @@
+import { useLocale } from '../i18n/index.js';
+
 export default function UsersRoles() {
+  const { t } = useLocale();
   return (
     <div>
-      <h1>Users & Roles</h1>
-      <p style={{ color: '#888', marginTop: '1rem' }}>Manage users and assign roles: OWNER, ADMIN, OPERATOR, VIEWER.</p>
+      <h1>{t('page.usersRoles.title')}</h1>
+      <p style={{ color: '#888', marginTop: '1rem' }}>{t('page.usersRoles.description')}</p>
     </div>
   );
 }
