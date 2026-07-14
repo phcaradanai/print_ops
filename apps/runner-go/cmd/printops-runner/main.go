@@ -245,11 +245,14 @@ func syncDiscoveryOnce(
 	}
 	log.Info("discovery completed", "count", len(printers), "duration_ms", durMs)
 
+	// Map internal model to API-facing camelCase DTO before syncing.
+	items := api.ToDiscoverySyncItems(printers, hostname, osName)
+
 	syncCtx, syncCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer syncCancel()
-	if err := client.SyncDiscovery(syncCtx, runnerID, printers); err != nil {
+	if err := client.SyncDiscovery(syncCtx, runnerID, items); err != nil {
 		log.Warn("discovery sync failed", "error", err.Error())
 		return
 	}
-	log.Info("discovery synced", "count", len(printers))
+	log.Info("discovery synced", "count", len(items))
 }

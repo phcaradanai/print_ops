@@ -19,8 +19,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/phcaradanai/print_ops/apps/runner-go/internal/discovery"
 )
 
 // Client is the PrintOps API client.
@@ -99,11 +97,11 @@ func (c *Client) Heartbeat(ctx context.Context, runnerID string) error {
 // DiscoverySyncRequest is the payload for
 // POST /api/v1/runners/:runnerId/printers/discovery (existing endpoint).
 type DiscoverySyncRequest struct {
-	Items []discovery.DiscoveredPrinter `json:"items"`
+	Items []DiscoverySyncItem `json:"items"`
 }
 
 // SyncDiscovery syncs discovered printers to the API.
-func (c *Client) SyncDiscovery(ctx context.Context, runnerID string, items []discovery.DiscoveredPrinter) error {
+func (c *Client) SyncDiscovery(ctx context.Context, runnerID string, items []DiscoverySyncItem) error {
 	body := DiscoverySyncRequest{Items: items}
 	if _, err := c.doJSON(ctx, http.MethodPost, fmt.Sprintf("/api/v1/runners/%s/printers/discovery", runnerID), body, nil, true); err != nil {
 		return fmt.Errorf("sync discovery: %w", err)

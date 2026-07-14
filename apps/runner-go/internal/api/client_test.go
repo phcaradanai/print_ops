@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/phcaradanai/print_ops/apps/runner-go/internal/discovery"
 )
 
 // newTestClient returns an api.Client pointed at a test server and the server's
@@ -357,6 +359,129 @@ func TestDoJSON_500ReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "500") {
 		t.Errorf("error should mention 500: %s", err)
+	}
+}
+
+// TestSyncDiscovery_CamelCaseJSON asserts the discovery sync payload uses
+// exact camelCase field names matching the TypeScript DiscoveryItem contract.
+// The API stores undefined metadata when field names don't match, so this
+// test is the contract guardrail.
+func TestSyncDiscovery_CamelCaseJSON(t *testing.T) {
+	var rawBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		rawBody = string(b)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	c := NewClient(srv.URL)
+
+	dp := discovery.DiscoveredPrinter{
+		LocalPrinterID: "ZEBRA_ZD230",
+		Name:           "ZEBRA_ZD230 (Pharmacy)",
+		DisplayName:    "Zebra ZD230",
+		DriverName:     "ZDesigner ZD230-203dpi ZPL",
+		PortName:       "USB002",
+		URI:            "usb://Zebra/ZD230",
+		Status:         "idle",
+		IsDefault:      true,
+		IsShared:       false,
+		Location:       "Pharmacy Counter",
+		Comment:        "Main label printer",
+		ConnectionType: "usb",
+		Raw:            map[string]any{"dpi": 203, "language": "ZPL"},
+	}
+	items := ToDiscoverySyncItems([]discovery.DiscoveredPrinter{dp}, "PC-NIPPON", "windows")
+
+	err := c.SyncDiscovery(context.Background(), "r-1", items)
+	if err != nil {
+		t.Fatalf("SyncDiscovery failed: %v", err)
+	}
+
+	// Parse the JSON and assert every expected camelCase key is present
+	// and NO snake_case key leaks through.
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(rawBody), &payload); err != nil {
+		t.Fatalf("payload is not valid JSON: %v\nraw: %s", err, rawBody)
+	}
+
+	itemsRaw, ok := payload["items"]
+	if !ok {
+		t.Fatalf("payload missing 'items' key: %s", rawBody)
+	}
+	var itemsArr []map[string]any
+	if err := json.Unmarshal(itemsRaw, &itemsArr); err != nil {
+		t.Fatalf("items is not an array: %v", err)
+	}
+	if len(itemsArr) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(itemsArr))
+	}
+	item := itemsArr[0]
+
+	// Required camelCase fields must be present with correct values.
+	if v, ok := item["localPrinterName"].(string); !ok || v != "ZEBRA_ZD230 (Pharmacy)" {
+		t.Errorf("localPrinterName = %v, want 'ZEBRA_ZD230 (Pharmacy)'", item["localPrinterName"])
+	}
+	if v, ok := item["driverName"].(string); !ok || v != "ZDesigner ZD230-203dpi ZPL" {
+		t.Errorf("driverName = %v", item["driverName"])
+	}
+	if v, ok := item["portName"].(string); !ok || v != "USB002" {
+		t.Errorf("portName = %v", item["portName"])
+	}
+	if v, ok := item["connectionType"].(string); !ok || v != "usb" {
+		t.Errorf("connectionType = %v", item["connectionType"])
+	}
+	if v, ok := item["isDefault"].(bool); !ok || !v {
+		t.Errorf("isDefault = %v, want true", item["isDefault"])
+	}
+	if v, ok := item["isShared"].(bool); !ok || v {
+		t.Errorf("isShared = %v, want false", item["isShared"])
+	}
+	if v, ok := item["computerName"].(string); !ok || v != "PC-NIPPON" {
+		t.Errorf("computerName = %v, want 'PC-NIPPON'", item["computerName"])
+	}
+	if v, ok := item["osName"].(string); !ok || v != "windows" {
+		t.Errorf("osName = %v, want 'windows'", item["osName"])
+	}
+
+	// Attributes must include status, location, comment, and raw fields.
+	attrs, ok := item["attributes"].(map[string]any)
+	if !ok {
+		t.Fatalf("attributes is not an object: %T", item["attributes"])
+	}
+	if v := attrs["dpi"]; v != float64(203) {
+		t.Errorf("attributes.dpi = %v, want 203", v)
+	}
+	if v := attrs["language"]; v != "ZPL" {
+		t.Errorf("attributes.language = %v, want 'ZPL'", v)
+	}
+	if v := attrs["status"]; v != "idle" {
+		t.Errorf("attributes.status = %v, want 'idle'", v)
+	}
+	if v := attrs["location"]; v != "Pharmacy Counter" {
+		t.Errorf("attributes.location = %v, want 'Pharmacy Counter'", v)
+	}
+	if v := attrs["comment"]; v != "Main label printer" {
+		t.Errorf("attributes.comment = %v, want 'Main label printer'", v)
+	}
+
+	// Snake_case keys must NOT appear.
+	snakeKeys := []string{
+		"local_printer_id", "display_name", "driver_name", "port_name",
+		"is_default", "is_shared", "share_name", "connection_type",
+		"computer_name", "os_name", "localPrinterId", "local_printer_name",
+	}
+	for _, key := range snakeKeys {
+		if _, exists := item[key]; exists {
+			t.Errorf("snake_case key %q leaked into sync payload: %s", key, rawBody)
+		}
+	}
+
+	// Optional fields that should be absent in the default case.
+	for _, key := range []string{"id", "runnerId", "firstSeenAt", "lastSeenAt"} {
+		if _, exists := item[key]; exists {
+			t.Errorf("unexpected key %q in payload", key)
+		}
 	}
 }
 

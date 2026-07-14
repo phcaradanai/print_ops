@@ -49,6 +49,44 @@ func intToStatus(n int) string {
 	}
 }
 
+// printerType handles both string and integer PrinterType from PowerShell.
+// PowerShell 5.1 ConvertTo-Json serializes enums as integers;
+// PowerShell 7+ uses the enum name string.
+type printerType struct {
+	Raw string
+}
+
+func (p *printerType) UnmarshalJSON(b []byte) error {
+	// Try string value first (PowerShell 7+)
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		p.Raw = s
+		return nil
+	}
+	// Try integer value (PowerShell 5.1)
+	var n int
+	if err := json.Unmarshal(b, &n); err == nil {
+		p.Raw = intToPrinterType(n)
+		return nil
+	}
+	p.Raw = ""
+	return nil
+}
+
+// intToPrinterType maps Win32_Printer PrinterType enum values to human-readable strings.
+func intToPrinterType(n int) string {
+	switch n {
+	case 0:
+		return "Local"
+	case 1:
+		return "Network"
+	case 2:
+		return "Cluster" // Windows cluster printer
+	default:
+		return "Unknown"
+	}
+}
+
 // psPrinter mirrors the fields we request from Get-Printer via ConvertTo-Json.
 type psPrinter struct {
 	Name         string        `json:"Name"`
@@ -59,7 +97,7 @@ type psPrinter struct {
 	Location     string        `json:"Location"`
 	Comment      string        `json:"Comment"`
 	PrinterState printerStatus `json:"PrinterStatus"`
-	Type         string        `json:"Type"`
+	Type         printerType   `json:"Type"`
 }
 
 // psPort mirrors the fields we request from Get-PrinterPort or
@@ -139,6 +177,11 @@ func ParsePrinters(printersJSON, portsJSON, defaultName string) ([]discovery.Dis
 			IsDefault:      defaultName != "" && strings.EqualFold(p.Name, defaultName),
 			ConnectionType: discovery.ConnUnknown,
 			Raw:            map[string]any{"source": "windows-powershell"},
+		}
+
+		// Surface printer type when available (useful for diagnostics).
+		if p.Type.Raw != "" {
+			dp.Raw["printer_type"] = p.Type.Raw
 		}
 
 		if port, ok := portByName[p.PortName]; ok {

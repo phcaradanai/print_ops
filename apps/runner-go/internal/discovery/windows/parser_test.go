@@ -148,3 +148,94 @@ func TestClassifyPortName(t *testing.T) {
 		}
 	}
 }
+
+// TestParsePrinters_NumericType exercises PowerShell 5.1 output where
+// PrinterType is serialized as an integer enum (e.g. 0=Local) instead of a
+// string. Without the printerType custom unmarshaler this would cause
+// ParsePrinters to fail and unnecessarily fall back to Tier 2 (CIM).
+func TestParsePrinters_NumericType(t *testing.T) {
+	const numericTypeJSON = `[
+  {
+    "Name": "PS51_Printer",
+    "DriverName": "PS Driver",
+    "PortName": "USB001",
+    "Shared": false,
+    "ShareName": "",
+    "Location": "",
+    "Comment": "",
+    "PrinterStatus": "Normal",
+    "Type": 0
+  }
+]`
+	out, err := ParsePrinters(numericTypeJSON, "", "")
+	if err != nil {
+		t.Fatalf("ParsePrinters with numeric Type failed: %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("expected 1 printer, got %d", len(out))
+	}
+	if out[0].Name != "PS51_Printer" {
+		t.Errorf("name = %q, want PS51_Printer", out[0].Name)
+	}
+	// Printer type should be surfaced in Raw.
+	pt, ok := out[0].Raw["printer_type"].(string)
+	if !ok || pt != "Local" {
+		t.Errorf("Raw[printer_type] = %v, want 'Local'", out[0].Raw["printer_type"])
+	}
+}
+
+// TestParsePrinters_NumericTypeNetwork exercises numeric Type=1 (Network).
+func TestParsePrinters_NumericTypeNetwork(t *testing.T) {
+	const networkTypeJSON = `[
+  {
+    "Name": "NET_PRINTER",
+    "DriverName": "Generic",
+    "PortName": "IP_10.0.0.1",
+    "Shared": true,
+    "ShareName": "NET_SHARE",
+    "Location": "",
+    "Comment": "",
+    "PrinterStatus": 3,
+    "Type": 1
+  }
+]`
+	out, err := ParsePrinters(networkTypeJSON, "", "")
+	if err != nil {
+		t.Fatalf("ParsePrinters with numeric Type=1 failed: %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("expected 1 printer, got %d", len(out))
+	}
+	pt, ok := out[0].Raw["printer_type"].(string)
+	if !ok || pt != "Network" {
+		t.Errorf("Raw[printer_type] = %v, want 'Network'", out[0].Raw["printer_type"])
+	}
+}
+
+// TestParsePrinters_NumericStatus exercises numeric PrinterStatus (PS 5.1).
+func TestParsePrinters_NumericStatus(t *testing.T) {
+	const status3JSON = `[
+  {
+    "Name": "STATUS3_PRINTER",
+    "DriverName": "Gen",
+    "PortName": "LPT1",
+    "Shared": false,
+    "ShareName": "",
+    "Location": "",
+    "Comment": "",
+    "PrinterStatus": 3,
+    "Type": 0
+  }
+]`
+	out, err := ParsePrinters(status3JSON, "", "")
+	if err != nil {
+		t.Fatalf("ParsePrinters with numeric PrinterStatus failed: %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("expected 1 printer, got %d", len(out))
+	}
+	// PrinterStatus 3 → "busy"
+	if out[0].Status != "busy" {
+		t.Errorf("status = %q, want busy", out[0].Status)
+	}
+}
