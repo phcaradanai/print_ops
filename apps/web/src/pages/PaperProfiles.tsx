@@ -198,6 +198,118 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
   );
 }
 
+// ── Ruler wrapper around the paper preview ─────────────────────────
+function RulerSheet({
+  form,
+  ux,
+  scale,
+  showRulers,
+  children,
+}: {
+  form: PaperForm;
+  ux: UxOptions;
+  scale: number;
+  showRulers: boolean;
+  children: React.ReactNode;
+}) {
+  if (!showRulers) return <>{children}</>;
+
+  const pvW = form.widthMm * scale;
+  const pvH = form.heightMm * scale;
+  const du = ux.displayUnit;
+  const dpi = form.dpi;
+  const rulerThickness = 24;
+  const fontSize = Math.min(10, Math.max(7, scale * 2));
+
+  // Tick intervals in mm
+  const majorTickMm = du === 'px' ? 50 : 10;
+  const minorTickMm = du === 'px' ? 10 : 5;
+
+  function tickLabel(vMm: number): string {
+    if (du === 'px') return String(Math.round((vMm * dpi) / 25.4));
+    if (du === 'cm') return (vMm / 10).toFixed(0) + 'cm';
+    return String(vMm);
+  }
+
+  function renderTicks(totalMm: number, vertical: boolean): React.ReactNode[] {
+    const ticks: React.ReactNode[] = [];
+    const totalPx = totalMm * scale;
+    for (let mmJ = 0; mmJ <= totalMm; mmJ += majorTickMm) {
+      const pos = mmJ * scale;
+      if (pos > totalPx) break;
+      ticks.push(
+        <div key={`major-${mmJ}`} style={{
+          position: 'absolute',
+          ...(vertical
+            ? { top: pos, left: 0, height: 0, width: '100%', borderBottom: '1px solid #6b7280' }
+            : { left: pos, top: 0, width: 0, height: '100%', borderLeft: '1px solid #6b7280' }
+          ),
+        }}>
+          <span style={{
+            position: 'absolute',
+            fontSize: `${fontSize}px`,
+            color: '#374151',
+            ...(vertical
+              ? { top: 2, right: 4, textAlign: 'right' as const, whiteSpace: 'nowrap' }
+              : { left: 2, top: 2, whiteSpace: 'nowrap' }
+            ),
+          }}>{tickLabel(mmJ)}</span>
+        </div>
+      );
+    }
+    if (minorTickMm < majorTickMm) {
+      for (let mmJ = minorTickMm; mmJ <= totalMm; mmJ += minorTickMm) {
+        if (mmJ % majorTickMm === 0) continue;
+        const pos = mmJ * scale;
+        if (pos > totalPx) break;
+        ticks.push(
+          <div key={`minor-${mmJ}`} style={{
+            position: 'absolute',
+            ...(vertical
+              ? { top: pos, left: 0, height: 0, width: '40%', borderBottom: '1px solid #d1d5db' }
+              : { left: pos, top: 0, width: 0, height: '40%', borderLeft: '1px solid #d1d5db' }
+            ),
+          }} />
+        );
+      }
+    }
+    return ticks;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 0 }}>
+      <div style={{
+        height: rulerThickness,
+        marginLeft: rulerThickness,
+        marginRight: 0,
+        borderBottom: '1px solid #d1d5db',
+        position: 'relative' as const,
+        overflow: 'hidden',
+        background: '#f9fafb',
+      }}>
+        <div style={{ width: pvW, height: rulerThickness, position: 'relative' as const }}>
+          {renderTicks(form.widthMm, false)}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'row' as const, gap: 0 }}>
+        <div style={{
+          width: rulerThickness,
+          borderRight: '1px solid #d1d5db',
+          position: 'relative' as const,
+          background: '#f9fafb',
+          overflow: 'hidden',
+          height: pvH,
+        }}>
+          <div style={{ width: rulerThickness, height: pvH, position: 'relative' as const }}>
+            {renderTicks(form.heightMm, true)}
+          </div>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function PreviewSheet({
   form,
   ux,
@@ -207,6 +319,10 @@ function PreviewSheet({
   selectedFieldId,
   onFieldPointerDown,
   onFieldSelect,
+  showVerticalGrid = false,
+  showHorizontalGrid = false,
+  showAlignmentGuides = false,
+  gridIntervalMm = 10,
 }: {
   form: PaperForm;
   ux: UxOptions;
@@ -216,6 +332,10 @@ function PreviewSheet({
   selectedFieldId?: string | null;
   onFieldPointerDown?: (event: React.PointerEvent<HTMLButtonElement>, id: string) => void;
   onFieldSelect?: (id: string) => void;
+  showVerticalGrid?: boolean;
+  showHorizontalGrid?: boolean;
+  showAlignmentGuides?: boolean;
+  gridIntervalMm?: number;
 }) {
   const pvW = form.widthMm * scale;
   const pvH = form.heightMm * scale;
@@ -228,6 +348,27 @@ function PreviewSheet({
   const interactive = Boolean(onFieldPointerDown);
   const naturalOrientation = form.widthMm > form.heightMm ? 'landscape' : 'portrait';
   const needsRotation = naturalOrientation !== form.orientation;
+
+  // Compute grid lines
+  const gridLinesVertical: number[] = [];
+  const gridLinesHorizontal: number[] = [];
+  const printableW = form.widthMm - form.marginLeftMm - form.marginRightMm;
+  const printableH = form.heightMm - form.marginTopMm - form.marginBottomMm;
+  if (showVerticalGrid || showHorizontalGrid) {
+    for (let x = gridIntervalMm; x < printableW; x += gridIntervalMm) {
+      if (showVerticalGrid) gridLinesVertical.push(x);
+    }
+    for (let y = gridIntervalMm; y < printableH; y += gridIntervalMm) {
+      if (showHorizontalGrid) gridLinesHorizontal.push(y);
+    }
+  }
+
+  // Alignment guide positions
+  const selectedField = selectedFieldId
+    ? ux.dynamicFields.find((f) => f.id === selectedFieldId)
+    : null;
+  const guideX = selectedField ? (selectedField.xMm - form.marginLeftMm) * scale : null;
+  const guideY = selectedField ? (selectedField.yMm - form.marginTopMm) * scale : null;
 
   return (
     <div
@@ -260,6 +401,42 @@ function PreviewSheet({
         position: 'absolute', left: pvML, top: pvMT, width: pvPrintW, height: pvPrintH,
         border: '1px dashed rgba(0,0,0,0.18)', zIndex: 1,
       }}>
+        {/* Grid lines */}
+        {gridLinesVertical.map((x) => (
+          <div key={`vg-${x}`} style={{
+            position: 'absolute', left: x * scale, top: 0,
+            width: 0, height: '100%',
+            borderLeft: '1px solid rgba(0,0,0,0.08)',
+            pointerEvents: 'none', zIndex: 0,
+          }} />
+        ))}
+        {gridLinesHorizontal.map((y) => (
+          <div key={`hg-${y}`} style={{
+            position: 'absolute', left: 0, top: y * scale,
+            height: 0, width: '100%',
+            borderTop: '1px solid rgba(0,0,0,0.08)',
+            pointerEvents: 'none', zIndex: 0,
+          }} />
+        ))}
+
+        {/* Alignment guides */}
+        {showAlignmentGuides && guideX !== null && (
+          <div style={{
+            position: 'absolute', left: guideX, top: 0,
+            width: 0, height: '100%',
+            borderLeft: '1px dashed rgba(30,102,245,0.5)',
+            pointerEvents: 'none', zIndex: 3,
+          }} />
+        )}
+        {showAlignmentGuides && guideY !== null && (
+          <div style={{
+            position: 'absolute', left: 0, top: guideY,
+            height: 0, width: '100%',
+            borderTop: '1px dashed rgba(30,102,245,0.5)',
+            pointerEvents: 'none', zIndex: 3,
+          }} />
+        )}
+
         {ux.dynamicFields.map((f) => (
           <button
             key={f.id}
@@ -312,6 +489,9 @@ export default function PaperProfiles() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [draggingFieldId, setDraggingFieldId] = useState<string | null>(null);
+  const [showVerticalGrid, setShowVerticalGrid] = useState(false);
+  const [showHorizontalGrid, setShowHorizontalGrid] = useState(false);
+  const [showRulers, setShowRulers] = useState(false);
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
   const [showDrawer, setShowDrawer] = useState<'fields' | 'appearance' | null>(null);
   const [stickyNote, setStickyNote] = useState<string | null>(null);
@@ -395,6 +575,48 @@ export default function PaperProfiles() {
   }
   function delField(id: string) {
     uxPatch('dynamicFields', ux.dynamicFields.filter((f) => f.id !== id));
+  }
+
+  // ── Alignment helpers ──────────────────────────────────────────────
+  function alignToBaseline(id: string) {
+    const target = ux.dynamicFields.find((f) => f.id === id);
+    if (!target) return;
+    // Find nearest other field by Y (within 10mm tolerance)
+    const others = ux.dynamicFields.filter((f) => f.id !== id);
+    if (others.length === 0) return;
+    let nearest = others[0];
+    let best = Math.abs(nearest.yMm - target.yMm);
+    for (const o of others) {
+      const d = Math.abs(o.yMm - target.yMm);
+      if (d < best) { nearest = o; best = d; }
+    }
+    if (best > 10) return; // tolerance
+    const fields = ux.dynamicFields.map((f) =>
+      f.id === id ? { ...f, yMm: nearest.yMm } : f
+    );
+    uxPatch('dynamicFields', fields);
+    setStickyNote('📏 Aligned to baseline (Y: ' + nearest.yMm.toFixed(1) + ' mm)');
+    setTimeout(() => setStickyNote(null), 2500);
+  }
+
+  function alignToColumn(id: string) {
+    const target = ux.dynamicFields.find((f) => f.id === id);
+    if (!target) return;
+    const others = ux.dynamicFields.filter((f) => f.id !== id);
+    if (others.length === 0) return;
+    let nearest = others[0];
+    let best = Math.abs(nearest.xMm - target.xMm);
+    for (const o of others) {
+      const d = Math.abs(o.xMm - target.xMm);
+      if (d < best) { nearest = o; best = d; }
+    }
+    if (best > 10) return; // tolerance
+    const fields = ux.dynamicFields.map((f) =>
+      f.id === id ? { ...f, xMm: nearest.xMm } : f
+    );
+    uxPatch('dynamicFields', fields);
+    setStickyNote('📏 Aligned to column (X: ' + nearest.xMm.toFixed(1) + ' mm)');
+    setTimeout(() => setStickyNote(null), 2500);
   }
 
   // ── API ────────────────────────────────────────────────────────────
@@ -497,8 +719,17 @@ export default function PaperProfiles() {
       // CSS rotate(90deg) maps original (x, y) to visual (height - y, x).
       const originalX = needsRotation ? visualY : visualX;
       const originalY = needsRotation ? form.heightMm - visualX : visualY;
-      const xMm = Math.min(printableWidth, Math.max(0, originalX - form.marginLeftMm));
-      const yMm = Math.min(printableHeight, Math.max(0, originalY - form.marginTopMm));
+      let xMm = Math.min(printableWidth, Math.max(0, originalX - form.marginLeftMm));
+      let yMm = Math.min(printableHeight, Math.max(0, originalY - form.marginTopMm));
+
+      // Snap to nearby field Y (baseline) and X (column) within 2mm tolerance
+      const snapThreshold = 2;
+      const otherFields = ux.dynamicFields.filter((f) => f.id !== draggingFieldId);
+      for (const o of otherFields) {
+        if (Math.abs(o.yMm - yMm) < snapThreshold) yMm = o.yMm;
+        if (Math.abs(o.xMm - xMm) < snapThreshold) xMm = o.xMm;
+      }
+
       setUx((current) => ({
         ...current,
         dynamicFields: current.dynamicFields.map((field) => (
@@ -515,7 +746,7 @@ export default function PaperProfiles() {
       document.removeEventListener('pointermove', onPointerMove);
       document.removeEventListener('pointerup', onPointerUp);
     };
-  }, [draggingFieldId, form.heightMm, form.marginBottomMm, form.marginLeftMm, form.marginRightMm, form.marginTopMm, form.widthMm, modalScale, needsRotation]);
+  }, [draggingFieldId, form.heightMm, form.marginBottomMm, form.marginLeftMm, form.marginRightMm, form.marginTopMm, form.widthMm, modalScale, needsRotation, ux.dynamicFields]);
 
   function startDraggingField(event: React.PointerEvent<HTMLButtonElement>, id: string) {
     event.preventDefault();
@@ -567,6 +798,10 @@ export default function PaperProfiles() {
           <IconButton icon="◫" label={t('page.paperProfiles.togglePreview')} onClick={() => setShowPreview(!showPreview)} active={showPreview} />
           <IconButton icon="⚡" label={t('page.paperProfiles.toggleFields')} onClick={() => setShowDrawer(showDrawer === 'fields' ? null : 'fields')} active={showDrawer === 'fields'} />
           <IconButton icon="🎨" label={t('page.paperProfiles.toggleStyle')} onClick={() => setShowDrawer(showDrawer === 'appearance' ? null : 'appearance')} active={showDrawer === 'appearance'} />
+          <span style={{ width: 1, height: 22, background: '#d1d5db', alignSelf: 'center' }} aria-hidden="true" />
+          <IconButton icon="⫶" label={t('page.paperProfiles.toggleVerticalGrid')} onClick={() => setShowVerticalGrid(!showVerticalGrid)} active={showVerticalGrid} />
+          <IconButton icon="≡" label={t('page.paperProfiles.toggleHorizontalGrid')} onClick={() => setShowHorizontalGrid(!showHorizontalGrid)} active={showHorizontalGrid} />
+          <IconButton icon="📏" label={t('page.paperProfiles.toggleRulers')} onClick={() => setShowRulers(!showRulers)} active={showRulers} />
         </div>
       </header>
 
@@ -794,7 +1029,14 @@ export default function PaperProfiles() {
                 <span>{t('page.paperProfiles.previewCanvas')}</span>
                 <span>{form.orientation === 'portrait' ? t('page.paperProfiles.portrait') : t('page.paperProfiles.landscape')}</span>
               </div>
-              <PreviewSheet form={form} ux={ux} scale={scale} />
+              <RulerSheet form={form} ux={ux} scale={scale} showRulers={showRulers}>
+                <PreviewSheet
+                  form={form} ux={ux} scale={scale}
+                  showVerticalGrid={showVerticalGrid}
+                  showHorizontalGrid={showHorizontalGrid}
+                  showAlignmentGuides={!!selectedFieldId}
+                />
+              </RulerSheet>
             </div>
 
             {/* Quick info */}
@@ -838,16 +1080,21 @@ export default function PaperProfiles() {
                   <span>{form.widthMm} × {form.heightMm} mm · {form.dpi} DPI</span>
                 </div>
                 <div ref={modalStageRef} className="paper-preview-modal__sheet-stage">
-                  <PreviewSheet
-                    form={form}
-                    ux={ux}
-                    scale={modalScale}
-                    rotateSheet
-                    sheetRef={previewSheetRef}
-                    selectedFieldId={selectedFieldId}
-                    onFieldPointerDown={startDraggingField}
-                    onFieldSelect={setSelectedFieldId}
-                  />
+                  <RulerSheet form={form} ux={ux} scale={modalScale} showRulers={showRulers}>
+                    <PreviewSheet
+                      form={form}
+                      ux={ux}
+                      scale={modalScale}
+                      rotateSheet
+                      sheetRef={previewSheetRef}
+                      selectedFieldId={selectedFieldId}
+                      onFieldPointerDown={startDraggingField}
+                      onFieldSelect={setSelectedFieldId}
+                      showVerticalGrid={showVerticalGrid}
+                      showHorizontalGrid={showHorizontalGrid}
+                      showAlignmentGuides={!!selectedFieldId}
+                    />
+                  </RulerSheet>
                 </div>
                 <div className="paper-preview-modal__canvas-meta">
                   <span>{t('page.paperProfiles.quickPrintable')}: {(form.widthMm - form.marginLeftMm - form.marginRightMm).toFixed(1)} × {(form.heightMm - form.marginTopMm - form.marginBottomMm).toFixed(1)} mm</span>
@@ -872,6 +1119,30 @@ export default function PaperProfiles() {
                     <span aria-hidden="true">+</span>
                   </button>
                 </div>
+                {selectedFieldId && (
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="pp-icon-btn"
+                      onClick={() => alignToBaseline(selectedFieldId)}
+                      title={t('page.paperProfiles.alignToBaseline')}
+                      aria-label={t('page.paperProfiles.alignToBaseline')}
+                      disabled={ux.dynamicFields.length < 2}
+                    >
+                      <span aria-hidden="true">↔</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="pp-icon-btn"
+                      onClick={() => alignToColumn(selectedFieldId)}
+                      title={t('page.paperProfiles.alignToColumn')}
+                      aria-label={t('page.paperProfiles.alignToColumn')}
+                      disabled={ux.dynamicFields.length < 2}
+                    >
+                      <span aria-hidden="true">↕</span>
+                    </button>
+                  </div>
+                )}
                 {ux.dynamicFields.length === 0 && (
                   <p className="paper-preview-modal__empty">{t('page.paperProfiles.noCustomFields')}</p>
                 )}

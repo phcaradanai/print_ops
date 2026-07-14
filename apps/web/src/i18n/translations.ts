@@ -353,6 +353,11 @@ const en: TranslationDict = {
   'page.paperProfiles.fieldType': 'Type',
   'page.paperProfiles.fieldBoldLabel': 'B',
   'page.paperProfiles.fieldFontSizePt': 'Font size (pt)',
+  'page.paperProfiles.toggleVerticalGrid': 'Vertical grid lines',
+  'page.paperProfiles.toggleHorizontalGrid': 'Horizontal grid lines',
+  'page.paperProfiles.toggleRulers': 'Toggle rulers',
+  'page.paperProfiles.alignToBaseline': 'Align to baseline',
+  'page.paperProfiles.alignToColumn': 'Align to column',
 
   // TemplateSandbox
   'page.sandbox.title': '🖨️ Template Sandbox',
@@ -790,6 +795,11 @@ const th: TranslationDict = {
   'page.paperProfiles.fieldType': 'ประเภท',
   'page.paperProfiles.fieldBoldLabel': 'B',
   'page.paperProfiles.fieldFontSizePt': 'ขนาดอักษร (pt)',
+  'page.paperProfiles.toggleVerticalGrid': 'เส้นตารางแนวตั้ง',
+  'page.paperProfiles.toggleHorizontalGrid': 'เส้นตารางแนวนอน',
+  'page.paperProfiles.toggleRulers': 'เปิด/ปิดไม้บรรทัด',
+  'page.paperProfiles.alignToBaseline': 'จัดแนวเส้นฐาน',
+  'page.paperProfiles.alignToColumn': 'จัดแนวคอลัมน์',
 
   // TemplateSandbox
   'page.sandbox.title': '🖨️ เทมเพลตแซนด์บ็อกซ์',

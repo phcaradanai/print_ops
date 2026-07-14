@@ -335,3 +335,352 @@ describe('displayVal', () => {
     expect(px).toBe('80');
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════
+//  Grid line generation
+// ══════════════════════════════════════════════════════════════════════
+
+/** Generate vertical grid line positions (mm offsets from margin). */
+function generateGridLines(
+  intervalMm: number,
+  printableWidthMm: number,
+  printableHeightMm: number,
+  vertical: boolean,
+  horizontal: boolean,
+): { verticalLines: number[]; horizontalLines: number[] } {
+  const verticalLines: number[] = [];
+  const horizontalLines: number[] = [];
+  if (vertical) {
+    for (let x = intervalMm; x < printableWidthMm; x += intervalMm) {
+      verticalLines.push(x);
+    }
+  }
+  if (horizontal) {
+    for (let y = intervalMm; y < printableHeightMm; y += intervalMm) {
+      horizontalLines.push(y);
+    }
+  }
+  return { verticalLines, horizontalLines };
+}
+
+describe('generateGridLines', () => {
+  it('produces vertical grid lines at 10mm intervals', () => {
+    const result = generateGridLines(10, 90, 40, true, false);
+    expect(result.verticalLines).toEqual([10, 20, 30, 40, 50, 60, 70, 80]);
+    expect(result.horizontalLines).toEqual([]);
+  });
+
+  it('produces horizontal grid lines at 10mm intervals', () => {
+    const result = generateGridLines(10, 90, 40, false, true);
+    expect(result.verticalLines).toEqual([]);
+    expect(result.horizontalLines).toEqual([10, 20, 30]);
+  });
+
+  it('produces both when both toggled', () => {
+    const result = generateGridLines(10, 50, 30, true, true);
+    expect(result.verticalLines).toEqual([10, 20, 30, 40]);
+    expect(result.horizontalLines).toEqual([10, 20]);
+  });
+
+  it('produces nothing when both toggled off', () => {
+    const result = generateGridLines(10, 100, 50, false, false);
+    expect(result.verticalLines).toEqual([]);
+    expect(result.horizontalLines).toEqual([]);
+  });
+
+  it('handles small paper (interval larger than printable)', () => {
+    const result = generateGridLines(10, 8, 8, true, true);
+    expect(result.verticalLines).toEqual([]);
+    expect(result.horizontalLines).toEqual([]);
+  });
+
+  it('handles custom interval', () => {
+    const result = generateGridLines(5, 20, 15, true, true);
+    expect(result.verticalLines).toEqual([5, 10, 15]);
+    expect(result.horizontalLines).toEqual([5, 10]);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  Snap-to-field helpers
+// ══════════════════════════════════════════════════════════════════════
+
+interface SnapField {
+  id: string;
+  xMm: number;
+  yMm: number;
+}
+
+/** Snap a position to nearby field positions within threshold. */
+function snapPosition(
+  xMm: number,
+  yMm: number,
+  otherFields: SnapField[],
+  threshold = 2,
+): { xMm: number; yMm: number } {
+  let snappedX = xMm;
+  let snappedY = yMm;
+  for (const o of otherFields) {
+    if (Math.abs(o.yMm - snappedY) < threshold) snappedY = o.yMm;
+    if (Math.abs(o.xMm - snappedX) < threshold) snappedX = o.xMm;
+  }
+  return { xMm: snappedX, yMm: snappedY };
+}
+
+describe('snapPosition', () => {
+  const otherFields: SnapField[] = [
+    { id: 'a', xMm: 10, yMm: 15 },
+    { id: 'b', xMm: 30, yMm: 15 },
+    { id: 'c', xMm: 50, yMm: 40 },
+  ];
+
+  it('snaps Y to nearby field within threshold', () => {
+    const result = snapPosition(12, 16.5, otherFields);
+    expect(result.xMm).toBe(12);
+    expect(result.yMm).toBe(15); // snapped to 15
+  });
+
+  it('snaps X to nearby field within threshold', () => {
+    const result = snapPosition(11.5, 20, otherFields);
+    expect(result.xMm).toBe(10); // snapped to 10
+    expect(result.yMm).toBe(20);
+  });
+
+  it('snaps both X and Y when both within threshold', () => {
+    const result = snapPosition(11, 16, otherFields);
+    expect(result.xMm).toBe(10); // snapped to 10
+    expect(result.yMm).toBe(15); // snapped to 15
+  });
+
+  it('does not snap when outside threshold', () => {
+    const result = snapPosition(25, 25, otherFields);
+    expect(result.xMm).toBe(25);
+    expect(result.yMm).toBe(25);
+  });
+
+  it('empty otherFields: no snap', () => {
+    const result = snapPosition(11, 16, []);
+    expect(result.xMm).toBe(11);
+    expect(result.yMm).toBe(16);
+  });
+
+  it('default threshold is 2mm', () => {
+    const result = snapPosition(31.9, 15, otherFields, 2);
+    expect(result.xMm).toBe(30); // within 2mm
+    expect(result.yMm).toBe(15);
+  });
+
+  it('custom threshold: 1mm', () => {
+    const result = snapPosition(31.5, 15, otherFields, 1);
+    expect(result.xMm).toBe(31.5); // 1.5 > 1 → no snap
+    expect(result.yMm).toBe(15);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  Alignment helpers (baseline / column)
+// ══════════════════════════════════════════════════════════════════════
+
+/** Find nearest other field's Y within tolerance. Returns null if none close enough. */
+function findNearestBaselineY(
+  targetId: string,
+  allFields: SnapField[],
+  tolerance = 10,
+): number | null {
+  const target = allFields.find((f) => f.id === targetId);
+  if (!target) return null;
+  const others = allFields.filter((f) => f.id !== targetId);
+  if (others.length === 0) return null;
+  let best = Math.abs(others[0].yMm - target.yMm);
+  let nearest = others[0];
+  for (const o of others) {
+    const d = Math.abs(o.yMm - target.yMm);
+    if (d < best) { nearest = o; best = d; }
+  }
+  return best <= tolerance ? nearest.yMm : null;
+}
+
+function findNearestColumnX(
+  targetId: string,
+  allFields: SnapField[],
+  tolerance = 10,
+): number | null {
+  const target = allFields.find((f) => f.id === targetId);
+  if (!target) return null;
+  const others = allFields.filter((f) => f.id !== targetId);
+  if (others.length === 0) return null;
+  let best = Math.abs(others[0].xMm - target.xMm);
+  let nearest = others[0];
+  for (const o of others) {
+    const d = Math.abs(o.xMm - target.xMm);
+    if (d < best) { nearest = o; best = d; }
+  }
+  return best <= tolerance ? nearest.xMm : null;
+}
+
+describe('findNearestBaselineY', () => {
+  const fields: SnapField[] = [
+    { id: 'a', xMm: 10, yMm: 20 },
+    { id: 'b', xMm: 30, yMm: 45 },
+    { id: 'c', xMm: 50, yMm: 22 },
+  ];
+
+  it('finds nearest Y within tolerance', () => {
+    const y = findNearestBaselineY('c', fields);
+    expect(y).toBe(20); // c.yMm=22, nearest is a.yMm=20 (diff=2)
+  });
+
+  it('returns null when all outside tolerance', () => {
+    const y = findNearestBaselineY('b', fields);
+    // b.yMm=45, nearest is c.yMm=22 (diff=23) > 10
+    expect(y).toBeNull();
+  });
+
+  it('returns null for single field', () => {
+    expect(findNearestBaselineY('a', [fields[0]])).toBeNull();
+  });
+
+  it('returns null for unknown field id', () => {
+    expect(findNearestBaselineY('z', fields)).toBeNull();
+  });
+});
+
+describe('findNearestColumnX', () => {
+  const fields: SnapField[] = [
+    { id: 'a', xMm: 10, yMm: 20 },
+    { id: 'b', xMm: 32, yMm: 45 },
+    { id: 'c', xMm: 50, yMm: 22 },
+  ];
+
+  it('finds nearest X within tolerance', () => {
+    const x = findNearestColumnX('b', fields);
+    // b.xMm=32, nearest is a.xMm=10 (diff=22 > 10), c.xMm=50 (diff=18 > 10)
+    // both outside → null
+    expect(x).toBeNull();
+  });
+
+  it('finds nearest X when close enough', () => {
+    const fields2: SnapField[] = [
+      { id: 'a', xMm: 10, yMm: 20 },
+      { id: 'b', xMm: 14, yMm: 45 },
+    ];
+    const x = findNearestColumnX('b', fields2);
+    expect(x).toBe(10);
+  });
+
+  it('returns null for single field', () => {
+    expect(findNearestColumnX('a', [fields[0]])).toBeNull();
+  });
+
+  it('returns null for unknown field id', () => {
+    expect(findNearestColumnX('z', fields)).toBeNull();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  Ruler tick calculation
+// ══════════════════════════════════════════════════════════════════════
+
+/** Compute ruler major tick positions (mm values) for a given length. */
+function computeMajorTickMm(
+  totalMm: number,
+  intervalMm: number,
+): number[] {
+  const ticks: number[] = [];
+  for (let mm = 0; mm <= totalMm; mm += intervalMm) {
+    ticks.push(mm);
+  }
+  return ticks;
+}
+
+/** Compute ruler minor tick positions, excluding major tick positions. */
+function computeMinorTickMm(
+  totalMm: number,
+  majorIntervalMm: number,
+  minorIntervalMm: number,
+): number[] {
+  const ticks: number[] = [];
+  if (minorIntervalMm >= majorIntervalMm) return ticks;
+  for (let mm = minorIntervalMm; mm <= totalMm; mm += minorIntervalMm) {
+    if (mm % majorIntervalMm === 0) continue;
+    ticks.push(mm);
+  }
+  return ticks;
+}
+
+/** Format a ruler tick label from mm value. */
+function formatTickLabel(
+  mm: number,
+  unit: 'mm' | 'cm' | 'px',
+  dpi: number,
+): string {
+  if (unit === 'px') return String(Math.round((mm * dpi) / 25.4));
+  if (unit === 'cm') return (mm / 10).toFixed(0) + 'cm';
+  return String(mm);
+}
+
+describe('computeMajorTickMm', () => {
+  it('produces ticks at 10mm intervals for 100mm paper', () => {
+    const ticks = computeMajorTickMm(100, 10);
+    expect(ticks).toEqual([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+  });
+
+  it('produces ticks for short paper', () => {
+    const ticks = computeMajorTickMm(25, 10);
+    expect(ticks).toEqual([0, 10, 20]);
+  });
+
+  it('handles zero length', () => {
+    const ticks = computeMajorTickMm(0, 10);
+    expect(ticks).toEqual([0]);
+  });
+
+  it('handles 50mm interval for px mode', () => {
+    const ticks = computeMajorTickMm(150, 50);
+    expect(ticks).toEqual([0, 50, 100, 150]);
+  });
+});
+
+describe('computeMinorTickMm', () => {
+  it('excludes major tick positions', () => {
+    const minor = computeMinorTickMm(30, 10, 5);
+    expect(minor).toEqual([5, 15, 25]);
+  });
+
+  it('returns empty when no room for minors', () => {
+    const minor = computeMinorTickMm(4, 10, 5);
+    expect(minor).toEqual([]);
+  });
+
+  it('returns empty when minor equals major', () => {
+    const minor = computeMinorTickMm(30, 10, 10);
+    expect(minor).toEqual([]);
+  });
+
+  it('includes last tick when < totalMm', () => {
+    const minor = computeMinorTickMm(12, 10, 5);
+    expect(minor).toEqual([5]);
+  });
+});
+
+describe('formatTickLabel', () => {
+  it('mm: just the number', () => {
+    expect(formatTickLabel(50, 'mm', 300)).toBe('50');
+    expect(formatTickLabel(0, 'mm', 300)).toBe('0');
+  });
+
+  it('cm: divides by 10 with cm suffix', () => {
+    expect(formatTickLabel(50, 'cm', 300)).toBe('5cm');
+    expect(formatTickLabel(100, 'cm', 300)).toBe('10cm');
+  });
+
+  it('px: converts via DPI', () => {
+    const label = formatTickLabel(25.4, 'px', 300);
+    expect(label).toBe('300');
+  });
+
+  it('px: rounds to integer', () => {
+    const label = formatTickLabel(10, 'px', 203);
+    expect(label).toBe('80');
+  });
+});
