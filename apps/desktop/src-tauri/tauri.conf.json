@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.printerops.desktop",
   "build": {
-    "beforeDevCommand": "npm --prefix ../.. run dev --workspace @printerops/web",
+    "beforeDevCommand": "npm --prefix ../.. run dev -w @printerops/web",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "npm --prefix ../.. run build --workspace @printerops/web && npm --prefix ../.. run bundle --workspace @printerops/api && node src-tauri/scripts/bundle-resources.js"
+    "beforeBuildCommand": "node src-tauri/scripts/build-all.js"
   },
   "app": {
     "withGlobalTauri": false,
@@ -46,7 +46,8 @@
     ],
     "resources": [
       "resources/server.exe",
-      "resources/static/*",
+      "resources/static",
+      "resources/sql-wasm.wasm",
       "resources/printops-runner.exe"
     ],
     "externalBin": []
