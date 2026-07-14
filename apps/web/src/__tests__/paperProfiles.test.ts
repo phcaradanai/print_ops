@@ -760,14 +760,10 @@ describe('PaperProfiles visual coordinate model', () => {
 
   it('maps printable-relative coords to the same visual space as the grid', () => {
     const p1 = mapPrintablePointToVisual(0, 0, rotated);
-    // stored (0,0) → visual paper (50-0, 0) = (50, 0)
-    // printable-relative: (50 - 4, 0 - 5) = (46, -5)
-    expect(p1).toEqual({ xMm: 46, yMm: -5 });
+    expect(p1).toEqual({ xMm: 92, yMm: 0 });
 
-    // stored (95, 47) near bottom-right → visual paper (50-47, 95) = (3, 95)
-    // printable-relative: (3 - 4, 95 - 5) = (-1, 90)
-    const p2 = mapPrintablePointToVisual(95, 47, rotated);
-    expect(p2).toEqual({ xMm: -1, yMm: 90 });
+    const p2 = mapPrintablePointToVisual(92, 44, rotated);
+    expect(p2).toEqual({ xMm: 48, yMm: 92 });
   });
 
   it('round-trips rotated points without drift', () => {
@@ -778,10 +774,9 @@ describe('PaperProfiles visual coordinate model', () => {
     expect(mapVisualPointToPrintable(visual2.xMm, visual2.yMm, rotated)).toEqual({ xMm: 50, yMm: 30 });
   });
 
-  it('non-rotated subtracts margins to get printable-relative', () => {
+  it('non-rotated coordinates remain unchanged', () => {
     const p = mapPrintablePointToVisual(10, 5, nonRotated);
-    // margins left=5, top=2 → (10-5, 5-2) = (5, 3)
-    expect(p).toEqual({ xMm: 5, yMm: 3 });
+    expect(p).toEqual({ xMm: 10, yMm: 5 });
   });
 
   it('non-rotated round-trips', () => {

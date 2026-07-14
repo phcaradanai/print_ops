@@ -70,40 +70,24 @@ export function getVisualPaperGeometry(form: Pick<PaperForm, 'widthMm' | 'height
   };
 }
 
-/**
- * Map a stored paper-relative point to visual printable-relative coordinates.
- * Input (xMm, yMm) is relative to the stored paper top-left (the field's xMm/yMm).
- * Output is relative to the visual printable area top-left.
- */
+/** Map a field/grid point between the stored and visual printable spaces. */
 export function mapPrintablePointToVisual(
   xMm: number,
   yMm: number,
-  geometry: Pick<VisualPaperGeometry, 'rotated' | 'widthMm' | 'marginLeftMm' | 'marginTopMm'>,
+  geometry: Pick<VisualPaperGeometry, 'rotated' | 'printableHeightMm'>,
 ) {
-  if (!geometry.rotated) return { xMm: xMm - geometry.marginLeftMm, yMm: yMm - geometry.marginTopMm };
-  // When rotated, geometry.widthMm = stored paper height
-  // Stored paper (x, y) → visual paper (storedHeight - y, x) = (geometry.widthMm - y, x)
-  // Then subtract visual margins to get printable-relative coords
-  return {
-    xMm: geometry.widthMm - yMm - geometry.marginLeftMm,
-    yMm: xMm - geometry.marginTopMm,
-  };
+  if (!geometry.rotated) return { xMm, yMm };
+  return { xMm: geometry.printableHeightMm - yMm, yMm: xMm };
 }
 
 /** Inverse of mapPrintablePointToVisual. */
 export function mapVisualPointToPrintable(
   xMm: number,
   yMm: number,
-  geometry: Pick<VisualPaperGeometry, 'rotated' | 'widthMm' | 'marginLeftMm' | 'marginTopMm'>,
+  geometry: Pick<VisualPaperGeometry, 'rotated' | 'printableHeightMm'>,
 ) {
-  if (!geometry.rotated) return { xMm: xMm + geometry.marginLeftMm, yMm: yMm + geometry.marginTopMm };
-  // Printable-relative visual → paper-relative visual → stored paper
-  const paperVisX = xMm + geometry.marginLeftMm;
-  const paperVisY = yMm + geometry.marginTopMm;
-  return {
-    xMm: paperVisY,
-    yMm: geometry.widthMm - paperVisX,
-  };
+  if (!geometry.rotated) return { xMm, yMm };
+  return { xMm: yMm, yMm: geometry.printableHeightMm - xMm };
 }
 
 export function clampGridSpacing(value: number): number {
@@ -559,6 +543,7 @@ function PreviewSheet({
               border: selectedFieldId === f.id ? '1px solid #1e66f5' : '1px solid transparent',
               borderRadius: 3,
               background: selectedFieldId === f.id ? 'rgba(30,102,245,0.1)' : 'transparent',
+              transform: geometry.rotated ? 'translateX(-100%)' : undefined,
               zIndex: 2,
             }}
           >
