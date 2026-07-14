@@ -6,18 +6,24 @@ import type { RegisterDiscoveredPrinterService } from '../../services/register-d
 /**
  * Deduplicate discovered printers for the global (all-runners) view.
  *
- * When computerName is available, the identity is (computerName, localPrinterName) —
- * the same physical printer on the same host, even if seen by different runner
- * incarnations. When computerName is missing, fall back to (runnerId,
- * localPrinterName) so unrelated printers are not collapsed.
+ * Identity is (hostKey, normalizedLocalName).  The host key is derived from
+ * computerName when present and non-blank (trimmed + case-folded), falling back
+ * to runnerId otherwise.  localPrinterName is also trimmed and case-folded for
+ * matching.  Original display values are never mutated — normalisation only
+ * applies to the dedup key.
  *
  * Among duplicates the most recently seen record (lastSeenAt) wins.
  */
 export function deduplicateForGlobalView(printers: DiscoveredPrinter[]): DiscoveredPrinter[] {
   const seen = new Map<string, DiscoveredPrinter>();
   for (const p of printers) {
-    const hostKey = p.computerName ?? p.runnerId;
-    const key = `${hostKey}::${p.localPrinterName}`;
+    const normalizedLocalName = p.localPrinterName.trim().toLowerCase();
+    const rawComputerName = p.computerName?.trim();
+    const hostKey =
+      rawComputerName && rawComputerName.length > 0
+        ? rawComputerName.toLowerCase()
+        : p.runnerId;
+    const key = `${hostKey}::${normalizedLocalName}`;
     const existing = seen.get(key);
     if (!existing || p.lastSeenAt > existing.lastSeenAt) {
       seen.set(key, p);

@@ -324,4 +324,63 @@ describe('deduplicateForGlobalView', () => {
     expect(result).toHaveLength(1);
     expect(result[0]!.id).toBe('id');
   });
+
+  // --- Normalization tests (casing, whitespace, blank) ---
+
+  it('case-folds computerName for identity matching', () => {
+    const lower = dp({ runnerId: 'r-a', computerName: 'nurse-pc', localPrinterName: 'HP LaserJet' });
+    const upper = dp({ runnerId: 'r-b', computerName: 'NURSE-PC', localPrinterName: 'HP LaserJet' });
+    const mixed = dp({ runnerId: 'r-c', computerName: 'Nurse-Pc', localPrinterName: 'HP LaserJet' });
+    const result = deduplicateForGlobalView([lower, upper, mixed]);
+    expect(result).toHaveLength(1);
+  });
+
+  it('trims whitespace from computerName for identity matching', () => {
+    const padded = dp({ runnerId: 'r-a', computerName: '  nurse-pc  ', localPrinterName: 'HP LaserJet' });
+    const clean = dp({ runnerId: 'r-b', computerName: 'nurse-pc', localPrinterName: 'HP LaserJet' });
+    const result = deduplicateForGlobalView([padded, clean]);
+    expect(result).toHaveLength(1);
+  });
+
+  it('treats blank computerName (empty string) as missing, falling back to runnerId', () => {
+    const blank = dp({ runnerId: 'r-a', computerName: '', localPrinterName: 'HP LaserJet' });
+    const missing = dp({ runnerId: 'r-a', computerName: undefined, localPrinterName: 'HP LaserJet' });
+    // blank and missing on the same runnerId collapse
+    const result = deduplicateForGlobalView([blank, missing]);
+    expect(result).toHaveLength(1);
+  });
+
+  it('treats whitespace-only computerName as missing, falling back to runnerId', () => {
+    const spacesOnly = dp({ runnerId: 'r-a', computerName: '   ', localPrinterName: 'HP LaserJet' });
+    const missing = dp({ runnerId: 'r-a', computerName: undefined, localPrinterName: 'HP LaserJet' });
+    const result = deduplicateForGlobalView([spacesOnly, missing]);
+    expect(result).toHaveLength(1);
+  });
+
+  it('case-folds localPrinterName for identity matching', () => {
+    const a = dp({ runnerId: 'r-a', computerName: 'nurse-pc', localPrinterName: 'HP LaserJet' });
+    const b = dp({ runnerId: 'r-b', computerName: 'nurse-pc', localPrinterName: 'hp laserjet' });
+    const result = deduplicateForGlobalView([a, b]);
+    expect(result).toHaveLength(1);
+  });
+
+  it('trims localPrinterName for identity matching', () => {
+    const padded = dp({ runnerId: 'r-a', computerName: 'nurse-pc', localPrinterName: '  HP LaserJet  ' });
+    const clean = dp({ runnerId: 'r-b', computerName: 'nurse-pc', localPrinterName: 'HP LaserJet' });
+    const result = deduplicateForGlobalView([padded, clean]);
+    expect(result).toHaveLength(1);
+  });
+
+  it('preserves original display values (does not mutate source records)', () => {
+    const padded = dp({
+      runnerId: 'r-a',
+      computerName: '  NURSE-PC  ',
+      localPrinterName: '  HP LaserJet  ',
+    });
+    const result = deduplicateForGlobalView([padded]);
+    expect(result).toHaveLength(1);
+    // Original values preserved verbatim
+    expect(result[0]!.computerName).toBe('  NURSE-PC  ');
+    expect(result[0]!.localPrinterName).toBe('  HP LaserJet  ');
+  });
 });
