@@ -34,6 +34,83 @@ interface PaperForm {
   unit: 'mm' | 'inch';
 }
 
+export type PaperOrientation = 'portrait' | 'landscape';
+
+export interface VisualPaperGeometry {
+  rotated: boolean;
+  widthMm: number;
+  heightMm: number;
+  marginTopMm: number;
+  marginRightMm: number;
+  marginBottomMm: number;
+  marginLeftMm: number;
+  printableWidthMm: number;
+  printableHeightMm: number;
+}
+
+export function getVisualPaperGeometry(form: Pick<PaperForm, 'widthMm' | 'heightMm' | 'marginTopMm' | 'marginRightMm' | 'marginBottomMm' | 'marginLeftMm' | 'orientation'>): VisualPaperGeometry {
+  const natural = form.widthMm > form.heightMm ? 'landscape' : 'portrait';
+  const rotated = natural !== form.orientation;
+  const marginTopMm = rotated ? form.marginLeftMm : form.marginTopMm;
+  const marginRightMm = rotated ? form.marginTopMm : form.marginRightMm;
+  const marginBottomMm = rotated ? form.marginRightMm : form.marginBottomMm;
+  const marginLeftMm = rotated ? form.marginBottomMm : form.marginLeftMm;
+  const widthMm = rotated ? form.heightMm : form.widthMm;
+  const heightMm = rotated ? form.widthMm : form.heightMm;
+  return {
+    rotated,
+    widthMm,
+    heightMm,
+    marginTopMm,
+    marginRightMm,
+    marginBottomMm,
+    marginLeftMm,
+    printableWidthMm: Math.max(0, widthMm - marginLeftMm - marginRightMm),
+    printableHeightMm: Math.max(0, heightMm - marginTopMm - marginBottomMm),
+  };
+}
+
+/**
+ * Map a stored paper-relative point to visual printable-relative coordinates.
+ * Input (xMm, yMm) is relative to the stored paper top-left (the field's xMm/yMm).
+ * Output is relative to the visual printable area top-left.
+ */
+export function mapPrintablePointToVisual(
+  xMm: number,
+  yMm: number,
+  geometry: Pick<VisualPaperGeometry, 'rotated' | 'widthMm' | 'marginLeftMm' | 'marginTopMm'>,
+) {
+  if (!geometry.rotated) return { xMm: xMm - geometry.marginLeftMm, yMm: yMm - geometry.marginTopMm };
+  // When rotated, geometry.widthMm = stored paper height
+  // Stored paper (x, y) → visual paper (storedHeight - y, x) = (geometry.widthMm - y, x)
+  // Then subtract visual margins to get printable-relative coords
+  return {
+    xMm: geometry.widthMm - yMm - geometry.marginLeftMm,
+    yMm: xMm - geometry.marginTopMm,
+  };
+}
+
+/** Inverse of mapPrintablePointToVisual. */
+export function mapVisualPointToPrintable(
+  xMm: number,
+  yMm: number,
+  geometry: Pick<VisualPaperGeometry, 'rotated' | 'widthMm' | 'marginLeftMm' | 'marginTopMm'>,
+) {
+  if (!geometry.rotated) return { xMm: xMm + geometry.marginLeftMm, yMm: yMm + geometry.marginTopMm };
+  // Printable-relative visual → paper-relative visual → stored paper
+  const paperVisX = xMm + geometry.marginLeftMm;
+  const paperVisY = yMm + geometry.marginTopMm;
+  return {
+    xMm: paperVisY,
+    yMm: geometry.widthMm - paperVisX,
+  };
+}
+
+export function clampGridSpacing(value: number): number {
+  if (!Number.isFinite(value)) return 10;
+  return Math.max(1, Math.min(100, Math.round(value)));
+}
+
 // ── Extended UI-only options (not persisted to backend yet) ────────
 interface UxOptions {
   displayUnit: 'mm' | 'cm' | 'px';
@@ -201,41 +278,29 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
 // ── Ruler wrapper around the paper preview ─────────────────────────
 function RulerSheet({
   form,
-  ux,
   scale,
   showRulers,
-  rotateSheet = false,
-  needsRotation = false,
   children,
 }: {
   form: PaperForm;
-  ux: UxOptions;
   scale: number;
   showRulers: boolean;
-  rotateSheet?: boolean;
-  needsRotation?: boolean;
   children: React.ReactNode;
 }) {
   if (!showRulers) return <>{children}</>;
 
-  // Account for CSS rotation: visual dimensions may differ from original
-  const visualWidthMm = (rotateSheet && needsRotation) ? form.heightMm : form.widthMm;
-  const visualHeightMm = (rotateSheet && needsRotation) ? form.widthMm : form.heightMm;
-  const pvW = visualWidthMm * scale;
-  const pvH = visualHeightMm * scale;
-  const du = ux.displayUnit;
-  const dpi = form.dpi;
+  const geometry = getVisualPaperGeometry(form);
+  const pvW = geometry.widthMm * scale;
+  const pvH = geometry.heightMm * scale;
   const rulerThickness = 24;
   const fontSize = Math.min(10, Math.max(7, scale * 2));
 
   // Tick intervals in mm
-  const majorTickMm = du === 'px' ? 50 : 10;
-  const minorTickMm = du === 'px' ? 10 : 5;
+  const majorTickMm = 10;
+  const minorTickMm = 5;
 
   function tickLabel(vMm: number): string {
-    if (du === 'px') return String(Math.round((vMm * dpi) / 25.4));
-    if (du === 'cm') return (vMm / 10).toFixed(0) + 'cm';
-    return String(vMm);
+    return String(Math.round(vMm));
   }
 
   function renderTicks(totalMm: number, vertical: boolean): React.ReactNode[] {
@@ -257,8 +322,19 @@ function RulerSheet({
             fontSize: `${fontSize}px`,
             color: '#374151',
             ...(vertical
-              ? { top: 2, right: 4, textAlign: 'right' as const, whiteSpace: 'nowrap' }
-              : { left: 2, top: 2, whiteSpace: 'nowrap' }
+              ? {
+                top: mmJ === 0 ? 2 : mmJ >= totalMm ? -2 : 0,
+                right: 4,
+                transform: mmJ === 0 ? undefined : mmJ >= totalMm ? 'translateY(-100%)' : 'translateY(-50%)',
+                textAlign: 'right' as const,
+                whiteSpace: 'nowrap',
+              }
+              : {
+                left: mmJ === 0 ? 2 : mmJ >= totalMm ? -2 : 0,
+                top: 2,
+                transform: mmJ === 0 ? undefined : mmJ >= totalMm ? 'translateX(-100%)' : 'translateX(-50%)',
+                whiteSpace: 'nowrap',
+              }
             ),
           }}>{tickLabel(mmJ)}</span>
         </div>
@@ -284,7 +360,7 @@ function RulerSheet({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 0, width: rulerThickness + pvW, flexShrink: 0 }}>
       {/* Top row: corner cell + horizontal ruler */}
       <div style={{ display: 'flex', flexDirection: 'row' as const, gap: 0 }}>
         {/* Corner cell: zero origin intersection */}
@@ -307,14 +383,15 @@ function RulerSheet({
         <div style={{
           height: rulerThickness,
           flex: 1,
-          minWidth: pvW,
+          width: pvW,
+          flexShrink: 0,
           borderBottom: '1px solid #d1d5db',
           position: 'relative' as const,
           overflow: 'hidden',
           background: '#f9fafb',
         }}>
           <div style={{ width: pvW, height: rulerThickness, position: 'relative' as const }}>
-            {renderTicks(visualWidthMm, false)}
+            {renderTicks(geometry.widthMm, false)}
           </div>
         </div>
       </div>
@@ -330,17 +407,10 @@ function RulerSheet({
           flexShrink: 0,
         }}>
           <div style={{ width: rulerThickness, height: pvH, position: 'relative' as const }}>
-            {renderTicks(visualHeightMm, true)}
+            {renderTicks(geometry.heightMm, true)}
           </div>
         </div>
-        <div style={{
-          width: pvW,
-          height: pvH,
-          position: 'relative' as const,
-          flexShrink: 0,
-        }}>
-          {children}
-        </div>
+        {children}
       </div>
     </div>
   );
@@ -350,7 +420,6 @@ function PreviewSheet({
   form,
   ux,
   scale,
-  rotateSheet = true,
   sheetRef,
   selectedFieldId,
   onFieldPointerDown,
@@ -363,7 +432,6 @@ function PreviewSheet({
   form: PaperForm;
   ux: UxOptions;
   scale: number;
-  rotateSheet?: boolean;
   sheetRef?: React.RefObject<HTMLDivElement>;
   selectedFieldId?: string | null;
   onFieldPointerDown?: (event: React.PointerEvent<HTMLButtonElement>, id: string) => void;
@@ -373,28 +441,25 @@ function PreviewSheet({
   showAlignmentGuides?: boolean;
   gridIntervalMm?: number;
 }) {
-  const pvW = form.widthMm * scale;
-  const pvH = form.heightMm * scale;
-  const pvMT = form.marginTopMm * scale;
-  const pvMR = form.marginRightMm * scale;
-  const pvMB = form.marginBottomMm * scale;
-  const pvML = form.marginLeftMm * scale;
-  const pvPrintW = pvW - pvML - pvMR;
-  const pvPrintH = pvH - pvMT - pvMB;
+  const geometry = getVisualPaperGeometry(form);
+  const pvW = geometry.widthMm * scale;
+  const pvH = geometry.heightMm * scale;
+  const pvMT = geometry.marginTopMm * scale;
+  const pvMR = geometry.marginRightMm * scale;
+  const pvMB = geometry.marginBottomMm * scale;
+  const pvML = geometry.marginLeftMm * scale;
+  const pvPrintW = geometry.printableWidthMm * scale;
+  const pvPrintH = geometry.printableHeightMm * scale;
   const interactive = Boolean(onFieldPointerDown);
-  const naturalOrientation = form.widthMm > form.heightMm ? 'landscape' : 'portrait';
-  const needsRotation = naturalOrientation !== form.orientation;
 
   // Compute grid lines
   const gridLinesVertical: number[] = [];
   const gridLinesHorizontal: number[] = [];
-  const printableW = form.widthMm - form.marginLeftMm - form.marginRightMm;
-  const printableH = form.heightMm - form.marginTopMm - form.marginBottomMm;
   if (showVerticalGrid || showHorizontalGrid) {
-    for (let x = gridIntervalMm; x < printableW; x += gridIntervalMm) {
+    for (let x = gridIntervalMm; x < geometry.printableWidthMm; x += gridIntervalMm) {
       if (showVerticalGrid) gridLinesVertical.push(x);
     }
-    for (let y = gridIntervalMm; y < printableH; y += gridIntervalMm) {
+    for (let y = gridIntervalMm; y < geometry.printableHeightMm; y += gridIntervalMm) {
       if (showHorizontalGrid) gridLinesHorizontal.push(y);
     }
   }
@@ -403,8 +468,11 @@ function PreviewSheet({
   const selectedField = selectedFieldId
     ? ux.dynamicFields.find((f) => f.id === selectedFieldId)
     : null;
-  const guideX = selectedField ? (selectedField.xMm - form.marginLeftMm) * scale : null;
-  const guideY = selectedField ? (selectedField.yMm - form.marginTopMm) * scale : null;
+  const selectedPoint = selectedField
+    ? mapPrintablePointToVisual(selectedField.xMm, selectedField.yMm, geometry)
+    : null;
+  const guideX = selectedPoint ? selectedPoint.xMm * scale : null;
+  const guideY = selectedPoint ? selectedPoint.yMm * scale : null;
 
   return (
     <div
@@ -417,14 +485,12 @@ function PreviewSheet({
         boxShadow: '0 2px 8px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04)',
         position: 'relative',
         overflow: 'hidden',
-        transform: rotateSheet && needsRotation ? 'rotate(90deg)' : undefined,
-        transformOrigin: 'center center',
       }}
     >
       {ux.watermarkText && (
         <div style={{
           position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
-          fontSize: form.widthMm * scale * 0.08, color: ux.fontColor,
+          fontSize: geometry.widthMm * scale * 0.08, color: ux.fontColor,
           opacity: ux.watermarkOpacity / 100, transform: 'rotate(-30deg)',
           fontWeight: 700, pointerEvents: 'none', zIndex: 0,
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -474,6 +540,9 @@ function PreviewSheet({
         )}
 
         {ux.dynamicFields.map((f) => (
+          (() => {
+            const point = mapPrintablePointToVisual(f.xMm, f.yMm, geometry);
+            return (
           <button
             key={f.id}
             type="button"
@@ -481,7 +550,7 @@ function PreviewSheet({
             onPointerDown={interactive ? (event) => onFieldPointerDown?.(event, f.id) : undefined}
             onClick={interactive ? () => onFieldSelect?.(f.id) : undefined}
             style={{
-              position: 'absolute', left: f.xMm * scale, top: f.yMm * scale,
+              position: 'absolute', left: point.xMm * scale, top: point.yMm * scale,
               fontSize: f.fontSize * 0.75, fontWeight: f.bold ? 700 : 400,
               color: f.color, textAlign: f.align, whiteSpace: 'nowrap',
               fontFamily: ux.fontFamily, pointerEvents: interactive ? 'auto' : 'none',
@@ -495,6 +564,8 @@ function PreviewSheet({
           >
             {f.label || f.key || 'field'}
           </button>
+            );
+          })()
         ))}
       </div>
 
@@ -534,6 +605,7 @@ export default function PaperProfiles() {
   const [showDrawer, setShowDrawer] = useState<'fields' | 'appearance' | null>(null);
   const [stickyNote, setStickyNote] = useState<string | null>(null);
   const previewSheetRef = useRef<HTMLDivElement>(null);
+  const dragOffsetRef = useRef({ xMm: 0, yMm: 0 });
   const previewCanvasRef = useRef<HTMLDivElement>(null);
   const modalStageRef = useRef<HTMLDivElement>(null);
   const [modalStageSize, setModalStageSize] = useState({ width: 0, height: 0 });
@@ -692,10 +764,9 @@ export default function PaperProfiles() {
 
   // ── Preview calc ───────────────────────────────────────────────────
   const maxPvSize = 320;
-  const naturalOrientation = form.widthMm > form.heightMm ? 'landscape' : 'portrait';
-  const needsRotation = naturalOrientation !== form.orientation;
-  const previewWidthMm = needsRotation ? form.heightMm : form.widthMm;
-  const previewHeightMm = needsRotation ? form.widthMm : form.heightMm;
+  const visualGeometry = getVisualPaperGeometry(form);
+  const previewWidthMm = visualGeometry.widthMm;
+  const previewHeightMm = visualGeometry.heightMm;
   const scale = Math.min(maxPvSize / previewWidthMm, maxPvSize / previewHeightMm, 2);
 
   useEffect(() => {
@@ -750,15 +821,16 @@ export default function PaperProfiles() {
       const sheet = previewSheetRef.current;
       if (!sheet) return;
       const rect = sheet.getBoundingClientRect();
+      const geometry = getVisualPaperGeometry(form);
       const printableWidth = Math.max(0, form.widthMm - form.marginLeftMm - form.marginRightMm);
       const printableHeight = Math.max(0, form.heightMm - form.marginTopMm - form.marginBottomMm);
-      const visualX = (event.clientX - rect.left) / modalScale;
-      const visualY = (event.clientY - rect.top) / modalScale;
-      // CSS rotate(90deg) maps original (x, y) to visual (height - y, x).
-      const originalX = needsRotation ? visualY : visualX;
-      const originalY = needsRotation ? form.heightMm - visualX : visualY;
-      let xMm = Math.min(printableWidth, Math.max(0, originalX - form.marginLeftMm));
-      let yMm = Math.min(printableHeight, Math.max(0, originalY - form.marginTopMm));
+      const pointerX = (event.clientX - rect.left) / modalScale - geometry.marginLeftMm;
+      const pointerY = (event.clientY - rect.top) / modalScale - geometry.marginTopMm;
+      const visualX = Math.max(0, Math.min(geometry.printableWidthMm, pointerX - dragOffsetRef.current.xMm));
+      const visualY = Math.max(0, Math.min(geometry.printableHeightMm, pointerY - dragOffsetRef.current.yMm));
+      const originalPoint = mapVisualPointToPrintable(visualX, visualY, geometry);
+      let xMm = Math.min(printableWidth, Math.max(0, originalPoint.xMm));
+      let yMm = Math.min(printableHeight, Math.max(0, originalPoint.yMm));
 
       // Snap to nearby field Y (baseline) and X (column) within 2mm tolerance
       const snapThreshold = 2;
@@ -784,10 +856,20 @@ export default function PaperProfiles() {
       document.removeEventListener('pointermove', onPointerMove);
       document.removeEventListener('pointerup', onPointerUp);
     };
-  }, [draggingFieldId, form.heightMm, form.marginBottomMm, form.marginLeftMm, form.marginRightMm, form.marginTopMm, form.widthMm, modalScale, needsRotation, ux.dynamicFields]);
+  }, [draggingFieldId, form.heightMm, form.marginBottomMm, form.marginLeftMm, form.marginRightMm, form.marginTopMm, form.widthMm, modalScale, ux.dynamicFields]);
 
   function startDraggingField(event: React.PointerEvent<HTMLButtonElement>, id: string) {
     event.preventDefault();
+    const sheet = previewSheetRef.current;
+    const field = ux.dynamicFields.find((candidate) => candidate.id === id);
+    if (sheet && field) {
+      const geometry = getVisualPaperGeometry(form);
+      const rect = sheet.getBoundingClientRect();
+      const point = mapPrintablePointToVisual(field.xMm, field.yMm, geometry);
+      const pointerX = (event.clientX - rect.left) / modalScale - geometry.marginLeftMm;
+      const pointerY = (event.clientY - rect.top) / modalScale - geometry.marginTopMm;
+      dragOffsetRef.current = { xMm: pointerX - point.xMm, yMm: pointerY - point.yMm };
+    }
     setSelectedFieldId(id);
     setDraggingFieldId(id);
   }
@@ -1064,7 +1146,7 @@ export default function PaperProfiles() {
                 <span>{t('page.paperProfiles.previewCanvas')}</span>
                 <span>{form.orientation === 'portrait' ? t('page.paperProfiles.portrait') : t('page.paperProfiles.landscape')}</span>
               </div>
-              <RulerSheet form={form} ux={ux} scale={scale} showRulers={showRulers}>
+              <RulerSheet form={form} scale={scale} showRulers={showRulers}>
                 <PreviewSheet
                   form={form} ux={ux} scale={scale}
                   showVerticalGrid={showVerticalGrid}
@@ -1120,7 +1202,7 @@ export default function PaperProfiles() {
                     step={1}
                     onChange={(e) => {
                       const v = parseInt(e.target.value);
-                      if (!isNaN(v)) setGridSpacingMm(Math.max(1, Math.min(100, v)));
+                      if (!isNaN(v)) setGridSpacingMm(clampGridSpacing(v));
                     }}
                     aria-label={t('page.paperProfiles.gridSpacing')}
                   />
@@ -1139,12 +1221,11 @@ export default function PaperProfiles() {
                   <span>{form.widthMm} × {form.heightMm} mm · {form.dpi} DPI</span>
                 </div>
                 <div ref={modalStageRef} className="paper-preview-modal__sheet-stage">
-                  <RulerSheet form={form} ux={ux} scale={modalScale} showRulers={showRulers} rotateSheet needsRotation={needsRotation}>
+              <RulerSheet form={form} scale={modalScale} showRulers={showRulers}>
                     <PreviewSheet
                       form={form}
                       ux={ux}
                       scale={modalScale}
-                      rotateSheet
                       sheetRef={previewSheetRef}
                       selectedFieldId={selectedFieldId}
                       onFieldPointerDown={startDraggingField}

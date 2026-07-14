@@ -1,4 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import {
+  clampGridSpacing as clampGridSpacingSource,
+  getVisualPaperGeometry,
+  mapPrintablePointToVisual,
+  mapVisualPointToPrintable,
+} from '../pages/PaperProfiles.js';
 
 // ── Extracted pure functions from PaperProfiles.tsx ────────────────────
 
@@ -716,6 +722,78 @@ describe('clampGridSpacing', () => {
 
   it('handles zero by clamping to 1', () => {
     expect(clampGridSpacing(0)).toBe(1);
+  });
+});
+
+describe('PaperProfiles visual coordinate model', () => {
+  const rotated = getVisualPaperGeometry({
+    widthMm: 100,
+    heightMm: 50,
+    marginTopMm: 2,
+    marginRightMm: 3,
+    marginBottomMm: 4,
+    marginLeftMm: 5,
+    orientation: 'portrait',
+  });
+
+  const nonRotated = getVisualPaperGeometry({
+    widthMm: 100,
+    heightMm: 50,
+    marginTopMm: 2,
+    marginRightMm: 3,
+    marginBottomMm: 4,
+    marginLeftMm: 5,
+    orientation: 'landscape',
+  });
+
+  it('uses visual dimensions and rotated margins from one geometry', () => {
+    expect(rotated.rotated).toBe(true);
+    expect(rotated.widthMm).toBe(50);
+    expect(rotated.heightMm).toBe(100);
+    expect(rotated.marginTopMm).toBe(5);
+    expect(rotated.marginRightMm).toBe(2);
+    expect(rotated.marginBottomMm).toBe(3);
+    expect(rotated.marginLeftMm).toBe(4);
+    expect(rotated.printableWidthMm).toBe(44);
+    expect(rotated.printableHeightMm).toBe(92);
+  });
+
+  it('maps printable-relative coords to the same visual space as the grid', () => {
+    const p1 = mapPrintablePointToVisual(0, 0, rotated);
+    // stored (0,0) → visual paper (50-0, 0) = (50, 0)
+    // printable-relative: (50 - 4, 0 - 5) = (46, -5)
+    expect(p1).toEqual({ xMm: 46, yMm: -5 });
+
+    // stored (95, 47) near bottom-right → visual paper (50-47, 95) = (3, 95)
+    // printable-relative: (3 - 4, 95 - 5) = (-1, 90)
+    const p2 = mapPrintablePointToVisual(95, 47, rotated);
+    expect(p2).toEqual({ xMm: -1, yMm: 90 });
+  });
+
+  it('round-trips rotated points without drift', () => {
+    const visual = mapPrintablePointToVisual(15, 10, rotated);
+    expect(mapVisualPointToPrintable(visual.xMm, visual.yMm, rotated)).toEqual({ xMm: 15, yMm: 10 });
+
+    const visual2 = mapPrintablePointToVisual(50, 30, rotated);
+    expect(mapVisualPointToPrintable(visual2.xMm, visual2.yMm, rotated)).toEqual({ xMm: 50, yMm: 30 });
+  });
+
+  it('non-rotated subtracts margins to get printable-relative', () => {
+    const p = mapPrintablePointToVisual(10, 5, nonRotated);
+    // margins left=5, top=2 → (10-5, 5-2) = (5, 3)
+    expect(p).toEqual({ xMm: 5, yMm: 3 });
+  });
+
+  it('non-rotated round-trips', () => {
+    const visual = mapPrintablePointToVisual(20, 15, nonRotated);
+    expect(mapVisualPointToPrintable(visual.xMm, visual.yMm, nonRotated)).toEqual({ xMm: 20, yMm: 15 });
+  });
+
+  it('clamps invalid grid spacing in the actual source helper', () => {
+    expect(clampGridSpacingSource(Number.NaN)).toBe(10);
+    expect(clampGridSpacingSource(0)).toBe(1);
+    expect(clampGridSpacingSource(10.6)).toBe(11);
+    expect(clampGridSpacingSource(120)).toBe(100);
   });
 });
 
