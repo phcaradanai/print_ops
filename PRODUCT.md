@@ -4,6 +4,10 @@
 
 product
 
+## Platform
+
+web
+
 ## Users
 
 - **Print operators** — hospital staff monitoring job queues, printer status, and runner health via the web dashboard during clinical operations. Context: long shifts under fluorescent lights, need at-a-glance status with minimal cognitive load.
