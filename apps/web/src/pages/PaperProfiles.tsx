@@ -631,7 +631,17 @@ export default function PaperProfiles() {
               {dimInput('heightMm', 'page.paperProfiles.height')}
               <div>
                 <label style={s.label}>{t('page.paperProfiles.orientation')}</label>
-                <select value={form.orientation} onChange={(e) => patch('orientation', e.target.value as 'portrait' | 'landscape')} style={s.sel}>
+                <select value={form.orientation} onChange={(e) => {
+                  const next = e.target.value as 'portrait' | 'landscape';
+                  if (next === form.orientation) return;
+                  const natural = form.widthMm > form.heightMm ? 'landscape' : 'portrait';
+                  if (next !== natural) {
+                    const w = form.widthMm;
+                    setForm((f) => ({ ...f, widthMm: f.heightMm, heightMm: w, orientation: next }));
+                  } else {
+                    patch('orientation', next);
+                  }
+                }} style={s.sel}>
                   <option value="portrait">{t('page.paperProfiles.portrait')}</option>
                   <option value="landscape">{t('page.paperProfiles.landscape')}</option>
                 </select>
@@ -747,7 +757,7 @@ export default function PaperProfiles() {
             {/* Full preview body */}
             {showPreview && <div className="pp-preview-panel__body" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <div className="pp-preview-header">
-              <span className="pp-preview-header__title">📺 {t('page.paperProfiles.preview')}</span>
+              <span className="pp-preview-header__title">{t('page.paperProfiles.preview')}</span>
               <div className="pp-preview-header__actions">
                 <span className="pp-preview-header__size">
                   {displayVal(form.widthMm, du, dpi)} × {displayVal(form.heightMm, du, dpi)} {du}
@@ -1006,7 +1016,7 @@ export default function PaperProfiles() {
                   <td style={{ padding: '0.5rem 0.6rem' }}>{p.name}</td>
                   <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>{p.widthMm}×{p.heightMm}</td>
                   <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.7rem', color: '#6b7280' }}>{p.marginTopMm}/{p.marginRightMm}/{p.marginBottomMm}/{p.marginLeftMm}</td>
-                  <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>{p.orientation === 'portrait' ? '▯' : '▭'}</td>
+                  <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>{p.orientation === 'portrait' ? t('page.paperProfiles.portrait') : t('page.paperProfiles.landscape')}</td>
                   <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>{p.dpi}</td>
                   <td style={{ padding: '0.5rem 0.6rem' }}>
                     <button style={{ ...s.btnSmall, padding: '0.25rem 0.5rem', fontSize: '0.7rem' }} onClick={() => startEdit(p)}>✏️</button>

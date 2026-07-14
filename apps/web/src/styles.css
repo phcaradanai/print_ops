@@ -751,8 +751,8 @@ body {
 }
 
 .paper-preview-modal__panel {
-  width: min(1500px, 100%);
-  height: min(920px, 100%);
+  width: min(1500px, calc(100% - 2rem));
+  height: min(96vh, 100%);
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -831,7 +831,7 @@ body {
   overflow: auto;
   display: grid;
   place-items: center;
-  padding: 2rem;
+  padding: 1rem;
 }
 
 .paper-preview-modal__controls {
