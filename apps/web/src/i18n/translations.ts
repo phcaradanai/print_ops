@@ -358,6 +358,8 @@ const en: TranslationDict = {
   'page.paperProfiles.toggleRulers': 'Toggle rulers',
   'page.paperProfiles.alignToBaseline': 'Align to baseline',
   'page.paperProfiles.alignToColumn': 'Align to column',
+  'page.paperProfiles.toggleAlignmentGuides': 'Toggle alignment guides',
+  'page.paperProfiles.gridSpacing': 'Grid spacing (mm)',
 
   // TemplateSandbox
   'page.sandbox.title': '🖨️ Template Sandbox',
@@ -800,6 +802,8 @@ const th: TranslationDict = {
   'page.paperProfiles.toggleRulers': 'เปิด/ปิดไม้บรรทัด',
   'page.paperProfiles.alignToBaseline': 'จัดแนวเส้นฐาน',
   'page.paperProfiles.alignToColumn': 'จัดแนวคอลัมน์',
+  'page.paperProfiles.toggleAlignmentGuides': 'เปิด/ปิดเส้นนำแนว',
+  'page.paperProfiles.gridSpacing': 'ระยะห่างตาราง (มม.)',
 
   // TemplateSandbox
   'page.sandbox.title': '🖨️ เทมเพลตแซนด์บ็อกซ์',

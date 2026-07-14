@@ -204,18 +204,25 @@ function RulerSheet({
   ux,
   scale,
   showRulers,
+  rotateSheet = false,
+  needsRotation = false,
   children,
 }: {
   form: PaperForm;
   ux: UxOptions;
   scale: number;
   showRulers: boolean;
+  rotateSheet?: boolean;
+  needsRotation?: boolean;
   children: React.ReactNode;
 }) {
   if (!showRulers) return <>{children}</>;
 
-  const pvW = form.widthMm * scale;
-  const pvH = form.heightMm * scale;
+  // Account for CSS rotation: visual dimensions may differ from original
+  const visualWidthMm = (rotateSheet && needsRotation) ? form.heightMm : form.widthMm;
+  const visualHeightMm = (rotateSheet && needsRotation) ? form.widthMm : form.heightMm;
+  const pvW = visualWidthMm * scale;
+  const pvH = visualHeightMm * scale;
   const du = ux.displayUnit;
   const dpi = form.dpi;
   const rulerThickness = 24;
@@ -278,19 +285,33 @@ function RulerSheet({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 0 }}>
-      <div style={{
-        height: rulerThickness,
-        marginLeft: rulerThickness,
-        marginRight: 0,
-        borderBottom: '1px solid #d1d5db',
-        position: 'relative' as const,
-        overflow: 'hidden',
-        background: '#f9fafb',
-      }}>
-        <div style={{ width: pvW, height: rulerThickness, position: 'relative' as const }}>
-          {renderTicks(form.widthMm, false)}
+      {/* Top row: corner cell + horizontal ruler */}
+      <div style={{ display: 'flex', flexDirection: 'row' as const, gap: 0 }}>
+        {/* Corner cell: zero origin intersection */}
+        <div style={{
+          width: rulerThickness,
+          height: rulerThickness,
+          borderRight: '1px solid #d1d5db',
+          borderBottom: '1px solid #d1d5db',
+          background: '#f9fafb',
+          flexShrink: 0,
+        }} />
+        {/* Horizontal ruler */}
+        <div style={{
+          height: rulerThickness,
+          flex: 1,
+          minWidth: pvW,
+          borderBottom: '1px solid #d1d5db',
+          position: 'relative' as const,
+          overflow: 'hidden',
+          background: '#f9fafb',
+        }}>
+          <div style={{ width: pvW, height: rulerThickness, position: 'relative' as const }}>
+            {renderTicks(visualWidthMm, false)}
+          </div>
         </div>
       </div>
+      {/* Bottom row: vertical ruler + paper */}
       <div style={{ display: 'flex', flexDirection: 'row' as const, gap: 0 }}>
         <div style={{
           width: rulerThickness,
@@ -299,9 +320,10 @@ function RulerSheet({
           background: '#f9fafb',
           overflow: 'hidden',
           height: pvH,
+          flexShrink: 0,
         }}>
           <div style={{ width: rulerThickness, height: pvH, position: 'relative' as const }}>
-            {renderTicks(form.heightMm, true)}
+            {renderTicks(visualHeightMm, true)}
           </div>
         </div>
         {children}
@@ -492,6 +514,8 @@ export default function PaperProfiles() {
   const [showVerticalGrid, setShowVerticalGrid] = useState(false);
   const [showHorizontalGrid, setShowHorizontalGrid] = useState(false);
   const [showRulers, setShowRulers] = useState(false);
+  const [showAlignmentGuides, setShowAlignmentGuides] = useState(false);
+  const [gridSpacingMm, setGridSpacingMm] = useState(10); // 1–100 mm, default 10
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
   const [showDrawer, setShowDrawer] = useState<'fields' | 'appearance' | null>(null);
   const [stickyNote, setStickyNote] = useState<string | null>(null);
@@ -798,10 +822,7 @@ export default function PaperProfiles() {
           <IconButton icon="◫" label={t('page.paperProfiles.togglePreview')} onClick={() => setShowPreview(!showPreview)} active={showPreview} />
           <IconButton icon="⚡" label={t('page.paperProfiles.toggleFields')} onClick={() => setShowDrawer(showDrawer === 'fields' ? null : 'fields')} active={showDrawer === 'fields'} />
           <IconButton icon="🎨" label={t('page.paperProfiles.toggleStyle')} onClick={() => setShowDrawer(showDrawer === 'appearance' ? null : 'appearance')} active={showDrawer === 'appearance'} />
-          <span style={{ width: 1, height: 22, background: '#d1d5db', alignSelf: 'center' }} aria-hidden="true" />
-          <IconButton icon="⫶" label={t('page.paperProfiles.toggleVerticalGrid')} onClick={() => setShowVerticalGrid(!showVerticalGrid)} active={showVerticalGrid} />
-          <IconButton icon="≡" label={t('page.paperProfiles.toggleHorizontalGrid')} onClick={() => setShowHorizontalGrid(!showHorizontalGrid)} active={showHorizontalGrid} />
-          <IconButton icon="📏" label={t('page.paperProfiles.toggleRulers')} onClick={() => setShowRulers(!showRulers)} active={showRulers} />
+
         </div>
       </header>
 
@@ -1035,6 +1056,7 @@ export default function PaperProfiles() {
                   showVerticalGrid={showVerticalGrid}
                   showHorizontalGrid={showHorizontalGrid}
                   showAlignmentGuides={!!selectedFieldId}
+                  gridIntervalMm={gridSpacingMm}
                 />
               </RulerSheet>
             </div>
@@ -1068,6 +1090,29 @@ export default function PaperProfiles() {
                 <h2 id="paper-preview-title">{t('page.paperProfiles.fullPreviewTitle')}</h2>
                 <p>{t('page.paperProfiles.dragHint')}</p>
               </div>
+              <div className="paper-preview-modal__toolstrip" role="toolbar" aria-label="Preview tools">
+                <IconButton icon="⫶" label={t('page.paperProfiles.toggleVerticalGrid')} onClick={() => setShowVerticalGrid(!showVerticalGrid)} active={showVerticalGrid} />
+                <IconButton icon="≡" label={t('page.paperProfiles.toggleHorizontalGrid')} onClick={() => setShowHorizontalGrid(!showHorizontalGrid)} active={showHorizontalGrid} />
+                <IconButton icon="📏" label={t('page.paperProfiles.toggleRulers')} onClick={() => setShowRulers(!showRulers)} active={showRulers} />
+                <IconButton icon="⊕" label={t('page.paperProfiles.toggleAlignmentGuides')} onClick={() => setShowAlignmentGuides(!showAlignmentGuides)} active={showAlignmentGuides} />
+                <label className="paper-preview-modal__spacing-label" title={t('page.paperProfiles.gridSpacing')}>
+                  <span className="paper-preview-modal__spacing-icon" aria-hidden="true">⊞</span>
+                  <input
+                    type="number"
+                    className="paper-preview-modal__spacing-input"
+                    value={gridSpacingMm}
+                    min={1}
+                    max={100}
+                    step={1}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value);
+                      if (!isNaN(v)) setGridSpacingMm(Math.max(1, Math.min(100, v)));
+                    }}
+                    aria-label={t('page.paperProfiles.gridSpacing')}
+                  />
+                  <span className="paper-preview-modal__spacing-unit">mm</span>
+                </label>
+              </div>
               <button type="button" style={s.btnSmall} onClick={() => setPreviewOpen(false)}>
                 {t('page.paperProfiles.closePreview')}
               </button>
@@ -1080,7 +1125,7 @@ export default function PaperProfiles() {
                   <span>{form.widthMm} × {form.heightMm} mm · {form.dpi} DPI</span>
                 </div>
                 <div ref={modalStageRef} className="paper-preview-modal__sheet-stage">
-                  <RulerSheet form={form} ux={ux} scale={modalScale} showRulers={showRulers}>
+                  <RulerSheet form={form} ux={ux} scale={modalScale} showRulers={showRulers} rotateSheet needsRotation={needsRotation}>
                     <PreviewSheet
                       form={form}
                       ux={ux}
@@ -1092,7 +1137,8 @@ export default function PaperProfiles() {
                       onFieldSelect={setSelectedFieldId}
                       showVerticalGrid={showVerticalGrid}
                       showHorizontalGrid={showHorizontalGrid}
-                      showAlignmentGuides={!!selectedFieldId}
+                      showAlignmentGuides={showAlignmentGuides}
+                      gridIntervalMm={gridSpacingMm}
                     />
                   </RulerSheet>
                 </div>

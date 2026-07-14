@@ -684,3 +684,188 @@ describe('formatTickLabel', () => {
     expect(label).toBe('80');
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════
+//  Grid spacing clamp
+// ══════════════════════════════════════════════════════════════════════
+
+/** Clamp grid spacing to valid range [1, 100] mm. */
+function clampGridSpacing(value: number): number {
+  return Math.max(1, Math.min(100, Math.round(value)));
+}
+
+describe('clampGridSpacing', () => {
+  it('returns the value when within range', () => {
+    expect(clampGridSpacing(10)).toBe(10);
+    expect(clampGridSpacing(1)).toBe(1);
+    expect(clampGridSpacing(100)).toBe(100);
+    expect(clampGridSpacing(50)).toBe(50);
+  });
+
+  it('clamps below 1 to 1', () => {
+    expect(clampGridSpacing(0)).toBe(1);
+    expect(clampGridSpacing(-5)).toBe(1);
+    expect(clampGridSpacing(0.5)).toBe(1); // after round: 0 -> 1
+  });
+
+  it('clamps above 100 to 100', () => {
+    expect(clampGridSpacing(101)).toBe(100);
+    expect(clampGridSpacing(200)).toBe(100);
+    expect(clampGridSpacing(999)).toBe(100);
+  });
+
+  it('handles zero by clamping to 1', () => {
+    expect(clampGridSpacing(0)).toBe(1);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  Ruler visual dimension computation (rotation-aware)
+// ══════════════════════════════════════════════════════════════════════
+
+interface RulerDims {
+  visualWidthMm: number;
+  visualHeightMm: number;
+}
+
+/** Compute visual ruler dimensions accounting for CSS rotation. */
+function rulerVisualDims(
+  widthMm: number,
+  heightMm: number,
+  rotateSheet: boolean,
+  needsRotation: boolean,
+): RulerDims {
+  if (rotateSheet && needsRotation) {
+    return { visualWidthMm: heightMm, visualHeightMm: widthMm };
+  }
+  return { visualWidthMm: widthMm, visualHeightMm: heightMm };
+}
+
+describe('rulerVisualDims', () => {
+  it('no rotation: returns original dimensions', () => {
+    const dims = rulerVisualDims(100, 50, false, false);
+    expect(dims.visualWidthMm).toBe(100);
+    expect(dims.visualHeightMm).toBe(50);
+  });
+
+  it('rotateSheet true but no needsRotation: returns original', () => {
+    const dims = rulerVisualDims(100, 50, true, false);
+    expect(dims.visualWidthMm).toBe(100);
+    expect(dims.visualHeightMm).toBe(50);
+  });
+
+  it('rotateSheet true and needsRotation: swaps dimensions', () => {
+    const dims = rulerVisualDims(100, 50, true, true);
+    expect(dims.visualWidthMm).toBe(50);
+    expect(dims.visualHeightMm).toBe(100);
+  });
+
+  it('portrait A4 rotated to landscape: swaps', () => {
+    const dims = rulerVisualDims(210, 297, true, true);
+    expect(dims.visualWidthMm).toBe(297);
+    expect(dims.visualHeightMm).toBe(210);
+  });
+
+  it('landscape paper with portrait orientation rotates: rulers show portrait', () => {
+    // 100x50 is natural landscape, needsRotation=true when orientation=portrait
+    const dims = rulerVisualDims(100, 50, true, true);
+    expect(dims.visualWidthMm).toBe(50);
+    expect(dims.visualHeightMm).toBe(100);
+  });
+
+  it('square dimensions: swap is no-op', () => {
+    const dims = rulerVisualDims(100, 100, true, true);
+    expect(dims.visualWidthMm).toBe(100);
+    expect(dims.visualHeightMm).toBe(100);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  Ruler origin tick calculations (visual vs original mm)
+// ══════════════════════════════════════════════════════════════════════
+
+/** Compute the total mm length of ruler ticks for a given visual dimension. */
+function rulerTickRange(
+  visualMm: number,
+  majorIntervalMm: number,
+): { firstTickMm: number; lastTickMm: number; count: number } {
+  let last = 0;
+  let count = 0;
+  for (let mm = 0; mm <= visualMm; mm += majorIntervalMm) {
+    last = mm;
+    count++;
+  }
+  return { firstTickMm: 0, lastTickMm: last, count };
+}
+
+describe('rulerTickRange', () => {
+  it('100mm paper, 10mm interval: 0…100, 11 ticks', () => {
+    const r = rulerTickRange(100, 10);
+    expect(r.firstTickMm).toBe(0);
+    expect(r.lastTickMm).toBe(100);
+    expect(r.count).toBe(11);
+  });
+
+  it('50mm paper, 10mm interval: 0…50, 6 ticks', () => {
+    const r = rulerTickRange(50, 10);
+    expect(r.lastTickMm).toBe(50);
+    expect(r.count).toBe(6);
+  });
+
+  it('95mm paper, 10mm interval: last partial tick at 90', () => {
+    const r = rulerTickRange(95, 10);
+    expect(r.lastTickMm).toBe(90);
+    expect(r.count).toBe(10); // 0,10,20,30,40,50,60,70,80,90
+  });
+
+  it('0mm paper: single tick at 0', () => {
+    const r = rulerTickRange(0, 10);
+    expect(r.firstTickMm).toBe(0);
+    expect(r.lastTickMm).toBe(0);
+    expect(r.count).toBe(1);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  Portrait vs landscape ruler dimensions
+// ══════════════════════════════════════════════════════════════════════
+
+/** Compute expected ruler pixel sizes at a given scale. */
+function rulerPixelDims(
+  visualWidthMm: number,
+  visualHeightMm: number,
+  scale: number,
+): { widthPx: number; heightPx: number } {
+  return {
+    widthPx: visualWidthMm * scale,
+    heightPx: visualHeightMm * scale,
+  };
+}
+
+describe('rulerPixelDims', () => {
+  it('A4 portrait at scale 2.5: width=525px, height≈742.5px', () => {
+    const { widthPx, heightPx } = rulerPixelDims(210, 297, 2.5);
+    expect(widthPx).toBe(525);
+    expect(heightPx).toBeCloseTo(742.5, 1);
+  });
+
+  it('A4 landscape (rotated) at scale 3: width=891px, height=630px', () => {
+    // After rotation: visual width = height (297), visual height = width (210)
+    const { widthPx, heightPx } = rulerPixelDims(297, 210, 3);
+    expect(widthPx).toBe(891);
+    expect(heightPx).toBe(630);
+  });
+
+  it('100x50 label portrait at scale 8: width=400px, height=800px', () => {
+    // Natural landscape, portrait orientation → rotate → visual width=50, height=100
+    const { widthPx, heightPx } = rulerPixelDims(50, 100, 8);
+    expect(widthPx).toBe(400);
+    expect(heightPx).toBe(800);
+  });
+
+  it('100x50 label landscape at scale 10: width=1000px, height=500px', () => {
+    const { widthPx, heightPx } = rulerPixelDims(100, 50, 10);
+    expect(widthPx).toBe(1000);
+    expect(heightPx).toBe(500);
+  });
+});

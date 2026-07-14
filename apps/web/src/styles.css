@@ -773,6 +773,59 @@ body {
   border-bottom: 1px solid #e5e7eb;
 }
 
+.paper-preview-modal__toolstrip {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.paper-preview-modal__spacing-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  cursor: text;
+  font-size: 0.78rem;
+}
+
+.paper-preview-modal__spacing-icon {
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
+.paper-preview-modal__spacing-input {
+  width: 40px;
+  padding: 0.15rem 0.2rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: center;
+  color: #374151;
+  -moz-appearance: textfield;
+}
+
+.paper-preview-modal__spacing-input::-webkit-inner-spin-button,
+.paper-preview-modal__spacing-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.paper-preview-modal__spacing-input:focus {
+  outline: none;
+}
+
+.paper-preview-modal__spacing-unit {
+  color: #6b7280;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
 .paper-preview-modal__header h2,
 .paper-preview-modal__controls h3 {
   margin: 0;
