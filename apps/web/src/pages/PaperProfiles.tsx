@@ -295,7 +295,14 @@ function RulerSheet({
           borderBottom: '1px solid #d1d5db',
           background: '#f9fafb',
           flexShrink: 0,
-        }} />
+          display: 'grid',
+          placeItems: 'center',
+          color: '#374151',
+          fontSize: `${fontSize}px`,
+          fontWeight: 600,
+        }}>
+          0
+        </div>
         {/* Horizontal ruler */}
         <div style={{
           height: rulerThickness,
@@ -326,7 +333,14 @@ function RulerSheet({
             {renderTicks(visualHeightMm, true)}
           </div>
         </div>
-        {children}
+        <div style={{
+          width: pvW,
+          height: pvH,
+          position: 'relative' as const,
+          flexShrink: 0,
+        }}>
+          {children}
+        </div>
       </div>
     </div>
   );

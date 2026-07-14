@@ -767,10 +767,16 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 1rem;
   padding: 0.9rem 1rem;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
+}
+
+.paper-preview-modal__header > :first-child {
+  min-width: 180px;
+  flex: 1 1 220px;
 }
 
 .paper-preview-modal__toolstrip {
@@ -779,6 +785,7 @@ body {
   gap: 0.25rem;
   flex-wrap: wrap;
   justify-content: center;
+  flex: 0 1 auto;
 }
 
 .paper-preview-modal__spacing-label {
@@ -1033,6 +1040,14 @@ body {
 
   .paper-preview-modal__sheet-stage {
     padding: 1rem;
+  }
+
+  .paper-preview-modal__toolstrip {
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
+    padding-top: 0.25rem;
+    border-top: 1px solid #e5e7eb;
   }
 }
 
