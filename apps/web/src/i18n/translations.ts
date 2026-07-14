@@ -25,6 +25,11 @@ const en: TranslationDict = {
   'nav.group.operations': 'Operator Workflow',
   'nav.group.administration': 'Administration',
 
+  // Navigation accessibility
+  'nav.menu.open': 'Open navigation menu',
+  'nav.menu.close': 'Close navigation menu',
+  'nav.ariaLabel': 'Main navigation',
+
   // Common
   'common.save': 'Save',
   'common.cancel': 'Cancel',
@@ -78,6 +83,10 @@ const en: TranslationDict = {
   // Session
   'session.signedInAs': 'Signed in as',
   'session.role': 'Role',
+  'session.role.OWNER': 'Sysadmin',
+  'session.role.ADMIN': 'Admin',
+  'session.role.OPERATOR': 'User',
+  'session.role.VIEWER': 'Viewer',
 };
 
 const th: TranslationDict = {
@@ -102,6 +111,11 @@ const th: TranslationDict = {
   // Navigation groups
   'nav.group.operations': 'ขั้นตอนปฏิบัติงาน',
   'nav.group.administration': 'การจัดการระบบ',
+
+  // Navigation accessibility
+  'nav.menu.open': 'เปิดเมนูนำทาง',
+  'nav.menu.close': 'ปิดเมนูนำทาง',
+  'nav.ariaLabel': 'เมนูนำทางหลัก',
 
   // Common
   'common.save': 'บันทึก',
@@ -156,6 +170,10 @@ const th: TranslationDict = {
   // Session
   'session.signedInAs': 'เข้าสู่ระบบในนาม',
   'session.role': 'บทบาท',
+  'session.role.OWNER': 'ผู้ดูแลระบบ',
+  'session.role.ADMIN': 'ผู้ดูแล',
+  'session.role.OPERATOR': 'ผู้ใช้งาน',
+  'session.role.VIEWER': 'ผู้ชม',
 };
 
 export const translations: Record<Locale, TranslationDict> = { en, th };

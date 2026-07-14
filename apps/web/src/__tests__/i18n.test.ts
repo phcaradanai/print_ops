@@ -63,4 +63,27 @@ describe('i18n translations', () => {
       expect(t('th', key)).toBeTruthy();
     }
   });
+
+  it('nav accessibility keys exist in both locales', () => {
+    expect(t('en', 'nav.menu.open')).toBeTruthy();
+    expect(t('en', 'nav.menu.close')).toBeTruthy();
+    expect(t('en', 'nav.ariaLabel')).toBeTruthy();
+    expect(t('th', 'nav.menu.open')).toBeTruthy();
+    expect(t('th', 'nav.menu.close')).toBeTruthy();
+    expect(t('th', 'nav.ariaLabel')).toBeTruthy();
+  });
+
+  it('session role keys exist in both locales', () => {
+    const roles = ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] as const;
+    for (const role of roles) {
+      const key = `session.role.${role}`;
+      expect(t('en', key)).toBeTruthy();
+      expect(t('th', key)).toBeTruthy();
+    }
+    // Verify expected English values
+    expect(t('en', 'session.role.OWNER')).toBe('Sysadmin');
+    expect(t('en', 'session.role.ADMIN')).toBe('Admin');
+    expect(t('en', 'session.role.OPERATOR')).toBe('User');
+    expect(t('en', 'session.role.VIEWER')).toBe('Viewer');
+  });
 });

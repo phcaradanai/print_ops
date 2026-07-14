@@ -7,7 +7,6 @@ import {
   Component,
   type ReactNode,
   type FormEvent,
-  type KeyboardEvent,
 } from 'react';
 import Dashboard from './pages/Dashboard.js';
 import Printers from './pages/Printers.js';
@@ -67,13 +66,6 @@ const GROUP_ORDER: NavGroup[] = ['operations', 'administration'];
 const GROUP_LABEL_KEYS: Record<NavGroup, string> = {
   operations: 'nav.group.operations',
   administration: 'nav.group.administration',
-};
-
-const ROLE_LABEL: Record<SessionUser['role'], string> = {
-  OWNER: 'Sysadmin',
-  ADMIN: 'Admin',
-  OPERATOR: 'User',
-  VIEWER: 'Viewer',
 };
 
 // ----- splash -----
@@ -246,12 +238,17 @@ function AppNav({
 
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 
-  function onMenuKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      setMobileOpen((prev) => !prev);
+  // Close mobile menu on Escape key
+  useEffect(() => {
+    if (!mobileOpen) return;
+    function onKeyDown(e: globalThis.KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setMobileOpen(false);
+      }
     }
-  }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [mobileOpen]);
 
   const navContent = (
     <>
@@ -282,7 +279,7 @@ function AppNav({
       <div className="session-card">
         <div className="session-name">{user.name}</div>
         <span className="session-role">
-          {t('session.role')}: {ROLE_LABEL[user.role]}
+          {t('session.role')}: {t('session.role.' + user.role)}
         </span>
         <button
           type="button"
@@ -304,9 +301,8 @@ function AppNav({
         className="nav-toggle"
         aria-expanded={mobileOpen}
         aria-controls={navId}
-        aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
+        aria-label={mobileOpen ? t('nav.menu.close') : t('nav.menu.open')}
         onClick={() => setMobileOpen((prev) => !prev)}
-        onKeyDown={onMenuKeyDown}
       >
         <span className="nav-toggle-bar" />
         <span className="nav-toggle-bar" />
@@ -325,7 +321,7 @@ function AppNav({
       <nav
         id={navId}
         className={'app-nav' + (mobileOpen ? ' app-nav--open' : '')}
-        aria-label="Main navigation"
+        aria-label={t('nav.ariaLabel')}
       >
         {navContent}
       </nav>

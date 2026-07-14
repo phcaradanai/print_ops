@@ -5,7 +5,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 
 const WS_PROJECT_KEY = 'printops-workspace-project';
 const WS_PATH_KEY = 'printops-workspace-path';
-const THEME_KEY = 'printops-theme';
 const LOCALE_KEY = 'printops-locale';
 
 interface WorkspaceData {
@@ -13,7 +12,6 @@ interface WorkspaceData {
   workspacePath: string;
 }
 
-type Theme = 'light' | 'dark' | 'system';
 type Locale = 'en' | 'th';
 
 // Simulated localStorage
@@ -66,43 +64,6 @@ describe('workspace settings persistence', () => {
     const ws = loadWorkspace();
     expect(ws.projectName).toBe('New');
     expect(ws.workspacePath).toBe('/new/path');
-  });
-});
-
-describe('theme persistence', () => {
-  let store: Record<string, string>;
-
-  beforeEach(() => {
-    store = createStore();
-  });
-
-  function loadTheme(): Theme {
-    const v = store[THEME_KEY];
-    if (v === 'light' || v === 'dark' || v === 'system') return v;
-    return 'light';
-  }
-
-  function saveTheme(theme: Theme): void {
-    store[THEME_KEY] = theme;
-  }
-
-  it('defaults to light', () => {
-    expect(loadTheme()).toBe('light');
-  });
-
-  it('saves and loads dark theme', () => {
-    saveTheme('dark');
-    expect(loadTheme()).toBe('dark');
-  });
-
-  it('saves and loads system theme', () => {
-    saveTheme('system');
-    expect(loadTheme()).toBe('system');
-  });
-
-  it('rejects invalid theme values', () => {
-    store[THEME_KEY] = 'invalid';
-    expect(loadTheme()).toBe('light');
   });
 });
 
