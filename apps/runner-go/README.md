@@ -1,12 +1,12 @@
-# PrintOps Go Runner (Production Candidate)
+# PrintOps Go Runner (Canonical Production Runner)
 
-A production-grade, parallel runner for PrintOps, written in Go. Runs alongside the existing TypeScript runner without replacing it.
+The official production runner for PrintOps, written in Go. Replaces the legacy TypeScript runner as the default runner for all workflows. Handles printer discovery, job polling, execution, heartbeat, and trace reporting as a single statically compiled binary.
 
 ## Status
 
 - **API/Web/Desktop**: TypeScript (unchanged)
-- **TypeScript runner** (`apps/runner`): dev/reference/mock runner (unchanged)
-- **Go Runner** (`apps/runner-go`): **production candidate** for Windows Service / macOS dev / future Linux
+- **Go Runner** (`apps/runner-go`): **Canonical production runner** — started by default via `npm run dev`, launched by the desktop app
+- **TypeScript runner** (`apps/runner`): Legacy reference only — preserved for historical tests and dev comparison; not started or built by default
 
 ## Why Go for the Runner?
 
@@ -123,9 +123,7 @@ Placeholders for real OS-level spooler execution.
 | `/api/v1/runners/:runnerId/jobs/next` | POST | Claim next job (long-poll capable) |
 | `/api/v1/runners/:runnerId/jobs/:jobId/events` | POST | Report trace events |
 | `/api/v1/runners/:runnerId/jobs/:jobId/result` | POST | Report final result |
-| `/api/v1/jobs/:jobId/execute` | POST | Legacy execution report (backward compat) |
-
-All endpoints are backward compatible — the TypeScript runner continues to work unchanged.
+| `/api/v1/jobs/:jobId/execute` | POST | Legacy execution report |
 
 ## Trace Events
 

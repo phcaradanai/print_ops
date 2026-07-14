@@ -11,8 +11,9 @@ building a print request, and calling the PrintOps API.
 
 - `apps/api` - Fastify REST API for jobs, printers, runners, auth, audit logs, and exports.
 - `apps/web` - Vite + React dashboard for operators.
-- `apps/runner` - Local runner process that registers with the API, polls jobs, sends heartbeats, and syncs printer discovery.
-- `apps/desktop` - Tauri shell that loads the web UI.
+- `apps/runner-go` - **Production Go runner.** Statically compiled binary that registers with the API, polls jobs, sends heartbeats, executes print jobs, and syncs printer discovery. Replaces the TypeScript runner for all default workflows.
+- `apps/runner` - **Legacy reference.** TypeScript runner preserved for dev comparison and historical tests. Not started by `npm run dev` or built by `npm run build`.
+- `apps/desktop` - Tauri shell that loads the web UI and launches the Go runner binary.
 - `packages/domain` - Domain models, ports, and events.
 - `packages/adapters` - Printer adapter implementations and helpers.
 - `packages/shared` - Shared utilities.
@@ -26,13 +27,14 @@ building a print request, and calling the PrintOps API.
 
 - Node.js `>=20.0.0`
 - npm `>=10.0.0`
+- Go `>=1.21.0` (required for the production runner)
 - Optional for the desktop app: Rust and Tauri CLI
 - Optional for future persistence work: Docker, PostgreSQL, and Redis
 - Optional for printer discovery:
   - macOS/Linux: `lpstat`
   - Windows: PowerShell `Get-Printer`
 
-The required Node and npm versions are declared in `package.json`.
+The required Node and npm versions are declared in `package.json`. The Go runner module is at `apps/runner-go/go.mod`.
 
 ### Install And Setup
 
@@ -59,7 +61,7 @@ API defaults from `apps/api/src/server.ts` and `apps/api/src/app.ts`:
 | `JWT_SECRET` | `dev-secret-change-in-production` | Development JWT secret |
 | `PRINTOPS_DEV_API_KEY` | `printops-dev-apikey-2026` | Dev API key for `/api/v1` external endpoints |
 
-Runner defaults from `apps/runner/src/config.ts`:
+Runner defaults (primary runner is `apps/runner-go`; see its README for the full config reference):
 
 | Variable | Default | Notes |
 | --- | --- | --- |
@@ -75,7 +77,7 @@ Runner defaults from `apps/runner/src/config.ts`:
 | `RUNNER_DEV_EMAIL` | `admin@printerops.local` | Used only when `RUNNER_API_TOKEN` is empty |
 | `RUNNER_DEV_PASSWORD` | `dev-password` | Any password is accepted in the current MVP auth flow |
 
-Web development config from `apps/web/vite.config.ts`:
+The Go runner uses `PRINTOPS_`-prefixed variables (e.g. `PRINTOPS_API_BASE_URL`, `PRINTOPS_RUNNER_TOKEN`). See `apps/runner-go/README.md` for the complete production config reference.
 
 - Web UI runs on `http://localhost:3000`.
 - Vite proxies `/api/*` to `http://localhost:3001`.
@@ -92,18 +94,26 @@ Seeded local development values:
 
 ### Run In Development
 
-Run API, web, and runner together:
+Run API, web, and Go runner together:
 
 ```bash
 npm run dev
 ```
 
-Or run each app in a separate terminal:
+This starts the API (`apps/api`), web dashboard (`apps/web`), and the production Go runner (`apps/runner-go`) via `concurrently`.
+
+Run individual services:
 
 ```bash
 npm run dev -w apps/api
 npm run dev -w apps/web
-npm run dev -w apps/runner
+npm run dev:runner-go
+```
+
+To run the legacy TypeScript runner (reference only):
+
+```bash
+npm run dev:runner-ts
 ```
 
 Local URLs:
@@ -112,7 +122,7 @@ Local URLs:
 | --- | --- |
 | Web dashboard | `http://localhost:3000` |
 | API | `http://localhost:3001` |
-| Runner | No browser UI. It connects to the API. |
+| Go runner | No browser UI. Connects to the API on `http://localhost:3001`. |
 
 Desktop shell:
 
@@ -120,14 +130,20 @@ Desktop shell:
 npm run tauri:dev -w apps/desktop
 ```
 
-The desktop app expects the web dev server to be running at
-`http://localhost:3000`.
+The desktop app expects the web dev server at `http://localhost:3000` and launches the Go runner binary automatically.
 
 ### Test, Typecheck, And Build
 
 ```bash
 npm test
 npm run build
+```
+
+Go runner-specific commands:
+
+```bash
+npm run build:runner-go    # Build the Go runner binary
+npm run test:runner-go     # Run Go runner tests (go test ./...)
 ```
 
 There is also a repo-level typecheck command:
@@ -147,6 +163,12 @@ Workspace-specific examples:
 npm test -w apps/api
 npm test -w apps/runner
 npm run build -w apps/web
+```
+
+The legacy TypeScript runner tests are kept for reference:
+
+```bash
+npm test -w apps/runner
 ```
 
 ### Useful Development API Test
@@ -174,10 +196,10 @@ API should return the existing job instead of creating a second print.
 
 | Problem | What to check |
 | --- | --- |
-| `Register attempt 1 failed` from runner | Confirm the API is running on `http://localhost:3001` or set `API_URL`. |
+| `Register attempt 1 failed` from Go runner | Confirm the API is running on `http://localhost:3001` or set `PRINTOPS_API_BASE_URL`. |
 | Web dashboard API calls fail | Confirm `npm run dev -w apps/api` is running. The web dev server proxies `/api` to port `3001`. |
-| Runner logs in unexpectedly | `RUNNER_API_TOKEN` is empty, so the runner uses the dev login flow. |
-| No printers appear in discovery | Use `DISCOVERY_ADAPTER=fake npm run dev -w apps/runner` for local fake discovery. On Windows, confirm Print Spooler and `Get-Printer`; on macOS/Linux, confirm `lpstat`. |
+| Go runner logs in unexpectedly | `PRINTOPS_RUNNER_TOKEN` is empty, so the runner uses the dev login flow. |
+| No printers appear in discovery | Use `PRINTOPS_DISCOVERY_MODE=fake npm run dev:runner-go` for local fake discovery. On Windows, confirm Print Spooler and `Get-Printer`; on macOS/Linux, confirm `lpstat`. |
 | Data disappears after restart | Current runtime repositories are in-memory. PostgreSQL persistence is documented but not wired as the active runtime path. |
 | Real printer does not print | Real printer adapters are skeleton/incomplete in the current repo. Use the fake adapter path for verified local flow. |
 | Docker Compose does not build | `infra/docker/docker-compose.yml` references Dockerfiles that are not present. This is TBD / ต้องยืนยัน. |
@@ -319,7 +341,7 @@ Operators can also retrieve:
 - Current dashboard auth accepts any password for the seeded admin user.
 - API key auth exists for external `/api/v1` endpoints, with a seeded dev key.
 - Real printer adapters are not confirmed production-ready.
-- Current runner execution delegates job execution through API code; local runner-side adapter execution is listed as future work in `docs/status/next-steps.md`.
+- Current runner execution uses local Go runner adapter execution. The Go runner resolves the printer protocol at runtime and dispatches to the matching executor.
 - Docker Compose references Dockerfiles that are not present in this repo.
 - Production service account creation, key rotation, and deployment steps are TBD / ต้องยืนยัน.
 
@@ -335,6 +357,7 @@ PrintOps คือระบบกลางสำหรับรับคำส�
 
 - Node.js `>=20.0.0`
 - npm `>=10.0.0`
+- Go `>=1.21.0` (จำเป็นสำหรับ production runner)
 - ถ้าจะรัน desktop app: ต้องมี Rust และ Tauri CLI
 - ถ้าจะทดสอบ printer discovery:
   - macOS/Linux ใช้ `lpstat`
@@ -362,7 +385,7 @@ API:
 | `JWT_SECRET` | `dev-secret-change-in-production` | secret สำหรับ dev JWT |
 | `PRINTOPS_DEV_API_KEY` | `printops-dev-apikey-2026` | API key สำหรับ external API ใน dev |
 
-Runner:
+Runner (runner หลักคือ `apps/runner-go`; ดู config ทั้งหมดใน README ของ Go runner):
 
 | ตัวแปร | ค่าเริ่มต้น | ความหมาย |
 | --- | --- | --- |
@@ -387,7 +410,7 @@ Runner:
 
 #### รันระบบตอนพัฒนา
 
-รัน API, web, และ runner พร้อมกัน:
+รัน API, web, และ Go runner พร้อมกัน:
 
 ```bash
 npm run dev
@@ -398,7 +421,13 @@ npm run dev
 ```bash
 npm run dev -w apps/api
 npm run dev -w apps/web
-npm run dev -w apps/runner
+npm run dev:runner-go
+```
+
+ถ้าต้องการรัน TypeScript runner แบบ legacy (อ้างอิงเท่านั้น):
+
+```bash
+npm run dev:runner-ts
 ```
 
 URL หลัก:
@@ -456,10 +485,10 @@ curl -X POST http://localhost:3001/api/v1/print-jobs \
 
 | ปัญหา | ตรวจอะไร |
 | --- | --- |
-| runner ขึ้น `Register attempt 1 failed` | ตรวจว่า API เปิดที่ `http://localhost:3001` หรือ set `API_URL` ถูกต้อง |
+| runner ขึ้น `Register attempt 1 failed` | ตรวจว่า API เปิดที่ `http://localhost:3001` หรือ set `PRINTOPS_API_BASE_URL` ถูกต้อง |
 | dashboard เรียก API ไม่ได้ | ตรวจว่า `npm run dev -w apps/api` เปิดอยู่ |
-| runner login เอง | `RUNNER_API_TOKEN` ว่าง จึงใช้ dev login flow |
-| ไม่เจอ printer discovery | ลอง `DISCOVERY_ADAPTER=fake npm run dev -w apps/runner` |
+| runner login เอง | `PRINTOPS_RUNNER_TOKEN` ว่าง จึงใช้ dev login flow |
+| ไม่เจอ printer discovery | ลอง `PRINTOPS_DISCOVERY_MODE=fake npm run dev:runner-go` |
 | restart แล้วข้อมูลหาย | runtime ปัจจุบันใช้ in-memory storage |
 | printer จริงไม่พิมพ์ | real printer adapters ยังไม่ยืนยันว่า production-ready |
 | Docker Compose build ไม่ได้ | `infra/docker/docker-compose.yml` อ้างถึง Dockerfile ที่ยังไม่มี ต้องยืนยัน |
@@ -576,7 +605,7 @@ field ที่ยืนยันจาก route code ว่าจำเป็�
 - auth ปัจจุบันยังรับ password อะไรก็ได้สำหรับ admin dev user
 - external API มี API key auth และมี dev key ที่ seed มา
 - real printer adapters ยังไม่ยืนยันว่าใช้งาน production ได้
-- runner-side local execution ยังอยู่ใน next step ต้องยืนยัน
+- runner execution ใช้ Go runner เป็นหลัก โดย resolve printer protocol และ dispatch ไป executor ที่ตรงกัน
 - production service account, key rotation, network setup, และ deployment steps ยัง TBD / ต้องยืนยัน
 
 ## More Documentation
