@@ -13,12 +13,16 @@ body {
   overflow: hidden;
 }
 
+/* ---- shell ---- */
+
 .app-shell {
   display: flex;
   height: 100vh;
   min-height: 0;
   font-family: system-ui, sans-serif;
 }
+
+/* ---- nav base ---- */
 
 .app-nav {
   width: 200px;
@@ -30,7 +34,157 @@ body {
   padding: 1rem;
   display: flex;
   flex-direction: column;
+  transition: transform 0.2s ease;
 }
+
+.app-nav-brand {
+  font-size: 1rem;
+  margin: 0 0 1.5rem;
+  color: #89b4fa;
+}
+
+/* Nav groups */
+
+.nav-group {
+  margin-bottom: 1.25rem;
+}
+
+.nav-group:last-of-type {
+  margin-bottom: 0;
+}
+
+.nav-group-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-bottom: 0.5rem;
+  padding: 0 0.15rem;
+}
+
+.nav-group-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.nav-group-list li {
+  margin-bottom: 0.25rem;
+}
+
+/* Nav links */
+
+.nav-link {
+  display: block;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  color: #cdd6f4;
+  text-decoration: none;
+  font-size: 0.875rem;
+  transition: background-color 0.15s, color 0.15s;
+  outline-offset: -2px;
+}
+
+.nav-link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.nav-link:focus-visible {
+  outline: 2px solid #89b4fa;
+  outline-offset: 0;
+}
+
+.nav-link--active {
+  color: #89b4fa;
+  background: rgba(137, 180, 250, 0.12);
+}
+
+/* Session card */
+
+.session-card {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cdd6f4;
+  font-size: 0.8rem;
+}
+
+.session-name {
+  margin-bottom: 0.2rem;
+}
+
+.session-role {
+  display: inline-block;
+  margin-top: 0.25rem;
+  color: #89b4fa;
+  font-size: 0.75rem;
+}
+
+.session-signout-btn {
+  display: block;
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: 6px;
+  background: #313244;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.session-signout-btn:focus-visible {
+  outline: 2px solid #89b4fa;
+  outline-offset: 2px;
+}
+
+.session-signout-btn:hover {
+  background: #45475a;
+}
+
+/* ---- mobile nav toggle ---- */
+
+.nav-toggle {
+  display: none;
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 100;
+  width: 40px;
+  height: 36px;
+  padding: 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+
+.nav-toggle:focus-visible {
+  outline: 2px solid #1e66f5;
+  outline-offset: 2px;
+}
+
+.nav-toggle-bar {
+  display: block;
+  height: 2px;
+  background: #374151;
+  border-radius: 1px;
+}
+
+.nav-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* ---- main ---- */
 
 .app-main {
   flex: 1;
@@ -49,7 +203,8 @@ body {
 }
 
 .app-main button,
-.app-main input {
+.app-main input,
+.app-main select {
   max-width: 100%;
 }
 
@@ -79,6 +234,164 @@ body {
 .app-main a {
   overflow-wrap: anywhere;
 }
+
+/* ---- settings page ---- */
+
+.settings-page {
+  max-width: 640px;
+}
+
+.settings-page h1 {
+  margin: 0 0 1.25rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1e1e2e;
+}
+
+.settings-section {
+  margin-bottom: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.settings-section h2 {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.settings-field {
+  margin-bottom: 1rem;
+}
+
+.settings-field:last-child {
+  margin-bottom: 0;
+}
+
+.settings-field label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.settings-field input,
+.settings-field select {
+  display: block;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.875rem;
+  background: #fff;
+  color: #374151;
+}
+
+.settings-field input:focus,
+.settings-field select:focus {
+  outline: none;
+  border-color: #1e66f5;
+}
+
+.settings-field input:focus-visible,
+.settings-field select:focus-visible {
+  outline: 2px solid #1e66f5;
+  outline-offset: 0;
+}
+
+.settings-field input:disabled,
+.settings-field select:disabled {
+  opacity: 0.7;
+  cursor: wait;
+  background: #f0f0f0;
+}
+
+.settings-field .field-error {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: #f38ba8;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.settings-actions button {
+  padding: 0.65rem 1rem;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-actions button:focus-visible {
+  outline: 2px solid #1e66f5;
+  outline-offset: 2px;
+}
+
+.settings-actions button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.settings-btn-primary {
+  background: #1e1e2e;
+  color: #fff;
+}
+
+.settings-btn-primary:hover:not(:disabled) {
+  background: #313244;
+}
+
+.settings-btn-secondary {
+  background: #fff;
+  color: #374151;
+  border: 1px solid #d1d5db !important;
+}
+
+.settings-btn-secondary:hover:not(:disabled) {
+  background: #f5f5f5;
+}
+
+.settings-btn-danger {
+  background: #fff;
+  color: #f38ba8;
+  border: 1px solid #f38ba8 !important;
+}
+
+.settings-btn-danger:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
+.settings-message {
+  margin-bottom: 1rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.settings-message--success {
+  background: #e6f7e6;
+  color: #2d6a2d;
+}
+
+.settings-message--error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* ---- truncation utilities ---- */
 
 .truncate {
   display: block;
@@ -124,6 +437,8 @@ body {
   overflow-wrap: normal;
 }
 
+/* ---- table cell widths ---- */
+
 .cell-name {
   max-width: 220px;
 }
@@ -152,33 +467,7 @@ body {
   min-width: 0;
 }
 
-.session-card {
-  margin-top: auto;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  color: #cdd6f4;
-  font-size: 0.8rem;
-}
-
-.session-card span {
-  display: inline-block;
-  margin-top: 0.25rem;
-  color: #89b4fa;
-  font-size: 0.75rem;
-}
-
-.session-card button {
-  display: block;
-  width: 100%;
-  margin-top: 0.75rem;
-  padding: 0.45rem 0.6rem;
-  border: 0;
-  border-radius: 6px;
-  background: #313244;
-  color: #fff;
-  cursor: pointer;
-  font-size: 0.8rem;
-}
+/* ---- login ---- */
 
 .login-screen {
   display: grid;
@@ -230,6 +519,11 @@ body {
   font: inherit;
 }
 
+.login-panel input:focus-visible {
+  outline: 2px solid #1e66f5;
+  outline-offset: 0;
+}
+
 .login-panel button {
   width: 100%;
   margin-top: 0.25rem;
@@ -245,6 +539,11 @@ body {
 .login-panel button:disabled {
   cursor: wait;
   opacity: 0.7;
+}
+
+.login-panel button:focus-visible {
+  outline: 2px solid #1e66f5;
+  outline-offset: 2px;
 }
 
 .login-error {
@@ -263,66 +562,43 @@ body {
   line-height: 1.4;
 }
 
-@media (max-width: 760px) {
-  .app-shell {
-    flex-direction: column;
-  }
+/* ---- error fallback ---- */
 
-  .app-nav {
-    width: 100%;
-    flex: 0 0 auto;
-    max-height: 35vh;
-  }
-
-  .app-nav ul {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.25rem 0.75rem;
-  }
-
-  .app-main {
-    padding: 1rem;
-  }
-
-  .app-main [style*="grid-template-columns"] {
-    grid-template-columns: 1fr !important;
-  }
-
-  .app-main [style*="justify-content: space-between"] {
-    align-items: flex-start !important;
-    flex-wrap: wrap !important;
-    gap: 0.75rem !important;
-  }
-
-  .app-main table {
-    min-width: 680px;
-  }
-
-  .app-main th,
-  .app-main td {
-    padding: 0.55rem 0.65rem !important;
-  }
+.error-fallback {
+  padding: 2rem;
+  text-align: center;
+  font-family: system-ui, sans-serif;
 }
 
-@media (max-width: 520px) {
-  .app-nav ul {
-    grid-template-columns: 1fr;
-  }
-
-  .app-main {
-    padding: 0.75rem;
-  }
-
-  .app-main h1 {
-    font-size: 1.35rem;
-  }
-
-  .app-main table {
-    min-width: 620px;
-  }
+.error-fallback h2 {
+  color: #f38ba8;
+  font-size: 1.2rem;
+  margin: 0 0 0.5rem;
 }
 
-/* Splash Screen (desktop startup) */
+.error-fallback p {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+.error-reload-btn {
+  background: #1e66f5;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.error-reload-btn:focus-visible {
+  outline: 2px solid #1e66f5;
+  outline-offset: 2px;
+}
+
+/* ---- splash ---- */
+
 .splash-screen {
   display: grid;
   min-height: 100vh;
@@ -370,3 +646,97 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* ---- reduced motion ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .app-nav {
+    transition: none;
+  }
+
+  .nav-link {
+    transition: none;
+  }
+
+  .splash-spinner {
+    animation: none;
+    border-top-color: #e5e7eb;
+  }
+}
+
+/* ---- responsive ---- */
+
+@media (max-width: 760px) {
+  .app-shell {
+    flex-direction: column;
+    padding-top: 50px;
+  }
+
+  .nav-toggle {
+    display: flex;
+  }
+
+  .nav-overlay {
+    display: block;
+  }
+
+  .app-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 260px;
+    height: 100vh;
+    z-index: 50;
+    transform: translateX(-100%);
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .app-nav--open {
+    transform: translateX(0);
+  }
+
+  .app-main {
+    padding: 1rem;
+  }
+
+  .app-main [style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  .app-main [style*="justify-content: space-between"] {
+    align-items: flex-start !important;
+    flex-wrap: wrap !important;
+    gap: 0.75rem !important;
+  }
+
+  .app-main table {
+    min-width: 680px;
+  }
+
+  .app-main th,
+  .app-main td {
+    padding: 0.55rem 0.65rem !important;
+  }
+
+  .settings-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-nav {
+    width: 100%;
+  }
+
+  .app-main {
+    padding: 0.75rem;
+  }
+
+  .app-main h1 {
+    font-size: 1.35rem;
+  }
+
+  .app-main table {
+    min-width: 620px;
+  }
+}

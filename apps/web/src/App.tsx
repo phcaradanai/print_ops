@@ -1,5 +1,14 @@
 import { Routes, Route, NavLink } from 'react-router-dom';
-import { useEffect, useMemo, useState, Component, type ReactNode, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  Component,
+  type ReactNode,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react';
 import Dashboard from './pages/Dashboard.js';
 import Printers from './pages/Printers.js';
 import PrinterDetail from './pages/PrinterDetail.js';
@@ -19,25 +28,46 @@ import Webhooks from './pages/Webhooks.js';
 import RoutePolicies from './pages/RoutePolicies.js';
 import PrinterBindings from './pages/PrinterBindings.js';
 import { getCurrentUser, login, logout, healthUrl, type SessionUser } from './api/client.js';
+import { LocaleProvider, useLocale } from './i18n/index.js';
 
-const navItems = [
-  { to: '/', label: 'Dashboard', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] },
-  { to: '/printers', label: 'Printers', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] },
-  { to: '/discovered-printers', label: 'Discovery', roles: ['OWNER', 'ADMIN'] },
-  { to: '/diagnostics', label: 'Diagnostics', roles: ['OWNER', 'ADMIN', 'OPERATOR'] },
-  { to: '/templates', label: 'Templates', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] },
-  { to: '/paper-profiles', label: 'Paper Profiles', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] },
-  { to: '/template-sandbox', label: 'Sandbox', roles: ['OWNER'] },
-  { to: '/webhooks', label: 'Webhooks', roles: ['OWNER', 'ADMIN'] },
-  { to: '/route-policies', label: 'Route Policies', roles: ['OWNER', 'ADMIN'] },
-  { to: '/printer-bindings', label: 'Bindings', roles: ['OWNER', 'ADMIN'] },
-  { to: '/jobs', label: 'Job Queue', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] },
-  { to: '/runners', label: 'Runners', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] },
-  { to: '/audit-logs', label: 'Audit Logs', roles: ['OWNER', 'ADMIN'] },
-  { to: '/users', label: 'Users & Roles', roles: ['OWNER'] },
-  { to: '/export', label: 'Export', roles: ['OWNER', 'ADMIN'] },
-  { to: '/settings', label: 'Settings', roles: ['OWNER', 'ADMIN'] },
+// ----- navigation definition -----
+
+type NavGroup = 'operations' | 'administration';
+
+interface NavItem {
+  to: string;
+  key: string;
+  roles: SessionUser['role'][];
+  group: NavGroup;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  // Operator Workflow
+  { to: '/', key: 'nav.dashboard', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
+  { to: '/printers', key: 'nav.printers', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
+  { to: '/jobs', key: 'nav.jobQueue', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
+  { to: '/runners', key: 'nav.runners', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
+  { to: '/templates', key: 'nav.templates', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
+  { to: '/paper-profiles', key: 'nav.paperProfiles', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
+
+  // Administration
+  { to: '/discovered-printers', key: 'nav.discovery', roles: ['OWNER', 'ADMIN'], group: 'administration' },
+  { to: '/diagnostics', key: 'nav.diagnostics', roles: ['OWNER', 'ADMIN', 'OPERATOR'], group: 'administration' },
+  { to: '/template-sandbox', key: 'nav.sandbox', roles: ['OWNER'], group: 'administration' },
+  { to: '/webhooks', key: 'nav.webhooks', roles: ['OWNER', 'ADMIN'], group: 'administration' },
+  { to: '/route-policies', key: 'nav.routePolicies', roles: ['OWNER', 'ADMIN'], group: 'administration' },
+  { to: '/printer-bindings', key: 'nav.bindings', roles: ['OWNER', 'ADMIN'], group: 'administration' },
+  { to: '/audit-logs', key: 'nav.auditLogs', roles: ['OWNER', 'ADMIN'], group: 'administration' },
+  { to: '/users', key: 'nav.usersRoles', roles: ['OWNER'], group: 'administration' },
+  { to: '/export', key: 'nav.export', roles: ['OWNER', 'ADMIN'], group: 'administration' },
+  { to: '/settings', key: 'nav.settings', roles: ['OWNER', 'ADMIN'], group: 'administration' },
 ];
+
+const GROUP_ORDER: NavGroup[] = ['operations', 'administration'];
+const GROUP_LABEL_KEYS: Record<NavGroup, string> = {
+  operations: 'nav.group.operations',
+  administration: 'nav.group.administration',
+};
 
 const ROLE_LABEL: Record<SessionUser['role'], string> = {
   OWNER: 'Sysadmin',
@@ -46,8 +76,11 @@ const ROLE_LABEL: Record<SessionUser['role'], string> = {
   VIEWER: 'Viewer',
 };
 
+// ----- splash -----
+
 function SplashScreen() {
-  const [status, setStatus] = useState('PrintOps is starting...');
+  const { t } = useLocale();
+  const [status, setStatus] = useState(t('splash.starting'));
 
   useEffect(() => {
     let cancelled = false;
@@ -59,28 +92,30 @@ function SplashScreen() {
         try {
           const res = await fetch(healthUrl());
           if (res.ok) {
-            if (!cancelled) setStatus('System Ready');
+            if (!cancelled) setStatus(t('splash.ready'));
             return;
           }
         } catch {
           // retrying...
         }
         if (!cancelled) {
-          setStatus(`Starting... (${attempts}/120)`);
+          setStatus(t('splash.progress').replace('{n}', String(attempts)));
           await new Promise((r) => setTimeout(r, 1000));
         }
       }
-      if (!cancelled) setStatus('Unable to connect to server');
+      if (!cancelled) setStatus(t('splash.unable'));
     }
     void waitForApi();
-    return () => { cancelled = true; };
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
 
   return (
     <div className="splash-screen">
       <div className="splash-content">
-        <div className="splash-logo">PrinterOps</div>
-        <p className="splash-tagline">Print Gateway for Hospitals</p>
+        <div className="splash-logo">{t('login.title')}</div>
+        <p className="splash-tagline">{t('splash.tagline')}</p>
         <div className="splash-status">{status}</div>
         <div className="splash-spinner" />
       </div>
@@ -88,7 +123,10 @@ function SplashScreen() {
   );
 }
 
+// ----- login -----
+
 function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void }) {
+  const { t } = useLocale();
   const [email, setEmail] = useState('sysadmin@printerops.local');
   const [password, setPassword] = useState('dev-password');
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +139,7 @@ function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void }) {
     try {
       onLogin(await login(email, password));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : t('login.error'));
     } finally {
       setSubmitting(false);
     }
@@ -111,49 +149,54 @@ function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void }) {
     <div className="login-screen">
       <form className="login-panel" onSubmit={(event) => void submit(event)}>
         <div>
-          <h1>PrinterOps</h1>
-          <p>Sign in to manage local printing operations.</p>
+          <h1>{t('login.title')}</h1>
+          <p>{t('login.subtitle')}</p>
         </div>
 
         <label>
-          Email
-          <input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" />
+          {t('login.email')}
+          <input
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete="username"
+          />
         </label>
 
         <label>
-          Password
-          <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" />
+          {t('login.password')}
+          <input
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            type="password"
+            autoComplete="current-password"
+          />
         </label>
 
         {error && <div className="login-error">{error}</div>}
 
         <button type="submit" disabled={submitting}>
-          {submitting ? 'Signing in...' : 'Sign in'}
+          {submitting ? t('common.signingIn') : t('common.signIn')}
         </button>
 
-        <div className="login-hint">
-          Dev accounts: sysadmin@printerops.local, admin@printerops.local, user@printerops.local, viewer@printerops.local
-        </div>
+        <div className="login-hint">{t('login.hint')}</div>
       </form>
     </div>
   );
 }
 
+// ----- error boundary -----
 
 function ErrorFallback({ error }: { error: Error }) {
+  const { t } = useLocale();
   return (
-    <div style={{ padding: '2rem', textAlign: 'center' }}>
-      <h2 style={{ color: '#f38ba8' }}>Something went wrong</h2>
-      <p style={{ color: '#888', fontSize: '0.9rem', marginBottom: '1rem' }}>{error.message}</p>
+    <div className="error-fallback">
+      <h2>{t('error.title')}</h2>
+      <p>{error.message}</p>
       <button
         onClick={() => window.location.reload()}
-        style={{
-          background: '#1e66f5', color: '#fff', border: 'none',
-          padding: '0.5rem 1.5rem', borderRadius: '6px', cursor: 'pointer',
-          fontSize: '0.9rem',
-        }}
+        className="error-reload-btn"
       >
-        Reload App
+        {t('error.reload')}
       </button>
     </div>
   );
@@ -173,13 +216,163 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 }
 
+// ----- navigation -----
+
+function AppNav({
+  user,
+  onLogout,
+}: {
+  user: SessionUser;
+  onLogout: () => void;
+}) {
+  const { t } = useLocale();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const visibleNav = useMemo(
+    () => NAV_ITEMS.filter((item) => item.roles.includes(user.role)),
+    [user],
+  );
+
+  // Group visible items
+  const grouped = useMemo(() => {
+    const map: Record<NavGroup, NavItem[]> = { operations: [], administration: [] };
+    for (const item of visibleNav) {
+      map[item.group].push(item);
+    }
+    return GROUP_ORDER.map((g) => ({ group: g, items: map[g] })).filter(
+      (g) => g.items.length > 0,
+    );
+  }, [visibleNav]);
+
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
+
+  function onMenuKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setMobileOpen((prev) => !prev);
+    }
+  }
+
+  const navContent = (
+    <>
+      <h2 className="app-nav-brand">PrinterOps</h2>
+
+      {grouped.map(({ group, items }) => (
+        <div key={group} className="nav-group">
+          <div className="nav-group-label">{t(GROUP_LABEL_KEYS[group])}</div>
+          <ul className="nav-group-list">
+            {items.map((item) => (
+              <li key={item.to}>
+                <NavLink
+                  to={item.to}
+                  end={item.to === '/'}
+                  className={({ isActive }) =>
+                    'nav-link' + (isActive ? ' nav-link--active' : '')
+                  }
+                  onClick={closeMobile}
+                >
+                  {t(item.key)}
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+
+      <div className="session-card">
+        <div className="session-name">{user.name}</div>
+        <span className="session-role">
+          {t('session.role')}: {ROLE_LABEL[user.role]}
+        </span>
+        <button
+          type="button"
+          className="session-signout-btn"
+          onClick={onLogout}
+        >
+          {t('common.signOut')}
+        </button>
+      </div>
+    </>
+  );
+
+  const navId = 'app-nav';
+
+  return (
+    <>
+      {/* Mobile hamburger */}
+      <button
+        className="nav-toggle"
+        aria-expanded={mobileOpen}
+        aria-controls={navId}
+        aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
+        onClick={() => setMobileOpen((prev) => !prev)}
+        onKeyDown={onMenuKeyDown}
+      >
+        <span className="nav-toggle-bar" />
+        <span className="nav-toggle-bar" />
+        <span className="nav-toggle-bar" />
+      </button>
+
+      {/* Overlay for mobile */}
+      {mobileOpen && (
+        <div
+          className="nav-overlay"
+          onClick={closeMobile}
+          aria-hidden="true"
+        />
+      )}
+
+      <nav
+        id={navId}
+        className={'app-nav' + (mobileOpen ? ' app-nav--open' : '')}
+        aria-label="Main navigation"
+      >
+        {navContent}
+      </nav>
+    </>
+  );
+}
+
+// ----- App shell -----
+
+function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
+  return (
+    <div className="app-shell">
+      <AppNav user={user} onLogout={onLogout} />
+      <main className="app-main">
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/printers" element={<Printers />} />
+          <Route path="/printers/:id" element={<PrinterDetail />} />
+          <Route path="/jobs" element={<JobQueue />} />
+          <Route path="/jobs/:id" element={<JobDetail />} />
+          <Route path="/runners" element={<Runners />} />
+          <Route path="/discovered-printers" element={<DiscoveredPrinters />} />
+          <Route path="/diagnostics" element={<LocalDiagnostics />} />
+          <Route path="/templates" element={<Templates />} />
+          <Route path="/paper-profiles" element={<PaperProfiles />} />
+          <Route path="/template-sandbox" element={<TemplateSandbox />} />
+          <Route path="/webhooks" element={<Webhooks />} />
+          <Route path="/route-policies" element={<RoutePolicies />} />
+          <Route path="/printer-bindings" element={<PrinterBindings />} />
+          <Route path="/audit-logs" element={<AuditLogs />} />
+          <Route path="/users" element={<UsersRoles />} />
+          <Route path="/export" element={<ExportCenter />} />
+          <Route path="/settings" element={<Settings />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+// ----- entry point -----
+
 export default function App() {
   const [apiReady, setApiReady] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
-    if (apiReady) return;
     let cancelled = false;
 
     async function checkApi() {
@@ -200,8 +393,10 @@ export default function App() {
     }
 
     void checkApi();
-    return () => { cancelled = true; };
-  }, [apiReady]);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!apiReady) return;
@@ -211,78 +406,34 @@ export default function App() {
       .finally(() => setCheckingSession(false));
   }, [apiReady]);
 
-  const visibleNav = useMemo(
-    () => navItems.filter((item) => user && item.roles.includes(user.role)),
-    [user]
-  );
+  const handleLogout = useCallback(() => {
+    logout();
+    setUser(null);
+  }, []);
 
   if (!apiReady || checkingSession) {
-    return <SplashScreen />;
+    return (
+      <LocaleProvider>
+        <SplashScreen />
+      </LocaleProvider>
+    );
   }
 
   if (!user) {
-    return <ErrorBoundary><LoginView onLogin={setUser} /></ErrorBoundary>;
+    return (
+      <LocaleProvider>
+        <ErrorBoundary>
+          <LoginView onLogin={setUser} />
+        </ErrorBoundary>
+      </LocaleProvider>
+    );
   }
 
   return (
-    <ErrorBoundary>
-      <div className="app-shell">
-        <nav className="app-nav">
-          <h2 style={{ fontSize: '1rem', marginBottom: '1.5rem', color: '#89b4fa' }}>PrinterOps</h2>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {visibleNav.map((item) => (
-              <li key={item.to} style={{ marginBottom: '0.5rem' }}>
-                <NavLink
-                  to={item.to}
-                  end={item.to === '/'}
-                  style={({ isActive }) => ({
-                    color: isActive ? '#89b4fa' : '#cdd6f4',
-                    textDecoration: 'none',
-                    fontSize: '0.875rem',
-                  })}
-                >
-                  {item.label}
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-          <div className="session-card">
-            <div>{user.name}</div>
-            <span>{ROLE_LABEL[user.role]}</span>
-            <button
-              type="button"
-              onClick={() => {
-                logout();
-                setUser(null);
-              }}
-            >
-              Sign out
-            </button>
-          </div>
-        </nav>
-        <main className="app-main">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/printers" element={<Printers />} />
-            <Route path="/printers/:id" element={<PrinterDetail />} />
-            <Route path="/jobs" element={<JobQueue />} />
-            <Route path="/jobs/:id" element={<JobDetail />} />
-            <Route path="/runners" element={<Runners />} />
-            <Route path="/discovered-printers" element={<DiscoveredPrinters />} />
-            <Route path="/diagnostics" element={<LocalDiagnostics />} />
-            <Route path="/templates" element={<Templates />} />
-            <Route path="/paper-profiles" element={<PaperProfiles />} />
-            <Route path="/template-sandbox" element={<TemplateSandbox />} />
-            <Route path="/webhooks" element={<Webhooks />} />
-            <Route path="/route-policies" element={<RoutePolicies />} />
-            <Route path="/printer-bindings" element={<PrinterBindings />} />
-            <Route path="/audit-logs" element={<AuditLogs />} />
-            <Route path="/users" element={<UsersRoles />} />
-            <Route path="/export" element={<ExportCenter />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </main>
-      </div>
-    </ErrorBoundary>
+    <LocaleProvider>
+      <ErrorBoundary>
+        <AppShell user={user} onLogout={handleLogout} />
+      </ErrorBoundary>
+    </LocaleProvider>
   );
 }
