@@ -6,7 +6,7 @@
  */
 import initSqlJs, { type Database } from 'sql.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, join } from 'node:path';
 import { runSchemaMigration } from './sqlite.schema.js';
 
 let _db: Database | undefined;
@@ -47,7 +47,10 @@ export async function initDatabase(): Promise<void> {
     // Falls back to default behaviour (node_modules) for dev.
     locateFile: (file: string) => {
       const envPath = process.env['SQL_WASM_PATH'];
-      if (envPath) return envPath;
+      if (envPath && existsSync(envPath)) return envPath;
+      // Fallback: look alongside the executable
+      const local = join(dirname(process.execPath), file);
+      if (existsSync(local)) return local;
       return file;
     },
   });

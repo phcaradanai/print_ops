@@ -336,7 +336,12 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       '.ico': 'image/x-icon',
       '.woff2': 'font/woff2',
     };
-    app.get('*', async (req, reply) => {
+    // Use setNotFoundHandler — app.get('*') at root level matches BEFORE
+    // child plugin routes in Fastify, breaking all API GET requests.
+    app.setNotFoundHandler(async (req, reply) => {
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        return reply.status(404).send({ error: 'Not found' });
+      }
       const urlPath = new URL(req.url, 'http://x').pathname;
       let filePath = join(staticDir, urlPath === '/' ? 'index.html' : urlPath);
       if (!existsSync(filePath) || !filePath.startsWith(staticDir)) {
@@ -348,7 +353,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         const buf = readFileSync(filePath);
         return reply.header('content-type', mime).send(buf);
       } catch {
-        return reply.status(404).send('Not found');
+        return reply.status(404).send({ error: 'Not found' });
       }
     });
   }
