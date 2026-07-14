@@ -136,40 +136,40 @@ The desktop app expects the web dev server at `http://localhost:3000` and launch
 
 ```bash
 npm test
+npm run typecheck
 npm run build
 ```
 
-Go runner-specific commands:
+Both `npm test` and `npm run typecheck` include the Go runner checks:
+
+- `npm test` runs all Node workspace tests, then `npm run test:runner-go` (Go tests via `go test ./...`).
+- `npm run typecheck` runs all TypeScript workspace type checks, then `npm run typecheck:runner-go`. The Go runner typecheck reuses `go test ./...` because Go compilation is validated through tests; there is no separate `go build` typecheck command in the default pipeline.
+
+The legacy TypeScript runner tests are kept for reference only and are not part of the default verification:
 
 ```bash
-npm run build:runner-go    # Build the Go runner binary
-npm run test:runner-go     # Run Go runner tests (go test ./...)
+npm test -w apps/runner
 ```
 
-There is also a repo-level typecheck command:
+Stand-alone Go runner commands:
 
 ```bash
-npm run typecheck
+npm run build:runner-go     # Build the Go runner binary
+npm run test:runner-go      # Run Go runner tests (go test ./...)
+npm run typecheck:runner-go # Run Go runner typecheck (go test ./...)
 ```
-
-At the time this README was written, `npm run typecheck` is present in
-`package.json` but fails in `apps/web/src/pages/LocalDiagnostics.tsx` because
-`apiFetch` is called with a second argument that its helper signature does not
-accept. This is an application code issue, not a setup step.
 
 Workspace-specific examples:
 
 ```bash
 npm test -w apps/api
-npm test -w apps/runner
 npm run build -w apps/web
 ```
 
-The legacy TypeScript runner tests are kept for reference:
-
-```bash
-npm test -w apps/runner
-```
+Note: at the time this README was last updated, `npm run typecheck` in the
+TypeScript workspaces fails in `apps/web/src/pages/LocalDiagnostics.tsx` because
+`apiFetch` is called with a second argument that its helper signature does not
+accept. This is an application code issue, not a setup step.
 
 ### Useful Development API Test
 
@@ -450,16 +450,30 @@ npm run tauri:dev -w apps/desktop
 
 ```bash
 npm test
+npm run typecheck
 npm run build
 ```
 
-มีคำสั่ง typecheck ด้วย:
+`npm test` และ `npm run typecheck` รวม Go runner checks ไว้แล้ว:
+
+- `npm test` รัน Node workspace test ทั้งหมด แล้วรัน `npm run test:runner-go` (Go test ผ่าน `go test ./...`)
+- `npm run typecheck` รัน TypeScript workspace typecheck ทั้งหมด แล้วรัน `npm run typecheck:runner-go` Go runner ใช้ `go test ./...` เพราะ Go compilation ถูก validate ผ่าน tests อยู่แล้ว ไม่มีคำสั่ง `go build` แยกใน default pipeline
+
+test ของ TypeScript runner ยังเก็บไว้เป็น reference เท่านั้น ไม่ได้รวมใน default verification:
 
 ```bash
-npm run typecheck
+npm test -w apps/runner
 ```
 
-แต่ตอนเขียน README นี้ `npm run typecheck` ยัง fail ที่ `apps/web/src/pages/LocalDiagnostics.tsx` เพราะเรียก `apiFetch` ด้วย argument ตัวที่สอง ทั้งที่ helper รับ argument เดียว นี่เป็น issue ใน application code ไม่ใช่ขั้นตอน setup
+คำสั่ง Go runner แบบแยก:
+
+```bash
+npm run build:runner-go     # build Go runner binary
+npm run test:runner-go      # รัน Go runner tests (go test ./...)
+npm run typecheck:runner-go # รัน Go runner typecheck (go test ./...)
+```
+
+หมายเหตุ: ณ ตอนเขียน README นี้ `npm run typecheck` ใน TypeScript workspace ยัง fail ที่ `apps/web/src/pages/LocalDiagnostics.tsx` เพราะเรียก `apiFetch` ด้วย argument ตัวที่สอง ทั้งที่ helper รับ argument เดียว นี่เป็น issue ใน application code ไม่ใช่ขั้นตอน setup
 
 #### ตัวอย่างส่งงานพิมพ์สำหรับ dev
 

@@ -7,12 +7,13 @@
   ],
   "scripts": {
     "build": "npm run build -w packages/domain && npm run build -w packages/shared && npm run build -w packages/adapters && npm run build -w apps/api && npm run build:runner-go",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present && npm run test:runner-go",
     "dev": "concurrently \"npm run dev -w apps/api\" \"npm run dev -w apps/web\" \"go run ./apps/runner-go/cmd/printops-runner\"",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && npm run typecheck:runner-go",
     "dev:runner-go": "go run ./apps/runner-go/cmd/printops-runner",
     "build:runner-go": "cd apps/runner-go && go build -o printops-runner ./cmd/printops-runner",
     "test:runner-go": "cd apps/runner-go && go test ./...",
+    "typecheck:runner-go": "cd apps/runner-go && go test ./...",
     "dev:runner-ts": "npm run dev -w apps/runner",
     "clean": "find . -name 'dist' -not -path '*/node_modules/*' -exec rm -rf {} + 2>/dev/null; true"
   },
