@@ -29,9 +29,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.all([
-      apiFetch<Job[]>('/jobs?limit=500').catch(() => [] as Job[]),
-      apiFetch<Printer[]>('/printers').catch(() => [] as Printer[]),
-      apiFetch<Runner[]>('/runners').catch(() => [] as Runner[]),
+      apiFetch<Job[]>('/jobs?limit=500').catch((e) => { console.error('[Dashboard] /jobs failed', e); return [] as Job[]; }),
+      apiFetch<Printer[]>('/printers').catch((e) => { console.error('[Dashboard] /printers failed', e); return [] as Printer[]; }),
+      apiFetch<Runner[]>('/runners').catch((e) => { console.error('[Dashboard] /runners failed', e); return [] as Runner[]; }),
     ]).then(([j, p, r]) => { setJobs(j); setPrinters(p); setRunners(r); setLoading(false); });
   }, []);
 

@@ -37,8 +37,12 @@ function apiUrl(path: string): string {
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(authHeaders());
   new Headers(init.headers).forEach((value, key) => headers.set(key, value));
-  const res = await fetch(apiUrl(path), { ...init, headers });
-  if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
+  const url = apiUrl(path);
+  const res = await fetch(url, { ...init, headers });
+  if (!res.ok) {
+    console.error('[apiFetch]', path, '->', res.status, '(', url, ')');
+    throw new Error(`API ${path} -> ${res.status}`);
+  }
   return res.json() as Promise<T>;
 }
 

@@ -16,17 +16,27 @@ const STATUS_DOT: Record<string, string> = {
 export default function Printers() {
   const [printers, setPrinters] = useState<Printer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<Printer[]>('/printers')
       .then((data) => { setPrinters(data); setLoading(false); })
-      .catch(() => setLoading(false));
+      .catch((err) => {
+        console.error('[Printers] API failed', err);
+        setError(err instanceof Error ? err.message : 'Failed to load printers');
+        setLoading(false);
+      });
   }, []);
 
   return (
     <div>
       <h1 style={{ marginBottom: '1.5rem' }}>Printers</h1>
-      {loading ? <p style={{ color: '#888' }}>Loading…</p> : (
+      {loading ? <p style={{ color: '#888' }}>Loading…</p> : error ? (
+        <div style={{ padding: '2rem', textAlign: 'center' }}>
+          <p style={{ color: '#f38ba8', marginBottom: '0.5rem' }}>Failed to load printers</p>
+          <p style={{ color: '#888', fontSize: '0.85rem' }}>{error}</p>
+        </div>
+      ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '8px', overflow: 'hidden' }}>
           <thead>
             <tr style={{ background: '#f0f0f0' }}>

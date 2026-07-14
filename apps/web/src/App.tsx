@@ -1,5 +1,5 @@
 import { Routes, Route, NavLink } from 'react-router-dom';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, Component, type ReactNode, type FormEvent } from 'react';
 import Dashboard from './pages/Dashboard.js';
 import Printers from './pages/Printers.js';
 import PrinterDetail from './pages/PrinterDetail.js';
@@ -140,6 +140,39 @@ function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void }) {
 }
 
 
+function ErrorFallback({ error }: { error: Error }) {
+  return (
+    <div style={{ padding: '2rem', textAlign: 'center' }}>
+      <h2 style={{ color: '#f38ba8' }}>Something went wrong</h2>
+      <p style={{ color: '#888', fontSize: '0.9rem', marginBottom: '1rem' }}>{error.message}</p>
+      <button
+        onClick={() => window.location.reload()}
+        style={{
+          background: '#1e66f5', color: '#fff', border: 'none',
+          padding: '0.5rem 1.5rem', borderRadius: '6px', cursor: 'pointer',
+          fontSize: '0.9rem',
+        }}
+      >
+        Reload App
+      </button>
+    </div>
+  );
+}
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) return <ErrorFallback error={this.state.error} />;
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [apiReady, setApiReady] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -188,66 +221,68 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginView onLogin={setUser} />;
+    return <ErrorBoundary><LoginView onLogin={setUser} /></ErrorBoundary>;
   }
 
   return (
-    <div className="app-shell">
-      <nav className="app-nav">
-        <h2 style={{ fontSize: '1rem', marginBottom: '1.5rem', color: '#89b4fa' }}>PrinterOps</h2>
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {visibleNav.map((item) => (
-            <li key={item.to} style={{ marginBottom: '0.5rem' }}>
-              <NavLink
-                to={item.to}
-                end={item.to === '/'}
-                style={({ isActive }) => ({
-                  color: isActive ? '#89b4fa' : '#cdd6f4',
-                  textDecoration: 'none',
-                  fontSize: '0.875rem',
-                })}
-              >
-                {item.label}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-        <div className="session-card">
-          <div>{user.name}</div>
-          <span>{ROLE_LABEL[user.role]}</span>
-          <button
-            type="button"
-            onClick={() => {
-              logout();
-              setUser(null);
-            }}
-          >
-            Sign out
-          </button>
-        </div>
-      </nav>
-      <main className="app-main">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/printers" element={<Printers />} />
-          <Route path="/printers/:id" element={<PrinterDetail />} />
-          <Route path="/jobs" element={<JobQueue />} />
-          <Route path="/jobs/:id" element={<JobDetail />} />
-          <Route path="/runners" element={<Runners />} />
-          <Route path="/discovered-printers" element={<DiscoveredPrinters />} />
-          <Route path="/diagnostics" element={<LocalDiagnostics />} />
-          <Route path="/templates" element={<Templates />} />
-          <Route path="/paper-profiles" element={<PaperProfiles />} />
-          <Route path="/template-sandbox" element={<TemplateSandbox />} />
-          <Route path="/webhooks" element={<Webhooks />} />
-          <Route path="/route-policies" element={<RoutePolicies />} />
-          <Route path="/printer-bindings" element={<PrinterBindings />} />
-          <Route path="/audit-logs" element={<AuditLogs />} />
-          <Route path="/users" element={<UsersRoles />} />
-          <Route path="/export" element={<ExportCenter />} />
-          <Route path="/settings" element={<Settings />} />
-        </Routes>
-      </main>
-    </div>
+    <ErrorBoundary>
+      <div className="app-shell">
+        <nav className="app-nav">
+          <h2 style={{ fontSize: '1rem', marginBottom: '1.5rem', color: '#89b4fa' }}>PrinterOps</h2>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {visibleNav.map((item) => (
+              <li key={item.to} style={{ marginBottom: '0.5rem' }}>
+                <NavLink
+                  to={item.to}
+                  end={item.to === '/'}
+                  style={({ isActive }) => ({
+                    color: isActive ? '#89b4fa' : '#cdd6f4',
+                    textDecoration: 'none',
+                    fontSize: '0.875rem',
+                  })}
+                >
+                  {item.label}
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+          <div className="session-card">
+            <div>{user.name}</div>
+            <span>{ROLE_LABEL[user.role]}</span>
+            <button
+              type="button"
+              onClick={() => {
+                logout();
+                setUser(null);
+              }}
+            >
+              Sign out
+            </button>
+          </div>
+        </nav>
+        <main className="app-main">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/printers" element={<Printers />} />
+            <Route path="/printers/:id" element={<PrinterDetail />} />
+            <Route path="/jobs" element={<JobQueue />} />
+            <Route path="/jobs/:id" element={<JobDetail />} />
+            <Route path="/runners" element={<Runners />} />
+            <Route path="/discovered-printers" element={<DiscoveredPrinters />} />
+            <Route path="/diagnostics" element={<LocalDiagnostics />} />
+            <Route path="/templates" element={<Templates />} />
+            <Route path="/paper-profiles" element={<PaperProfiles />} />
+            <Route path="/template-sandbox" element={<TemplateSandbox />} />
+            <Route path="/webhooks" element={<Webhooks />} />
+            <Route path="/route-policies" element={<RoutePolicies />} />
+            <Route path="/printer-bindings" element={<PrinterBindings />} />
+            <Route path="/audit-logs" element={<AuditLogs />} />
+            <Route path="/users" element={<UsersRoles />} />
+            <Route path="/export" element={<ExportCenter />} />
+            <Route path="/settings" element={<Settings />} />
+          </Routes>
+        </main>
+      </div>
+    </ErrorBoundary>
   );
 }
