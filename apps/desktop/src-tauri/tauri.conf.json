@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm --prefix ../.. run dev -w @printerops/web",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "node src-tauri/scripts/build-all.js"
+    "beforeBuildCommand": "node src-tauri/scripts/bundle-resources.js"
   },
   "app": {
     "withGlobalTauri": false,
