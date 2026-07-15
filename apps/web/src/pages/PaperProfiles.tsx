@@ -44,6 +44,8 @@ export interface VisualPaperGeometry {
   marginRightMm: number;
   marginBottomMm: number;
   marginLeftMm: number;
+  sourcePrintableWidthMm: number;
+  sourcePrintableHeightMm: number;
   printableWidthMm: number;
   printableHeightMm: number;
 }
@@ -57,6 +59,8 @@ export function getVisualPaperGeometry(form: Pick<PaperForm, 'widthMm' | 'height
   const marginLeftMm = rotated ? form.marginBottomMm : form.marginLeftMm;
   const widthMm = rotated ? form.heightMm : form.widthMm;
   const heightMm = rotated ? form.widthMm : form.heightMm;
+  const sourcePrintableWidthMm = Math.max(0, form.widthMm - form.marginLeftMm - form.marginRightMm);
+  const sourcePrintableHeightMm = Math.max(0, form.heightMm - form.marginTopMm - form.marginBottomMm);
   return {
     rotated,
     widthMm,
@@ -65,6 +69,8 @@ export function getVisualPaperGeometry(form: Pick<PaperForm, 'widthMm' | 'height
     marginRightMm,
     marginBottomMm,
     marginLeftMm,
+    sourcePrintableWidthMm,
+    sourcePrintableHeightMm,
     printableWidthMm: Math.max(0, widthMm - marginLeftMm - marginRightMm),
     printableHeightMm: Math.max(0, heightMm - marginTopMm - marginBottomMm),
   };
@@ -74,20 +80,20 @@ export function getVisualPaperGeometry(form: Pick<PaperForm, 'widthMm' | 'height
 export function mapPrintablePointToVisual(
   xMm: number,
   yMm: number,
-  geometry: Pick<VisualPaperGeometry, 'rotated' | 'printableHeightMm'>,
+  geometry: Pick<VisualPaperGeometry, 'rotated' | 'sourcePrintableHeightMm'>,
 ) {
   if (!geometry.rotated) return { xMm, yMm };
-  return { xMm: geometry.printableHeightMm - yMm, yMm: xMm };
+  return { xMm: geometry.sourcePrintableHeightMm - yMm, yMm: xMm };
 }
 
 /** Inverse of mapPrintablePointToVisual. */
 export function mapVisualPointToPrintable(
   xMm: number,
   yMm: number,
-  geometry: Pick<VisualPaperGeometry, 'rotated' | 'printableHeightMm'>,
+  geometry: Pick<VisualPaperGeometry, 'rotated' | 'sourcePrintableHeightMm'>,
 ) {
   if (!geometry.rotated) return { xMm, yMm };
-  return { xMm: yMm, yMm: geometry.printableHeightMm - xMm };
+  return { xMm: yMm, yMm: geometry.sourcePrintableHeightMm - xMm };
 }
 
 export function clampGridSpacing(value: number): number {
@@ -264,11 +270,13 @@ function RulerSheet({
   form,
   scale,
   showRulers,
+  unit,
   children,
 }: {
   form: PaperForm;
   scale: number;
   showRulers: boolean;
+  unit: 'mm' | 'cm' | 'px';
   children: React.ReactNode;
 }) {
   if (!showRulers) return <>{children}</>;
@@ -284,7 +292,9 @@ function RulerSheet({
   const minorTickMm = 5;
 
   function tickLabel(vMm: number): string {
-    return String(Math.round(vMm));
+    if (unit === 'cm') return `${(vMm / 10).toFixed(1)} cm`;
+    if (unit === 'px') return `${Math.round((vMm * form.dpi) / 25.4)} px`;
+    return `${Math.round(vMm)} mm`;
   }
 
   function renderTicks(totalMm: number, vertical: boolean): React.ReactNode[] {
@@ -361,7 +371,10 @@ function RulerSheet({
           fontSize: `${fontSize}px`,
           fontWeight: 600,
         }}>
-          0
+          <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
+            <span>0</span>
+            <span style={{ fontSize: `${Math.max(7, fontSize - 1)}px`, fontWeight: 500 }}>{unit}</span>
+          </span>
         </div>
         {/* Horizontal ruler */}
         <div style={{
@@ -547,7 +560,7 @@ function PreviewSheet({
               zIndex: 2,
             }}
           >
-            {f.label || f.key || 'field'}
+            {f.defaultValue || f.label || f.key || 'field'}
           </button>
             );
           })()
@@ -1131,7 +1144,7 @@ export default function PaperProfiles() {
                 <span>{t('page.paperProfiles.previewCanvas')}</span>
                 <span>{form.orientation === 'portrait' ? t('page.paperProfiles.portrait') : t('page.paperProfiles.landscape')}</span>
               </div>
-              <RulerSheet form={form} scale={scale} showRulers={showRulers}>
+              <RulerSheet form={form} scale={scale} showRulers={showRulers} unit={du}>
                 <PreviewSheet
                   form={form} ux={ux} scale={scale}
                   showVerticalGrid={showVerticalGrid}
@@ -1206,7 +1219,7 @@ export default function PaperProfiles() {
                   <span>{form.widthMm} × {form.heightMm} mm · {form.dpi} DPI</span>
                 </div>
                 <div ref={modalStageRef} className="paper-preview-modal__sheet-stage">
-              <RulerSheet form={form} scale={modalScale} showRulers={showRulers}>
+              <RulerSheet form={form} scale={modalScale} showRulers={showRulers} unit={du}>
                     <PreviewSheet
                       form={form}
                       ux={ux}

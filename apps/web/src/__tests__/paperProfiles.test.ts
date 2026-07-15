@@ -754,16 +754,18 @@ describe('PaperProfiles visual coordinate model', () => {
     expect(rotated.marginRightMm).toBe(2);
     expect(rotated.marginBottomMm).toBe(3);
     expect(rotated.marginLeftMm).toBe(4);
+    expect(rotated.sourcePrintableWidthMm).toBe(92);
+    expect(rotated.sourcePrintableHeightMm).toBe(44);
     expect(rotated.printableWidthMm).toBe(44);
     expect(rotated.printableHeightMm).toBe(92);
   });
 
   it('maps printable-relative coords to the same visual space as the grid', () => {
     const p1 = mapPrintablePointToVisual(0, 0, rotated);
-    expect(p1).toEqual({ xMm: 92, yMm: 0 });
+    expect(p1).toEqual({ xMm: 44, yMm: 0 });
 
     const p2 = mapPrintablePointToVisual(92, 44, rotated);
-    expect(p2).toEqual({ xMm: 48, yMm: 92 });
+    expect(p2).toEqual({ xMm: 0, yMm: 92 });
   });
 
   it('round-trips rotated points without drift', () => {
