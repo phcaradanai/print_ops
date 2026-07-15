@@ -28,7 +28,7 @@ Go is well-suited for local-service workloads:
 
 ```bash
 cd apps/runner-go
-go run ./cmd/printops-runner
+go run ./cmd/printops-runner run
 ```
 
 This uses sensible dev defaults:
@@ -49,7 +49,7 @@ export PRINTOPS_EXECUTOR_MODE=fake             # fake|windows-spooler|cups|rawtc
 export PRINTOPS_POLL_INTERVAL_MS=500
 export PRINTOPS_LOG_LEVEL=debug
 
-go run ./cmd/printops-runner
+go run ./cmd/printops-runner run
 ```
 
 ### Config File (Optional)
@@ -63,7 +63,7 @@ PRINTOPS_EXECUTOR_MODE=fake
 ```
 
 ```bash
-PRINTOPS_CONFIG_FILE=./runner.env go run ./cmd/printops-runner
+PRINTOPS_CONFIG_FILE=./runner.env go run ./cmd/printops-runner run
 ```
 
 Environment variables always override file values.
@@ -159,7 +159,7 @@ The runner logs these metrics:
 printops-runner run                # Run in foreground (default)
 printops-runner install-service    # Install as Windows Service (stub)
 printops-runner uninstall-service  # Uninstall Windows Service (stub)
-printops-runner --help             # Show help
+printops-runner help               # Show help
 ```
 
 > **Note**: `install-service` / `uninstall-service` are CLI stubs with documentation. Full Windows Service integration is a future step.

@@ -11,7 +11,7 @@
 cd apps\runner-go
 
 # Run in fake mode (default — no real printing)
-go run .\cmd\printops-runner
+go run .\cmd\printops-runner run
 ```
 
 ## Windows-Specific Discovery
@@ -19,7 +19,7 @@ go run .\cmd\printops-runner
 ```powershell
 # Use Windows Get-Printer discovery
 $env:PRINTOPS_DISCOVERY_MODE="windows"
-go run .\cmd\printops-runner
+go run .\cmd\printops-runner run
 ```
 
 This runs PowerShell commands:
@@ -32,14 +32,14 @@ Read-only. Never restarts the spooler or changes printer config.
 
 ```powershell
 $env:PRINTOPS_DISCOVERY_MODE="fake"
-go run .\cmd\printops-runner
+go run .\cmd\printops-runner run
 ```
 
 ## Debug Mode
 
 ```powershell
 $env:PRINTOPS_LOG_LEVEL="debug"
-go run .\cmd\printops-runner
+go run .\cmd\printops-runner run
 ```
 
 ## Testing Fake Discovery
@@ -47,7 +47,7 @@ go run .\cmd\printops-runner
 ```powershell
 $env:PRINTOPS_DISCOVERY_MODE="fake"
 $env:PRINTOPS_LOG_LEVEL="debug"
-go run .\cmd\printops-runner
+go run .\cmd\printops-runner run
 
 # Watch logs for:
 # {"level":"info","msg":"discovery complete","count":3,"duration_ms":0}
@@ -105,7 +105,7 @@ PRINTOPS_POLL_INTERVAL_MS=500
 
 ```powershell
 $env:PRINTOPS_CONFIG_FILE=".\runner.env"
-go run .\cmd\printops-runner
+go run .\cmd\printops-runner run
 ```
 
 ## Troubleshooting

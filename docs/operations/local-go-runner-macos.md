@@ -11,14 +11,14 @@
 cd apps/runner-go
 
 # Run in fake mode (default — no real printing)
-go run ./cmd/printops-runner
+go run ./cmd/printops-runner run
 ```
 
 ## macOS-Specific Discovery
 
 ```bash
 # Use macOS lpstat discovery
-PRINTOPS_DISCOVERY_MODE=macos go run ./cmd/printops-runner
+PRINTOPS_DISCOVERY_MODE=macos go run ./cmd/printops-runner run
 ```
 
 This runs:
@@ -32,20 +32,20 @@ This runs:
 
 ```bash
 # Force fake discovery even on macOS
-PRINTOPS_DISCOVERY_MODE=fake go run ./cmd/printops-runner
+PRINTOPS_DISCOVERY_MODE=fake go run ./cmd/printops-runner run
 ```
 
 ## Debug Mode
 
 ```bash
-PRINTOPS_LOG_LEVEL=debug go run ./cmd/printops-runner
+PRINTOPS_LOG_LEVEL=debug go run ./cmd/printops-runner run
 ```
 
 ## Testing Fake Discovery
 
 ```bash
 # Verify fake discovery returns sample printers
-PRINTOPS_DISCOVERY_MODE=fake PRINTOPS_LOG_LEVEL=debug go run ./cmd/printops-runner
+PRINTOPS_DISCOVERY_MODE=fake PRINTOPS_LOG_LEVEL=debug go run ./cmd/printops-runner run
 
 # Watch logs for:
 # {"level":"info","msg":"discovery complete","count":3,"duration_ms":0}

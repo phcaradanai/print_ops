@@ -38,7 +38,7 @@ curl -X POST http://localhost:3001/api/v1/jobs \
 
 ```bash
 # Run Go runner with debug logging
-PRINTOPS_LOG_LEVEL=debug go run ./cmd/printops-runner
+PRINTOPS_LOG_LEVEL=debug go run ./cmd/printops-runner run
 
 # Logs will show:
 # {"level":"info","msg":"job received","job_id":"...","trace_id":"...","pickup_latency_ms":12}
@@ -69,7 +69,7 @@ Run both runners against the same API with identical jobs:
 cd apps/runner && npm run dev
 
 # Terminal 2: Go runner
-cd apps/runner-go && go run ./cmd/printops-runner
+cd apps/runner-go && go run ./cmd/printops-runner run
 
 # Create batches of 10, 50, 100 jobs and compare:
 # - Memory usage (Task Manager / Activity Monitor)

@@ -22,10 +22,10 @@ const (
 
 func Parse(args []string) Command {
 	if len(args) == 0 {
-		return CmdHelp
+		return CmdRun
 	}
 	switch Command(args[0]) {
-	case CmdRun, CmdInstallService, CmdUninstallService:
+	case CmdRun, CmdInstallService, CmdUninstallService, CmdHelp:
 		return Command(args[0])
 	default:
 		return CmdHelp
