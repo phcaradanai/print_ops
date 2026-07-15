@@ -30,3 +30,4 @@ apps/runner-go/runner.env
 apps/desktop/src-tauri/resources/
 .claude/
 CLAUDE.md
+.worktrees/
