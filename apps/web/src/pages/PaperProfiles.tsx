@@ -599,7 +599,6 @@ export default function PaperProfiles() {
   const [ux, setUx] = useState<UxOptions>(DEFAULT_UX);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [presetsOpen, setPresetsOpen] = useState(false);
-  const [showPreview, setShowPreview] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [draggingFieldId, setDraggingFieldId] = useState<string | null>(null);
@@ -925,7 +924,6 @@ export default function PaperProfiles() {
         </div>
         <div className="pp-toolbar" role="toolbar" aria-label={t('page.paperProfiles.pageActions')}>
           <IconButton icon="⛶" label={t('page.paperProfiles.fullPreview')} onClick={() => setPreviewOpen(true)} active />
-          <IconButton icon="◫" label={t('page.paperProfiles.togglePreview')} onClick={() => setShowPreview(!showPreview)} active={showPreview} />
           <IconButton icon="⚡" label={t('page.paperProfiles.toggleFields')} onClick={() => setShowDrawer(showDrawer === 'fields' ? null : 'fields')} active={showDrawer === 'fields'} />
           <IconButton icon="🎨" label={t('page.paperProfiles.toggleStyle')} onClick={() => setShowDrawer(showDrawer === 'appearance' ? null : 'appearance')} active={showDrawer === 'appearance'} />
 
@@ -1128,27 +1126,14 @@ export default function PaperProfiles() {
         </div> {/* end form panel */}
 
         {/* ===== RIGHT: Preview ===== */}
-        <aside className={'pp-preview-panel' + (!showPreview ? ' pp-preview-panel--collapsed' : '')}>
-            {/* Collapsed strip */}
-            <div className="pp-preview-panel__strip">
-              <button
-                className="pp-preview-strip-btn"
-                onClick={() => setShowPreview(true)}
-                title={t('page.paperProfiles.togglePreview')}
-                aria-label={t('page.paperProfiles.togglePreview')}
-              >▶</button>
-              <span className="pp-preview-strip-label">{t('page.paperProfiles.previewStrip')}</span>
-            </div>
-
-            {/* Full preview body */}
-            {showPreview && <div className="pp-preview-panel__body" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <aside className="pp-preview-panel">
+            <div className="pp-preview-panel__body" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <div className="pp-preview-header">
               <span className="pp-preview-header__title">{t('page.paperProfiles.preview')}</span>
               <div className="pp-preview-header__actions">
                 <span className="pp-preview-header__size">
                   {displayVal(form.widthMm, du, dpi)} × {displayVal(form.heightMm, du, dpi)} {du}
                 </span>
-                <IconButton icon="◀" label={t('page.paperProfiles.togglePreview')} onClick={() => setShowPreview(false)} />
               </div>
             </div>
             <div className="pp-preview-stage">
@@ -1176,7 +1161,7 @@ export default function PaperProfiles() {
               <span>{t('page.paperProfiles.quickScale')}: {scale.toFixed(2)}x</span>
               <span>{t('page.paperProfiles.quickFields')}: {ux.dynamicFields.length}</span>
             </div>
-            </div>}
+            </div>
         </aside>
       </div>
 

@@ -1406,60 +1406,6 @@ body {
   max-height: none;
 }
 
-.pp-preview-panel--collapsed {
-  width: 40px;
-}
-
-.pp-preview-panel__strip {
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0;
-  overflow: hidden;
-}
-
-.pp-preview-panel--collapsed .pp-preview-panel__body {
-  display: none;
-}
-
-.pp-preview-panel--collapsed .pp-preview-panel__strip {
-  display: flex;
-}
-
-.pp-preview-strip-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--neutral-border, #e5e7eb);
-  border-radius: var(--rounded-md, 6px);
-  background: var(--neutral-surface, #fff);
-  color: var(--neutral-text, #374151);
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-
-.pp-preview-strip-btn:hover {
-  background: var(--neutral-page, #f5f5f5);
-}
-
-.pp-preview-strip-btn:focus-visible {
-  outline: 2px solid var(--primary, #1e66f5);
-  outline-offset: 2px;
-}
-
-.pp-preview-strip-label {
-  writing-mode: vertical-rl;
-  font-size: 0.7rem;
-  color: var(--neutral-text-muted, #6b7280);
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
 /* ---- paper profiles: drawer backdrop ---- */
 
 .pp-drawer-backdrop {
@@ -1544,21 +1490,6 @@ body {
     height: auto;
     max-height: none;
     position: static;
-  }
-
-  .pp-preview-panel--collapsed {
-    width: 100%;
-  }
-
-  .pp-preview-panel--collapsed .pp-preview-panel__body {
-    display: none;
-  }
-
-  .pp-preview-panel--collapsed .pp-preview-panel__strip {
-    display: flex;
-    flex-direction: row;
-    justify-content: flex-start;
-    padding: 0.5rem 0.75rem;
   }
 
 }
@@ -1930,10 +1861,6 @@ body {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
-.pp-preview-panel--collapsed {
-  width: 40px !important;
-}
-
 .pp-preview-header {
   display: flex;
   align-items: center;
@@ -2001,13 +1928,8 @@ body {
     flex-direction: column;
   }
 
-  .pp-preview-panel,
-  .pp-preview-panel--collapsed {
+  .pp-preview-panel {
     width: 100% !important;
-  }
-
-  .pp-preview-panel--collapsed {
-    min-height: 44px;
   }
 }
 
