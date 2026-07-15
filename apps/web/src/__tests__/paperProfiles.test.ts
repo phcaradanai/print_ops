@@ -8,7 +8,10 @@ import {
   clampGridSpacing as clampGridSpacingSource,
   clampPreviewZoom,
   fontPointSizeToPreviewPixels,
+  getIconButtonAriaLabel,
+  getIconButtonTooltipText,
   getVisualPaperGeometry,
+  isIconButtonActionBlocked,
   mapPrintablePointToVisual,
   mapVisualPointToPrintable,
   nextSaveStatus,
@@ -1263,5 +1266,58 @@ describe('centerFieldAnchorVertical', () => {
     // center: x=29, y=46 → printable: x=46, y=44-29=15
     expect(result.xMm).toBe(46);
     expect(result.yMm).toBe(15);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  IconButton accessibility helpers
+// ══════════════════════════════════════════════════════════════════════
+
+describe('getIconButtonAriaLabel', () => {
+  it('returns label when enabled', () => {
+    expect(getIconButtonAriaLabel('Save', false)).toBe('Save');
+    expect(getIconButtonAriaLabel('Zoom In', false)).toBe('Zoom In');
+  });
+
+  it('returns label when disabled without a reason', () => {
+    expect(getIconButtonAriaLabel('Save', true)).toBe('Save');
+    expect(getIconButtonAriaLabel('Delete', true)).toBe('Delete');
+  });
+
+  it('returns label with disabled reason suffix when disabled with reason', () => {
+    expect(getIconButtonAriaLabel('Center Horizontally', true, 'No field selected'))
+      .toBe('Center Horizontally: No field selected');
+    expect(getIconButtonAriaLabel('Delete', true, 'Profile is read-only'))
+      .toBe('Delete: Profile is read-only');
+  });
+
+  it('ignores disabledReason when enabled', () => {
+    expect(getIconButtonAriaLabel('Save', false, 'Should not appear'))
+      .toBe('Save');
+  });
+});
+
+describe('getIconButtonTooltipText', () => {
+  it('returns label when enabled', () => {
+    expect(getIconButtonTooltipText('Save', false)).toBe('Save');
+  });
+
+  it('returns disabledReason when disabled with reason', () => {
+    expect(getIconButtonTooltipText('Center', true, 'No field selected'))
+      .toBe('No field selected');
+  });
+
+  it('falls back to label when disabled without reason', () => {
+    expect(getIconButtonTooltipText('Delete', true)).toBe('Delete');
+  });
+});
+
+describe('isIconButtonActionBlocked', () => {
+  it('returns false when enabled', () => {
+    expect(isIconButtonActionBlocked(false)).toBe(false);
+  });
+
+  it('returns true when disabled', () => {
+    expect(isIconButtonActionBlocked(true)).toBe(true);
   });
 });

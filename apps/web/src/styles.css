@@ -1818,7 +1818,7 @@ body {
   border-radius: var(--rounded-sm, 4px);
   background: var(--neutral-inverse, #111827);
   color: #fff;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;

@@ -292,6 +292,39 @@ const DEFAULT_UX: UxOptions = {
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
 
+// ── IconButton accessibility helpers ────────────────────────────────
+
+/** Compute the accessible name for an IconButton.
+ *  When enabled: the label alone.
+ *  When disabled with a reason: "${label}: ${disabledReason}".
+ *  When disabled without a reason: the label alone. */
+export function getIconButtonAriaLabel(
+  label: string,
+  disabled: boolean,
+  disabledReason?: string,
+): string {
+  if (disabled && disabledReason) return `${label}: ${disabledReason}`;
+  return label;
+}
+
+/** Compute the tooltip text for an IconButton.
+ *  When enabled: the label.
+ *  When disabled with a reason: the disabledReason.
+ *  When disabled without a reason: the label. */
+export function getIconButtonTooltipText(
+  label: string,
+  disabled: boolean,
+  disabledReason?: string,
+): string {
+  if (disabled) return disabledReason || label;
+  return label;
+}
+
+/** Whether a click/key-event action should be blocked for the IconButton. */
+export function isIconButtonActionBlocked(disabled: boolean): boolean {
+  return disabled;
+}
+
 // ── Unit helpers ───────────────────────────────────────────────────
 function toPx(mm: number, dpi: number) { return (mm * dpi) / 25.4; }
 function displayVal(mm: number, unit: 'mm' | 'cm' | 'px', dpi: number) {
@@ -366,9 +399,10 @@ function IconButton({
   disabledReason?: string;
 }) {
   const tooltipId = useId();
-  const tipText = disabled ? (disabledReason || label) : label;
+  const ariaLabel = getIconButtonAriaLabel(label, disabled, disabledReason);
+  const tipText = getIconButtonTooltipText(label, disabled, disabledReason);
   const handleClick = () => {
-    if (disabled) return;
+    if (isIconButtonActionBlocked(disabled)) return;
     onClick();
   };
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -384,6 +418,7 @@ function IconButton({
       <button
         type="button"
         className={'pp-icon-btn' + (active ? ' pp-icon-btn--active' : '')}
+        aria-label={ariaLabel}
         aria-disabled={disabled || undefined}
         aria-describedby={tooltipId}
         onClick={handleClick}
@@ -395,7 +430,6 @@ function IconButton({
       <span
         id={tooltipId}
         role="tooltip"
-        aria-hidden="true"
         className="pp-icon-btn-tooltip"
       >
         {tipText}
