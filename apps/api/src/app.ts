@@ -14,6 +14,7 @@ import { InMemoryPrintTemplateRepository } from './infra/repos/in-memory-templat
 import { InMemoryPaperProfileRepository } from './infra/repos/in-memory-paper-profile.repo.js';
 import { InMemoryPrinterTemplateBindingRepository } from './infra/repos/in-memory-template-binding.repo.js';
 import { InMemoryWebhookEndpointRepository, InMemoryWebhookRoutePolicyRepository } from './infra/repos/in-memory-webhook.repo.js';
+import { InMemoryImportedDesignRepository } from './infra/repos/in-memory-imported-design.repo.js';
 
 import { SqlitePrinterRepository } from './infra/repos/sqlite/sqlite-printer.repo.js';
 import { SqliteJobRepository } from './infra/repos/sqlite/sqlite-job.repo.js';
@@ -28,6 +29,7 @@ import { SqlitePaperProfileRepository } from './infra/repos/sqlite/sqlite-paper-
 import { SqlitePrinterTemplateBindingRepository } from './infra/repos/sqlite/sqlite-printer-template-binding.repo.js';
 import { SqliteWebhookEndpointRepository } from './infra/repos/sqlite/sqlite-webhook-endpoint.repo.js';
 import { SqliteWebhookRoutePolicyRepository } from './infra/repos/sqlite/sqlite-webhook-route-policy.repo.js';
+import { SqliteImportedDesignRepository } from './infra/repos/sqlite/sqlite-imported-design.repo.js';
 
 import { InMemoryEventBus } from './infra/eventbus/in-memory-eventbus.js';
 import { InMemoryJobQueue } from './infra/queue/in-memory-queue.js';
@@ -52,6 +54,7 @@ import { CheckPermissionService } from './services/check-permission.service.js';
 import { SyncPrinterDiscoveryService } from './services/sync-printer-discovery.service.js';
 import { RegisterDiscoveredPrinterService } from './services/register-discovered-printer.service.js';
 import { DynamicIntakeService } from './services/dynamic-intake.service.js';
+import { ImportPaperProfileService } from './services/import-paper-profile.service.js';
 
 import { authRoutes } from './routes/auth.routes.js';
 import { printerRoutes } from './routes/printer.routes.js';
@@ -66,6 +69,7 @@ import { v1RunnerPrinterRoutes } from './routes/v1/runner-printers.routes.js';
 import { v1RunnerJobRoutes } from './routes/v1/runner-jobs.routes.js';
 import { templateRoutes } from './routes/v1/template.routes.js';
 import { webhookRoutes } from './routes/v1/webhook.routes.js';
+import { paperProfileImportRoutes } from './routes/v1/paper-profile-imports.routes.js';
 import { join, dirname, extname } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 
@@ -110,6 +114,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const bindingRepo = useSqlite ? new SqlitePrinterTemplateBindingRepository() : new InMemoryPrinterTemplateBindingRepository();
   const webhookEndpointRepo = useSqlite ? new SqliteWebhookEndpointRepository() : new InMemoryWebhookEndpointRepository();
   const webhookPolicyRepo = useSqlite ? new SqliteWebhookRoutePolicyRepository() : new InMemoryWebhookRoutePolicyRepository();
+  const importedDesignRepo = useSqlite ? new SqliteImportedDesignRepository() : new InMemoryImportedDesignRepository();
   const eventBus = new InMemoryEventBus();
   const queue = new InMemoryJobQueue();
   const exporter = new InMemoryExportAdapter();
@@ -147,6 +152,12 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     auditRepo,
     eventBus,
     templateRenderer
+  );
+
+  const importPaperProfile = new ImportPaperProfileService(
+    paperRepo,
+    importedDesignRepo,
+    auditRepo,
   );
 
   // API key middleware
@@ -320,7 +331,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1RunnerJobRoutes(v1, { jobs: jobRepo, printers: printerRepo, traces: traceRepo, audit: auditRepo, events: eventBus });
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
     await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob });
-  }, { prefix: '/api/v1' });
+    await paperProfileImportRoutes(v1, { importService: importPaperProfile });
+  }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
   // Serve static frontend (desktop app loads from API URL for same-origin)
   const staticDir = process.env['STATIC_DIR'] ?? join(dirname(process.execPath), 'static');

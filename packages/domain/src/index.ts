@@ -7,6 +7,7 @@ export * from './models/audit.js';
 export * from './models/service-account.js';
 export * from './models/discovered-printer.js';
 export * from './models/template.js';
+export * from './models/imported-design.js';
 
 // Events
 export * from './events/index.js';

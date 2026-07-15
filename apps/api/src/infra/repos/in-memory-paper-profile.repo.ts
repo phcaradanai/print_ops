@@ -25,6 +25,11 @@ export class InMemoryPaperProfileRepository implements PaperProfileRepositoryPor
   }
 
   async create(input: CreatePaperProfileInput): Promise<PaperProfile> {
+    // Check for duplicate code
+    const existing = await this.findByCode(input.code);
+    if (existing) {
+      throw new Error(`PaperProfile with code "${input.code}" already exists`);
+    }
     const now = new Date();
     const profile: PaperProfile = { ...input, id: generateId(), createdAt: now, updatedAt: now };
     this.store.set(profile.id, profile);
@@ -37,5 +42,9 @@ export class InMemoryPaperProfileRepository implements PaperProfileRepositoryPor
     const updated: PaperProfile = { ...existing, ...patch, id, updatedAt: new Date() };
     this.store.set(id, updated);
     return updated;
+  }
+
+  async delete(id: string): Promise<void> {
+    this.store.delete(id);
   }
 }

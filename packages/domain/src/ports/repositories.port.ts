@@ -17,6 +17,7 @@ import type {
   WebhookRoutePolicy,
   CreateWebhookRoutePolicyInput,
 } from '../models/template.js';
+import type { ImportedDesign, CreateImportedDesignInput } from '../models/imported-design.js';
 
 export interface ListOptions {
   limit?: number;
@@ -96,6 +97,7 @@ export interface PaperProfileRepositoryPort {
   findAll(opts?: ListOptions): Promise<PaperProfile[]>;
   create(input: CreatePaperProfileInput): Promise<PaperProfile>;
   update(id: string, patch: Partial<PaperProfile>): Promise<PaperProfile>;
+  delete(id: string): Promise<void>;
 }
 
 export interface PrinterTemplateBindingRepositoryPort {
@@ -119,4 +121,12 @@ export interface WebhookRoutePolicyRepositoryPort {
   findAll(opts?: ListOptions): Promise<WebhookRoutePolicy[]>;
   create(input: CreateWebhookRoutePolicyInput): Promise<WebhookRoutePolicy>;
   update(id: string, patch: Partial<WebhookRoutePolicy>): Promise<WebhookRoutePolicy>;
+}
+
+export interface ImportedDesignRepositoryPort {
+  findById(id: string): Promise<ImportedDesign | undefined>;
+  findBySha256(sha256: string): Promise<ImportedDesign | undefined>;
+  findByPaperProfileId(paperProfileId: string): Promise<ImportedDesign | undefined>;
+  create(input: CreateImportedDesignInput): Promise<ImportedDesign>;
+  delete(id: string): Promise<void>;
 }

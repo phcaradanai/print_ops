@@ -28,6 +28,7 @@ export type AuditAction =
   | 'template.test_print.requested'
   | 'paper_profile.created'
   | 'paper_profile.updated'
+  | 'paper_profile.artwork_imported'
   | 'webhook_endpoint.created'
   | 'webhook_endpoint.updated'
   | 'webhook_endpoint.tested'

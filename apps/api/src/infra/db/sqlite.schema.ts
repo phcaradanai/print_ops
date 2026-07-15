@@ -271,4 +271,21 @@ export function runSchemaMigration(db: Database): void {
       updated_at TEXT NOT NULL
     )
   `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS imported_designs (
+      id TEXT PRIMARY KEY NOT NULL,
+      paper_profile_id TEXT NOT NULL UNIQUE,
+      sha256 TEXT NOT NULL UNIQUE,
+      file_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      fit_mode TEXT NOT NULL,
+      data_base64 TEXT NOT NULL,
+      pixel_width INTEGER NOT NULL,
+      pixel_height INTEGER NOT NULL,
+      detected_dpi REAL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
 }

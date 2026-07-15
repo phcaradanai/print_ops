@@ -131,4 +131,9 @@ export class SqlitePaperProfileRepository implements PaperProfileRepositoryPort 
 
     return (await this.findById(id))!;
   }
+
+  async delete(id: string): Promise<void> {
+    const db = getDb();
+    db.run('DELETE FROM paper_profiles WHERE id = ?', [id]);
+  }
 }
