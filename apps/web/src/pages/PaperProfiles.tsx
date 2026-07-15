@@ -119,6 +119,7 @@ export interface ArtworkData {
   mimeType: string;
   pixelWidth: number;
   pixelHeight: number;
+  fitMode?: ImportFitMode;
 }
 
 /** Validate that a MIME type is an accepted import format. */
@@ -154,6 +155,93 @@ export function nextImportPhase(current: ImportPhase, action: 'file-selected' | 
     case 'reset': return 'select';
     default: return current;
   }
+}
+
+/** Infer MIME type from file extension. Returns empty string if unrecognised. */
+export function inferMimeFromExtension(fileName: string): string {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  return '';
+}
+
+/** Map an import fit mode to the CSS object-fit value. */
+export function importFitModeToCss(fitMode: ImportFitMode): 'contain' | 'cover' | 'fill' {
+  switch (fitMode) {
+    case 'stretch': return 'fill';
+    case 'cover': return 'cover';
+    default: return 'contain';
+  }
+}
+
+/** Generate a bounded code (< 25 chars) from a basename plus short numeric suffix. */
+export function generateImportCode(basename: string): string {
+  const sanitized = basename.toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 20);
+  const suffix = String(Math.floor(Math.random() * 9999)).padStart(4, '0');
+  return sanitized ? `${sanitized}_${suffix}` : `pp_${suffix}`;
+}
+
+// ── Import request body ────────────────────────────────────────
+
+export interface ImportRequestBody {
+  fileName: string;
+  declaredMimeType: string;
+  dataBase64: string;
+  profile: {
+    code: string;
+    name: string;
+    widthMm: number;
+    heightMm: number;
+    marginTopMm: number;
+    marginRightMm: number;
+    marginBottomMm: number;
+    marginLeftMm: number;
+    dpi: number;
+    orientation: 'portrait' | 'landscape';
+    unit: 'mm' | 'inch';
+  };
+  fitMode: ImportFitMode;
+}
+
+/** Build the POST body for the import endpoint. */
+export function buildImportRequestBody(
+  fileName: string,
+  declaredMimeType: string,
+  dataBase64: string,
+  profile: ImportRequestBody['profile'],
+  fitMode: ImportFitMode,
+): ImportRequestBody {
+  return { fileName, declaredMimeType, dataBase64, profile, fitMode };
+}
+
+// ── Import draft validation ────────────────────────────────────
+
+export interface ImportDraftForValidation {
+  name: string; code: string; widthMm: number; heightMm: number;
+  dpi: number;
+  marginTopMm: number; marginRightMm: number; marginBottomMm: number; marginLeftMm: number;
+}
+
+/** Validate an import draft. Code is required; dimensions/DPI must be finite+positive; margins nonnegative and sum < paper. */
+export function validateImportDraft(draft: ImportDraftForValidation): ValidationError[] {
+  const errors: ValidationError[] = [];
+  if (!draft.name.trim()) errors.push({ field: 'name', messageKey: 'validation.nameRequired' });
+  if (!draft.code.trim()) errors.push({ field: 'code', messageKey: 'validation.nameRequired' });
+  if (!Number.isFinite(draft.widthMm) || draft.widthMm <= 0) errors.push({ field: 'widthMm', messageKey: 'validation.dimensionsPositive' });
+  if (!Number.isFinite(draft.heightMm) || draft.heightMm <= 0) errors.push({ field: 'heightMm', messageKey: 'validation.dimensionsPositive' });
+  if (!Number.isFinite(draft.dpi) || draft.dpi <= 0) errors.push({ field: 'dpi', messageKey: 'validation.dpiPositive' });
+  if (draft.marginTopMm < 0) errors.push({ field: 'marginTopMm', messageKey: 'validation.marginsNonNegative' });
+  if (draft.marginRightMm < 0) errors.push({ field: 'marginRightMm', messageKey: 'validation.marginsNonNegative' });
+  if (draft.marginBottomMm < 0) errors.push({ field: 'marginBottomMm', messageKey: 'validation.marginsNonNegative' });
+  if (draft.marginLeftMm < 0) errors.push({ field: 'marginLeftMm', messageKey: 'validation.marginsNonNegative' });
+  const sumH = draft.marginLeftMm + draft.marginRightMm;
+  const sumV = draft.marginTopMm + draft.marginBottomMm;
+  if (sumH >= draft.widthMm) errors.push({ field: 'margins', messageKey: 'validation.marginsExceedWidth' });
+  if (sumV >= draft.heightMm) errors.push({ field: 'margins', messageKey: 'validation.marginsExceedHeight' });
+  return errors;
 }
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -931,13 +1019,20 @@ export default function PaperProfiles() {
   const [importAnalyzeResult, setImportAnalyzeResult] = useState<ImportAnalyzeResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importFitMode, setImportFitMode] = useState<ImportFitMode>('contain');
-  const [importedArtworkMap, setImportedArtworkMap] = useState<Record<string, { objectUrl: string } | null>>({});
+  const [importedArtworkMap, setImportedArtworkMap] = useState<Record<string, { objectUrl: string; fitMode: ImportFitMode } | null>>({});
+  const [importDraft, setImportDraft] = useState<PaperForm>(DEFAULT_FORM);
+  const importDraftErrors = useMemo(() => validateImportDraft(importDraft), [importDraft]);
   const importInFlightRef = useRef(false);
+  const importAbortRef = useRef(false);
 
   // Revoke object URLs on cleanup
   useEffect(() => {
     return () => {
       if (importObjectUrl) URL.revokeObjectURL(importObjectUrl);
+      // Revoke all cached artwork object URLs
+      for (const entry of Object.values(importedArtworkMap)) {
+        if (entry?.objectUrl) URL.revokeObjectURL(entry.objectUrl);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1136,6 +1231,8 @@ export default function PaperProfiles() {
     setImportAnalyzeResult(null);
     setImportError(null);
     setImportFitMode('contain');
+    setImportDraft(DEFAULT_FORM);
+    importAbortRef.current = false;
     // Show import drawer — reuse the drawer pattern
     setShowDrawer('import');
   }
@@ -1146,12 +1243,19 @@ export default function PaperProfiles() {
     setImportFile(null);
     setImportAnalyzeResult(null);
     setImportError(null);
+    setImportDraft(DEFAULT_FORM);
     importInFlightRef.current = false;
+    importAbortRef.current = false;
   }
 
   function handleImportFileSelected(file: File) {
-    // Client-side validation
-    if (!isAcceptedImportExtension(file.name) && !isAcceptedImportMime(file.type)) {
+    // Client-side validation — require valid extension
+    if (!isAcceptedImportExtension(file.name)) {
+      setImportError(t('page.paperProfiles.importInvalidFileType'));
+      return;
+    }
+    // When browser provides a non-empty MIME, it must also be valid
+    if (file.type && !isAcceptedImportMime(file.type)) {
       setImportError(t('page.paperProfiles.importInvalidFileType'));
       return;
     }
@@ -1177,15 +1281,33 @@ export default function PaperProfiles() {
       // Extract base64 portion after the data URI prefix
       const base64Idx = dataUri.indexOf(';base64,');
       const dataBase64 = base64Idx >= 0 ? dataUri.slice(base64Idx + 8) : dataUri;
+      // Infer declared MIME from extension; browser type may be empty or unreliable
+      const declaredMimeType = inferMimeFromExtension(file.name) || file.type || 'image/png';
       const result = await apiFetch<ImportAnalyzeResult>('/v1/paper-profile-imports/analyze', {
         method: 'POST',
         body: JSON.stringify({
           fileName: file.name,
-          declaredMimeType: file.type || 'image/png',
+          declaredMimeType,
           dataBase64,
         }),
       });
+      if (importAbortRef.current) return;
       setImportAnalyzeResult(result);
+      // Seed editable draft
+      const basename = file.name.replace(/\.[^.]+$/, '');
+      setImportDraft({
+        code: generateImportCode(basename),
+        name: basename,
+        widthMm: result.suggestedWidthMm,
+        heightMm: result.suggestedHeightMm,
+        marginTopMm: 0,
+        marginRightMm: 0,
+        marginBottomMm: 0,
+        marginLeftMm: 0,
+        dpi: result.suggestedDpi,
+        orientation: result.suggestedWidthMm >= result.suggestedHeightMm ? 'landscape' : 'portrait',
+        unit: 'mm',
+      });
       setImportPhase('review');
     } catch (_err) {
       URL.revokeObjectURL(objectUrl);
@@ -1197,6 +1319,8 @@ export default function PaperProfiles() {
 
   async function submitImport() {
     if (!importFile || !importAnalyzeResult || importInFlightRef.current) return;
+    const errors = validateImportDraft(importDraft);
+    if (errors.length > 0) return;
     importInFlightRef.current = true;
     setImportPhase('importing');
     setImportError(null);
@@ -1204,27 +1328,39 @@ export default function PaperProfiles() {
       const dataUri = await fileToBase64(importFile);
       const base64Idx = dataUri.indexOf(';base64,');
       const dataBase64 = base64Idx >= 0 ? dataUri.slice(base64Idx + 8) : dataUri;
+      const declaredMimeType = inferMimeFromExtension(importFile.name) || importFile.type || 'image/png';
+      const body = buildImportRequestBody(
+        importFile.name,
+        declaredMimeType,
+        dataBase64,
+        {
+          code: importDraft.code,
+          name: importDraft.name,
+          widthMm: importDraft.widthMm,
+          heightMm: importDraft.heightMm,
+          marginTopMm: importDraft.marginTopMm,
+          marginRightMm: importDraft.marginRightMm,
+          marginBottomMm: importDraft.marginBottomMm,
+          marginLeftMm: importDraft.marginLeftMm,
+          dpi: importDraft.dpi,
+          orientation: importDraft.orientation,
+          unit: importDraft.unit,
+        },
+        importFitMode,
+      );
       const result = await apiFetch<ImportResult>('/v1/paper-profile-imports', {
         method: 'POST',
-        body: JSON.stringify({
-          fileName: importFile.name,
-          declaredMimeType: importFile.type || 'image/png',
-          dataBase64,
-          name: importEditValues.name || importFile.name.replace(/\.[^.]+$/, ''),
-          code: importEditValues.code || '',
-          widthMm: importEditValues.widthMm,
-          heightMm: importEditValues.heightMm,
-          dpi: importEditValues.dpi,
-          orientation: importEditValues.orientation,
-          marginTopMm: importEditValues.marginTopMm,
-          marginRightMm: importEditValues.marginRightMm,
-          marginBottomMm: importEditValues.marginBottomMm,
-          marginLeftMm: importEditValues.marginLeftMm,
-          fitMode: importFitMode,
-        }),
+        body: JSON.stringify(body),
       });
-      // Revoke the object URL now that we're done
-      if (importObjectUrl) { URL.revokeObjectURL(importObjectUrl); setImportObjectUrl(null); }
+      // Cache artwork: keep object URL + fit mode for the imported profile
+      if (importObjectUrl && result.profile?.id) {
+        setImportedArtworkMap((prev) => ({
+          ...prev,
+          [result.profile.id]: { objectUrl: importObjectUrl, fitMode: importFitMode },
+        }));
+        // Clear importObjectUrl so it won't be revoked by resetImport
+        setImportObjectUrl(null);
+      }
       setImportPhase('success');
       // Reload profiles and select the returned profile
       await load();
@@ -1233,14 +1369,12 @@ export default function PaperProfiles() {
         : t('page.paperProfiles.importSuccess');
       setStickyNote(msg);
       setTimeout(() => setStickyNote(null), 4000);
-      // Close drawer after a brief delay so user sees success state
-      setTimeout(() => {
-        setShowDrawer(null);
-        resetImport();
-      }, 1500);
-      // Select the returned profile
-      if (result.profile?.id) {
-        setTimeout(() => startEditFromImport(result.profile), 300);
+      // Close drawer and start editing the imported profile — no races
+      setShowDrawer(null);
+      resetImport();
+      // Start edit with returned profile data directly
+      if (result.profile) {
+        startEditFromImport(result.profile);
       }
     } catch (_err) {
       setImportError(t('page.paperProfiles.importError'));
@@ -1251,31 +1385,19 @@ export default function PaperProfiles() {
   }
 
   function startEditFromImport(p: { id: string; code: string; name: string }) {
+    // Look up from freshly loaded profiles; will be available after load() resolves
+    // Fall back to direct edit-start with partial data if not yet loaded
     const match = profiles.find((prof) => prof.id === p.id);
     if (match) {
       startEdit(match);
+    } else {
+      // Profile not yet in list; start edit with what we have
+      setForm((f) => ({ ...f, code: p.code, name: p.name }));
+      setEditingId(p.id);
+      setSaveStatus('idle');
+      setSaveError(null);
     }
   }
-
-  // Editable review values — seeded from analyze result
-  const importEditValues = useMemo(() => {
-    if (!importAnalyzeResult) {
-      return DEFAULT_FORM;
-    }
-    return {
-      code: '',
-      name: importFile?.name.replace(/\.[^.]+$/, '') ?? '',
-      widthMm: importAnalyzeResult.suggestedWidthMm,
-      heightMm: importAnalyzeResult.suggestedHeightMm,
-      marginTopMm: 0,
-      marginRightMm: 0,
-      marginBottomMm: 0,
-      marginLeftMm: 0,
-      dpi: importAnalyzeResult.suggestedDpi,
-      orientation: importAnalyzeResult.suggestedWidthMm >= importAnalyzeResult.suggestedHeightMm ? 'landscape' as const : 'portrait' as const,
-      unit: 'mm' as const,
-    };
-  }, [importAnalyzeResult, importFile]);
 
   // Fetch artwork for a profile when editing
   useEffect(() => {
@@ -1288,7 +1410,10 @@ export default function PaperProfiles() {
         const objectUrl = URL.createObjectURL(
           base64ToBlob(data.dataBase64, data.mimeType)
         );
-        setImportedArtworkMap((prev) => ({ ...prev, [editingId]: { objectUrl } }));
+        setImportedArtworkMap((prev) => ({
+          ...prev,
+          [editingId]: { objectUrl, fitMode: data.fitMode ?? 'contain' },
+        }));
       })
       .catch(() => {
         if (cancelled) return;
@@ -1341,7 +1466,8 @@ export default function PaperProfiles() {
   const scale = Math.min(maxPvSize / previewWidthMm, maxPvSize / previewHeightMm, 2);
 
   // Artwork for the currently editing profile
-  const currentArtworkUrl: string | undefined = editingId ? (importedArtworkMap[editingId]?.objectUrl ?? undefined) : undefined;
+  const currentArtworkUrl: string | undefined = editingId ? importedArtworkMap[editingId]?.objectUrl : undefined;
+  const currentArtworkFitMode: ImportFitMode | undefined = editingId ? importedArtworkMap[editingId]?.fitMode : undefined;
 
   useEffect(() => {
     if (!previewOpen) return;
@@ -1483,7 +1609,10 @@ export default function PaperProfiles() {
   }
 
   // ── Drawer focus trap, escape, and restoration ──────────────────────
-  const closeDrawer = useCallback(() => setShowDrawer(null), []);
+  const closeDrawer = useCallback(() => {
+    if (showDrawer === 'import') importAbortRef.current = true;
+    setShowDrawer(null);
+  }, [showDrawer]);
   useEffect(() => {
     if (!showDrawer) {
       // Restore focus when drawer closes
@@ -1811,7 +1940,7 @@ export default function PaperProfiles() {
                   showAlignmentGuides={!!selectedFieldId}
                   gridIntervalMm={gridSpacingMm}
                   artworkUrl={currentArtworkUrl}
-                  artworkFitMode={importFitMode}
+                  artworkFitMode={currentArtworkFitMode}
                 />
               </RulerSheet>
             </div>
@@ -1917,7 +2046,7 @@ export default function PaperProfiles() {
                       showAlignmentGuides={showAlignmentGuides}
                       gridIntervalMm={gridSpacingMm}
                       artworkUrl={currentArtworkUrl}
-                      artworkFitMode={importFitMode}
+                      artworkFitMode={currentArtworkFitMode}
                     />
                   </RulerSheet>
                   </div>
@@ -2246,29 +2375,69 @@ export default function PaperProfiles() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
                     <div>
                       <label style={s.label}>{t('page.paperProfiles.nameLabel')} *</label>
-                      <input value={importEditValues.name} onChange={(e) => {/* read-only for now */}} style={s.input} readOnly />
+                      <input
+                        value={importDraft.name}
+                        onChange={(e) => setImportDraft((d) => ({ ...d, name: e.target.value }))}
+                        style={{ ...s.input, borderColor: importDraftErrors.some((err) => err.field === 'name') ? '#f38ba8' : undefined }}
+                      />
                     </div>
                     <div>
-                      <label style={s.label}>{t('page.paperProfiles.codeLabel')}</label>
-                      <input value={importEditValues.code} style={s.input} readOnly placeholder={t('page.paperProfiles.codePlaceholder')} />
+                      <label style={s.label}>{t('page.paperProfiles.codeLabel')} *</label>
+                      <input
+                        value={importDraft.code}
+                        onChange={(e) => setImportDraft((d) => ({ ...d, code: e.target.value }))}
+                        style={{ ...s.input, borderColor: importDraftErrors.some((err) => err.field === 'code') ? '#f38ba8' : undefined }}
+                        placeholder={t('page.paperProfiles.codePlaceholder')}
+                      />
                     </div>
                     <div className="pp-form-grid pp-form-grid--two">
                       <div>
                         <label style={s.label}>{t('page.paperProfiles.width')} (mm)</label>
-                        <input type="number" value={importEditValues.widthMm} style={s.input} readOnly />
+                        <input
+                          type="number"
+                          value={importDraft.widthMm}
+                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setImportDraft((d) => ({ ...d, widthMm: v })); }}
+                          style={{ ...s.input, borderColor: importDraftErrors.some((err) => err.field === 'widthMm') ? '#f38ba8' : undefined }}
+                        />
                       </div>
                       <div>
                         <label style={s.label}>{t('page.paperProfiles.height')} (mm)</label>
-                        <input type="number" value={importEditValues.heightMm} style={s.input} readOnly />
+                        <input
+                          type="number"
+                          value={importDraft.heightMm}
+                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setImportDraft((d) => ({ ...d, heightMm: v })); }}
+                          style={{ ...s.input, borderColor: importDraftErrors.some((err) => err.field === 'heightMm') ? '#f38ba8' : undefined }}
+                        />
                       </div>
                     </div>
                     <div>
                       <label style={s.label}>{t('page.paperProfiles.dpi')}</label>
-                      <input type="number" value={importEditValues.dpi} style={s.input} readOnly />
+                      <input
+                        type="number"
+                        value={importDraft.dpi}
+                        onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) setImportDraft((d) => ({ ...d, dpi: v })); }}
+                        style={{ ...s.input, borderColor: importDraftErrors.some((err) => err.field === 'dpi') ? '#f38ba8' : undefined }}
+                      />
                     </div>
                     <div>
                       <label style={s.label}>{t('page.paperProfiles.orientation')}</label>
-                      <input value={importEditValues.orientation === 'portrait' ? t('page.paperProfiles.portrait') : t('page.paperProfiles.landscape')} style={s.input} readOnly />
+                      <select
+                        value={importDraft.orientation}
+                        onChange={(e) => {
+                          const next = e.target.value as 'portrait' | 'landscape';
+                          if (next === importDraft.orientation) return;
+                          const natural = importDraft.widthMm > importDraft.heightMm ? 'landscape' : 'portrait';
+                          if (next !== natural) {
+                            setImportDraft((d) => ({ ...d, widthMm: d.heightMm, heightMm: d.widthMm, orientation: next }));
+                          } else {
+                            setImportDraft((d) => ({ ...d, orientation: next }));
+                          }
+                        }}
+                        style={s.sel}
+                      >
+                        <option value="portrait">{t('page.paperProfiles.portrait')}</option>
+                        <option value="landscape">{t('page.paperProfiles.landscape')}</option>
+                      </select>
                     </div>
                   </div>
 
@@ -2277,10 +2446,22 @@ export default function PaperProfiles() {
                     {(['marginTopMm', 'marginRightMm', 'marginBottomMm', 'marginLeftMm'] as const).map((mk) => (
                       <div key={mk}>
                         <label style={s.label}>{t('page.paperProfiles.' + (mk === 'marginTopMm' ? 'top' : mk === 'marginRightMm' ? 'right' : mk === 'marginBottomMm' ? 'bottom' : 'left'))} (mm)</label>
-                        <input type="number" value={importEditValues[mk]} style={s.input} readOnly />
+                        <input
+                          type="number"
+                          value={importDraft[mk]}
+                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setImportDraft((d) => ({ ...d, [mk]: v })); }}
+                          style={{ ...s.input, borderColor: (importDraftErrors.some((err) => err.field === mk || err.field === 'margins')) ? '#f38ba8' : undefined }}
+                        />
                       </div>
                     ))}
                   </div>
+
+                  {/* Field errors */}
+                  {importDraftErrors.length > 0 && (
+                    <div style={{ padding: '0.5rem', background: '#fee2e2', color: '#991b1b', borderRadius: 4, fontSize: '0.75rem', marginBottom: '0.75rem' }}>
+                      {importDraftErrors.map((err) => t(err.messageKey)).join('; ')}
+                    </div>
+                  )}
 
                   {/* Fit mode */}
                   <div style={{ marginBottom: '1rem' }}>
@@ -2300,9 +2481,9 @@ export default function PaperProfiles() {
                     <button
                       type="button"
                       className="pp-save-button"
-                      style={{ ...s.btn, flex: 1 }}
+                      style={{ ...s.btn, flex: 1, opacity: importDraftErrors.length > 0 ? 0.5 : 1 }}
                       onClick={() => void submitImport()}
-                      disabled={!importEditValues.name.trim()}
+                      disabled={importDraftErrors.length > 0}
                     >
                       {t('page.paperProfiles.importButton')}
                     </button>

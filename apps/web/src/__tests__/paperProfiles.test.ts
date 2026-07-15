@@ -25,6 +25,11 @@ import {
   isValidImportFileSize,
   isLowImportDpi,
   nextImportPhase,
+  inferMimeFromExtension,
+  importFitModeToCss,
+  generateImportCode,
+  buildImportRequestBody,
+  validateImportDraft,
   ACCEPTED_IMPORT_MIME_TYPES,
   MAX_IMPORT_FILE_BYTES,
 } from '../pages/PaperProfiles.js';
@@ -1512,5 +1517,223 @@ describe('ImportPhase states', () => {
   it('all six phases are valid', () => {
     const phases: ImportPhase[] = ['select', 'analyzing', 'review', 'importing', 'success', 'error'];
     expect(phases).toHaveLength(6);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  inferMimeFromExtension
+// ══════════════════════════════════════════════════════════════════════
+
+describe('inferMimeFromExtension', () => {
+  it('infers image/png from .png', () => {
+    expect(inferMimeFromExtension('design.png')).toBe('image/png');
+    expect(inferMimeFromExtension('DESIGN.PNG')).toBe('image/png');
+  });
+
+  it('infers image/jpeg from .jpg and .jpeg', () => {
+    expect(inferMimeFromExtension('photo.jpg')).toBe('image/jpeg');
+    expect(inferMimeFromExtension('scan.jpeg')).toBe('image/jpeg');
+    expect(inferMimeFromExtension('PHOTO.JPG')).toBe('image/jpeg');
+  });
+
+  it('returns empty string for unknown extension', () => {
+    expect(inferMimeFromExtension('doc.pdf')).toBe('');
+    expect(inferMimeFromExtension('icon.svg')).toBe('');
+    expect(inferMimeFromExtension('file')).toBe('');
+    expect(inferMimeFromExtension('')).toBe('');
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  importFitModeToCss
+// ══════════════════════════════════════════════════════════════════════
+
+describe('importFitModeToCss', () => {
+  it('maps contain → contain', () => {
+    expect(importFitModeToCss('contain')).toBe('contain');
+  });
+
+  it('maps cover → cover', () => {
+    expect(importFitModeToCss('cover')).toBe('cover');
+  });
+
+  it('maps stretch → fill', () => {
+    expect(importFitModeToCss('stretch')).toBe('fill');
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  generateImportCode
+// ══════════════════════════════════════════════════════════════════════
+
+describe('generateImportCode', () => {
+  it('produces a code with basename + 4-digit suffix', () => {
+    const code = generateImportCode('My Design');
+    expect(code).toMatch(/^my_design_\d{4}$/);
+  });
+
+  it('sanitizes special characters', () => {
+    const code = generateImportCode('Hello! World@2024');
+    expect(code).toMatch(/^hello_world_2024_\d{4}$/);
+  });
+
+  it('produces a bounded-length code (< 25 chars)', () => {
+    const code = generateImportCode('a'.repeat(100));
+    expect(code.length).toBeLessThanOrEqual(25);
+  });
+
+  it('falls back to pp_ prefix when basename is empty after sanitization', () => {
+    const code = generateImportCode('---');
+    expect(code).toMatch(/^pp_\d{4}$/);
+  });
+
+  it('trims leading/trailing underscores', () => {
+    const code = generateImportCode('_test_');
+    expect(code).toMatch(/^test_\d{4}$/);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  buildImportRequestBody
+// ══════════════════════════════════════════════════════════════════════
+
+describe('buildImportRequestBody', () => {
+  it('builds a nested request body with profile sub-object', () => {
+    const body = buildImportRequestBody(
+      'design.png',
+      'image/png',
+      'base64data',
+      {
+        code: 'my_label',
+        name: 'My Label',
+        widthMm: 100,
+        heightMm: 50,
+        marginTopMm: 2,
+        marginRightMm: 2,
+        marginBottomMm: 2,
+        marginLeftMm: 2,
+        dpi: 203,
+        orientation: 'portrait',
+        unit: 'mm',
+      },
+      'contain',
+    );
+    expect(body.fileName).toBe('design.png');
+    expect(body.declaredMimeType).toBe('image/png');
+    expect(body.dataBase64).toBe('base64data');
+    expect(body.fitMode).toBe('contain');
+    expect(body.profile).toEqual({
+      code: 'my_label',
+      name: 'My Label',
+      widthMm: 100,
+      heightMm: 50,
+      marginTopMm: 2,
+      marginRightMm: 2,
+      marginBottomMm: 2,
+      marginLeftMm: 2,
+      dpi: 203,
+      orientation: 'portrait',
+      unit: 'mm',
+    });
+  });
+
+  it('has no flat fields — all paper fields are nested under profile', () => {
+    const body = buildImportRequestBody(
+      'photo.jpg', 'image/jpeg', 'data', 
+      { code: 'c', name: 'n', widthMm: 1, heightMm: 1, marginTopMm: 0, marginRightMm: 0, marginBottomMm: 0, marginLeftMm: 0, dpi: 1, orientation: 'portrait', unit: 'mm' },
+      'contain',
+    );
+    // Assert no flat fields leak
+    expect((body as unknown as Record<string, unknown>).name).toBeUndefined();
+    expect((body as unknown as Record<string, unknown>).widthMm).toBeUndefined();
+    expect((body as unknown as Record<string, unknown>).dpi).toBeUndefined();
+    expect((body as unknown as Record<string, unknown>).orientation).toBeUndefined();
+  });
+
+  it('works with landscape orientation', () => {
+    const body = buildImportRequestBody(
+      'photo.jpg', 'image/jpeg', 'data',
+      { code: 'c', name: 'n', widthMm: 210, heightMm: 297, marginTopMm: 1, marginRightMm: 1, marginBottomMm: 1, marginLeftMm: 1, dpi: 300, orientation: 'landscape', unit: 'mm' },
+      'cover',
+    );
+    expect(body.profile.orientation).toBe('landscape');
+    expect(body.profile.widthMm).toBe(210);
+    expect(body.fitMode).toBe('cover');
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  validateImportDraft
+// ══════════════════════════════════════════════════════════════════════
+
+describe('validateImportDraft', () => {
+  const validDraft = {
+    name: 'My Label',
+    code: 'my_label',
+    widthMm: 100,
+    heightMm: 50,
+    dpi: 203,
+    marginTopMm: 2,
+    marginRightMm: 2,
+    marginBottomMm: 2,
+    marginLeftMm: 2,
+  };
+
+  it('returns empty for a valid draft', () => {
+    expect(validateImportDraft(validDraft)).toEqual([]);
+  });
+
+  it('rejects empty name', () => {
+    const errors = validateImportDraft({ ...validDraft, name: '   ' });
+    expect(errors.some((e) => e.field === 'name')).toBe(true);
+  });
+
+  it('rejects empty code', () => {
+    const errors = validateImportDraft({ ...validDraft, code: '' });
+    expect(errors.some((e) => e.field === 'code')).toBe(true);
+  });
+
+  it('rejects zero width', () => {
+    const errors = validateImportDraft({ ...validDraft, widthMm: 0 });
+    expect(errors.some((e) => e.field === 'widthMm')).toBe(true);
+  });
+
+  it('rejects negative height', () => {
+    const errors = validateImportDraft({ ...validDraft, heightMm: -1 });
+    expect(errors.some((e) => e.field === 'heightMm')).toBe(true);
+  });
+
+  it('rejects NaN dimensions', () => {
+    const errors = validateImportDraft({ ...validDraft, widthMm: NaN, heightMm: Infinity });
+    expect(errors.some((e) => e.field === 'widthMm')).toBe(true);
+    expect(errors.some((e) => e.field === 'heightMm')).toBe(true);
+  });
+
+  it('rejects zero DPI', () => {
+    const errors = validateImportDraft({ ...validDraft, dpi: 0 });
+    expect(errors.some((e) => e.field === 'dpi')).toBe(true);
+  });
+
+  it('rejects negative margins', () => {
+    const errors = validateImportDraft({ ...validDraft, marginTopMm: -1 });
+    expect(errors.some((e) => e.field === 'marginTopMm')).toBe(true);
+  });
+
+  it('rejects margins exceeding width', () => {
+    const errors = validateImportDraft({ ...validDraft, marginLeftMm: 51, marginRightMm: 51 });
+    expect(errors.some((e) => e.field === 'margins' && e.messageKey === 'validation.marginsExceedWidth')).toBe(true);
+  });
+
+  it('rejects margins exceeding height', () => {
+    const errors = validateImportDraft({ ...validDraft, marginTopMm: 26, marginBottomMm: 26 });
+    expect(errors.some((e) => e.field === 'margins' && e.messageKey === 'validation.marginsExceedHeight')).toBe(true);
+  });
+
+  it('returns all errors for a completely invalid draft', () => {
+    const errors = validateImportDraft({
+      name: '', code: '', widthMm: 0, heightMm: 0, dpi: 0,
+      marginTopMm: -1, marginRightMm: -1, marginBottomMm: -1, marginLeftMm: -1,
+    });
+    expect(errors.length).toBeGreaterThanOrEqual(9);
   });
 });
