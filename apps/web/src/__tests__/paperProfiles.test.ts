@@ -4,6 +4,7 @@ import {
   anchorTransformOrigin,
   centerFieldAnchorHorizontal,
   centerFieldAnchorVertical,
+  clampFontSize,
   clampGridSpacing as clampGridSpacingSource,
   clampPreviewZoom,
   fontPointSizeToPreviewPixels,
@@ -1120,6 +1121,49 @@ describe('resolveSelectionAfterDelete', () => {
 
   it('returns null when currentSelectedId is null regardless of deletion', () => {
     expect(resolveSelectionAfterDelete(fields, 'a', null)).toBeNull();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  clampFontSize
+// ══════════════════════════════════════════════════════════════════════
+
+describe('clampFontSize', () => {
+  it('returns the value unchanged when within 6–72 range', () => {
+    expect(clampFontSize(6)).toBe(6);
+    expect(clampFontSize(12)).toBe(12);
+    expect(clampFontSize(36)).toBe(36);
+    expect(clampFontSize(72)).toBe(72);
+  });
+
+  it('clamps values below minimum to 6', () => {
+    expect(clampFontSize(-999)).toBe(6);
+    expect(clampFontSize(0)).toBe(6);
+    expect(clampFontSize(1)).toBe(6);
+    expect(clampFontSize(5)).toBe(6);
+    expect(clampFontSize(5.9)).toBe(6);
+  });
+
+  it('clamps values above maximum to 72', () => {
+    expect(clampFontSize(73)).toBe(72);
+    expect(clampFontSize(100)).toBe(72);
+    expect(clampFontSize(999)).toBe(72);
+  });
+
+  it('handles NaN safely — returns the minimum', () => {
+    expect(clampFontSize(NaN)).toBe(6);
+  });
+
+  it('handles Infinity safely — returns the minimum', () => {
+    expect(clampFontSize(Infinity)).toBe(6);
+    expect(clampFontSize(-Infinity)).toBe(6);
+  });
+
+  it('rounds float values to integers', () => {
+    expect(clampFontSize(11.2)).toBe(11);
+    expect(clampFontSize(11.7)).toBe(12);
+    expect(clampFontSize(6.4)).toBe(6);
+    expect(clampFontSize(71.6)).toBe(72);
   });
 });
 

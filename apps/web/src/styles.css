@@ -1804,6 +1804,33 @@ body {
   color: var(--neutral-text-muted, #6b7280);
 }
 
+.pp-icon-btn-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.pp-icon-btn-wrapper .pp-icon-btn-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--rounded-sm, 4px);
+  background: var(--neutral-inverse, #111827);
+  color: #fff;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 30;
+}
+
+.pp-icon-btn-wrapper:hover .pp-icon-btn-tooltip,
+.pp-icon-btn-wrapper:focus-within .pp-icon-btn-tooltip {
+  opacity: 1;
+}
+
 .pp-command-actions {
   min-width: 0;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 
@@ -202,6 +202,12 @@ export function clampGridSpacing(value: number): number {
   return Math.max(1, Math.min(100, Math.round(value)));
 }
 
+/** Clamp a font size in points to the valid range 6–72 and round to integer. */
+export function clampFontSize(value: number): number {
+  if (!Number.isFinite(value)) return 6;
+  return Math.max(6, Math.min(72, Math.round(value)));
+}
+
 export function clampPreviewZoom(value: number): number {
   if (!Number.isFinite(value)) return 1;
   return Math.max(0.5, Math.min(4, Math.round(value * 100) / 100));
@@ -359,17 +365,42 @@ function IconButton({
   disabled?: boolean;
   disabledReason?: string;
 }) {
+  const tooltipId = useId();
+  const tipText = disabled ? (disabledReason || label) : label;
+  const handleClick = () => {
+    if (disabled) return;
+    onClick();
+  };
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (disabled && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+    }
+  };
   return (
-    <button
-      type="button"
-      className={'pp-icon-btn' + (active ? ' pp-icon-btn--active' : '')}
-      title={disabled ? (disabledReason || label) : label}
-      aria-label={disabled ? (disabledReason ? `${label}: ${disabledReason}` : label) : label}
-      onClick={onClick}
-      disabled={disabled}
+    <div
+      className="pp-icon-btn-wrapper"
+      style={{ position: 'relative', display: 'inline-flex' }}
     >
-      <span aria-hidden="true">{icon}</span>
-    </button>
+      <button
+        type="button"
+        className={'pp-icon-btn' + (active ? ' pp-icon-btn--active' : '')}
+        aria-disabled={disabled || undefined}
+        aria-describedby={tooltipId}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        style={disabled ? { pointerEvents: 'none' } : undefined}
+      >
+        <span aria-hidden="true">{icon}</span>
+      </button>
+      <span
+        id={tooltipId}
+        role="tooltip"
+        aria-hidden="true"
+        className="pp-icon-btn-tooltip"
+      >
+        {tipText}
+      </span>
+    </div>
   );
 }
 
@@ -750,6 +781,11 @@ export default function PaperProfiles() {
   const [modalStageSize, setModalStageSize] = useState({ width: 0, height: 0 });
   const saveInFlightRef = useRef(false);
 
+  // ── Drawer focus management ────────────────────────────────────────
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const drawerPrevFocusRef = useRef<HTMLElement | null>(null);
+  const drawerCloseButtonRef = useRef<HTMLButtonElement>(null);
+
   // ── Section tracking (for sticky index & collapse/expand all) ──────
   type SectionKey = 'basicInfo' | 'dimensions' | 'margins' | 'fields';
   const [sectionsOpen, setSectionsOpen] = useState<Record<SectionKey, boolean>>({
@@ -948,6 +984,7 @@ export default function PaperProfiles() {
   function applyPreset(p: typeof PAPER_PRESETS[number]) {
     setForm((f) => ({ ...f, widthMm: p.widthMm, heightMm: p.heightMm, dpi: p.dpi }));
     setSaveStatus((s) => nextSaveStatus(s, 'dirty'));
+    setSaveError(null);
     setPresetsOpen(false);
   }
 
@@ -1097,15 +1134,56 @@ export default function PaperProfiles() {
     setDraggingFieldId(id);
   }
 
-  // ── Escape key to close drawers ────────────────────────────────────
+  // ── Drawer focus trap, escape, and restoration ──────────────────────
+  const closeDrawer = useCallback(() => setShowDrawer(null), []);
   useEffect(() => {
-    if (!showDrawer) return;
+    if (!showDrawer) {
+      // Restore focus when drawer closes
+      if (drawerPrevFocusRef.current) {
+        const el = drawerPrevFocusRef.current;
+        if (el.tabIndex === undefined || el.tabIndex > -2) {
+          el.focus();
+        }
+        drawerPrevFocusRef.current = null;
+      }
+      return;
+    }
+    // Save current focus and move into drawer
+    drawerPrevFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement : null;
+    const frame = window.requestAnimationFrame(() => {
+      if (drawerCloseButtonRef.current) {
+        drawerCloseButtonRef.current.focus();
+      } else {
+        drawerRef.current?.focus();
+      }
+    });
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowDrawer(null);
+      if (e.key === 'Escape') {
+        setShowDrawer(null);
+        return;
+      }
+      if (e.key !== 'Tab' || !drawerRef.current) return;
+      const focusable = Array.from(drawerRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      )).filter((el) => el.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showDrawer]);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [showDrawer, closeDrawer]);
 
   return (
     <div className="paper-profiles-page" style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: '0.75rem', minHeight: 0 }}>
@@ -1166,22 +1244,24 @@ export default function PaperProfiles() {
             </nav>
             <div className="pp-command-actions">
               <div className="pp-command-status" aria-live="polite">
-                <span
-                  className="pp-command-status__dot"
-                  aria-hidden="true"
-                  style={{
-                    color: saveStatus === 'error' ? 'var(--semantic-error, #f38ba8)'
-                      : saveStatus === 'saving' ? 'var(--semantic-progress, #fab387)'
+                  <span
+                    className="pp-command-status__dot"
+                    aria-hidden="true"
+                    style={{
+                      color: saveStatus === 'dirty' ? 'var(--semantic-warning, #f9e2af)'
+                        : saveStatus === 'error' ? 'var(--semantic-error, #f38ba8)'
+                        : saveStatus === 'saving' ? 'var(--semantic-progress, #fab387)'
                         : saveStatus === 'saved' ? 'var(--semantic-success, #a6e3a1)'
-                          : 'var(--semantic-success, #65a765)',
-                  }}
-                >●</span>
-                <span>
-                  {saveStatus === 'saving' ? t('page.paperProfiles.saving')
-                    : saveStatus === 'saved' ? t('page.paperProfiles.saved')
+                        : 'var(--semantic-success, #65a765)',
+                    }}
+                  >●</span>
+                  <span>
+                    {saveStatus === 'dirty' ? t('page.paperProfiles.unsavedChanges')
+                      : saveStatus === 'saving' ? t('page.paperProfiles.saving')
+                      : saveStatus === 'saved' ? t('page.paperProfiles.saved')
                       : saveStatus === 'error' ? (saveError || t('common.error'))
-                        : editingId ? t('page.paperProfiles.editingProfile') : t('page.paperProfiles.readyToSave')}
-                </span>
+                      : editingId ? t('page.paperProfiles.editingProfile') : t('page.paperProfiles.readyToSave')}
+                  </span>
                 {saveStatus === 'error' && (
                   <button
                     type="button"
@@ -1316,9 +1396,9 @@ export default function PaperProfiles() {
               {ux.dynamicFields.map((f) => (
                 <div key={f.id} className="pp-field-row" style={{ padding: '0.5rem', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fafafa', position: 'relative' }}>
                   <div className="pp-field-row__primary" style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', flexWrap: 'wrap' }}>
-                    <input aria-label={t('page.paperProfiles.fieldKey')} placeholder="key" value={f.key} onChange={(e) => updField(f.id, { key: e.target.value })}
+                    <input aria-label={t('page.paperProfiles.fieldKey')} placeholder={t('page.paperProfiles.fieldKey')} value={f.key} onChange={(e) => updField(f.id, { key: e.target.value })}
                       style={{ ...s.smallInput, width: 90, fontFamily: 'monospace' }} />
-                    <input aria-label={t('page.paperProfiles.fieldLabel')} placeholder="Label" value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })}
+                    <input aria-label={t('page.paperProfiles.fieldLabel')} placeholder={t('page.paperProfiles.fieldLabel')} value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })}
                       style={{ ...s.smallInput, flex: 1 }} />
                     <button type="button" style={s.btnDanger} onClick={(e) => { e.stopPropagation(); delField(f.id); }} title={t('page.paperProfiles.remove')} aria-label={t('page.paperProfiles.remove')}>✕</button>
                   </div>
@@ -1331,7 +1411,8 @@ export default function PaperProfiles() {
                     <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>Y:</label>
                     <input aria-label="Y (mm)" type="number" value={f.yMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { yMm: v }); }}
                       style={{ ...s.smallInput, width: 50 }} />
-                    <input aria-label={t('page.paperProfiles.fieldFontSizePt')} type="number" value={f.fontSize} onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: v }); }}
+                    <input aria-label={t('page.paperProfiles.fieldFontSizePt')} type="number" value={f.fontSize} min={6} max={72}
+                      onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: clampFontSize(v) }); }}
                       style={{ ...s.smallInput, width: 50 }} title={t('page.paperProfiles.fieldFontSizePt')} />
                     <input aria-label={t('page.paperProfiles.fieldColor')} type="color" value={f.color} onChange={(e) => updField(f.id, { color: e.target.value })}
                       style={{ width: 28, height: 24, padding: 0, border: '1px solid #d1d5db', borderRadius: 3, cursor: 'pointer' }} />
@@ -1564,7 +1645,7 @@ export default function PaperProfiles() {
                         <label>{t('page.paperProfiles.fieldLabel')}<input value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })} /></label>
                         <label>{t('page.paperProfiles.positionX')}<input type="number" step="0.1" value={f.xMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { xMm: v }); }} /></label>
                         <label>{t('page.paperProfiles.positionY')}<input type="number" step="0.1" value={f.yMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { yMm: v }); }} /></label>
-                        <label>{t('page.paperProfiles.fontSize')}<input type="number" min={6} max={72} value={f.fontSize} onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: v }); }} /></label>
+                        <label>{t('page.paperProfiles.fontSize')}<input type="number" min={6} max={72} value={f.fontSize} onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: clampFontSize(v) }); }} /></label>
                         <label>{t('page.paperProfiles.align')}<select value={f.align} onChange={(e) => updField(f.id, { align: e.target.value as DynamicField['align'] })}><option value="left">{t('page.paperProfiles.alignLeft')}</option><option value="center">{t('page.paperProfiles.alignCenter')}</option><option value="right">{t('page.paperProfiles.alignRight')}</option></select></label>
                       </div>
                       <div className="paper-preview-modal__field-footer">
@@ -1584,13 +1665,14 @@ export default function PaperProfiles() {
       {/* ─── Drawer: Fields ─── */}
       {showDrawer === 'fields' && (
         <>
-          <div className="pp-drawer-backdrop" onClick={() => setShowDrawer(null)} />
-          <div className="pp-drawer" role="dialog" aria-modal="true" aria-label={t('page.paperProfiles.dynamicFieldsEditor')}>
+          <div className="pp-drawer-backdrop" onClick={closeDrawer} />
+          <div className="pp-drawer" role="dialog" aria-modal="true" aria-label={t('page.paperProfiles.dynamicFieldsEditor')} ref={drawerRef} tabIndex={-1}>
           <div className="pp-drawer__header">
             <span className="pp-drawer__title">{t('page.paperProfiles.dynamicFieldsEditor')}</span>
             <button className="pp-tool-btn" style={{ width: 28, height: 26, fontSize: '0.8rem' }}
               title={t('common.cancel')} aria-label={t('common.cancel')}
-              onClick={() => setShowDrawer(null)}>✕</button>
+              ref={drawerCloseButtonRef}
+              onClick={closeDrawer}>✕</button>
           </div>
           <div className="pp-drawer__body">
             {ux.dynamicFields.length === 0 && (
@@ -1608,7 +1690,7 @@ export default function PaperProfiles() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem', fontSize: '0.75rem' }}>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fieldLabel')}</label><input value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })} style={s.smallInput} /></div>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fieldDefault')}</label><input value={f.defaultValue} onChange={(e) => updField(f.id, { defaultValue: e.target.value })} style={s.smallInput} /></div>
-                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fontSize')}</label><input type="number" value={f.fontSize} onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: v }); }} style={s.smallInput} /></div>
+                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fontSize')}</label><input type="number" min={6} max={72} value={f.fontSize} onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: clampFontSize(v) }); }} style={s.smallInput} /></div>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.positionX')}</label><input type="number" value={f.xMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { xMm: v }); }} style={s.smallInput} /></div>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.positionY')}</label><input type="number" value={f.yMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { yMm: v }); }} style={s.smallInput} /></div>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fieldColor')}</label><input type="color" value={f.color} onChange={(e) => updField(f.id, { color: e.target.value })} style={{ width: '100%', height: 28, padding: 0, border: '1px solid #d1d5db', borderRadius: 4 }} /></div>
@@ -1631,13 +1713,14 @@ export default function PaperProfiles() {
       {/* ─── Drawer: Appearance ─── */}
       {showDrawer === 'appearance' && (
         <>
-          <div className="pp-drawer-backdrop" onClick={() => setShowDrawer(null)} />
-          <div className="pp-drawer" role="dialog" aria-modal="true" aria-label={t('page.paperProfiles.appearanceStyle')}>
+          <div className="pp-drawer-backdrop" onClick={closeDrawer} />
+          <div className="pp-drawer" role="dialog" aria-modal="true" aria-label={t('page.paperProfiles.appearanceStyle')} ref={drawerRef} tabIndex={-1}>
           <div className="pp-drawer__header">
-            <span className="pp-drawer__title">{t('page.paperProfiles.appearanceStyle')} · {t('page.paperProfiles.newFieldDefaults')}</span>
+            <span className="pp-drawer__title">{t('page.paperProfiles.appearanceStyle')}</span>
             <button className="pp-tool-btn" style={{ width: 28, height: 26, fontSize: '0.8rem' }}
               title={t('common.cancel')} aria-label={t('common.cancel')}
-              onClick={() => setShowDrawer(null)}>✕</button>
+              ref={drawerCloseButtonRef}
+              onClick={closeDrawer}>✕</button>
           </div>
           <div className="pp-drawer__body">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1647,21 +1730,27 @@ export default function PaperProfiles() {
                   {FONT_LIST.map((f) => <option key={f} value={f}>{f.replace(/['"]/g, '')}</option>)}
                 </select>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                <div>
-                  <label style={s.label}>{t('page.paperProfiles.fontSize')}</label>
-                  <input type="number" value={ux.fontSize} onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v) && v > 0) uxPatch('fontSize', v); }}
-                    style={s.input} min={6} max={72} />
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '0.5rem' }}>
+                <h4 style={{ fontSize: '0.8rem', fontWeight: 600, margin: '0 0 0.5rem', color: '#374151' }}>
+                  {t('page.paperProfiles.newFieldDefaults')}
+                </h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  <div>
+                    <label style={s.label}>{t('page.paperProfiles.fontSize')}</label>
+                    <input type="number" value={ux.fontSize} min={6} max={72}
+                      onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) uxPatch('fontSize', clampFontSize(v)); }}
+                      style={s.input} />
+                  </div>
+                  <div>
+                    <label style={s.label}>{t('page.paperProfiles.fontWeight')}</label>
+                    <select value={ux.fontWeight} onChange={(e) => uxPatch('fontWeight', e.target.value as 'normal' | 'bold')} style={s.sel}>
+                      <option value="normal">{t('page.paperProfiles.normal')}</option>
+                      <option value="bold">{t('page.paperProfiles.bold')}</option>
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label style={s.label}>{t('page.paperProfiles.fontWeight')}</label>
-                  <select value={ux.fontWeight} onChange={(e) => uxPatch('fontWeight', e.target.value as 'normal' | 'bold')} style={s.sel}>
-                    <option value="normal">{t('page.paperProfiles.normal')}</option>
-                    <option value="bold">{t('page.paperProfiles.bold')}</option>
-                  </select>
-                </div>
+                <ColorInput label={t('page.paperProfiles.fontColor')} value={ux.fontColor} onChange={(v) => uxPatch('fontColor', v)} />
               </div>
-              <ColorInput label={t('page.paperProfiles.fontColor')} value={ux.fontColor} onChange={(v) => uxPatch('fontColor', v)} />
               <ColorInput label={t('page.paperProfiles.background')} value={ux.bgColor} onChange={(v) => uxPatch('bgColor', v)} />
               <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '0.5rem' }}>
                 <label style={s.label}>{t('page.paperProfiles.watermarkText')}</label>
