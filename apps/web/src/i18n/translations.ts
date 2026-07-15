@@ -23,12 +23,14 @@ const en: TranslationDict = {
 
   // Navigation groups
   'nav.group.operations': 'Operator Workflow',
-  'nav.group.administration': 'Administration',
+  'nav.group.admin': 'Settings & Admin',
 
   // Navigation accessibility
   'nav.menu.open': 'Open navigation menu',
   'nav.menu.close': 'Close navigation menu',
   'nav.ariaLabel': 'Main navigation',
+  'nav.admin.expand': 'Expand admin section',
+  'nav.admin.collapse': 'Collapse admin section',
 
   // Common
   'common.save': 'Save',
@@ -524,12 +526,14 @@ const th: TranslationDict = {
 
   // Navigation groups
   'nav.group.operations': 'ขั้นตอนปฏิบัติงาน',
-  'nav.group.administration': 'การจัดการระบบ',
+  'nav.group.admin': 'ตั้งค่าและจัดการ',
 
   // Navigation accessibility
   'nav.menu.open': 'เปิดเมนูนำทาง',
   'nav.menu.close': 'ปิดเมนูนำทาง',
   'nav.ariaLabel': 'เมนูนำทางหลัก',
+  'nav.admin.expand': 'ขยายส่วนจัดการ',
+  'nav.admin.collapse': 'ย่อส่วนจัดการ',
 
   // Common
   'common.save': 'บันทึก',

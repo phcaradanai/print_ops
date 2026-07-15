@@ -142,7 +142,9 @@ body {
 /* Nav links */
 
 .nav-link {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   padding: 0.35rem 0.5rem;
   border-radius: 4px;
   color: #cdd6f4;
@@ -150,6 +152,64 @@ body {
   font-size: 0.875rem;
   transition: background-color 0.15s, color 0.15s;
   outline-offset: -2px;
+}
+
+.nav-link-icon {
+  flex: 0 0 auto;
+  width: 1.15em;
+  text-align: center;
+  font-size: 0.95em;
+  line-height: 1;
+}
+
+.nav-link-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Collapsible admin section */
+
+.nav-admin-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  margin-bottom: 0.5rem;
+}
+
+.nav-admin-toggle:focus-visible {
+  outline: 2px solid #89b4fa;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.nav-admin-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  color: #6b7280;
+  font-size: 0.6rem;
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.nav-admin-chevron--open {
+  transform: rotate(90deg);
+}
+
+.nav-group-label--toggle {
+  margin-bottom: 0;
+  cursor: pointer;
 }
 
 .nav-link:hover {

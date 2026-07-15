@@ -1,4 +1,4 @@
-import { Routes, Route, NavLink } from 'react-router-dom';
+import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import {
   useCallback,
   useEffect,
@@ -31,42 +31,153 @@ import { LocaleProvider, useLocale } from './i18n/index.js';
 
 // ----- navigation definition -----
 
-type NavGroup = 'operations' | 'administration';
+type NavGroup = 'operations' | 'admin';
 
 interface NavItem {
   to: string;
   key: string;
   roles: SessionUser['role'][];
   group: NavGroup;
+  icon: string;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  // Operator Workflow
-  { to: '/', key: 'nav.dashboard', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
-  { to: '/printers', key: 'nav.printers', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
-  { to: '/jobs', key: 'nav.jobQueue', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
-  { to: '/runners', key: 'nav.runners', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
-  { to: '/templates', key: 'nav.templates', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
-  { to: '/paper-profiles', key: 'nav.paperProfiles', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
-
-  // Administration
-  { to: '/discovered-printers', key: 'nav.discovery', roles: ['OWNER', 'ADMIN'], group: 'administration' },
-  { to: '/diagnostics', key: 'nav.diagnostics', roles: ['OWNER', 'ADMIN', 'OPERATOR'], group: 'administration' },
-  { to: '/template-sandbox', key: 'nav.sandbox', roles: ['OWNER'], group: 'administration' },
-  { to: '/webhooks', key: 'nav.webhooks', roles: ['OWNER', 'ADMIN'], group: 'administration' },
-  { to: '/route-policies', key: 'nav.routePolicies', roles: ['OWNER', 'ADMIN'], group: 'administration' },
-  { to: '/printer-bindings', key: 'nav.bindings', roles: ['OWNER', 'ADMIN'], group: 'administration' },
-  { to: '/audit-logs', key: 'nav.auditLogs', roles: ['OWNER', 'ADMIN'], group: 'administration' },
-  { to: '/users', key: 'nav.usersRoles', roles: ['OWNER'], group: 'administration' },
-  { to: '/export', key: 'nav.export', roles: ['OWNER', 'ADMIN'], group: 'administration' },
-  { to: '/settings', key: 'nav.settings', roles: ['OWNER', 'ADMIN'], group: 'administration' },
-];
-
-const GROUP_ORDER: NavGroup[] = ['operations', 'administration'];
-const GROUP_LABEL_KEYS: Record<NavGroup, string> = {
-  operations: 'nav.group.operations',
-  administration: 'nav.group.administration',
+/** Per-item icon for visual scanning. Single Unicode char designed for system fonts. */
+const NAV_ITEM_ICONS: Record<string, string> = {
+  '/': '\u{1F3E0}',                   // 🏠 Dashboard
+  '/printers': '\u{1F5A8}',            // 🖨️ Printers
+  '/jobs': '\u{1F4CB}',                // 📋 Job Queue
+  '/runners': '\u{26A1}',              // ⚡ Runners
+  '/templates': '\u{1F4C4}',           // 📄 Templates
+  '/paper-profiles': '\u{1F4D0}',      // 📐 Paper Profiles
+  '/discovered-printers': '\u{1F50D}', // 🔍 Printer Discovery
+  '/diagnostics': '\u{1F527}',          // 🔧 Runner Diagnostics
+  '/template-sandbox': '\u{1F9EA}',    // 🧪 Template Sandbox
+  '/webhooks': '\u{1F517}',            // 🔗 Webhooks
+  '/route-policies': '\u{1F5FA}',      // 🗺️ Route Policies
+  '/printer-bindings': '\u{1F4CE}',    // 📎 Printer Bindings
+  '/audit-logs': '\u{1F4DD}',          // 📝 Audit Logs
+  '/users': '\u{1F465}',               // 👥 Users & Roles
+  '/export': '\u{1F4E4}',              // 📤 Export Center
+  '/settings': '\u{2699}',             // ⚙️ Settings
 };
+
+const NAV_ITEMS: NavItem[] = [
+  // ----- Operations (always visible, all roles) -----
+  {
+    to: '/',
+    key: 'nav.dashboard',
+    roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
+    group: 'operations',
+    icon: NAV_ITEM_ICONS['/'],
+  },
+  {
+    to: '/printers',
+    key: 'nav.printers',
+    roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
+    group: 'operations',
+    icon: NAV_ITEM_ICONS['/printers'],
+  },
+  {
+    to: '/jobs',
+    key: 'nav.jobQueue',
+    roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
+    group: 'operations',
+    icon: NAV_ITEM_ICONS['/jobs'],
+  },
+  {
+    to: '/runners',
+    key: 'nav.runners',
+    roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
+    group: 'operations',
+    icon: NAV_ITEM_ICONS['/runners'],
+  },
+  {
+    to: '/templates',
+    key: 'nav.templates',
+    roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
+    group: 'operations',
+    icon: NAV_ITEM_ICONS['/templates'],
+  },
+  {
+    to: '/paper-profiles',
+    key: 'nav.paperProfiles',
+    roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
+    group: 'operations',
+    icon: NAV_ITEM_ICONS['/paper-profiles'],
+  },
+
+  // ----- Settings & Admin (collapsible, role-gated) -----
+  {
+    to: '/discovered-printers',
+    key: 'nav.discovery',
+    roles: ['OWNER', 'ADMIN'],
+    group: 'admin',
+    icon: NAV_ITEM_ICONS['/discovered-printers'],
+  },
+  {
+    to: '/diagnostics',
+    key: 'nav.diagnostics',
+    roles: ['OWNER', 'ADMIN', 'OPERATOR'],
+    group: 'admin',
+    icon: NAV_ITEM_ICONS['/diagnostics'],
+  },
+  {
+    to: '/template-sandbox',
+    key: 'nav.sandbox',
+    roles: ['OWNER'],
+    group: 'admin',
+    icon: NAV_ITEM_ICONS['/template-sandbox'],
+  },
+  {
+    to: '/webhooks',
+    key: 'nav.webhooks',
+    roles: ['OWNER', 'ADMIN'],
+    group: 'admin',
+    icon: NAV_ITEM_ICONS['/webhooks'],
+  },
+  {
+    to: '/route-policies',
+    key: 'nav.routePolicies',
+    roles: ['OWNER', 'ADMIN'],
+    group: 'admin',
+    icon: NAV_ITEM_ICONS['/route-policies'],
+  },
+  {
+    to: '/printer-bindings',
+    key: 'nav.bindings',
+    roles: ['OWNER', 'ADMIN'],
+    group: 'admin',
+    icon: NAV_ITEM_ICONS['/printer-bindings'],
+  },
+  {
+    to: '/audit-logs',
+    key: 'nav.auditLogs',
+    roles: ['OWNER', 'ADMIN'],
+    group: 'admin',
+    icon: NAV_ITEM_ICONS['/audit-logs'],
+  },
+  {
+    to: '/users',
+    key: 'nav.usersRoles',
+    roles: ['OWNER'],
+    group: 'admin',
+    icon: NAV_ITEM_ICONS['/users'],
+  },
+  {
+    to: '/export',
+    key: 'nav.export',
+    roles: ['OWNER', 'ADMIN'],
+    group: 'admin',
+    icon: NAV_ITEM_ICONS['/export'],
+  },
+  {
+    to: '/settings',
+    key: 'nav.settings',
+    roles: ['OWNER', 'ADMIN'],
+    group: 'admin',
+    icon: NAV_ITEM_ICONS['/settings'],
+  },
+];
 
 // ----- splash -----
 
@@ -218,63 +329,106 @@ function AppNav({
   onLogout: () => void;
 }) {
   const { t } = useLocale();
+  const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [adminExpanded, setAdminExpanded] = useState(false);
 
   const visibleNav = useMemo(
     () => NAV_ITEMS.filter((item) => item.roles.includes(user.role)),
     [user],
   );
 
-  // Group visible items
-  const grouped = useMemo(() => {
-    const map: Record<NavGroup, NavItem[]> = { operations: [], administration: [] };
+  const { opsItems, adminItems } = useMemo(() => {
+    const ops: NavItem[] = [];
+    const admin: NavItem[] = [];
     for (const item of visibleNav) {
-      map[item.group].push(item);
+      if (item.group === 'operations') ops.push(item);
+      else admin.push(item);
     }
-    return GROUP_ORDER.map((g) => ({ group: g, items: map[g] })).filter(
-      (g) => g.items.length > 0,
-    );
+    return { opsItems: ops, adminItems: admin };
   }, [visibleNav]);
+
+  const hasAdmin = adminItems.length > 0;
+
+  // Keep the active admin route discoverable after direct navigation or reload.
+  useEffect(() => {
+    if (adminItems.some((item) => location.pathname === item.to || location.pathname.startsWith(item.to + '/'))) {
+      setAdminExpanded(true);
+    }
+  }, [adminItems, location.pathname]);
 
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 
-  // Close mobile menu on Escape key
   useEffect(() => {
     if (!mobileOpen) return;
     function onKeyDown(e: globalThis.KeyboardEvent) {
-      if (e.key === 'Escape') {
-        setMobileOpen(false);
-      }
+      if (e.key === 'Escape') setMobileOpen(false);
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [mobileOpen]);
 
+  const toggleAdmin = useCallback(() => setAdminExpanded((prev) => !prev), []);
+
+  const renderNavLink = (item: NavItem) => (
+    <li key={item.to}>
+      <NavLink
+        to={item.to}
+        end={item.to === '/'}
+        className={({ isActive }) =>
+          'nav-link' + (isActive ? ' nav-link--active' : '')
+        }
+        onClick={closeMobile}
+        title={t(item.key)}
+      >
+        <span className="nav-link-icon" aria-hidden="true">{item.icon}</span>
+        <span className="nav-link-label">{t(item.key)}</span>
+      </NavLink>
+    </li>
+  );
+
   const navContent = (
     <>
       <h2 className="app-nav-brand">PrinterOps</h2>
 
-      {grouped.map(({ group, items }) => (
-        <div key={group} className="nav-group">
-          <div className="nav-group-label">{t(GROUP_LABEL_KEYS[group])}</div>
+      {/* Operations group — always visible */}
+      {opsItems.length > 0 && (
+        <div className="nav-group">
+          <div className="nav-group-label">{t('nav.group.operations')}</div>
           <ul className="nav-group-list">
-            {items.map((item) => (
-              <li key={item.to}>
-                <NavLink
-                  to={item.to}
-                  end={item.to === '/'}
-                  className={({ isActive }) =>
-                    'nav-link' + (isActive ? ' nav-link--active' : '')
-                  }
-                  onClick={closeMobile}
-                >
-                  {t(item.key)}
-                </NavLink>
-              </li>
-            ))}
+            {opsItems.map(renderNavLink)}
           </ul>
         </div>
-      ))}
+      )}
+
+      {/* Settings & Admin group — collapsible */}
+      {hasAdmin && (
+        <div className="nav-group">
+          <button
+            type="button"
+            className="nav-admin-toggle"
+            aria-expanded={adminExpanded}
+            aria-controls="nav-admin-list"
+            onClick={toggleAdmin}
+            title={adminExpanded ? t('nav.admin.collapse') : t('nav.admin.expand')}
+          >
+            <span
+              className={'nav-admin-chevron' + (adminExpanded ? ' nav-admin-chevron--open' : '')}
+              aria-hidden="true"
+            >
+              {'\u25B6'}
+            </span>
+            <span className="nav-group-label nav-group-label--toggle">
+              {t('nav.group.admin')}
+            </span>
+          </button>
+          {adminExpanded && (
+            <ul id="nav-admin-list" className="nav-group-list">
+              {adminItems.map(renderNavLink)}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="session-card">
         <div className="session-name">{user.name}</div>

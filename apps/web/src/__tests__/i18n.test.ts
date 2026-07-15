@@ -55,9 +55,9 @@ describe('i18n translations', () => {
 
   it('navigation group labels exist in both locales', () => {
     expect(t('en', 'nav.group.operations')).toBe('Operator Workflow');
-    expect(t('en', 'nav.group.administration')).toBe('Administration');
+    expect(t('en', 'nav.group.admin')).toBe('Settings & Admin');
     expect(t('th', 'nav.group.operations')).toBeTruthy();
-    expect(t('th', 'nav.group.administration')).toBeTruthy();
+    expect(t('th', 'nav.group.admin')).toBeTruthy();
   });
 
   it('settings keys exist in both locales', () => {
@@ -78,9 +78,13 @@ describe('i18n translations', () => {
     expect(t('en', 'nav.menu.open')).toBeTruthy();
     expect(t('en', 'nav.menu.close')).toBeTruthy();
     expect(t('en', 'nav.ariaLabel')).toBeTruthy();
+    expect(t('en', 'nav.admin.expand')).toBeTruthy();
+    expect(t('en', 'nav.admin.collapse')).toBeTruthy();
     expect(t('th', 'nav.menu.open')).toBeTruthy();
     expect(t('th', 'nav.menu.close')).toBeTruthy();
     expect(t('th', 'nav.ariaLabel')).toBeTruthy();
+    expect(t('th', 'nav.admin.expand')).toBeTruthy();
+    expect(t('th', 'nav.admin.collapse')).toBeTruthy();
   });
 
   it('session role keys exist in both locales', () => {

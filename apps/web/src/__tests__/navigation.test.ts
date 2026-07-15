@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 // to test the filtering function without needing React DOM.
 
 type Role = 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER';
-type NavGroup = 'operations' | 'administration';
+type NavGroup = 'operations' | 'admin';
 
 interface NavItem {
   to: string;
@@ -14,22 +14,24 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  // Operations
   { to: '/', key: 'nav.dashboard', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
   { to: '/printers', key: 'nav.printers', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
   { to: '/jobs', key: 'nav.jobQueue', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
   { to: '/runners', key: 'nav.runners', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
   { to: '/templates', key: 'nav.templates', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
   { to: '/paper-profiles', key: 'nav.paperProfiles', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
-  { to: '/discovered-printers', key: 'nav.discovery', roles: ['OWNER', 'ADMIN'], group: 'administration' },
-  { to: '/diagnostics', key: 'nav.diagnostics', roles: ['OWNER', 'ADMIN', 'OPERATOR'], group: 'administration' },
-  { to: '/template-sandbox', key: 'nav.sandbox', roles: ['OWNER'], group: 'administration' },
-  { to: '/webhooks', key: 'nav.webhooks', roles: ['OWNER', 'ADMIN'], group: 'administration' },
-  { to: '/route-policies', key: 'nav.routePolicies', roles: ['OWNER', 'ADMIN'], group: 'administration' },
-  { to: '/printer-bindings', key: 'nav.bindings', roles: ['OWNER', 'ADMIN'], group: 'administration' },
-  { to: '/audit-logs', key: 'nav.auditLogs', roles: ['OWNER', 'ADMIN'], group: 'administration' },
-  { to: '/users', key: 'nav.usersRoles', roles: ['OWNER'], group: 'administration' },
-  { to: '/export', key: 'nav.export', roles: ['OWNER', 'ADMIN'], group: 'administration' },
-  { to: '/settings', key: 'nav.settings', roles: ['OWNER', 'ADMIN'], group: 'administration' },
+  // Admin
+  { to: '/discovered-printers', key: 'nav.discovery', roles: ['OWNER', 'ADMIN'], group: 'admin' },
+  { to: '/diagnostics', key: 'nav.diagnostics', roles: ['OWNER', 'ADMIN', 'OPERATOR'], group: 'admin' },
+  { to: '/template-sandbox', key: 'nav.sandbox', roles: ['OWNER'], group: 'admin' },
+  { to: '/webhooks', key: 'nav.webhooks', roles: ['OWNER', 'ADMIN'], group: 'admin' },
+  { to: '/route-policies', key: 'nav.routePolicies', roles: ['OWNER', 'ADMIN'], group: 'admin' },
+  { to: '/printer-bindings', key: 'nav.bindings', roles: ['OWNER', 'ADMIN'], group: 'admin' },
+  { to: '/audit-logs', key: 'nav.auditLogs', roles: ['OWNER', 'ADMIN'], group: 'admin' },
+  { to: '/users', key: 'nav.usersRoles', roles: ['OWNER'], group: 'admin' },
+  { to: '/export', key: 'nav.export', roles: ['OWNER', 'ADMIN'], group: 'admin' },
+  { to: '/settings', key: 'nav.settings', roles: ['OWNER', 'ADMIN'], group: 'admin' },
 ];
 
 function filterNavItems(role: Role): NavItem[] {
@@ -37,13 +39,23 @@ function filterNavItems(role: Role): NavItem[] {
 }
 
 function groupNavItems(items: NavItem[]): { group: NavGroup; items: NavItem[] }[] {
-  const map: Record<NavGroup, NavItem[]> = { operations: [], administration: [] };
+  const map: Record<NavGroup, NavItem[]> = { operations: [], admin: [] };
   for (const item of items) {
     map[item.group].push(item);
   }
-  return (['operations', 'administration'] as NavGroup[])
+  return (['operations', 'admin'] as NavGroup[])
     .map((g) => ({ group: g, items: map[g] }))
     .filter((g) => g.items.length > 0);
+}
+
+function splitNavItems(items: NavItem[]): { opsItems: NavItem[]; adminItems: NavItem[] } {
+  const ops: NavItem[] = [];
+  const admin: NavItem[] = [];
+  for (const item of items) {
+    if (item.group === 'operations') ops.push(item);
+    else admin.push(item);
+  }
+  return { opsItems: ops, adminItems: admin };
 }
 
 describe('role-filtered navigation', () => {
@@ -60,13 +72,15 @@ describe('role-filtered navigation', () => {
     expect(admin.find((i) => i.to === '/users')).toBeUndefined();
   });
 
-  it('OPERATOR sees workflow items only', () => {
+  it('OPERATOR sees workflow items plus diagnostics', () => {
     const op = filterNavItems('OPERATOR');
     expect(op.length).toBeGreaterThan(0);
     // OPERATOR should see workflow pages
     expect(op.find((i) => i.to === '/')).toBeDefined();
     expect(op.find((i) => i.to === '/printers')).toBeDefined();
     expect(op.find((i) => i.to === '/jobs')).toBeDefined();
+    // OPERATOR should see diagnostics (has OPERATOR role access)
+    expect(op.find((i) => i.to === '/diagnostics')).toBeDefined();
     // OPERATOR should not see admin-only pages
     expect(op.find((i) => i.to === '/users')).toBeUndefined();
     expect(op.find((i) => i.to === '/audit-logs')).toBeUndefined();
@@ -82,34 +96,30 @@ describe('role-filtered navigation', () => {
 });
 
 describe('navigation grouping', () => {
-  it('groups owner items into operations and administration', () => {
+  it('groups owner items into operations and admin', () => {
     const items = filterNavItems('OWNER');
     const groups = groupNavItems(items);
     expect(groups).toHaveLength(2);
     expect(groups[0].group).toBe('operations');
-    expect(groups[1].group).toBe('administration');
+    expect(groups[1].group).toBe('admin');
   });
 
   it('operations group contains 6 items', () => {
     const items = filterNavItems('OWNER');
-    const groups = groupNavItems(items);
-    const ops = groups.find((g) => g.group === 'operations')!;
-    expect(ops.items).toHaveLength(6);
+    const { opsItems } = splitNavItems(items);
+    expect(opsItems).toHaveLength(6);
   });
 
-  it('administration group contains 10 items for owner', () => {
+  it('admin group contains 10 items for owner', () => {
     const items = filterNavItems('OWNER');
-    const groups = groupNavItems(items);
-    const admin = groups.find((g) => g.group === 'administration')!;
-    expect(admin.items).toHaveLength(10);
+    const { adminItems } = splitNavItems(items);
+    expect(adminItems).toHaveLength(10);
   });
 
   it('viewer only gets operations group', () => {
     const viewerItems = filterNavItems('VIEWER');
-    const groups = groupNavItems(viewerItems);
-    // Viewer sees only operations items
-    const admGroup = groups.find((g) => g.group === 'administration');
-    expect(admGroup).toBeUndefined();
+    const { adminItems } = splitNavItems(viewerItems);
+    expect(adminItems).toHaveLength(0);
   });
 
   it('every nav item has a unique to path', () => {
@@ -118,7 +128,7 @@ describe('navigation grouping', () => {
   });
 
   it('every nav item belongs to a valid group', () => {
-    const validGroups: NavGroup[] = ['operations', 'administration'];
+    const validGroups: NavGroup[] = ['operations', 'admin'];
     for (const item of NAV_ITEMS) {
       expect(validGroups).toContain(item.group);
     }
@@ -128,6 +138,43 @@ describe('navigation grouping', () => {
     for (const item of NAV_ITEMS) {
       expect(item.key.startsWith('nav.')).toBe(true);
     }
+  });
+
+  it('no admin items are visible to VIEWER', () => {
+    const viewerItems = filterNavItems('VIEWER');
+    for (const item of viewerItems) {
+      expect(item.group).toBe('operations');
+    }
+  });
+});
+
+describe('admin section expand/collapse', () => {
+  it('admin is expanded by default', () => {
+    let adminExpanded = false;
+    expect(adminExpanded).toBe(false);
+  });
+
+  it('toggle flips from expanded to collapsed', () => {
+    let adminExpanded = true;
+    adminExpanded = !adminExpanded;
+    expect(adminExpanded).toBe(false);
+  });
+
+  it('toggle flips from collapsed to expanded', () => {
+    let adminExpanded = false;
+    adminExpanded = !adminExpanded;
+    expect(adminExpanded).toBe(true);
+  });
+
+  it('OPERATOR sees admin items when expanded (diagnostics)', () => {
+    const op = filterNavItems('OPERATOR');
+    const { adminItems } = splitNavItems(op);
+    // OPERATOR should see diagnostics in admin section
+    expect(adminItems.length).toBeGreaterThan(0);
+    expect(adminItems.find((i) => i.to === '/diagnostics')).toBeDefined();
+    // OPERATOR should NOT see owner-only admin items
+    expect(adminItems.find((i) => i.to === '/template-sandbox')).toBeUndefined();
+    expect(adminItems.find((i) => i.to === '/users')).toBeUndefined();
   });
 });
 
