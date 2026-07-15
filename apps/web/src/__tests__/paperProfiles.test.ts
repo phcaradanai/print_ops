@@ -17,6 +17,7 @@ import {
   nextSaveStatus,
   nudgePrintablePoint,
   resolveSelectionAfterDelete,
+  getFieldInspectorState,
   stepPreviewZoom,
   validatePaperForm,
   // Import helpers
@@ -1281,6 +1282,18 @@ describe('centerFieldAnchorVertical', () => {
     expect(result.xMm).toBe(46);
     expect(result.yMm).toBe(15);
   });
+
+  it('preserves y during horizontal center on non-rotated paper', () => {
+    const result = centerFieldAnchorHorizontal({ xMm: 77, yMm: 33 }, nonRotated);
+    expect(result.xMm).toBe(46); // centered at printableWidth/2 = 46
+    expect(result.yMm).toBe(33); // y preserved
+  });
+
+  it('preserves x during vertical center on non-rotated paper', () => {
+    const result = centerFieldAnchorVertical({ xMm: 17, yMm: 41 }, nonRotated);
+    expect(result.xMm).toBe(17); // x preserved
+    expect(result.yMm).toBe(22); // centered at printableHeight/2 = 22
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1333,6 +1346,27 @@ describe('isIconButtonActionBlocked', () => {
 
   it('returns true when disabled', () => {
     expect(isIconButtonActionBlocked(true)).toBe(true);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  getFieldInspectorState — field inspector controls and empty state
+// ══════════════════════════════════════════════════════════════════════
+
+describe('getFieldInspectorState', () => {
+  it('returns empty when there are zero fields', () => {
+    expect(getFieldInspectorState(0, false)).toBe('empty');
+    expect(getFieldInspectorState(-1, true)).toBe('empty');
+  });
+
+  it('requires a selection when fields exist', () => {
+    expect(getFieldInspectorState(1, false)).toBe('selection-required');
+    expect(getFieldInspectorState(5, false)).toBe('selection-required');
+  });
+
+  it('enables field actions when a field is selected', () => {
+    expect(getFieldInspectorState(1, true)).toBe('selected');
+    expect(getFieldInspectorState(5, true)).toBe('selected');
   });
 });
 

@@ -483,6 +483,17 @@ export function isIconButtonActionBlocked(disabled: boolean): boolean {
   return disabled;
 }
 
+export type FieldInspectorState = 'empty' | 'selection-required' | 'selected';
+
+/** Keep the inspector controls consistent with the current field selection. */
+export function getFieldInspectorState(
+  fieldsLength: number,
+  selectedFieldExists: boolean,
+): FieldInspectorState {
+  if (fieldsLength <= 0) return 'empty';
+  return selectedFieldExists ? 'selected' : 'selection-required';
+}
+
 // ── Unit helpers ───────────────────────────────────────────────────
 function toPx(mm: number, dpi: number) { return (mm * dpi) / 25.4; }
 function displayVal(mm: number, unit: 'mm' | 'cm' | 'px', dpi: number) {
@@ -920,7 +931,7 @@ function PreviewSheet({
               background: selectedFieldId === f.id ? 'rgba(30,102,245,0.1)' : 'transparent',
               transform: anchorTransform(f.align, geometry.rotated),
               transformOrigin: anchorTransformOrigin(f.align),
-              zIndex: 2,
+              zIndex: 4,
             }}
           >
             {f.defaultValue || f.label || f.key || 'field'}
@@ -1542,6 +1553,10 @@ export default function PaperProfiles() {
   }, [modalStageSize, previewWidthMm, previewHeightMm, viewport.width, viewport.height]);
 
   const modalScale = Math.max(0.25, Math.min(20, fitModalScale * previewZoom));
+  const fieldInspectorState = getFieldInspectorState(
+    ux.dynamicFields.length,
+    ux.dynamicFields.some((field) => field.id === selectedFieldId),
+  );
 
   useEffect(() => {
     if (!draggingFieldId) return;
@@ -2070,39 +2085,41 @@ export default function PaperProfiles() {
                     <span aria-hidden="true">+</span>
                   </button>
                 </div>
-                {selectedFieldId ? (
-                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                {fieldInspectorState !== 'empty' && (
+                  <div
+                    className={'paper-preview-modal__alignment' + (fieldInspectorState === 'selection-required' ? ' is-disabled' : '')}
+                    role="toolbar"
+                    aria-label={t('page.paperProfiles.positionFields')}
+                  >
+                    <span className="paper-preview-modal__alignment-label">
+                      {fieldInspectorState === 'selection-required'
+                        ? t('page.paperProfiles.centerDisabledNoField')
+                        : t('page.paperProfiles.align')}
+                    </span>
                     <IconButton
                       icon="↔"
                       label={t('page.paperProfiles.centerHorizontally')}
-                      onClick={() => centerFieldHorizontal(selectedFieldId)}
-                    />
-                    <IconButton
-                      icon="↕"
-                      label={t('page.paperProfiles.centerVertically')}
-                      onClick={() => centerFieldVertical(selectedFieldId)}
-                    />
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                    <IconButton
-                      icon="↔"
-                      label={t('page.paperProfiles.centerHorizontally')}
-                      onClick={() => {}}
-                      disabled={true}
+                      onClick={() => { if (selectedFieldId) centerFieldHorizontal(selectedFieldId); }}
+                      disabled={fieldInspectorState === 'selection-required'}
                       disabledReason={t('page.paperProfiles.centerDisabledNoField')}
                     />
                     <IconButton
                       icon="↕"
                       label={t('page.paperProfiles.centerVertically')}
-                      onClick={() => {}}
-                      disabled={true}
+                      onClick={() => { if (selectedFieldId) centerFieldVertical(selectedFieldId); }}
+                      disabled={fieldInspectorState === 'selection-required'}
                       disabledReason={t('page.paperProfiles.centerDisabledNoField')}
                     />
                   </div>
                 )}
-                {ux.dynamicFields.length === 0 && (
-                  <p className="paper-preview-modal__empty">{t('page.paperProfiles.noCustomFields')}</p>
+                {fieldInspectorState === 'empty' && (
+                  <div className="paper-preview-modal__empty">
+                    <p>{t('page.paperProfiles.noCustomFields')}</p>
+                    <button type="button" className="paper-preview-modal__empty-action" onClick={addField}>
+                      <span aria-hidden="true">+</span>
+                      {t('page.paperProfiles.addFirstField')}
+                    </button>
+                  </div>
                 )}
                 <div className="paper-preview-modal__field-list">
                   {ux.dynamicFields.map((f) => (
