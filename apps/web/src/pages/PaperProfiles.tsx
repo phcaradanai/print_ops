@@ -96,6 +96,23 @@ export function mapVisualPointToPrintable(
   return { xMm: yMm, yMm: geometry.sourcePrintableHeightMm - xMm };
 }
 
+export function nudgePrintablePoint(
+  xMm: number,
+  yMm: number,
+  deltaVisualXmm: number,
+  deltaVisualYmm: number,
+  geometry: VisualPaperGeometry,
+) {
+  const visualPoint = mapPrintablePointToVisual(xMm, yMm, geometry);
+  const visualX = Math.max(0, Math.min(geometry.printableWidthMm, visualPoint.xMm + deltaVisualXmm));
+  const visualY = Math.max(0, Math.min(geometry.printableHeightMm, visualPoint.yMm + deltaVisualYmm));
+  const printablePoint = mapVisualPointToPrintable(visualX, visualY, geometry);
+  return {
+    xMm: Number(printablePoint.xMm.toFixed(1)),
+    yMm: Number(printablePoint.yMm.toFixed(1)),
+  };
+}
+
 export function clampGridSpacing(value: number): number {
   if (!Number.isFinite(value)) return 10;
   return Math.max(1, Math.min(100, Math.round(value)));
@@ -108,6 +125,11 @@ export function clampPreviewZoom(value: number): number {
 
 export function stepPreviewZoom(value: number, direction: -1 | 1): number {
   return clampPreviewZoom(value + direction * 0.25);
+}
+
+export function fontPointSizeToPreviewPixels(fontSizePt: number, pixelsPerMm: number): number {
+  if (!Number.isFinite(fontSizePt) || !Number.isFinite(pixelsPerMm) || fontSizePt <= 0 || pixelsPerMm <= 0) return 0;
+  return (fontSizePt * 25.4 * pixelsPerMm) / 72;
 }
 
 // ── Extended UI-only options (not persisted to backend yet) ────────
@@ -200,7 +222,7 @@ const s = {
   sel: { width: '100%', maxWidth: 420, padding: '0.45rem 0.55rem', border: '1px solid #d1d5db', borderRadius: 6, font: 'inherit', fontSize: '0.85rem', background: '#fff' } as React.CSSProperties,
   btn: { padding: '0.5rem 1rem', border: 0, borderRadius: 6, background: '#1e1e2e', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' } as React.CSSProperties,
   btnSmall: { padding: '0.3rem 0.6rem', border: '1px solid #d1d5db', borderRadius: 4, background: '#fff', cursor: 'pointer', fontSize: '0.75rem' } as React.CSSProperties,
-  btnDanger: { padding: '0.3rem 0.6rem', border: '1px solid #fecaca', borderRadius: 4, background: '#fff', color: '#dc2626', cursor: 'pointer', fontSize: '0.75rem' } as React.CSSProperties,
+  btnDanger: { padding: '0.3rem 0.6rem', border: '1px solid #f38ba8', borderRadius: 4, background: '#fff', color: '#374151', cursor: 'pointer', fontSize: '0.75rem' } as React.CSSProperties,
   section: { borderBottom: '1px solid #e5e7eb', padding: '0' } as React.CSSProperties,
 };
 
@@ -227,10 +249,10 @@ function Section({ title, defaultOpen, children, icon, open, onToggle }: {
           textTransform: 'uppercase', letterSpacing: '0.03em',
         }}
       >
-        <span style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: '0.65rem', color: '#9ca3af' }}>▶</span>
+        <span style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: '0.75rem', color: '#6b7280' }}>▶</span>
         {icon && <span style={{ fontSize: '0.85rem' }}>{icon}</span>}
         {title}
-        <span style={{ marginLeft: 'auto', color: '#9ca3af', fontSize: '0.65rem' }}>{isOpen ? '−' : '+'}</span>
+        <span style={{ marginLeft: 'auto', color: '#6b7280', fontSize: '0.75rem' }}>{isOpen ? '−' : '+'}</span>
       </button>
       {isOpen && <div className="pp-section__body" style={{ padding: '0 0.75rem 0.75rem' }}>{children}</div>}
     </div>
@@ -430,6 +452,7 @@ function PreviewSheet({
   selectedFieldId,
   onFieldPointerDown,
   onFieldSelect,
+  onFieldNudge,
   showVerticalGrid = false,
   showHorizontalGrid = false,
   showAlignmentGuides = false,
@@ -442,6 +465,7 @@ function PreviewSheet({
   selectedFieldId?: string | null;
   onFieldPointerDown?: (event: React.PointerEvent<HTMLButtonElement>, id: string) => void;
   onFieldSelect?: (id: string) => void;
+  onFieldNudge?: (id: string, deltaVisualXmm: number, deltaVisualYmm: number) => void;
   showVerticalGrid?: boolean;
   showHorizontalGrid?: boolean;
   showAlignmentGuides?: boolean;
@@ -456,7 +480,7 @@ function PreviewSheet({
   const pvML = geometry.marginLeftMm * scale;
   const pvPrintW = geometry.printableWidthMm * scale;
   const pvPrintH = geometry.printableHeightMm * scale;
-  const interactive = Boolean(onFieldPointerDown);
+  const interactive = Boolean(onFieldPointerDown || onFieldSelect || onFieldNudge);
 
   // Compute grid lines
   const gridLinesVertical: number[] = [];
@@ -555,9 +579,21 @@ function PreviewSheet({
             aria-label={`${f.key || f.label || 'field'} at ${f.xMm}, ${f.yMm} mm`}
             onPointerDown={interactive ? (event) => onFieldPointerDown?.(event, f.id) : undefined}
             onClick={interactive ? () => onFieldSelect?.(f.id) : undefined}
+            onKeyDown={onFieldNudge ? (event) => {
+              const stepMm = event.shiftKey ? 1 : 0.1;
+              const delta = event.key === 'ArrowLeft' ? [-stepMm, 0]
+                : event.key === 'ArrowRight' ? [stepMm, 0]
+                  : event.key === 'ArrowUp' ? [0, -stepMm]
+                    : event.key === 'ArrowDown' ? [0, stepMm]
+                      : null;
+              if (!delta) return;
+              event.preventDefault();
+              onFieldNudge(f.id, delta[0], delta[1]);
+            } : undefined}
             style={{
               position: 'absolute', left: point.xMm * scale, top: point.yMm * scale,
-              fontSize: f.fontSize * 0.75, fontWeight: f.bold ? 700 : 400,
+              fontSize: fontPointSizeToPreviewPixels(f.fontSize, scale), fontWeight: f.bold ? 700 : 400,
+              lineHeight: 1.2,
               color: f.color, textAlign: f.align, whiteSpace: 'nowrap',
               fontFamily: ux.fontFamily, pointerEvents: interactive ? 'auto' : 'none',
               cursor: interactive ? 'grab' : 'default',
@@ -583,7 +619,7 @@ function PreviewSheet({
           ...(m.side === 'bottom' ? { bottom: 0, left: 0, right: 0, height: m.d } : {}),
           ...(m.side === 'left' ? { left: 0, top: 0, bottom: 0, width: m.d } : {}),
           ...(m.side === 'right' ? { right: 0, top: 0, bottom: 0, width: m.d } : {}),
-          background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)',
+          background: '#f38ba8', border: '1px solid #f38ba8', opacity: 0.12,
           pointerEvents: 'none', zIndex: 1,
         }} />
       ))}
@@ -615,6 +651,9 @@ export default function PaperProfiles() {
   const dragOffsetRef = useRef({ xMm: 0, yMm: 0 });
   const previewCanvasRef = useRef<HTMLDivElement>(null);
   const modalStageRef = useRef<HTMLDivElement>(null);
+  const modalPanelRef = useRef<HTMLDivElement>(null);
+  const modalCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const [modalStageSize, setModalStageSize] = useState({ width: 0, height: 0 });
 
   // ── Section tracking (for sticky index & collapse/expand all) ──────
@@ -684,7 +723,7 @@ export default function PaperProfiles() {
       fontSize: 12, bold: false, color: '#000000', align: 'left',
     };
     uxPatch('dynamicFields', [...ux.dynamicFields, f]);
-    setStickyNote('✨ Added new field — set its key, label & position');
+    setStickyNote(t('page.paperProfiles.addedFieldNote'));
     setTimeout(() => setStickyNote(null), 2500);
   }
   function updField(id: string, patch: Partial<DynamicField>) {
@@ -736,6 +775,27 @@ export default function PaperProfiles() {
     setTimeout(() => setStickyNote(null), 2500);
   }
 
+  function nudgeField(id: string, deltaVisualXmm: number, deltaVisualYmm: number) {
+    const geometry = getVisualPaperGeometry(form);
+    setUx((current) => ({
+      ...current,
+      dynamicFields: current.dynamicFields.map((field) => {
+        if (field.id !== id) return field;
+        const printablePoint = nudgePrintablePoint(
+          field.xMm,
+          field.yMm,
+          deltaVisualXmm,
+          deltaVisualYmm,
+          geometry,
+        );
+        return {
+          ...field,
+          ...printablePoint,
+        };
+      }),
+    }));
+  }
+
   // ── API ────────────────────────────────────────────────────────────
   const load = () => apiFetch<PaperProfile[]>('/v1/paper-profiles').then(setProfiles).catch(() => {});
   useEffect(() => { void load(); }, []);
@@ -779,18 +839,49 @@ export default function PaperProfiles() {
   useEffect(() => {
     if (!previewOpen) return;
     const previousOverflow = document.body.style.overflow;
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setPreviewOpen(false);
+      if (event.key === 'Tab' && modalPanelRef.current) {
+        const focusable = Array.from(modalPanelRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        )).filter((element) => element.offsetParent !== null);
+        if (focusable.length > 0) {
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }
+      }
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (event.key === '+' || event.key === '=') {
+        event.preventDefault();
+        setPreviewZoom((value) => stepPreviewZoom(value, 1));
+      } else if (event.key === '-') {
+        event.preventDefault();
+        setPreviewZoom((value) => stepPreviewZoom(value, -1));
+      } else if (event.key === '0') {
+        event.preventDefault();
+        setPreviewZoom(1);
+      }
     };
     const onResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
     document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('resize', onResize);
+    const focusFrame = window.requestAnimationFrame(() => modalCloseButtonRef.current?.focus());
     onResize();
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('resize', onResize);
+      window.cancelAnimationFrame(focusFrame);
+      previousFocusRef.current?.focus();
     };
   }, [previewOpen]);
 
@@ -868,6 +959,7 @@ export default function PaperProfiles() {
   }, [draggingFieldId, form.heightMm, form.marginBottomMm, form.marginLeftMm, form.marginRightMm, form.marginTopMm, form.widthMm, modalScale, ux.dynamicFields]);
 
   function startDraggingField(event: React.PointerEvent<HTMLButtonElement>, id: string) {
+    event.currentTarget.focus();
     event.preventDefault();
     const sheet = previewSheetRef.current;
     const field = ux.dynamicFields.find((candidate) => candidate.id === id);
@@ -900,7 +992,7 @@ export default function PaperProfiles() {
         <div style={{
           position: 'sticky', top: 0, zIndex: 50,
           padding: '0.55rem 0.85rem', borderRadius: 8,
-          background: '#fef9c3', color: '#92400e',
+          background: '#f9e2af', color: '#374151',
           fontSize: '0.85rem', fontWeight: 500,
           boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
           display: 'flex', alignItems: 'center', gap: '0.5rem',
@@ -1078,11 +1170,11 @@ export default function PaperProfiles() {
               {ux.dynamicFields.map((f) => (
                 <div key={f.id} className="pp-field-row" style={{ padding: '0.5rem', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fafafa', position: 'relative' }}>
                   <div className="pp-field-row__primary" style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', flexWrap: 'wrap' }}>
-                    <input placeholder="key" value={f.key} onChange={(e) => updField(f.id, { key: e.target.value })}
+                    <input aria-label={t('page.paperProfiles.fieldKey')} placeholder="key" value={f.key} onChange={(e) => updField(f.id, { key: e.target.value })}
                       style={{ ...s.smallInput, width: 90, fontFamily: 'monospace' }} />
-                    <input placeholder="Label" value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })}
+                    <input aria-label={t('page.paperProfiles.fieldLabel')} placeholder="Label" value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })}
                       style={{ ...s.smallInput, flex: 1 }} />
-                    <select value={f.type} onChange={(e) => updField(f.id, { type: e.target.value as DynamicField['type'] })}
+                    <select aria-label={t('page.paperProfiles.fieldType')} value={f.type} onChange={(e) => updField(f.id, { type: e.target.value as DynamicField['type'] })}
                       style={{ ...s.sel, width: 80, padding: '0.25rem 0.4rem', fontSize: '0.75rem' }}>
                       <option value="text">Aa</option>
                       <option value="barcode">‖‖</option>
@@ -1092,31 +1184,31 @@ export default function PaperProfiles() {
                     <button type="button" style={s.btnDanger} onClick={() => delField(f.id)} title={t('page.paperProfiles.remove')} aria-label={t('page.paperProfiles.remove')}>✕</button>
                   </div>
                   <div className="pp-field-row__secondary" style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <input placeholder={t('page.paperProfiles.fieldDefault')} value={f.defaultValue} onChange={(e) => updField(f.id, { defaultValue: e.target.value })}
+                    <input aria-label={t('page.paperProfiles.fieldDefault')} placeholder={t('page.paperProfiles.fieldDefault')} value={f.defaultValue} onChange={(e) => updField(f.id, { defaultValue: e.target.value })}
                       style={{ ...s.smallInput, width: 80 }} />
-                    <label style={{ fontSize: '0.7rem', color: '#6b7280' }}>X:</label>
-                    <input type="number" value={f.xMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { xMm: v }); }}
+                    <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>X:</label>
+                    <input aria-label="X (mm)" type="number" value={f.xMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { xMm: v }); }}
                       style={{ ...s.smallInput, width: 50 }} />
-                    <label style={{ fontSize: '0.7rem', color: '#6b7280' }}>Y:</label>
-                    <input type="number" value={f.yMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { yMm: v }); }}
+                    <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>Y:</label>
+                    <input aria-label="Y (mm)" type="number" value={f.yMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { yMm: v }); }}
                       style={{ ...s.smallInput, width: 50 }} />
-                    <input type="number" value={f.fontSize} onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: v }); }}
+                    <input aria-label={t('page.paperProfiles.fieldFontSizePt')} type="number" value={f.fontSize} onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: v }); }}
                       style={{ ...s.smallInput, width: 50 }} title={t('page.paperProfiles.fieldFontSizePt')} />
-                    <input type="color" value={f.color} onChange={(e) => updField(f.id, { color: e.target.value })}
+                    <input aria-label={t('page.paperProfiles.fieldColor')} type="color" value={f.color} onChange={(e) => updField(f.id, { color: e.target.value })}
                       style={{ width: 28, height: 24, padding: 0, border: '1px solid #d1d5db', borderRadius: 3, cursor: 'pointer' }} />
-                    <select value={f.align} onChange={(e) => updField(f.id, { align: e.target.value as DynamicField['align'] })}
-                      style={{ ...s.sel, width: 60, padding: '0.25rem 0.3rem', fontSize: '0.7rem' }}>
+                    <select aria-label={t('page.paperProfiles.align')} value={f.align} onChange={(e) => updField(f.id, { align: e.target.value as DynamicField['align'] })}
+                      style={{ ...s.sel, width: 60, padding: '0.25rem 0.3rem', fontSize: '0.75rem' }}>
                       <option value="left">⬅</option><option value="center">⬡</option><option value="right">➡</option>
                     </select>
-                    <label style={{ fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '0.15rem' }}>
-                      <input type="checkbox" checked={f.bold} onChange={(e) => updField(f.id, { bold: e.target.checked })} /> {t('page.paperProfiles.fieldBoldLabel')}
+                    <label style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.15rem' }}>
+                      <input aria-label={t('page.paperProfiles.bold')} type="checkbox" checked={f.bold} onChange={(e) => updField(f.id, { bold: e.target.checked })} /> {t('page.paperProfiles.fieldBoldLabel')}
                     </label>
                   </div>
                 </div>
               ))}
             </div>
             {ux.dynamicFields.length > 0 && (
-              <button type="button" className="pp-add-field" style={{ ...s.btnSmall, marginTop: '0.5rem', width: '100%', borderStyle: 'dashed', color: '#1e66f5', borderColor: '#93c5fd' }}
+              <button type="button" className="pp-add-field" style={{ ...s.btnSmall, marginTop: '0.5rem', width: '100%', borderStyle: 'dashed', color: '#1e66f5', borderColor: '#89b4fa' }}
                 onClick={addField} title={t('page.paperProfiles.addField')} aria-label={t('page.paperProfiles.addField')}><span aria-hidden="true">+</span></button>
             )}
           </Section>
@@ -1175,7 +1267,7 @@ export default function PaperProfiles() {
             if (event.target === event.currentTarget) setPreviewOpen(false);
           }}
         >
-          <div className="paper-preview-modal__panel">
+          <div ref={modalPanelRef} className="paper-preview-modal__panel">
             <header className="paper-preview-modal__header">
               <div>
                 <h2 id="paper-preview-title">{t('page.paperProfiles.fullPreviewTitle')}</h2>
@@ -1217,7 +1309,7 @@ export default function PaperProfiles() {
                   <span className="paper-preview-modal__spacing-unit">mm</span>
                 </label>
               </div>
-              <button type="button" style={s.btnSmall} onClick={() => setPreviewOpen(false)}>
+              <button ref={modalCloseButtonRef} type="button" style={s.btnSmall} onClick={() => setPreviewOpen(false)}>
                 {t('page.paperProfiles.closePreview')}
               </button>
             </header>
@@ -1228,7 +1320,16 @@ export default function PaperProfiles() {
                   <span>{t('page.paperProfiles.previewCanvas')}</span>
                   <span>{form.widthMm} × {form.heightMm} mm · {form.dpi} DPI</span>
                 </div>
-                <div ref={modalStageRef} className="paper-preview-modal__sheet-stage">
+                <div
+                  ref={modalStageRef}
+                  className="paper-preview-modal__sheet-stage"
+                  onWheel={(event) => {
+                    if (!(event.ctrlKey || event.metaKey)) return;
+                    event.preventDefault();
+                    setPreviewZoom((value) => stepPreviewZoom(value, event.deltaY > 0 ? -1 : 1));
+                  }}
+                >
+                  <div className="paper-preview-modal__sheet-stage-inner">
               <RulerSheet form={form} scale={modalScale} showRulers={showRulers} unit={du}>
                     <PreviewSheet
                       form={form}
@@ -1238,17 +1339,20 @@ export default function PaperProfiles() {
                       selectedFieldId={selectedFieldId}
                       onFieldPointerDown={startDraggingField}
                       onFieldSelect={setSelectedFieldId}
+                      onFieldNudge={nudgeField}
                       showVerticalGrid={showVerticalGrid}
                       showHorizontalGrid={showHorizontalGrid}
                       showAlignmentGuides={showAlignmentGuides}
                       gridIntervalMm={gridSpacingMm}
                     />
                   </RulerSheet>
+                  </div>
                 </div>
                 <div className="paper-preview-modal__canvas-meta">
                   <span>{t('page.paperProfiles.quickPrintable')}: {(form.widthMm - form.marginLeftMm - form.marginRightMm).toFixed(1)} × {(form.heightMm - form.marginTopMm - form.marginBottomMm).toFixed(1)} mm</span>
                   <span>{t('page.paperProfiles.quickFields')}: {ux.dynamicFields.length}</span>
-                  <span>{t('page.paperProfiles.quickScale')}: {modalScale.toFixed(2)}x</span>
+                  <span>{t('page.paperProfiles.zoomLevel')}: {Math.round(previewZoom * 100)}% ({t('page.paperProfiles.fitIsHundred')})</span>
+                  <span>{t('page.paperProfiles.pixelScale')}: {modalScale.toFixed(2)} px/mm</span>
                 </div>
               </section>
 
@@ -1343,7 +1447,7 @@ export default function PaperProfiles() {
           </div>
           <div className="pp-drawer__body">
             {ux.dynamicFields.length === 0 && (
-              <p style={{ fontSize: '0.85rem', color: '#9ca3af', textAlign: 'center', marginTop: '2rem' }}>
+              <p style={{ fontSize: '0.85rem', color: '#6b7280', textAlign: 'center', marginTop: '2rem' }}>
                 {t('page.paperProfiles.fieldsDrawerEmpty')}<br />{t('page.paperProfiles.clickAddField')}
               </p>
             )}
@@ -1371,7 +1475,7 @@ export default function PaperProfiles() {
                 </div>
               ))}
             </div>
-            <button style={{ ...s.btnSmall, marginTop: '0.75rem', width: '100%', borderStyle: 'dashed', color: '#1e66f5', borderColor: '#93c5fd' }}
+            <button style={{ ...s.btnSmall, marginTop: '0.75rem', width: '100%', borderStyle: 'dashed', color: '#1e66f5', borderColor: '#89b4fa' }}
               onClick={addField}>{t('page.paperProfiles.addField')}</button>
           </div>
           </div>
@@ -1433,14 +1537,14 @@ export default function PaperProfiles() {
       {/* ─── Profile list ─── */}
       <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
         <div style={{ padding: '0.65rem 0.85rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '0.95rem', margin: 0 }}>{t('page.paperProfiles.savedProfiles').replace('{n}', String(profiles.length))}</h2>
+          <h2 style={{ fontSize: '0.875rem', margin: 0 }}>{t('page.paperProfiles.savedProfiles').replace('{n}', String(profiles.length))}</h2>
         </div>
         <div style={{ overflowX: 'auto', maxHeight: 200, overflowY: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
             <thead>
               <tr>
                 {[t('page.paperProfiles.codeLabel'), t('page.paperProfiles.nameLabel'), t('page.paperProfiles.size'), t('page.paperProfiles.marginsHeader'), t('page.paperProfiles.orient'), t('page.paperProfiles.dpi'), t('page.paperProfiles.actions')].map((h) => (
-                  <th key={h} style={{ padding: '0.5rem 0.6rem', textAlign: 'left', fontSize: '0.7rem', textTransform: 'uppercase', color: '#6b7280', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff' }}>
+                  <th key={h} style={{ padding: '0.5rem 0.6rem', textAlign: 'left', fontSize: '0.75rem', textTransform: 'uppercase', color: '#6b7280', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff' }}>
                     {h}
                   </th>
                 ))}
@@ -1449,7 +1553,7 @@ export default function PaperProfiles() {
             <tbody>
               {profiles.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#9ca3af', fontSize: '0.8rem' }}>
+                  <td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280', fontSize: '0.8rem' }}>
                     {t('page.paperProfiles.noProfiles')}
                   </td>
                 </tr>
@@ -1459,11 +1563,11 @@ export default function PaperProfiles() {
                   <td style={{ padding: '0.5rem 0.6rem', fontFamily: 'monospace', fontSize: '0.75rem' }}>{p.code}</td>
                   <td style={{ padding: '0.5rem 0.6rem' }}>{p.name}</td>
                   <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>{p.widthMm}×{p.heightMm}</td>
-                  <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.7rem', color: '#6b7280' }}>{p.marginTopMm}/{p.marginRightMm}/{p.marginBottomMm}/{p.marginLeftMm}</td>
+                  <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem', color: '#6b7280' }}>{p.marginTopMm}/{p.marginRightMm}/{p.marginBottomMm}/{p.marginLeftMm}</td>
                   <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>{p.orientation === 'portrait' ? t('page.paperProfiles.portrait') : t('page.paperProfiles.landscape')}</td>
                   <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>{p.dpi}</td>
                   <td style={{ padding: '0.5rem 0.6rem' }}>
-                    <button style={{ ...s.btnSmall, padding: '0.25rem 0.5rem', fontSize: '0.7rem' }} onClick={() => startEdit(p)}>✏️</button>
+                    <button style={{ ...s.btnSmall, padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => startEdit(p)} aria-label={t('page.paperProfiles.editingProfile')}>✏️</button>
                   </td>
                 </tr>
               ))}

@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   clampGridSpacing as clampGridSpacingSource,
   clampPreviewZoom,
+  fontPointSizeToPreviewPixels,
   getVisualPaperGeometry,
   mapPrintablePointToVisual,
   mapVisualPointToPrintable,
+  nudgePrintablePoint,
   stepPreviewZoom,
 } from '../pages/PaperProfiles.js';
 
@@ -788,6 +790,13 @@ describe('PaperProfiles visual coordinate model', () => {
     expect(mapVisualPointToPrintable(visual.xMm, visual.yMm, nonRotated)).toEqual({ xMm: 20, yMm: 15 });
   });
 
+  it('nudges in visual directions and clamps to the printable area', () => {
+    expect(nudgePrintablePoint(5, 5, 0.1, 0, nonRotated)).toEqual({ xMm: 5.1, yMm: 5 });
+    expect(nudgePrintablePoint(0, 0, -1, -1, nonRotated)).toEqual({ xMm: 0, yMm: 0 });
+    expect(nudgePrintablePoint(5, 5, 0.1, 0, rotated)).toEqual({ xMm: 5, yMm: 4.9 });
+    expect(nudgePrintablePoint(5, 5, 0, 0.1, rotated)).toEqual({ xMm: 5.1, yMm: 5 });
+  });
+
   it('clamps invalid grid spacing in the actual source helper', () => {
     expect(clampGridSpacingSource(Number.NaN)).toBe(10);
     expect(clampGridSpacingSource(0)).toBe(1);
@@ -809,6 +818,14 @@ describe('PaperProfiles preview zoom', () => {
     expect(stepPreviewZoom(1, -1)).toBe(0.75);
     expect(stepPreviewZoom(0.5, -1)).toBe(0.5);
     expect(stepPreviewZoom(4, 1)).toBe(4);
+  });
+
+  it('scales physical point sizes with the paper zoom', () => {
+    expect(fontPointSizeToPreviewPixels(12, 1)).toBeCloseTo(4.2333, 3);
+    expect(fontPointSizeToPreviewPixels(12, 2)).toBeCloseTo(8.4667, 3);
+    expect(fontPointSizeToPreviewPixels(12, 6)).toBeCloseTo(fontPointSizeToPreviewPixels(12, 2) * 3, 5);
+    expect(fontPointSizeToPreviewPixels(0, 2)).toBe(0);
+    expect(fontPointSizeToPreviewPixels(12, Number.NaN)).toBe(0);
   });
 });
 

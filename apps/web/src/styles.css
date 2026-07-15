@@ -922,9 +922,17 @@ body {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  display: block;
+}
+
+.paper-preview-modal__sheet-stage-inner {
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
   display: grid;
   place-items: center;
   padding: 1rem;
+  box-sizing: border-box;
 }
 
 .paper-preview-modal__controls {
@@ -1071,7 +1079,7 @@ body {
     border-left: 0;
   }
 
-  .paper-preview-modal__sheet-stage {
+  .paper-preview-modal__sheet-stage-inner {
     padding: 1rem;
   }
 
