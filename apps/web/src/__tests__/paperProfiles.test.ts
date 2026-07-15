@@ -1,13 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import {
+  anchorTransform,
+  anchorTransformOrigin,
+  centerFieldAnchorHorizontal,
+  centerFieldAnchorVertical,
   clampGridSpacing as clampGridSpacingSource,
   clampPreviewZoom,
   fontPointSizeToPreviewPixels,
   getVisualPaperGeometry,
   mapPrintablePointToVisual,
   mapVisualPointToPrintable,
+  nextSaveStatus,
   nudgePrintablePoint,
+  resolveSelectionAfterDelete,
   stepPreviewZoom,
+  validatePaperForm,
 } from '../pages/PaperProfiles.js';
 
 // ── Extracted pure functions from PaperProfiles.tsx ────────────────────
@@ -977,5 +984,240 @@ describe('rulerPixelDims', () => {
     const { widthPx, heightPx } = rulerPixelDims(100, 50, 10);
     expect(widthPx).toBe(1000);
     expect(heightPx).toBe(500);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  nextSaveStatus state machine
+// ══════════════════════════════════════════════════════════════════════
+
+describe('nextSaveStatus', () => {
+  it('idle + dirty → dirty', () => {
+    expect(nextSaveStatus('idle', 'dirty')).toBe('dirty');
+  });
+
+  it('saved + dirty → dirty', () => {
+    expect(nextSaveStatus('saved', 'dirty')).toBe('dirty');
+  });
+
+  it('error + dirty → dirty (recovery)', () => {
+    expect(nextSaveStatus('error', 'dirty')).toBe('dirty');
+  });
+
+  it('dirty + dirty stays dirty', () => {
+    expect(nextSaveStatus('dirty', 'dirty')).toBe('dirty');
+  });
+
+  it('saving + dirty stays saving', () => {
+    expect(nextSaveStatus('saving', 'dirty')).toBe('saving');
+  });
+
+  it('any + save → saving (except when already saving)', () => {
+    expect(nextSaveStatus('idle', 'save')).toBe('saving');
+    expect(nextSaveStatus('dirty', 'save')).toBe('saving');
+    expect(nextSaveStatus('saving', 'save')).toBe('saving');
+  });
+
+  it('any + success → saved', () => {
+    expect(nextSaveStatus('saving', 'success')).toBe('saved');
+  });
+
+  it('any + fail → error', () => {
+    expect(nextSaveStatus('saving', 'fail')).toBe('error');
+    expect(nextSaveStatus('idle', 'fail')).toBe('error');
+  });
+
+  it('any + reset → idle', () => {
+    expect(nextSaveStatus('error', 'reset')).toBe('idle');
+    expect(nextSaveStatus('dirty', 'reset')).toBe('idle');
+    expect(nextSaveStatus('saving', 'reset')).toBe('idle');
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  validatePaperForm
+// ══════════════════════════════════════════════════════════════════════
+
+describe('validatePaperForm', () => {
+  const validForm = {
+    name: 'My Label',
+    widthMm: 100,
+    heightMm: 50,
+    dpi: 203,
+    marginTopMm: 2,
+    marginRightMm: 2,
+    marginBottomMm: 2,
+    marginLeftMm: 2,
+  };
+
+  it('returns empty for a valid form', () => {
+    expect(validatePaperForm(validForm)).toEqual([]);
+  });
+
+  it('rejects empty name', () => {
+    const errors = validatePaperForm({ ...validForm, name: '   ' });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].field).toBe('name');
+  });
+
+  it('rejects zero width', () => {
+    const errors = validatePaperForm({ ...validForm, widthMm: 0 });
+    expect(errors.some((e) => e.field === 'widthMm')).toBe(true);
+  });
+
+  it('rejects negative height', () => {
+    const errors = validatePaperForm({ ...validForm, heightMm: -1 });
+    expect(errors.some((e) => e.field === 'heightMm')).toBe(true);
+  });
+
+  it('rejects zero dpi', () => {
+    const errors = validatePaperForm({ ...validForm, dpi: 0 });
+    expect(errors.some((e) => e.field === 'dpi')).toBe(true);
+  });
+
+  it('rejects negative margins', () => {
+    const errors = validatePaperForm({ ...validForm, marginTopMm: -1 });
+    expect(errors.some((e) => e.field === 'marginTopMm')).toBe(true);
+  });
+
+  it('rejects margins exceeding width', () => {
+    const errors = validatePaperForm({ ...validForm, marginLeftMm: 51, marginRightMm: 51 });
+    expect(errors.some((e) => e.field === 'margins' && e.messageKey === 'validation.marginsExceedWidth')).toBe(true);
+  });
+
+  it('rejects margins exceeding height', () => {
+    const errors = validatePaperForm({ ...validForm, marginTopMm: 26, marginBottomMm: 26 });
+    expect(errors.some((e) => e.field === 'margins' && e.messageKey === 'validation.marginsExceedHeight')).toBe(true);
+  });
+
+  it('returns all errors for a completely invalid form', () => {
+    const errors = validatePaperForm({
+      name: '', widthMm: 0, heightMm: 0, dpi: 0,
+      marginTopMm: -1, marginRightMm: -1, marginBottomMm: -1, marginLeftMm: -1,
+    });
+    expect(errors.length).toBeGreaterThanOrEqual(8);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  resolveSelectionAfterDelete
+// ══════════════════════════════════════════════════════════════════════
+
+describe('resolveSelectionAfterDelete', () => {
+  const fields = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+
+  it('returns first remaining field when deleted field is selected', () => {
+    expect(resolveSelectionAfterDelete(fields, 'a', 'a')).toBe('b');
+  });
+
+  it('returns currentSelectedId when a different field is deleted', () => {
+    expect(resolveSelectionAfterDelete(fields, 'a', 'c')).toBe('c');
+  });
+
+  it('returns null when deleting the last field', () => {
+    expect(resolveSelectionAfterDelete([{ id: 'x' }], 'x', 'x')).toBeNull();
+  });
+
+  it('returns null when currentSelectedId is null regardless of deletion', () => {
+    expect(resolveSelectionAfterDelete(fields, 'a', null)).toBeNull();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  anchorTransform / anchorTransformOrigin
+// ══════════════════════════════════════════════════════════════════════
+
+describe('anchorTransform', () => {
+  it('left align returns undefined (no transform)', () => {
+    expect(anchorTransform('left', false)).toBeUndefined();
+    expect(anchorTransform('left', true)).toBeUndefined();
+  });
+
+  it('center align returns translateX(-50%)', () => {
+    expect(anchorTransform('center', false)).toBe('translateX(-50%)');
+    expect(anchorTransform('center', true)).toBe('translateX(-50%)');
+  });
+
+  it('right align returns translateX(-100%)', () => {
+    expect(anchorTransform('right', false)).toBe('translateX(-100%)');
+    expect(anchorTransform('right', true)).toBe('translateX(-100%)');
+  });
+});
+
+describe('anchorTransformOrigin', () => {
+  it('left align → left center', () => {
+    expect(anchorTransformOrigin('left')).toBe('left center');
+  });
+
+  it('center align → center center', () => {
+    expect(anchorTransformOrigin('center')).toBe('center center');
+  });
+
+  it('right align → right center', () => {
+    expect(anchorTransformOrigin('right')).toBe('right center');
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  centerFieldAnchorHorizontal / centerFieldAnchorVertical
+// ══════════════════════════════════════════════════════════════════════
+
+describe('centerFieldAnchorHorizontal', () => {
+  const nonRotated = getVisualPaperGeometry({
+    widthMm: 100, heightMm: 50,
+    marginTopMm: 2, marginRightMm: 3, marginBottomMm: 4, marginLeftMm: 5,
+    orientation: 'landscape', // natural landscape, no rotation
+  });
+
+  it('centers x anchor at printable-width/2 for non-rotated paper', () => {
+    const result = centerFieldAnchorHorizontal({ xMm: 10, yMm: 15 }, nonRotated);
+    // printableWidth = 100 - 3 - 5 = 92, center = 46
+    expect(result.xMm).toBe(46);
+    expect(result.yMm).toBe(15);
+  });
+
+  const rotated = getVisualPaperGeometry({
+    widthMm: 100, heightMm: 50,
+    marginTopMm: 2, marginRightMm: 3, marginBottomMm: 4, marginLeftMm: 5,
+    orientation: 'portrait', // natural landscape → rotated
+  });
+
+  it('centers x anchor for rotated paper via round-trip', () => {
+    const result = centerFieldAnchorHorizontal({ xMm: 20, yMm: 10 }, rotated);
+    // printableWidth visual = 44, center = 22
+    // visual point: x = 44 - 10 = 34, y = 20
+    // center: x=22, y=20 → printable: x=20, y=44-22=22
+    expect(result.xMm).toBe(20);
+    expect(result.yMm).toBe(22);
+  });
+});
+
+describe('centerFieldAnchorVertical', () => {
+  const nonRotated = getVisualPaperGeometry({
+    widthMm: 100, heightMm: 50,
+    marginTopMm: 2, marginRightMm: 3, marginBottomMm: 4, marginLeftMm: 5,
+    orientation: 'landscape',
+  });
+
+  it('centers y anchor at printable-height/2 for non-rotated paper', () => {
+    const result = centerFieldAnchorVertical({ xMm: 30, yMm: 5 }, nonRotated);
+    // printableHeight = 50 - 2 - 4 = 44, center = 22
+    expect(result.xMm).toBe(30);
+    expect(result.yMm).toBe(22);
+  });
+
+  const rotated = getVisualPaperGeometry({
+    widthMm: 100, heightMm: 50,
+    marginTopMm: 2, marginRightMm: 3, marginBottomMm: 4, marginLeftMm: 5,
+    orientation: 'portrait',
+  });
+
+  it('centers y anchor for rotated paper via round-trip', () => {
+    const result = centerFieldAnchorVertical({ xMm: 10, yMm: 15 }, rotated);
+    // printableHeight visual = 92, center = 46
+    // visual point: x = 44 - 15 = 29, y = 10
+    // center: x=29, y=46 → printable: x=46, y=44-29=15
+    expect(result.xMm).toBe(46);
+    expect(result.yMm).toBe(15);
   });
 });

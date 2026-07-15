@@ -1788,6 +1788,22 @@ body {
   outline-offset: 2px;
 }
 
+.pp-icon-btn:disabled,
+.pp-save-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: var(--neutral-subtle, #f0f0f0);
+  border-color: var(--neutral-border, #e5e7eb);
+  color: var(--neutral-text-muted, #6b7280);
+}
+
+.pp-icon-btn:disabled:hover,
+.pp-save-button:disabled:hover {
+  border-color: var(--neutral-border, #e5e7eb);
+  background: var(--neutral-subtle, #f0f0f0);
+  color: var(--neutral-text-muted, #6b7280);
+}
+
 .pp-command-actions {
   min-width: 0;
 }

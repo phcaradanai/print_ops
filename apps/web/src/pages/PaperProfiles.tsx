@@ -1,6 +1,90 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
+
+// ── Types ──────────────────────────────────────────────────────────
+type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+
+export function nextSaveStatus(current: SaveStatus, action: 'dirty' | 'save' | 'success' | 'fail' | 'reset'): SaveStatus {
+  switch (action) {
+    case 'dirty': return current === 'idle' || current === 'saved' || current === 'error' ? 'dirty' : current;
+    case 'save': return current !== 'saving' ? 'saving' : current;
+    case 'success': return 'saved';
+    case 'fail': return 'error';
+    case 'reset': return 'idle';
+    default: return current;
+  }
+}
+
+interface PaperFormForValidation {
+  name: string; widthMm: number; heightMm: number; dpi: number;
+  marginTopMm: number; marginRightMm: number; marginBottomMm: number; marginLeftMm: number;
+}
+interface ValidationError {
+  field: string;
+  messageKey: string;
+}
+export function validatePaperForm(form: PaperFormForValidation): ValidationError[] {
+  const errors: ValidationError[] = [];
+  if (!form.name.trim()) errors.push({ field: 'name', messageKey: 'validation.nameRequired' });
+  if (form.widthMm <= 0) errors.push({ field: 'widthMm', messageKey: 'validation.dimensionsPositive' });
+  if (form.heightMm <= 0) errors.push({ field: 'heightMm', messageKey: 'validation.dimensionsPositive' });
+  if (form.dpi <= 0) errors.push({ field: 'dpi', messageKey: 'validation.dpiPositive' });
+  if (form.marginTopMm < 0) errors.push({ field: 'marginTopMm', messageKey: 'validation.marginsNonNegative' });
+  if (form.marginRightMm < 0) errors.push({ field: 'marginRightMm', messageKey: 'validation.marginsNonNegative' });
+  if (form.marginBottomMm < 0) errors.push({ field: 'marginBottomMm', messageKey: 'validation.marginsNonNegative' });
+  if (form.marginLeftMm < 0) errors.push({ field: 'marginLeftMm', messageKey: 'validation.marginsNonNegative' });
+  if (form.marginLeftMm + form.marginRightMm >= form.widthMm) errors.push({ field: 'margins', messageKey: 'validation.marginsExceedWidth' });
+  if (form.marginTopMm + form.marginBottomMm >= form.heightMm) errors.push({ field: 'margins', messageKey: 'validation.marginsExceedHeight' });
+  return errors;
+}
+
+export function resolveSelectionAfterDelete(
+  fields: { id: string }[],
+  deletedId: string,
+  currentSelectedId: string | null,
+): string | null {
+  if (currentSelectedId !== deletedId) return currentSelectedId;
+  const remaining = fields.filter((f) => f.id !== deletedId);
+  return remaining.length > 0 ? remaining[0].id : null;
+}
+
+/** Center a field's xMm anchor at printableWidth/2. Handles rotated geometry via full round-trip. */
+export function centerFieldAnchorHorizontal(
+  field: { xMm: number; yMm: number },
+  geometry: VisualPaperGeometry,
+): { xMm: number; yMm: number } {
+  const visualPoint = mapPrintablePointToVisual(field.xMm, field.yMm, geometry);
+  const visualCenterX = Number((geometry.printableWidthMm / 2).toFixed(1));
+  return mapVisualPointToPrintable(visualCenterX, visualPoint.yMm, geometry);
+}
+
+/** Center a field's yMm anchor at printableHeight/2. Handles rotated geometry via full round-trip. */
+export function centerFieldAnchorVertical(
+  field: { xMm: number; yMm: number },
+  geometry: VisualPaperGeometry,
+): { xMm: number; yMm: number } {
+  const visualPoint = mapPrintablePointToVisual(field.xMm, field.yMm, geometry);
+  const visualCenterY = Number((geometry.printableHeightMm / 2).toFixed(1));
+  return mapVisualPointToPrintable(visualPoint.xMm, visualCenterY, geometry);
+}
+
+/** Compute CSS transform for a text anchor position. Always uses translateX — rotation-safe behavior comes from point mapping, not changing the text anchor axis. */
+export function anchorTransform(
+  align: 'left' | 'center' | 'right',
+  _rotated: boolean,
+): string | undefined {
+  if (align === 'center') return 'translateX(-50%)';
+  if (align === 'right') return 'translateX(-100%)';
+  return undefined; // left => no translate needed
+}
+
+/** Get the CSS transform-origin for a text anchor, safe when composed with rotation. */
+export function anchorTransformOrigin(align: 'left' | 'center' | 'right'): string {
+  if (align === 'center') return 'center center';
+  if (align === 'right') return 'right center';
+  return 'left center';
+}
 
 // ── Types ──────────────────────────────────────────────────────────
 interface PaperProfile {
@@ -151,6 +235,7 @@ interface DynamicField {
   label: string;
   defaultValue: string;
   type: 'text' | 'barcode' | 'date' | 'number';
+  // NOTE: Only 'text' type is currently rendered. Other types are reserved for future rendering support.
   xMm: number;
   yMm: number;
   fontSize: number;
@@ -264,19 +349,24 @@ function IconButton({
   label,
   onClick,
   active = false,
+  disabled = false,
+  disabledReason,
 }: {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
   active?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
 }) {
   return (
     <button
       type="button"
       className={'pp-icon-btn' + (active ? ' pp-icon-btn--active' : '')}
-      title={label}
-      aria-label={label}
+      title={disabled ? (disabledReason || label) : label}
+      aria-label={disabled ? (disabledReason ? `${label}: ${disabledReason}` : label) : label}
       onClick={onClick}
+      disabled={disabled}
     >
       <span aria-hidden="true">{icon}</span>
     </button>
@@ -594,14 +684,15 @@ function PreviewSheet({
               position: 'absolute', left: point.xMm * scale, top: point.yMm * scale,
               fontSize: fontPointSizeToPreviewPixels(f.fontSize, scale), fontWeight: f.bold ? 700 : 400,
               lineHeight: 1.2,
-              color: f.color, textAlign: f.align, whiteSpace: 'nowrap',
+              color: f.color, whiteSpace: 'nowrap',
               fontFamily: ux.fontFamily, pointerEvents: interactive ? 'auto' : 'none',
               cursor: interactive ? 'grab' : 'default',
               padding: interactive ? '0.15rem 0.25rem' : 0,
               border: selectedFieldId === f.id ? '1px solid #1e66f5' : '1px solid transparent',
               borderRadius: 3,
               background: selectedFieldId === f.id ? 'rgba(30,102,245,0.1)' : 'transparent',
-              transform: geometry.rotated ? 'translateX(-100%)' : undefined,
+              transform: anchorTransform(f.align, geometry.rotated),
+              transformOrigin: anchorTransformOrigin(f.align),
               zIndex: 2,
             }}
           >
@@ -647,6 +738,8 @@ export default function PaperProfiles() {
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
   const [showDrawer, setShowDrawer] = useState<'fields' | 'appearance' | null>(null);
   const [stickyNote, setStickyNote] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const previewSheetRef = useRef<HTMLDivElement>(null);
   const dragOffsetRef = useRef({ xMm: 0, yMm: 0 });
   const previewCanvasRef = useRef<HTMLDivElement>(null);
@@ -655,6 +748,7 @@ export default function PaperProfiles() {
   const modalCloseButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const [modalStageSize, setModalStageSize] = useState({ width: 0, height: 0 });
+  const saveInFlightRef = useRef(false);
 
   // ── Section tracking (for sticky index & collapse/expand all) ──────
   type SectionKey = 'basicInfo' | 'dimensions' | 'margins' | 'fields';
@@ -689,6 +783,8 @@ export default function PaperProfiles() {
   // ── Field helpers ──────────────────────────────────────────────────
   function patch<K extends keyof PaperForm>(key: K, val: PaperForm[K]) {
     setForm((f) => ({ ...f, [key]: val }));
+    setSaveStatus((s) => nextSaveStatus(s, 'dirty'));
+    setSaveError(null);
   }
   function uxPatch<K extends keyof UxOptions>(key: K, val: UxOptions[K]) {
     setUx((u) => ({ ...u, [key]: val }));
@@ -720,58 +816,55 @@ export default function PaperProfiles() {
     const f: DynamicField = {
       id: uid(), key: '', label: '', defaultValue: '',
       type: 'text', xMm: 5, yMm: 5,
-      fontSize: 12, bold: false, color: '#000000', align: 'left',
+      fontSize: ux.fontSize, bold: ux.fontWeight === 'bold', color: ux.fontColor, align: 'left',
     };
-    uxPatch('dynamicFields', [...ux.dynamicFields, f]);
+    setUx((current) => ({
+      ...current,
+      dynamicFields: [...current.dynamicFields, f],
+    }));
+    setSelectedFieldId(f.id);
     setStickyNote(t('page.paperProfiles.addedFieldNote'));
     setTimeout(() => setStickyNote(null), 2500);
   }
-  function updField(id: string, patch: Partial<DynamicField>) {
-    uxPatch('dynamicFields', ux.dynamicFields.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+  function updField(id: string, patchFields: Partial<DynamicField>) {
+    setUx((current) => ({
+      ...current,
+      dynamicFields: current.dynamicFields.map((f) => (f.id === id ? { ...f, ...patchFields } : f)),
+    }));
   }
   function delField(id: string) {
-    uxPatch('dynamicFields', ux.dynamicFields.filter((f) => f.id !== id));
+    setUx((current) => {
+      const nextDynamicFields = current.dynamicFields.filter((f) => f.id !== id);
+      return { ...current, dynamicFields: nextDynamicFields };
+    });
+    // Resolve selection outside setUx updater to avoid StrictMode double-fire
+    setSelectedFieldId((prev) => resolveSelectionAfterDelete(ux.dynamicFields, id, prev));
   }
 
-  // ── Alignment helpers ──────────────────────────────────────────────
-  function alignToBaseline(id: string) {
-    const target = ux.dynamicFields.find((f) => f.id === id);
-    if (!target) return;
-    // Find nearest other field by Y (within 10mm tolerance)
-    const others = ux.dynamicFields.filter((f) => f.id !== id);
-    if (others.length === 0) return;
-    let nearest = others[0];
-    let best = Math.abs(nearest.yMm - target.yMm);
-    for (const o of others) {
-      const d = Math.abs(o.yMm - target.yMm);
-      if (d < best) { nearest = o; best = d; }
-    }
-    if (best > 10) return; // tolerance
-    const fields = ux.dynamicFields.map((f) =>
-      f.id === id ? { ...f, yMm: nearest.yMm } : f
-    );
-    uxPatch('dynamicFields', fields);
-    setStickyNote('📏 Aligned to baseline (Y: ' + nearest.yMm.toFixed(1) + ' mm)');
+  // ── Center helpers ────────────────────────────────────────────────
+  function centerFieldHorizontal(id: string) {
+    const geometry = getVisualPaperGeometry(form);
+    setUx((current) => ({
+      ...current,
+      dynamicFields: current.dynamicFields.map((f) => {
+        if (f.id !== id) return f;
+        return { ...f, ...centerFieldAnchorHorizontal(f, geometry) };
+      }),
+    }));
+    setStickyNote(t('page.paperProfiles.centerHorizontally'));
     setTimeout(() => setStickyNote(null), 2500);
   }
 
-  function alignToColumn(id: string) {
-    const target = ux.dynamicFields.find((f) => f.id === id);
-    if (!target) return;
-    const others = ux.dynamicFields.filter((f) => f.id !== id);
-    if (others.length === 0) return;
-    let nearest = others[0];
-    let best = Math.abs(nearest.xMm - target.xMm);
-    for (const o of others) {
-      const d = Math.abs(o.xMm - target.xMm);
-      if (d < best) { nearest = o; best = d; }
-    }
-    if (best > 10) return; // tolerance
-    const fields = ux.dynamicFields.map((f) =>
-      f.id === id ? { ...f, xMm: nearest.xMm } : f
-    );
-    uxPatch('dynamicFields', fields);
-    setStickyNote('📏 Aligned to column (X: ' + nearest.xMm.toFixed(1) + ' mm)');
+  function centerFieldVertical(id: string) {
+    const geometry = getVisualPaperGeometry(form);
+    setUx((current) => ({
+      ...current,
+      dynamicFields: current.dynamicFields.map((f) => {
+        if (f.id !== id) return f;
+        return { ...f, ...centerFieldAnchorVertical(f, geometry) };
+      }),
+    }));
+    setStickyNote(t('page.paperProfiles.centerVertically'));
     setTimeout(() => setStickyNote(null), 2500);
   }
 
@@ -801,15 +894,41 @@ export default function PaperProfiles() {
   useEffect(() => { void load(); }, []);
 
   async function save() {
-    const body = { ...form, code: form.code || form.name.toLowerCase().replace(/\\s+/g, '_') };
-    if (editingId) {
-      await apiFetch('/v1/paper-profiles/' + editingId, { method: 'PUT', body: JSON.stringify(body) });
-    } else {
-      await apiFetch('/v1/paper-profiles', { method: 'POST', body: JSON.stringify(body) });
+    // Prevent duplicate submission
+    if (saveStatus === 'saving' || saveInFlightRef.current) return;
+
+    const errors = validatePaperForm(form);
+    if (errors.length > 0) {
+      setSaveError(errors.map((e) => t(e.messageKey)).join('; '));
+      setSaveStatus('error');
+      return;
     }
-    setEditingId(null);
-    setForm(DEFAULT_FORM);
-    load();
+
+    saveInFlightRef.current = true;
+    setSaveStatus('saving');
+    setSaveError(null);
+    try {
+      const body = { ...form, code: form.code || form.name.toLowerCase().replace(/\s+/g, '_') };
+      if (editingId) {
+        await apiFetch('/v1/paper-profiles/' + editingId, { method: 'PUT', body: JSON.stringify(body) });
+      } else {
+        await apiFetch('/v1/paper-profiles', { method: 'POST', body: JSON.stringify(body) });
+      }
+      setSaveStatus('saved');
+      setEditingId(null);
+      setForm(DEFAULT_FORM);
+      load();
+    } catch (_err) {
+      setSaveStatus('error');
+      setSaveError(t('page.paperProfiles.saveFailed'));
+    } finally {
+      saveInFlightRef.current = false;
+    }
+  }
+
+  function dismissSaveError() {
+    setSaveError(null);
+    setSaveStatus('idle');
   }
 
   function startEdit(p: PaperProfile) {
@@ -821,11 +940,14 @@ export default function PaperProfiles() {
       dpi: p.dpi, orientation: p.orientation, unit: p.unit,
     });
     setEditingId(p.id);
+    setSaveStatus('idle');
+    setSaveError(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function applyPreset(p: typeof PAPER_PRESETS[number]) {
     setForm((f) => ({ ...f, widthMm: p.widthMm, heightMm: p.heightMm, dpi: p.dpi }));
+    setSaveStatus((s) => nextSaveStatus(s, 'dirty'));
     setPresetsOpen(false);
   }
 
@@ -1044,8 +1166,30 @@ export default function PaperProfiles() {
             </nav>
             <div className="pp-command-actions">
               <div className="pp-command-status" aria-live="polite">
-                <span className="pp-command-status__dot" aria-hidden="true">●</span>
-                <span>{editingId ? t('page.paperProfiles.editingProfile') : t('page.paperProfiles.readyToSave')}</span>
+                <span
+                  className="pp-command-status__dot"
+                  aria-hidden="true"
+                  style={{
+                    color: saveStatus === 'error' ? 'var(--semantic-error, #f38ba8)'
+                      : saveStatus === 'saving' ? 'var(--semantic-progress, #fab387)'
+                        : saveStatus === 'saved' ? 'var(--semantic-success, #a6e3a1)'
+                          : 'var(--semantic-success, #65a765)',
+                  }}
+                >●</span>
+                <span>
+                  {saveStatus === 'saving' ? t('page.paperProfiles.saving')
+                    : saveStatus === 'saved' ? t('page.paperProfiles.saved')
+                      : saveStatus === 'error' ? (saveError || t('common.error'))
+                        : editingId ? t('page.paperProfiles.editingProfile') : t('page.paperProfiles.readyToSave')}
+                </span>
+                {saveStatus === 'error' && (
+                  <button
+                    type="button"
+                    onClick={dismissSaveError}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', padding: 0, color: '#6b7280' }}
+                    aria-label={t('common.cancel')}
+                  >✕</button>
+                )}
               </div>
               <div className="pp-presets">
                 <button type="button" className="pp-icon-btn" onClick={() => setPresetsOpen(!presetsOpen)}
@@ -1063,13 +1207,14 @@ export default function PaperProfiles() {
                 )}
               </div>
               <IconButton icon={allExpanded ? '▾' : '▸'} label={allExpanded ? t('page.paperProfiles.collapseAll') : t('page.paperProfiles.expandAll')} onClick={allExpanded ? collapseAll : expandAll} />
-              <button type="button" className="pp-save-button" style={s.btn} onClick={() => void save()}
+              <button type="button" className="pp-save-button" style={{ ...s.btn, opacity: saveStatus === 'saving' ? 0.6 : 1 }} onClick={() => void save()}
+                disabled={saveStatus === 'saving'}
                 title={editingId ? t('page.paperProfiles.updateProfile') : t('page.paperProfiles.saveProfile')}
                 aria-label={editingId ? t('page.paperProfiles.updateProfile') : t('page.paperProfiles.saveProfile')}>
-                <span aria-hidden="true">💾</span>
+                <span aria-hidden="true">{saveStatus === 'saving' ? '⏳' : '💾'}</span>
               </button>
               {editingId && (
-                <button type="button" className="pp-icon-btn" onClick={() => { setEditingId(null); setForm(DEFAULT_FORM); }}
+                <button type="button" className="pp-icon-btn" onClick={() => { setEditingId(null); setForm(DEFAULT_FORM); setUx(DEFAULT_UX); setSelectedFieldId(null); setSaveStatus('idle'); setSaveError(null); }}
                   title={t('common.cancel')} aria-label={t('common.cancel')}>
                   <span aria-hidden="true">✕</span>
                 </button>
@@ -1166,6 +1311,7 @@ export default function PaperProfiles() {
                   title={t('page.paperProfiles.addField')} aria-label={t('page.paperProfiles.addField')}>+</button>
               </div>
             )}
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0.25rem 0 0.5rem', fontStyle: 'italic' }}>{t('page.paperProfiles.previewOnlyHint')}</p>
             <div className="pp-field-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {ux.dynamicFields.map((f) => (
                 <div key={f.id} className="pp-field-row" style={{ padding: '0.5rem', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fafafa', position: 'relative' }}>
@@ -1174,14 +1320,7 @@ export default function PaperProfiles() {
                       style={{ ...s.smallInput, width: 90, fontFamily: 'monospace' }} />
                     <input aria-label={t('page.paperProfiles.fieldLabel')} placeholder="Label" value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })}
                       style={{ ...s.smallInput, flex: 1 }} />
-                    <select aria-label={t('page.paperProfiles.fieldType')} value={f.type} onChange={(e) => updField(f.id, { type: e.target.value as DynamicField['type'] })}
-                      style={{ ...s.sel, width: 80, padding: '0.25rem 0.4rem', fontSize: '0.75rem' }}>
-                      <option value="text">Aa</option>
-                      <option value="barcode">‖‖</option>
-                      <option value="date">📅</option>
-                      <option value="number">#</option>
-                    </select>
-                    <button type="button" style={s.btnDanger} onClick={() => delField(f.id)} title={t('page.paperProfiles.remove')} aria-label={t('page.paperProfiles.remove')}>✕</button>
+                    <button type="button" style={s.btnDanger} onClick={(e) => { e.stopPropagation(); delField(f.id); }} title={t('page.paperProfiles.remove')} aria-label={t('page.paperProfiles.remove')}>✕</button>
                   </div>
                   <div className="pp-field-row__secondary" style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
                     <input aria-label={t('page.paperProfiles.fieldDefault')} placeholder={t('page.paperProfiles.fieldDefault')} value={f.defaultValue} onChange={(e) => updField(f.id, { defaultValue: e.target.value })}
@@ -1233,6 +1372,7 @@ export default function PaperProfiles() {
                 <span>{t('page.paperProfiles.previewCanvas')}</span>
                 <span>{form.orientation === 'portrait' ? t('page.paperProfiles.portrait') : t('page.paperProfiles.landscape')}</span>
               </div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0, textAlign: 'center' }}>{t('page.paperProfiles.previewViewOnly')}</p>
               <RulerSheet form={form} scale={scale} showRulers={showRulers} unit={du}>
                 <PreviewSheet
                   form={form} ux={ux} scale={scale}
@@ -1372,28 +1512,35 @@ export default function PaperProfiles() {
                     <span aria-hidden="true">+</span>
                   </button>
                 </div>
-                {selectedFieldId && (
+                {selectedFieldId ? (
                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      className="pp-icon-btn"
-                      onClick={() => alignToBaseline(selectedFieldId)}
-                      title={t('page.paperProfiles.alignToBaseline')}
-                      aria-label={t('page.paperProfiles.alignToBaseline')}
-                      disabled={ux.dynamicFields.length < 2}
-                    >
-                      <span aria-hidden="true">↔</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="pp-icon-btn"
-                      onClick={() => alignToColumn(selectedFieldId)}
-                      title={t('page.paperProfiles.alignToColumn')}
-                      aria-label={t('page.paperProfiles.alignToColumn')}
-                      disabled={ux.dynamicFields.length < 2}
-                    >
-                      <span aria-hidden="true">↕</span>
-                    </button>
+                    <IconButton
+                      icon="↔"
+                      label={t('page.paperProfiles.centerHorizontally')}
+                      onClick={() => centerFieldHorizontal(selectedFieldId)}
+                    />
+                    <IconButton
+                      icon="↕"
+                      label={t('page.paperProfiles.centerVertically')}
+                      onClick={() => centerFieldVertical(selectedFieldId)}
+                    />
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <IconButton
+                      icon="↔"
+                      label={t('page.paperProfiles.centerHorizontally')}
+                      onClick={() => {}}
+                      disabled={true}
+                      disabledReason={t('page.paperProfiles.centerDisabledNoField')}
+                    />
+                    <IconButton
+                      icon="↕"
+                      label={t('page.paperProfiles.centerVertically')}
+                      onClick={() => {}}
+                      disabled={true}
+                      disabledReason={t('page.paperProfiles.centerDisabledNoField')}
+                    />
                   </div>
                 )}
                 {ux.dynamicFields.length === 0 && (
@@ -1408,7 +1555,7 @@ export default function PaperProfiles() {
                     >
                       <div className="paper-preview-modal__field-heading">
                         <code>{f.key || t('page.paperProfiles.noKey')}</code>
-                        <button type="button" style={s.btnDanger} onClick={() => delField(f.id)}>
+                        <button type="button" style={s.btnDanger} onClick={(e) => { e.stopPropagation(); delField(f.id); }}>
                           {t('page.paperProfiles.remove')}
                         </button>
                       </div>
@@ -1456,11 +1603,10 @@ export default function PaperProfiles() {
                 <div key={f.id} style={{ padding: '0.65rem', border: '1px solid #e5e7eb', borderRadius: 6, background: '#f9fafb' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                     <code style={{ fontSize: '0.8rem', fontWeight: 600 }}>{f.key || t('page.paperProfiles.noKey')}</code>
-                    <button style={s.btnDanger} onClick={() => delField(f.id)}>{t('page.paperProfiles.remove')}</button>
+                    <button style={s.btnDanger} onClick={(e) => { e.stopPropagation(); delField(f.id); }}>{t('page.paperProfiles.remove')}</button>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem', fontSize: '0.75rem' }}>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fieldLabel')}</label><input value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })} style={s.smallInput} /></div>
-                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fieldType')}</label><select value={f.type} onChange={(e) => updField(f.id, { type: e.target.value as DynamicField['type'] })} style={{ ...s.sel, padding: '0.25rem 0.4rem', fontSize: '0.75rem' }}><option value="text">Text</option><option value="barcode">Barcode</option><option value="date">Date</option><option value="number">Number</option></select></div>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fieldDefault')}</label><input value={f.defaultValue} onChange={(e) => updField(f.id, { defaultValue: e.target.value })} style={s.smallInput} /></div>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fontSize')}</label><input type="number" value={f.fontSize} onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: v }); }} style={s.smallInput} /></div>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.positionX')}</label><input type="number" value={f.xMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { xMm: v }); }} style={s.smallInput} /></div>
@@ -1488,7 +1634,7 @@ export default function PaperProfiles() {
           <div className="pp-drawer-backdrop" onClick={() => setShowDrawer(null)} />
           <div className="pp-drawer" role="dialog" aria-modal="true" aria-label={t('page.paperProfiles.appearanceStyle')}>
           <div className="pp-drawer__header">
-            <span className="pp-drawer__title">{t('page.paperProfiles.appearanceStyle')}</span>
+            <span className="pp-drawer__title">{t('page.paperProfiles.appearanceStyle')} · {t('page.paperProfiles.newFieldDefaults')}</span>
             <button className="pp-tool-btn" style={{ width: 28, height: 26, fontSize: '0.8rem' }}
               title={t('common.cancel')} aria-label={t('common.cancel')}
               onClick={() => setShowDrawer(null)}>✕</button>
