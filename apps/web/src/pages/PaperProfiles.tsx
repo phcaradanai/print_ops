@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { apiFetch } from '../api/client.js';
+import { apiFetch, fileToBase64 } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -84,6 +84,76 @@ export function anchorTransformOrigin(align: 'left' | 'center' | 'right'): strin
   if (align === 'center') return 'center center';
   if (align === 'right') return 'right center';
   return 'left center';
+}
+
+// ── Import Design types ──────────────────────────────────────────
+export type ImportPhase = 'select' | 'analyzing' | 'review' | 'importing' | 'success' | 'error';
+
+export const ACCEPTED_IMPORT_MIME_TYPES = ['image/png', 'image/jpeg'] as const;
+export const MAX_IMPORT_FILE_BYTES = 8 * 1024 * 1024; // 8 MiB
+
+export type ImportFitMode = 'contain' | 'cover' | 'stretch';
+export type ImportFitModeLabel = 'page.paperProfiles.importFitContain' | 'page.paperProfiles.importFitCover' | 'page.paperProfiles.importFitStretch';
+
+export interface ImportAnalyzeResult {
+  detectedMimeType: string;
+  fileSizeBytes: number;
+  sha256: string;
+  pixelWidth: number;
+  pixelHeight: number;
+  detectedDpi: number | null;
+  suggestedDpi: number;
+  suggestedWidthMm: number;
+  suggestedHeightMm: number;
+  warnings: string[];
+}
+
+export interface ImportResult {
+  profile: { id: string; code: string; name: string };
+  artwork: { id: string };
+  duplicate: boolean;
+}
+
+export interface ArtworkData {
+  dataBase64: string;
+  mimeType: string;
+  pixelWidth: number;
+  pixelHeight: number;
+}
+
+/** Validate that a MIME type is an accepted import format. */
+export function isAcceptedImportMime(mime: string): boolean {
+  return ACCEPTED_IMPORT_MIME_TYPES.includes(mime as typeof ACCEPTED_IMPORT_MIME_TYPES[number]);
+}
+
+/** Validate that a file extension is accepted for import. */
+export function isAcceptedImportExtension(fileName: string): boolean {
+  const lower = fileName.toLowerCase();
+  return lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg');
+}
+
+/** Validate that a file size is within the import limit. */
+export function isValidImportFileSize(sizeBytes: number): boolean {
+  return sizeBytes > 0 && sizeBytes <= MAX_IMPORT_FILE_BYTES;
+}
+
+/** Check whether a DPI value is below the warning threshold (150). */
+export function isLowImportDpi(dpi: number | null): boolean {
+  return dpi !== null && dpi < 150;
+}
+
+/** Transform an import phase based on an action. */
+export function nextImportPhase(current: ImportPhase, action: 'file-selected' | 'analyzed' | 'review' | 'submitted' | 'done' | 'fail' | 'reset'): ImportPhase {
+  switch (action) {
+    case 'file-selected': return 'analyzing';
+    case 'analyzed': return 'review';
+    case 'review': return current === 'review' ? 'review' : current;
+    case 'submitted': return 'importing';
+    case 'done': return 'success';
+    case 'fail': return 'error';
+    case 'reset': return 'select';
+    default: return current;
+  }
 }
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -612,6 +682,8 @@ function PreviewSheet({
   showHorizontalGrid = false,
   showAlignmentGuides = false,
   gridIntervalMm = 10,
+  artworkUrl,
+  artworkFitMode,
 }: {
   form: PaperForm;
   ux: UxOptions;
@@ -625,6 +697,8 @@ function PreviewSheet({
   showHorizontalGrid?: boolean;
   showAlignmentGuides?: boolean;
   gridIntervalMm?: number;
+  artworkUrl?: string;
+  artworkFitMode?: ImportFitMode;
 }) {
   const geometry = getVisualPaperGeometry(form);
   const pvW = geometry.widthMm * scale;
@@ -768,6 +842,41 @@ function PreviewSheet({
         ))}
       </div>
 
+      {/* Imported artwork layer — below grid/guides/fields, no interaction */}
+      {artworkUrl && (
+        <>
+          <img
+            src={artworkUrl}
+            alt="Reference artwork"
+            style={{
+              position: 'absolute',
+              left: pvML,
+              top: pvMT,
+              width: pvPrintW,
+              height: pvPrintH,
+              objectFit: artworkFitMode === 'stretch' ? 'fill' : artworkFitMode === 'cover' ? 'cover' : 'contain',
+              pointerEvents: 'none' as const,
+              zIndex: 0,
+              opacity: 0.35,
+            }}
+          />
+          <div style={{
+            position: 'absolute',
+            left: pvML,
+            top: pvMT + pvPrintH - 14,
+            padding: '1px 4px',
+            background: 'rgba(0,0,0,0.45)',
+            color: '#fff',
+            fontSize: '0.5rem',
+            pointerEvents: 'none',
+            zIndex: 1,
+            borderBottomRightRadius: 2,
+          }}>
+            Reference artwork / background only
+          </div>
+        </>
+      )}
+
       {[{ d: pvMT, side: 'top' as const }, { d: pvMR, side: 'right' as const }, { d: pvMB, side: 'bottom' as const }, { d: pvML, side: 'left' as const }].map((m) => (
         <div key={m.side} style={{
           position: 'absolute',
@@ -801,7 +910,7 @@ export default function PaperProfiles() {
   const [gridSpacingMm, setGridSpacingMm] = useState(10); // 1–100 mm, default 10
   const [previewZoom, setPreviewZoom] = useState(1);
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
-  const [showDrawer, setShowDrawer] = useState<'fields' | 'appearance' | null>(null);
+  const [showDrawer, setShowDrawer] = useState<'fields' | 'appearance' | 'import' | null>(null);
   const [stickyNote, setStickyNote] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -814,6 +923,24 @@ export default function PaperProfiles() {
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const [modalStageSize, setModalStageSize] = useState({ width: 0, height: 0 });
   const saveInFlightRef = useRef(false);
+
+  // ── Import Design state ────────────────────────────────────────────
+  const [importPhase, setImportPhase] = useState<ImportPhase>('select');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importObjectUrl, setImportObjectUrl] = useState<string | null>(null);
+  const [importAnalyzeResult, setImportAnalyzeResult] = useState<ImportAnalyzeResult | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importFitMode, setImportFitMode] = useState<ImportFitMode>('contain');
+  const [importedArtworkMap, setImportedArtworkMap] = useState<Record<string, { objectUrl: string } | null>>({});
+  const importInFlightRef = useRef(false);
+
+  // Revoke object URLs on cleanup
+  useEffect(() => {
+    return () => {
+      if (importObjectUrl) URL.revokeObjectURL(importObjectUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Drawer focus management ────────────────────────────────────────
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -1001,6 +1128,190 @@ export default function PaperProfiles() {
     setSaveStatus('idle');
   }
 
+  // ── Import Design handlers ──────────────────────────────────────
+  function openImportDrawer() {
+    setImportPhase('select');
+    setImportFile(null);
+    setImportObjectUrl(null);
+    setImportAnalyzeResult(null);
+    setImportError(null);
+    setImportFitMode('contain');
+    // Show import drawer — reuse the drawer pattern
+    setShowDrawer('import');
+  }
+
+  function resetImport() {
+    if (importObjectUrl) { URL.revokeObjectURL(importObjectUrl); setImportObjectUrl(null); }
+    setImportPhase('select');
+    setImportFile(null);
+    setImportAnalyzeResult(null);
+    setImportError(null);
+    importInFlightRef.current = false;
+  }
+
+  function handleImportFileSelected(file: File) {
+    // Client-side validation
+    if (!isAcceptedImportExtension(file.name) && !isAcceptedImportMime(file.type)) {
+      setImportError(t('page.paperProfiles.importInvalidFileType'));
+      return;
+    }
+    if (!isValidImportFileSize(file.size)) {
+      setImportError(t('page.paperProfiles.importFileTooLarge'));
+      return;
+    }
+    setImportError(null);
+    setImportFile(file);
+    // Create object URL for thumbnail
+    const objectUrl = URL.createObjectURL(file);
+    // Revoke old
+    if (importObjectUrl) URL.revokeObjectURL(importObjectUrl);
+    setImportObjectUrl(objectUrl);
+    setImportPhase('analyzing');
+    // Trigger analysis
+    void analyzeFile(file, objectUrl);
+  }
+
+  async function analyzeFile(file: File, objectUrl: string) {
+    try {
+      const dataUri = await fileToBase64(file);
+      // Extract base64 portion after the data URI prefix
+      const base64Idx = dataUri.indexOf(';base64,');
+      const dataBase64 = base64Idx >= 0 ? dataUri.slice(base64Idx + 8) : dataUri;
+      const result = await apiFetch<ImportAnalyzeResult>('/v1/paper-profile-imports/analyze', {
+        method: 'POST',
+        body: JSON.stringify({
+          fileName: file.name,
+          declaredMimeType: file.type || 'image/png',
+          dataBase64,
+        }),
+      });
+      setImportAnalyzeResult(result);
+      setImportPhase('review');
+    } catch (_err) {
+      URL.revokeObjectURL(objectUrl);
+      setImportObjectUrl(null);
+      setImportError(t('page.paperProfiles.importError'));
+      setImportPhase('error');
+    }
+  }
+
+  async function submitImport() {
+    if (!importFile || !importAnalyzeResult || importInFlightRef.current) return;
+    importInFlightRef.current = true;
+    setImportPhase('importing');
+    setImportError(null);
+    try {
+      const dataUri = await fileToBase64(importFile);
+      const base64Idx = dataUri.indexOf(';base64,');
+      const dataBase64 = base64Idx >= 0 ? dataUri.slice(base64Idx + 8) : dataUri;
+      const result = await apiFetch<ImportResult>('/v1/paper-profile-imports', {
+        method: 'POST',
+        body: JSON.stringify({
+          fileName: importFile.name,
+          declaredMimeType: importFile.type || 'image/png',
+          dataBase64,
+          name: importEditValues.name || importFile.name.replace(/\.[^.]+$/, ''),
+          code: importEditValues.code || '',
+          widthMm: importEditValues.widthMm,
+          heightMm: importEditValues.heightMm,
+          dpi: importEditValues.dpi,
+          orientation: importEditValues.orientation,
+          marginTopMm: importEditValues.marginTopMm,
+          marginRightMm: importEditValues.marginRightMm,
+          marginBottomMm: importEditValues.marginBottomMm,
+          marginLeftMm: importEditValues.marginLeftMm,
+          fitMode: importFitMode,
+        }),
+      });
+      // Revoke the object URL now that we're done
+      if (importObjectUrl) { URL.revokeObjectURL(importObjectUrl); setImportObjectUrl(null); }
+      setImportPhase('success');
+      // Reload profiles and select the returned profile
+      await load();
+      const msg = result.duplicate
+        ? t('page.paperProfiles.importDuplicate')
+        : t('page.paperProfiles.importSuccess');
+      setStickyNote(msg);
+      setTimeout(() => setStickyNote(null), 4000);
+      // Close drawer after a brief delay so user sees success state
+      setTimeout(() => {
+        setShowDrawer(null);
+        resetImport();
+      }, 1500);
+      // Select the returned profile
+      if (result.profile?.id) {
+        setTimeout(() => startEditFromImport(result.profile), 300);
+      }
+    } catch (_err) {
+      setImportError(t('page.paperProfiles.importError'));
+      setImportPhase('error');
+    } finally {
+      importInFlightRef.current = false;
+    }
+  }
+
+  function startEditFromImport(p: { id: string; code: string; name: string }) {
+    const match = profiles.find((prof) => prof.id === p.id);
+    if (match) {
+      startEdit(match);
+    }
+  }
+
+  // Editable review values — seeded from analyze result
+  const importEditValues = useMemo(() => {
+    if (!importAnalyzeResult) {
+      return DEFAULT_FORM;
+    }
+    return {
+      code: '',
+      name: importFile?.name.replace(/\.[^.]+$/, '') ?? '',
+      widthMm: importAnalyzeResult.suggestedWidthMm,
+      heightMm: importAnalyzeResult.suggestedHeightMm,
+      marginTopMm: 0,
+      marginRightMm: 0,
+      marginBottomMm: 0,
+      marginLeftMm: 0,
+      dpi: importAnalyzeResult.suggestedDpi,
+      orientation: importAnalyzeResult.suggestedWidthMm >= importAnalyzeResult.suggestedHeightMm ? 'landscape' as const : 'portrait' as const,
+      unit: 'mm' as const,
+    };
+  }, [importAnalyzeResult, importFile]);
+
+  // Fetch artwork for a profile when editing
+  useEffect(() => {
+    if (!editingId) return;
+    if (editingId in importedArtworkMap) return;
+    let cancelled = false;
+    apiFetch<ArtworkData>('/v1/paper-profiles/' + encodingURIComponent(editingId) + '/artwork')
+      .then((data) => {
+        if (cancelled) return;
+        const objectUrl = URL.createObjectURL(
+          base64ToBlob(data.dataBase64, data.mimeType)
+        );
+        setImportedArtworkMap((prev) => ({ ...prev, [editingId]: { objectUrl } }));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setImportedArtworkMap((prev) => ({ ...prev, [editingId]: null }));
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId]);
+
+  function base64ToBlob(base64: string, mimeType: string): Blob {
+    const byteChars = atob(base64);
+    const byteNumbers = new Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) {
+      byteNumbers[i] = byteChars.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+  }
+
+  function encodingURIComponent(s: string): string {
+    return encodeURIComponent(s);
+  }
+
   function startEdit(p: PaperProfile) {
     setForm({
       code: p.code, name: p.name,
@@ -1028,6 +1339,9 @@ export default function PaperProfiles() {
   const previewWidthMm = visualGeometry.widthMm;
   const previewHeightMm = visualGeometry.heightMm;
   const scale = Math.min(maxPvSize / previewWidthMm, maxPvSize / previewHeightMm, 2);
+
+  // Artwork for the currently editing profile
+  const currentArtworkUrl: string | undefined = editingId ? (importedArtworkMap[editingId]?.objectUrl ?? undefined) : undefined;
 
   useEffect(() => {
     if (!previewOpen) return;
@@ -1252,6 +1566,7 @@ export default function PaperProfiles() {
           <IconButton icon="⛶" label={t('page.paperProfiles.fullPreview')} onClick={() => setPreviewOpen(true)} active />
           <IconButton icon="⚡" label={t('page.paperProfiles.toggleFields')} onClick={() => setShowDrawer(showDrawer === 'fields' ? null : 'fields')} active={showDrawer === 'fields'} />
           <IconButton icon="🎨" label={t('page.paperProfiles.toggleStyle')} onClick={() => setShowDrawer(showDrawer === 'appearance' ? null : 'appearance')} active={showDrawer === 'appearance'} />
+          <IconButton icon="📥" label={t('page.paperProfiles.importDesign')} onClick={openImportDrawer} active={showDrawer === 'import'} />
 
         </div>
       </header>
@@ -1495,6 +1810,8 @@ export default function PaperProfiles() {
                   showHorizontalGrid={showHorizontalGrid}
                   showAlignmentGuides={!!selectedFieldId}
                   gridIntervalMm={gridSpacingMm}
+                  artworkUrl={currentArtworkUrl}
+                  artworkFitMode={importFitMode}
                 />
               </RulerSheet>
             </div>
@@ -1599,6 +1916,8 @@ export default function PaperProfiles() {
                       showHorizontalGrid={showHorizontalGrid}
                       showAlignmentGuides={showAlignmentGuides}
                       gridIntervalMm={gridSpacingMm}
+                      artworkUrl={currentArtworkUrl}
+                      artworkFitMode={importFitMode}
                     />
                   </RulerSheet>
                   </div>
@@ -1799,6 +2118,214 @@ export default function PaperProfiles() {
               </div>
             </div>
           </div>
+          </div>
+        </>
+      )}
+
+      {/* ─── Import Design Drawer ─── */}
+      {showDrawer === 'import' && (
+        <>
+          <div className="pp-drawer-backdrop" onClick={closeDrawer} />
+          <div className="pp-drawer" role="dialog" aria-modal="true" aria-label={t('page.paperProfiles.importDesignTitle')} ref={drawerRef} tabIndex={-1}>
+            <div className="pp-drawer__header">
+              <span className="pp-drawer__title">{t('page.paperProfiles.importDesignTitle')}</span>
+              <button className="pp-tool-btn" style={{ width: 28, height: 26, fontSize: '0.8rem' }}
+                title={t('common.cancel')} aria-label={t('common.cancel')}
+                ref={drawerCloseButtonRef}
+                onClick={() => { resetImport(); closeDrawer(); }}>✕</button>
+            </div>
+            <div className="pp-drawer__body" aria-live="polite">
+              {/* ── Phase: select ── */}
+              {(importPhase === 'select' || importPhase === 'error') && (
+                <div>
+                  <h3 style={{ fontSize: '0.9rem', fontWeight: 600, margin: '0 0 0.5rem', color: '#1e1e2e' }}>
+                    {t('page.paperProfiles.importSelectTitle')}
+                  </h3>
+                  <p style={{ fontSize: '0.78rem', color: '#6b7280', margin: '0 0 1rem', lineHeight: 1.5 }}>
+                    {t('page.paperProfiles.importSelectHint')}
+                  </p>
+                  <label
+                    className="pp-import-dropzone"
+                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('pp-import-dropzone--dragover'); }}
+                    onDragLeave={(e) => { e.preventDefault(); e.currentTarget.classList.remove('pp-import-dropzone--dragover'); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.currentTarget.classList.remove('pp-import-dropzone--dragover');
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) handleImportFileSelected(file);
+                    }}
+                  >
+                    <span className="pp-import-dropzone__icon" aria-hidden="true">📁</span>
+                    <span className="pp-import-dropzone__text">{t('page.paperProfiles.importDropLabel')}</span>
+                    <input
+                      type="file"
+                      accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                      style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImportFileSelected(file);
+                        // Reset the input so the same file can be re-selected
+                        e.target.value = '';
+                      }}
+                      aria-label={t('page.paperProfiles.importBrowseLabel')}
+                    />
+                  </label>
+                  <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.7rem', color: '#6b7280' }}>
+                    <span>{t('page.paperProfiles.importMaxSize')}</span>
+                    <span>{t('page.paperProfiles.importAcceptedFormats')}</span>
+                  </div>
+
+                  {importError && (
+                    <div className="pp-import-error" role="alert" style={{ marginTop: '0.75rem', padding: '0.5rem 0.75rem', background: '#fee2e2', color: '#991b1b', borderRadius: 6, fontSize: '0.8rem' }}>
+                      {importError}
+                      <button
+                        type="button"
+                        onClick={() => { setImportPhase('select'); setImportError(null); }}
+                        style={{ marginLeft: '0.5rem', background: 'none', border: 'none', cursor: 'pointer', color: '#991b1b', textDecoration: 'underline', fontSize: '0.78rem' }}
+                      >
+                        {t('page.paperProfiles.importRetry')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Phase: analyzing ── */}
+              {importPhase === 'analyzing' && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 200, gap: '0.75rem' }}>
+                  <div className="pp-import-spinner" aria-hidden="true" />
+                  <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>{t('page.paperProfiles.importAnalyzing')}</span>
+                </div>
+              )}
+
+              {/* ── Phase: review ── */}
+              {importPhase === 'review' && importAnalyzeResult && (
+                <div>
+                  <h3 style={{ fontSize: '0.9rem', fontWeight: 600, margin: '0 0 0.75rem', color: '#1e1e2e' }}>
+                    {t('page.paperProfiles.importReviewTitle')}
+                  </h3>
+
+                  {/* Thumbnail */}
+                  {importObjectUrl && (
+                    <div style={{ textAlign: 'center', marginBottom: '0.75rem' }}>
+                      <img
+                        src={importObjectUrl}
+                        alt={t('page.paperProfiles.importThumbnail')}
+                        style={{ maxWidth: '100%', maxHeight: 180, borderRadius: 4, border: '1px solid #e5e7eb', objectFit: 'contain' }}
+                      />
+                    </div>
+                  )}
+
+                  {/* File info grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem', fontSize: '0.78rem' }}>
+                    <div><span style={{ color: '#6b7280' }}>{t('page.paperProfiles.importFileName')}</span><br /><strong>{importFile?.name}</strong></div>
+                    <div><span style={{ color: '#6b7280' }}>{t('page.paperProfiles.importFileSize')}</span><br /><strong>{(importAnalyzeResult.fileSizeBytes / 1024).toFixed(1)} KB</strong></div>
+                    <div><span style={{ color: '#6b7280' }}>{t('page.paperProfiles.importMimeType')}</span><br /><strong>{importAnalyzeResult.detectedMimeType}</strong></div>
+                    <div><span style={{ color: '#6b7280' }}>{t('page.paperProfiles.importPixelDimensions')}</span><br /><strong>{importAnalyzeResult.pixelWidth} × {importAnalyzeResult.pixelHeight} px</strong></div>
+                    <div><span style={{ color: '#6b7280' }}>{t('page.paperProfiles.importDetectedDpi')}</span><br /><strong>{importAnalyzeResult.detectedDpi !== null ? importAnalyzeResult.detectedDpi : '—'}</strong></div>
+                    <div><span style={{ color: '#6b7280' }}>{t('page.paperProfiles.importSuggestedDpi')}</span><br /><strong>{importAnalyzeResult.suggestedDpi} DPI</strong></div>
+                    <div><span style={{ color: '#6b7280' }}>{t('page.paperProfiles.importSuggestedDimensions')}</span><br /><strong>{importAnalyzeResult.suggestedWidthMm.toFixed(1)} × {importAnalyzeResult.suggestedHeightMm.toFixed(1)} mm</strong></div>
+                    <div></div>
+                  </div>
+
+                  {/* Warnings */}
+                  {importAnalyzeResult.detectedDpi === null && (
+                    <div style={{ padding: '0.35rem 0.5rem', background: '#fef3c7', color: '#92400e', borderRadius: 4, fontSize: '0.75rem', marginBottom: '0.5rem' }}>
+                      ⚠ {t('page.paperProfiles.importWarningNoDpi').replace('{dpi}', String(importAnalyzeResult.suggestedDpi))}
+                    </div>
+                  )}
+                  {isLowImportDpi(importAnalyzeResult.detectedDpi) && importAnalyzeResult.detectedDpi !== null && (
+                    <div style={{ padding: '0.35rem 0.5rem', background: '#fef3c7', color: '#92400e', borderRadius: 4, fontSize: '0.75rem', marginBottom: '0.5rem' }}>
+                      ⚠ {t('page.paperProfiles.importWarningLowDpi')
+                        .replace('{detected}', String(importAnalyzeResult.detectedDpi))
+                        .replace('{suggested}', String(importAnalyzeResult.suggestedDpi))}
+                    </div>
+                  )}
+
+                  {/* Editable fields */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                    <div>
+                      <label style={s.label}>{t('page.paperProfiles.nameLabel')} *</label>
+                      <input value={importEditValues.name} onChange={(e) => {/* read-only for now */}} style={s.input} readOnly />
+                    </div>
+                    <div>
+                      <label style={s.label}>{t('page.paperProfiles.codeLabel')}</label>
+                      <input value={importEditValues.code} style={s.input} readOnly placeholder={t('page.paperProfiles.codePlaceholder')} />
+                    </div>
+                    <div className="pp-form-grid pp-form-grid--two">
+                      <div>
+                        <label style={s.label}>{t('page.paperProfiles.width')} (mm)</label>
+                        <input type="number" value={importEditValues.widthMm} style={s.input} readOnly />
+                      </div>
+                      <div>
+                        <label style={s.label}>{t('page.paperProfiles.height')} (mm)</label>
+                        <input type="number" value={importEditValues.heightMm} style={s.input} readOnly />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={s.label}>{t('page.paperProfiles.dpi')}</label>
+                      <input type="number" value={importEditValues.dpi} style={s.input} readOnly />
+                    </div>
+                    <div>
+                      <label style={s.label}>{t('page.paperProfiles.orientation')}</label>
+                      <input value={importEditValues.orientation === 'portrait' ? t('page.paperProfiles.portrait') : t('page.paperProfiles.landscape')} style={s.input} readOnly />
+                    </div>
+                  </div>
+
+                  {/* Margins */}
+                  <div className="pp-form-grid pp-form-grid--four" style={{ marginBottom: '0.75rem' }}>
+                    {(['marginTopMm', 'marginRightMm', 'marginBottomMm', 'marginLeftMm'] as const).map((mk) => (
+                      <div key={mk}>
+                        <label style={s.label}>{t('page.paperProfiles.' + (mk === 'marginTopMm' ? 'top' : mk === 'marginRightMm' ? 'right' : mk === 'marginBottomMm' ? 'bottom' : 'left'))} (mm)</label>
+                        <input type="number" value={importEditValues[mk]} style={s.input} readOnly />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Fit mode */}
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={s.label}>{t('page.paperProfiles.importFitMode')}</label>
+                    <select value={importFitMode} onChange={(e) => setImportFitMode(e.target.value as ImportFitMode)} style={s.sel}>
+                      <option value="contain">{t('page.paperProfiles.importFitContain')}</option>
+                      <option value="cover">{t('page.paperProfiles.importFitCover')}</option>
+                      <option value="stretch">{t('page.paperProfiles.importFitStretch')}</option>
+                    </select>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button type="button" style={{ ...s.btnSmall }} onClick={() => { resetImport(); }}>
+                      {t('page.paperProfiles.importBack')}
+                    </button>
+                    <button
+                      type="button"
+                      className="pp-save-button"
+                      style={{ ...s.btn, flex: 1 }}
+                      onClick={() => void submitImport()}
+                      disabled={!importEditValues.name.trim()}
+                    >
+                      {t('page.paperProfiles.importButton')}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Phase: importing ── */}
+              {importPhase === 'importing' && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 200, gap: '0.75rem' }}>
+                  <div className="pp-import-spinner" aria-hidden="true" />
+                  <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>{t('page.paperProfiles.importImporting')}</span>
+                </div>
+              )}
+
+              {/* ── Phase: success ── */}
+              {importPhase === 'success' && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 200, gap: '0.75rem' }}>
+                  <span style={{ fontSize: '2rem' }} aria-hidden="true">✅</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#2d6a2d' }}>{t('page.paperProfiles.importSuccess')}</span>
+                </div>
+              )}
+            </div>
           </div>
         </>
       )}

@@ -19,7 +19,16 @@ import {
   resolveSelectionAfterDelete,
   stepPreviewZoom,
   validatePaperForm,
+  // Import helpers
+  isAcceptedImportMime,
+  isAcceptedImportExtension,
+  isValidImportFileSize,
+  isLowImportDpi,
+  nextImportPhase,
+  ACCEPTED_IMPORT_MIME_TYPES,
+  MAX_IMPORT_FILE_BYTES,
 } from '../pages/PaperProfiles.js';
+import type { ImportPhase, ImportFitMode } from '../pages/PaperProfiles.js';
 
 // ── Extracted pure functions from PaperProfiles.tsx ────────────────────
 
@@ -1319,5 +1328,189 @@ describe('isIconButtonActionBlocked', () => {
 
   it('returns true when disabled', () => {
     expect(isIconButtonActionBlocked(true)).toBe(true);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  Import Design: validation and state helpers
+// ══════════════════════════════════════════════════════════════════════
+
+describe('ACCEPTED_IMPORT_MIME_TYPES', () => {
+  it('includes only png and jpeg', () => {
+    expect(ACCEPTED_IMPORT_MIME_TYPES).toEqual(['image/png', 'image/jpeg']);
+  });
+});
+
+describe('MAX_IMPORT_FILE_BYTES', () => {
+  it('equals 8 MiB', () => {
+    expect(MAX_IMPORT_FILE_BYTES).toBe(8 * 1024 * 1024);
+  });
+});
+
+describe('isAcceptedImportMime', () => {
+  it('accepts image/png', () => {
+    expect(isAcceptedImportMime('image/png')).toBe(true);
+  });
+
+  it('accepts image/jpeg', () => {
+    expect(isAcceptedImportMime('image/jpeg')).toBe(true);
+  });
+
+  it('rejects image/svg+xml', () => {
+    expect(isAcceptedImportMime('image/svg+xml')).toBe(false);
+  });
+
+  it('rejects application/pdf', () => {
+    expect(isAcceptedImportMime('application/pdf')).toBe(false);
+  });
+
+  it('rejects empty string', () => {
+    expect(isAcceptedImportMime('')).toBe(false);
+  });
+
+  it('rejects image/gif', () => {
+    expect(isAcceptedImportMime('image/gif')).toBe(false);
+  });
+});
+
+describe('isAcceptedImportExtension', () => {
+  it('accepts .png', () => {
+    expect(isAcceptedImportExtension('design.png')).toBe(true);
+  });
+
+  it('accepts .jpg', () => {
+    expect(isAcceptedImportExtension('photo.jpg')).toBe(true);
+  });
+
+  it('accepts .jpeg', () => {
+    expect(isAcceptedImportExtension('scan.jpeg')).toBe(true);
+  });
+
+  it('accepts uppercase extensions', () => {
+    expect(isAcceptedImportExtension('design.PNG')).toBe(true);
+    expect(isAcceptedImportExtension('photo.JPEG')).toBe(true);
+  });
+
+  it('rejects .svg', () => {
+    expect(isAcceptedImportExtension('icon.svg')).toBe(false);
+  });
+
+  it('rejects .pdf', () => {
+    expect(isAcceptedImportExtension('doc.pdf')).toBe(false);
+  });
+
+  it('rejects .ai', () => {
+    expect(isAcceptedImportExtension('logo.ai')).toBe(false);
+  });
+
+  it('rejects no extension', () => {
+    expect(isAcceptedImportExtension('file')).toBe(false);
+  });
+
+  it('rejects empty string', () => {
+    expect(isAcceptedImportExtension('')).toBe(false);
+  });
+});
+
+describe('isValidImportFileSize', () => {
+  it('accepts 1 KB', () => {
+    expect(isValidImportFileSize(1024)).toBe(true);
+  });
+
+  it('accepts exactly 8 MiB', () => {
+    expect(isValidImportFileSize(MAX_IMPORT_FILE_BYTES)).toBe(true);
+  });
+
+  it('accepts 4 MiB', () => {
+    expect(isValidImportFileSize(4 * 1024 * 1024)).toBe(true);
+  });
+
+  it('rejects 0 bytes', () => {
+    expect(isValidImportFileSize(0)).toBe(false);
+  });
+
+  it('rejects negative size', () => {
+    expect(isValidImportFileSize(-1)).toBe(false);
+  });
+
+  it('rejects 8 MiB + 1 byte', () => {
+    expect(isValidImportFileSize(MAX_IMPORT_FILE_BYTES + 1)).toBe(false);
+  });
+
+  it('rejects 20 MiB', () => {
+    expect(isValidImportFileSize(20 * 1024 * 1024)).toBe(false);
+  });
+});
+
+describe('isLowImportDpi', () => {
+  it('returns true for DPI below 150', () => {
+    expect(isLowImportDpi(72)).toBe(true);
+    expect(isLowImportDpi(96)).toBe(true);
+    expect(isLowImportDpi(149)).toBe(true);
+  });
+
+  it('returns false for DPI >= 150', () => {
+    expect(isLowImportDpi(150)).toBe(false);
+    expect(isLowImportDpi(203)).toBe(false);
+    expect(isLowImportDpi(300)).toBe(false);
+  });
+
+  it('returns false for null DPI (no DPI detected)', () => {
+    expect(isLowImportDpi(null)).toBe(false);
+  });
+});
+
+describe('nextImportPhase', () => {
+  it('file-selected transitions to analyzing', () => {
+    expect(nextImportPhase('select', 'file-selected')).toBe('analyzing');
+    expect(nextImportPhase('error', 'file-selected')).toBe('analyzing');
+  });
+
+  it('analyzed transitions to review', () => {
+    expect(nextImportPhase('analyzing', 'analyzed')).toBe('review');
+  });
+
+  it('submitted transitions to importing', () => {
+    expect(nextImportPhase('review', 'submitted')).toBe('importing');
+  });
+
+  it('done transitions to success', () => {
+    expect(nextImportPhase('importing', 'done')).toBe('success');
+  });
+
+  it('fail transitions to error', () => {
+    expect(nextImportPhase('analyzing', 'fail')).toBe('error');
+    expect(nextImportPhase('importing', 'fail')).toBe('error');
+  });
+
+  it('reset transitions to select', () => {
+    expect(nextImportPhase('success', 'reset')).toBe('select');
+    expect(nextImportPhase('error', 'reset')).toBe('select');
+    expect(nextImportPhase('review', 'reset')).toBe('select');
+  });
+
+  it('review action keeps review phase', () => {
+    expect(nextImportPhase('review', 'review')).toBe('review');
+  });
+
+  it('select + reset stays select', () => {
+    expect(nextImportPhase('select', 'reset')).toBe('select');
+  });
+});
+
+describe('ImportFitMode mapping', () => {
+  it('all three fit modes are valid string literals', () => {
+    const modes: ImportFitMode[] = ['contain', 'cover', 'stretch'];
+    expect(modes).toHaveLength(3);
+    expect(modes[0]).toBe('contain');
+    expect(modes[1]).toBe('cover');
+    expect(modes[2]).toBe('stretch');
+  });
+});
+
+describe('ImportPhase states', () => {
+  it('all six phases are valid', () => {
+    const phases: ImportPhase[] = ['select', 'analyzing', 'review', 'importing', 'success', 'error'];
+    expect(phases).toHaveLength(6);
   });
 });

@@ -84,3 +84,19 @@ export async function apiDownload(path: string, filename: string): Promise<void>
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
+
+/** Safely read a File as a base64 data URI string. */
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('FileReader did not return a string'));
+      }
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('FileReader error'));
+    reader.readAsDataURL(file);
+  });
+}

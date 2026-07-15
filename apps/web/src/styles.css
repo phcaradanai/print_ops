@@ -1998,6 +1998,11 @@ body {
     flex-wrap: wrap;
   }
 
+  .pp-drawer {
+    width: 100%;
+    max-width: 100%;
+  }
+
   .pp-command-actions {
     width: 100%;
     justify-content: flex-end;
@@ -2010,5 +2015,67 @@ body {
     bottom: 0.75rem;
     grid-template-columns: 1fr;
     width: min(360px, calc(100vw - 1.5rem));
+  }
+}
+
+/* ---- paper profiles: import design drawer ---- */
+
+.pp-import-dropzone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 140px;
+  padding: 1.5rem;
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+  background: #fafafa;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.pp-import-dropzone:hover,
+.pp-import-dropzone:focus-within {
+  border-color: #1e66f5;
+  background: #f5f8ff;
+}
+
+.pp-import-dropzone--dragover {
+  border-color: #1e66f5;
+  background: #eef3ff;
+  border-style: solid;
+}
+
+.pp-import-dropzone__icon {
+  font-size: 2rem;
+  color: #6b7280;
+}
+
+.pp-import-dropzone__text {
+  font-size: 0.82rem;
+  color: #6b7280;
+  text-align: center;
+  user-select: none;
+}
+
+.pp-import-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #1e66f5;
+  border-radius: 50%;
+  animation: ppImportSpin 0.8s linear infinite;
+}
+
+@keyframes ppImportSpin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 390px) {
+  .pp-import-dropzone {
+    min-height: 110px;
+    padding: 1rem;
   }
 }
