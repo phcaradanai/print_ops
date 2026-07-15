@@ -360,6 +360,10 @@ const en: TranslationDict = {
   'page.paperProfiles.alignToColumn': 'Align to column',
   'page.paperProfiles.toggleAlignmentGuides': 'Toggle alignment guides',
   'page.paperProfiles.gridSpacing': 'Grid spacing (mm)',
+  'page.paperProfiles.zoomControls': 'Preview zoom controls',
+  'page.paperProfiles.zoomOut': 'Zoom out',
+  'page.paperProfiles.zoomIn': 'Zoom in',
+  'page.paperProfiles.resetZoom': 'Reset zoom to fit',
 
   // TemplateSandbox
   'page.sandbox.title': '🖨️ Template Sandbox',
@@ -804,6 +808,10 @@ const th: TranslationDict = {
   'page.paperProfiles.alignToColumn': 'จัดแนวคอลัมน์',
   'page.paperProfiles.toggleAlignmentGuides': 'เปิด/ปิดเส้นนำแนว',
   'page.paperProfiles.gridSpacing': 'ระยะห่างตาราง (มม.)',
+  'page.paperProfiles.zoomControls': 'เครื่องมือซูมตัวอย่าง',
+  'page.paperProfiles.zoomOut': 'ย่อภาพตัวอย่าง',
+  'page.paperProfiles.zoomIn': 'ขยายภาพตัวอย่าง',
+  'page.paperProfiles.resetZoom': 'คืนค่าซูมให้พอดีจอ',
 
   // TemplateSandbox
   'page.sandbox.title': '🖨️ เทมเพลตแซนด์บ็อกซ์',

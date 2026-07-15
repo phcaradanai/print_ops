@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   clampGridSpacing as clampGridSpacingSource,
+  clampPreviewZoom,
   getVisualPaperGeometry,
   mapPrintablePointToVisual,
   mapVisualPointToPrintable,
+  stepPreviewZoom,
 } from '../pages/PaperProfiles.js';
 
 // ── Extracted pure functions from PaperProfiles.tsx ────────────────────
@@ -791,6 +793,22 @@ describe('PaperProfiles visual coordinate model', () => {
     expect(clampGridSpacingSource(0)).toBe(1);
     expect(clampGridSpacingSource(10.6)).toBe(11);
     expect(clampGridSpacingSource(120)).toBe(100);
+  });
+});
+
+describe('PaperProfiles preview zoom', () => {
+  it('clamps zoom to the supported editing range', () => {
+    expect(clampPreviewZoom(Number.NaN)).toBe(1);
+    expect(clampPreviewZoom(0.1)).toBe(0.5);
+    expect(clampPreviewZoom(2.345)).toBe(2.35);
+    expect(clampPreviewZoom(8)).toBe(4);
+  });
+
+  it('steps zoom in and out without accumulating floating point drift', () => {
+    expect(stepPreviewZoom(1, 1)).toBe(1.25);
+    expect(stepPreviewZoom(1, -1)).toBe(0.75);
+    expect(stepPreviewZoom(0.5, -1)).toBe(0.5);
+    expect(stepPreviewZoom(4, 1)).toBe(4);
   });
 });
 

@@ -101,6 +101,15 @@ export function clampGridSpacing(value: number): number {
   return Math.max(1, Math.min(100, Math.round(value)));
 }
 
+export function clampPreviewZoom(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(0.5, Math.min(4, Math.round(value * 100) / 100));
+}
+
+export function stepPreviewZoom(value: number, direction: -1 | 1): number {
+  return clampPreviewZoom(value + direction * 0.25);
+}
+
 // ── Extended UI-only options (not persisted to backend yet) ────────
 interface UxOptions {
   displayUnit: 'mm' | 'cm' | 'px';
@@ -599,6 +608,7 @@ export default function PaperProfiles() {
   const [showRulers, setShowRulers] = useState(false);
   const [showAlignmentGuides, setShowAlignmentGuides] = useState(false);
   const [gridSpacingMm, setGridSpacingMm] = useState(10); // 1–100 mm, default 10
+  const [previewZoom, setPreviewZoom] = useState(1);
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
   const [showDrawer, setShowDrawer] = useState<'fields' | 'appearance' | null>(null);
   const [stickyNote, setStickyNote] = useState<string | null>(null);
@@ -797,7 +807,7 @@ export default function PaperProfiles() {
     return () => observer.disconnect();
   }, [previewOpen]);
 
-  const modalScale = useMemo(() => {
+  const fitModalScale = useMemo(() => {
     const { width: stageW, height: stageH } = modalStageSize;
     if (stageW === 0 || stageH === 0) {
       return Math.max(0.35, Math.min(
@@ -812,6 +822,8 @@ export default function PaperProfiles() {
     const scale = Math.min(availableW / previewWidthMm, availableH / previewHeightMm);
     return Math.max(0.5, Math.min(20, scale));
   }, [modalStageSize, previewWidthMm, previewHeightMm, viewport.width, viewport.height]);
+
+  const modalScale = Math.max(0.25, Math.min(20, fitModalScale * previewZoom));
 
   useEffect(() => {
     if (!draggingFieldId) return;
@@ -1185,6 +1197,19 @@ export default function PaperProfiles() {
                 <p>{t('page.paperProfiles.dragHint')}</p>
               </div>
               <div className="paper-preview-modal__toolstrip" role="toolbar" aria-label="Preview tools">
+                <div className="paper-preview-modal__zoom-control" role="group" aria-label={t('page.paperProfiles.zoomControls')}>
+                  <IconButton icon="−" label={t('page.paperProfiles.zoomOut')} onClick={() => setPreviewZoom((value) => stepPreviewZoom(value, -1))} />
+                  <button
+                    type="button"
+                    className="paper-preview-modal__zoom-readout"
+                    onClick={() => setPreviewZoom(1)}
+                    title={t('page.paperProfiles.resetZoom')}
+                    aria-label={t('page.paperProfiles.resetZoom')}
+                  >
+                    {Math.round(previewZoom * 100)}%
+                  </button>
+                  <IconButton icon="+" label={t('page.paperProfiles.zoomIn')} onClick={() => setPreviewZoom((value) => stepPreviewZoom(value, 1))} />
+                </div>
                 <IconButton icon="⫶" label={t('page.paperProfiles.toggleVerticalGrid')} onClick={() => setShowVerticalGrid(!showVerticalGrid)} active={showVerticalGrid} />
                 <IconButton icon="≡" label={t('page.paperProfiles.toggleHorizontalGrid')} onClick={() => setShowHorizontalGrid(!showHorizontalGrid)} active={showHorizontalGrid} />
                 <IconButton icon="📏" label={t('page.paperProfiles.toggleRulers')} onClick={() => setShowRulers(!showRulers)} active={showRulers} />
