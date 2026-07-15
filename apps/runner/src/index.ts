@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { AdapterRegistry, FakePrinterAdapter } from '@printerops/adapters';
 import { consoleLogger } from '@printerops/shared';
 import { loadConfig } from './config.js';

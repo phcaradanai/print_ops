@@ -13,7 +13,8 @@
   "dependencies": {
     "@printerops/adapters": "*",
     "@printerops/domain": "*",
-    "@printerops/shared": "*"
+    "@printerops/shared": "*",
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
