@@ -1,0 +1,24 @@
+# PrintOps Runner (Go) — production image
+# Build context: print_ops/ root
+FROM golang:1.26-alpine AS build
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /src
+COPY apps/runner-go/go.mod apps/runner-go/go.sum ./
+RUN go mod download
+
+COPY apps/runner-go ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /bin/printops-runner ./cmd/printops-runner
+
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates tzdata && \
+    adduser -D -H -h /app printops
+
+COPY --from=build /bin/printops-runner /app/printops-runner
+
+WORKDIR /app
+USER printops
+
+CMD ["/app/printops-runner", "run"]
