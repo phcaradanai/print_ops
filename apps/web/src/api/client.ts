@@ -46,7 +46,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 }
 
 export async function login(email: string, password: string): Promise<SessionUser> {
-  const url = apiBase() + '/api/auth/login';
+  const url = apiBase() + '/auth/login';
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
