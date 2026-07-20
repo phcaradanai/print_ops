@@ -22,15 +22,17 @@ export function apiBase(): string {
   return '';
 }
 export function healthUrl(): string {
-  return apiBase() + '/api/health';
+  return apiBase() + '/health';
 }
 
 function apiUrl(path: string): string {
-  // Dev: Vite proxy strips leading /api → double prefix needed for v1 paths
-  // Prod (.exe): same-origin, no proxy → single prefix
-  const v1Prefix = import.meta.env.DEV ? '/api/api' : '/api';
-  const rel = path.startsWith('/v1/') ? v1Prefix + path : '/api' + path;
-  return apiBase() + rel;
+  // v1 routes: /api/v1/... (dev proxy strips /api, so double prefix needed)
+  if (path.startsWith('/v1/')) {
+    const prefix = import.meta.env.DEV ? '/api/api' : '/api';
+    return apiBase() + prefix + path;
+  }
+  // Legacy routes: /jobs, /me, /runners, etc. — no prefix in production
+  return apiBase() + path;
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
