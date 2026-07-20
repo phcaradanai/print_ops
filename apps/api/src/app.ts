@@ -362,19 +362,36 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   });
 
   // Serve static files (JS, CSS, assets) for unmatched GET/HEAD
+  const mimeTypes: Record<string, string> = {
+    '.js': 'text/javascript',
+    '.mjs': 'text/javascript',
+    '.css': 'text/css',
+    '.html': 'text/html',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+  };
   app.setNotFoundHandler(async (req, reply) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return reply.status(404).send({ error: 'Not found' });
     }
     const urlPath = new URL(req.url, 'http://x').pathname;
     const tryPath = urlPath.startsWith('/') ? urlPath.slice(1) : urlPath;
+    const ext = tryPath.includes('.') ? '.' + tryPath.split('.').pop()!.toLowerCase() : '';
 
     for (const root of staticRoots) {
-      try { return reply.send(readFileSync(join(root, tryPath))); } catch {}
+      try {
+        const buf = readFileSync(join(root, tryPath));
+        if (mimeTypes[ext]) reply.type(mimeTypes[ext]);
+        return reply.send(buf);
+      } catch {}
     }
     // SPA fallback
     for (const root of staticRoots) {
-      try { return reply.send(readFileSync(join(root, 'index.html'))); } catch {}
+      try { return reply.type('text/html').send(readFileSync(join(root, 'index.html'))); } catch {}
     }
     return reply.status(404).send({ error: 'Not found' });
   });
