@@ -16,22 +16,21 @@ function authHeaders(): HeadersInit {
     : { 'Content-Type': 'application/json' };
 }
 
-// API base: dev=Vite-proxy, prod/Tauri=http://127.0.0.1:3001
+// API base — empty string means same-origin relative (dev Vite proxy or prod .exe)
 export function apiBase(): string {
-  if (import.meta.env.DEV) return '';
   if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE as string;
-  return 'http://127.0.0.1:3001';
+  return '';
 }
 export function healthUrl(): string {
-  var base = apiBase();
-  return base ? base + '/health' : '/api/health';
+  return apiBase() + '/api/health';
 }
 
-
 function apiUrl(path: string): string {
-  var base = apiBase();
-  var rel = path.startsWith('/v1/') ? '/api/api' + path : '/api' + path;
-  return base ? base + rel.replace(/^\/api/, '') : rel;
+  // Dev: Vite proxy strips leading /api → double prefix needed for v1 paths
+  // Prod (.exe): same-origin, no proxy → single prefix
+  const v1Prefix = import.meta.env.DEV ? '/api/api' : '/api';
+  const rel = path.startsWith('/v1/') ? v1Prefix + path : '/api' + path;
+  return apiBase() + rel;
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -47,8 +46,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 }
 
 export async function login(email: string, password: string): Promise<SessionUser> {
-  var base = apiBase();
-  var url = base ? base + '/auth/login' : '/api/auth/login';
+  const url = apiBase() + '/api/auth/login';
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -37,7 +37,7 @@ type Job struct {
 	Payload              json.RawMessage `json:"payload,omitempty"`
 	RenderedPrintPayload string          `json:"renderedPrintPayload,omitempty"`
 	MimeType             string          `json:"mimeType,omitempty"`
-	Priority             string          `json:"priority,omitempty"`
+	Priority             int             `json:"priority,omitempty"`
 	SourceSystem         string          `json:"source_system,omitempty"`
 	TraceID              string          `json:"trace_id,omitempty"`
 	CreatedAt            time.Time       `json:"createdAt,omitempty"`

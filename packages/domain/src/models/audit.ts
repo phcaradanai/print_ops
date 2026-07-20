@@ -35,7 +35,11 @@ export type AuditAction =
   | 'webhook_policy.created'
   | 'webhook_policy.updated'
   | 'webhook.intake.accepted'
-  | 'sandbox.test_print';
+  | 'sandbox.test_print'
+  | 'sandbox.run'
+  | 'sandbox.batch_run'
+  | 'connectivity.check'
+  | 'connectivity.report';
 
 export interface AuditLog {
   id: string;

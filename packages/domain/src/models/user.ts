@@ -33,7 +33,8 @@ export type Permission =
   | 'webhook:disable'
   | 'sandbox:access'
   | 'sandbox:render-preview'
-  | 'sandbox:send-test-print';
+  | 'sandbox:send-test-print'
+  | 'sandbox:run';
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   OWNER: [
@@ -45,7 +46,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'template:read', 'template:create', 'template:update', 'template:preview', 'template:publish', 'template:delete',
     'paper-profile:read', 'paper-profile:create', 'paper-profile:update', 'paper-profile:delete',
     'webhook:read', 'webhook:create', 'webhook:update', 'webhook:test', 'webhook:disable',
-    'sandbox:access', 'sandbox:render-preview', 'sandbox:send-test-print',
+    'sandbox:access', 'sandbox:render-preview', 'sandbox:send-test-print', 'sandbox:run',
   ],
   ADMIN: [
     'printer:read', 'printer:create', 'printer:update', 'printer:control',
@@ -55,6 +56,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'template:read', 'template:create', 'template:update', 'template:preview', 'template:publish',
     'paper-profile:read', 'paper-profile:create', 'paper-profile:update',
     'webhook:read', 'webhook:create', 'webhook:update', 'webhook:test', 'webhook:disable',
+    'sandbox:run',
   ],
   OPERATOR: [
     'printer:read', 'printer:control',

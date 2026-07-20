@@ -13,7 +13,7 @@
     "windows": [
       {
         "title": "PrinterOps",
-        "url": "http://127.0.0.1:3001",
+        "url": "http://127.0.0.1:31415",
         "width": 1280,
         "height": 800,
         "resizable": true,
@@ -48,7 +48,8 @@
       "resources/server.exe",
       "resources/static",
       "resources/sql-wasm.wasm",
-      "resources/printops-runner.exe"
+      "resources/printops-runner.exe",
+      "resources/launcher.bat"
     ],
     "externalBin": []
   }

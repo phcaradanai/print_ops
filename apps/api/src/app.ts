@@ -55,6 +55,8 @@ import { SyncPrinterDiscoveryService } from './services/sync-printer-discovery.s
 import { RegisterDiscoveredPrinterService } from './services/register-discovered-printer.service.js';
 import { DynamicIntakeService } from './services/dynamic-intake.service.js';
 import { ImportPaperProfileService } from './services/import-paper-profile.service.js';
+import { SandboxService } from './services/sandbox.service.js';
+import { PrinterConnectivityService } from './services/printer-connectivity.service.js';
 
 import { authRoutes } from './routes/auth.routes.js';
 import { printerRoutes } from './routes/printer.routes.js';
@@ -70,12 +72,16 @@ import { v1RunnerJobRoutes } from './routes/v1/runner-jobs.routes.js';
 import { templateRoutes } from './routes/v1/template.routes.js';
 import { webhookRoutes } from './routes/v1/webhook.routes.js';
 import { paperProfileImportRoutes } from './routes/v1/paper-profile-imports.routes.js';
-import { join, dirname, extname } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { sandboxRoutes } from './routes/v1/sandbox.routes.js';
+import { join, dirname } from 'node:path';
+import { readFileSync } from 'node:fs';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
   process.env['PRINTOPS_DEV_API_KEY'] ?? 'printops-dev-apikey-2026';
+
+// __dirname is available in the CJS bundle produced by esbuild/pkg
+declare var __dirname: string;
 
 export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const app = Fastify({
@@ -159,6 +165,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     importedDesignRepo,
     auditRepo,
   );
+
+  const sandboxSvc = new SandboxService(templateRepo, paperRepo, templateRenderer, createJob);
+  const connectivitySvc = new PrinterConnectivityService(printerRepo, registry);
 
   // API key middleware
   const apiKeyHook = buildApiKeyAuth(serviceAccountRepo);
@@ -330,45 +339,45 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
     await v1RunnerJobRoutes(v1, { jobs: jobRepo, printers: printerRepo, traces: traceRepo, audit: auditRepo, events: eventBus });
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
+    await sandboxRoutes(v1, { sandbox: sandboxSvc, connectivity: connectivitySvc, audit: auditRepo });
     await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob });
     await paperProfileImportRoutes(v1, { importService: importPaperProfile });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
-  // Serve static frontend (desktop app loads from API URL for same-origin)
-  const staticDir = process.env['STATIC_DIR'] ?? join(dirname(process.execPath), 'static');
-  const indexHtml = join(staticDir, 'index.html');
-  if (existsSync(indexHtml)) {
-    const mimeTypes: Record<string,string> = {
-      '.html': 'text/html; charset=utf-8',
-      '.js': 'application/javascript; charset=utf-8',
-      '.css': 'text/css; charset=utf-8',
-      '.json': 'application/json; charset=utf-8',
-      '.svg': 'image/svg+xml',
-      '.png': 'image/png',
-      '.ico': 'image/x-icon',
-      '.woff2': 'font/woff2',
-    };
-    // Use setNotFoundHandler — app.get('*') at root level matches BEFORE
-    // child plugin routes in Fastify, breaking all API GET requests.
-    app.setNotFoundHandler(async (req, reply) => {
-      if (req.method !== 'GET' && req.method !== 'HEAD') {
-        return reply.status(404).send({ error: 'Not found' });
-      }
-      const urlPath = new URL(req.url, 'http://x').pathname;
-      let filePath = join(staticDir, urlPath === '/' ? 'index.html' : urlPath);
-      if (!existsSync(filePath) || !filePath.startsWith(staticDir)) {
-        filePath = indexHtml;
-      }
-      const ext = (extname(filePath) || '.html').toLowerCase();
-      const mime = mimeTypes[ext] || 'application/octet-stream';
-      try {
-        const buf = readFileSync(filePath);
-        return reply.header('content-type', mime).send(buf);
-      } catch {
-        return reply.status(404).send({ error: 'Not found' });
-      }
-    });
+  // Landing page — serve Vite index.html if available, otherwise inline UI
+  const staticRoots = [
+    join(dirname(process.execPath), 'static'),          // next to .exe
+    join(process.cwd(), '..', 'web', 'dist'),            // dev mode (tsx)
+  ];
+  if (typeof __dirname === 'string') {
+    staticRoots.unshift(join(__dirname, 'static'));      // pkg snapshot
   }
+
+  app.get('/', async (_req, reply) => {
+    for (const root of staticRoots) {
+      try { return reply.type('text/html').send(readFileSync(join(root, 'index.html'))); } catch {}
+    }
+    // Fallback inline UI
+    return reply.type('text/html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PrinterOps</title><style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#1e1e2e;color:#cdd6f4}a{color:#89b4fa}</style></head><body><div style="text-align:center;max-width:400px"><h1 style="font-size:2rem;margin-bottom:.5rem">🖨️ PrinterOps</h1><p style="color:#a6adc8">Print Gateway — API + Dashboard</p><div style="margin:2rem 0"><p>✅ API running on port ${process.env['PORT'] ?? 3001}</p><p>📋 <a href="/api/v1/templates">Templates</a> · <a href="/api/v1/sandbox/run">Sandbox</a></p><p>🔌 <a href="/api/v1/connectivity/report">Connectivity Report</a></p></div></div></body></html>`);
+  });
+
+  // Serve static files (JS, CSS, assets) for unmatched GET/HEAD
+  app.setNotFoundHandler(async (req, reply) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return reply.status(404).send({ error: 'Not found' });
+    }
+    const urlPath = new URL(req.url, 'http://x').pathname;
+    const tryPath = urlPath.startsWith('/') ? urlPath.slice(1) : urlPath;
+
+    for (const root of staticRoots) {
+      try { return reply.send(readFileSync(join(root, tryPath))); } catch {}
+    }
+    // SPA fallback
+    for (const root of staticRoots) {
+      try { return reply.send(readFileSync(join(root, 'index.html'))); } catch {}
+    }
+    return reply.status(404).send({ error: 'Not found' });
+  });
 
   return { app, executeJob, queue, jobRepo, printerRepo, serviceAccountRepo, DEV_API_KEY: devKey };
 }
