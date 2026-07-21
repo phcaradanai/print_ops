@@ -184,8 +184,10 @@ export class SqliteJobRepository implements JobRepositoryPort {
     const existing = await this.findById(id);
     if (!existing) throw new Error(`Job ${id} not found`);
 
-    const { fields, values } = buildJobPatch(patch);
-    if (fields.length > 0) {
+    const { fields, values, callerFieldCount } = buildJobPatch(patch);
+    // A patch the caller actually asked nothing of is a no-op: it must not bump
+    // updated_at (which buildJobPatch always appends) and must not issue a write.
+    if (callerFieldCount > 0) {
       getDb().run(`UPDATE jobs SET ${fields.join(', ')} WHERE id = ?`, [...values, id as SqlValue]);
     }
 
@@ -193,8 +195,13 @@ export class SqliteJobRepository implements JobRepositoryPort {
   }
 
   async claim(id: string, fromStatuses: JobStatus[], patch: Partial<Job>): Promise<Job | undefined> {
-    const { fields, values } = buildJobPatch(patch);
-    if (fields.length === 0) return undefined;
+    const { fields, values, callerFieldCount } = buildJobPatch(patch);
+    // An empty patch would otherwise issue UPDATE ... SET updated_at=? WHERE
+    // id=? AND status IN (...), match the row, report rowsModified===1, and
+    // hand back a "successfully claimed" job that changed no status. That is
+    // not a claim. Guarding on the caller's own field count (updated_at is
+    // always appended, so fields.length alone would never be 0) closes that.
+    if (callerFieldCount === 0) return undefined;
 
     // One conditional write. A caller that reads the status first and updates
     // second leaves a window in which a second caller sees the same status —
@@ -214,8 +221,12 @@ export class SqliteJobRepository implements JobRepositoryPort {
 /**
  * Turn a job patch into a SET clause plus its bound values, so `update` and
  * `claim` cannot drift apart on which columns they know how to write.
+ *
+ * `callerFieldCount` counts only the fields the caller supplied, NOT the
+ * `updated_at` this helper always appends. Callers guard on it to tell a real
+ * no-op patch from one that merely touches updated_at.
  */
-function buildJobPatch(patch: Partial<Job>): { fields: string[]; values: SqlValue[] } {
+function buildJobPatch(patch: Partial<Job>): { fields: string[]; values: SqlValue[]; callerFieldCount: number } {
   const now = dateStr(new Date());
   const fields: string[] = [];
   const values: SqlValue[] = [];
@@ -270,7 +281,11 @@ function buildJobPatch(patch: Partial<Job>): { fields: string[]; values: SqlValu
     if ('adapterUsed' in patch) add('adapter_used', patch.adapterUsed ?? null);
     if ('metadata' in patch) add('metadata', toJson(patch.metadata ?? {}));
 
+    // Capture how many columns the caller asked to change BEFORE updated_at is
+    // appended. Callers guard on this (not fields.length) so a truly empty
+    // patch stays a no-op instead of silently bumping updated_at.
+    const callerFieldCount = fields.length;
     add('updated_at', now);
 
-  return { fields, values };
+  return { fields, values, callerFieldCount };
 }
