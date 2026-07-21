@@ -527,6 +527,12 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     let anyReadSucceeded = false;
 
     while (Date.now() < deadline) {
+      // LOW-6 note: readDeviceState already returns pageCount, so a future
+      // refactor could drop the separate readPageCount call and halve the SNMP
+      // probes per poll. Not done here because the test harness keys
+      // page-count progression off the readPageCount stub (deviceStates only
+      // carries the blocking/fault view), and collapsing the two would force a
+      // harness rewrite across every scenario for a latency-only gain.
       const pages = await this.deps.readPageCount(snmp.host, { community: snmp.community });
       if (pages !== undefined) {
         anyReadSucceeded = true;
@@ -655,23 +661,26 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
   }
 
   /** Get current print jobs for a printer. */
-  private async getPrintJobs(printerName: string): Promise<Array<{ id: string; status: string }>> {
+  private async getPrintJobs(printerName: string): Promise<Array<{ id: string; status: string; submittedAt?: Date }>> {
     if (!this.deps.isWindows) return [];
     try {
       const safeName = printerName.replace(/'/g, "''");
       // JobStatus is a flags enum — ConvertTo-Json would emit it as a number
       // (e.g. 4224), so cast it to its text form ("Printing, Retained") here.
+      // SubmittedTime is carried through so listQueue can report when a job
+      // actually entered the queue instead of faking "just now" (LOW-1).
       const stdout = await this.deps.runPowerShell(
-        `Get-PrintJob -PrinterName '${safeName}' -ErrorAction SilentlyContinue | Select-Object Id,@{Name='JobStatus';Expression={[string]$_.JobStatus}} | ConvertTo-Json -Compress`,
+        `Get-PrintJob -PrinterName '${safeName}' -ErrorAction SilentlyContinue | Select-Object Id,@{Name='JobStatus';Expression={[string]$_.JobStatus}},SubmittedTime | ConvertTo-Json -Compress`,
         5000,
       );
       const raw = stdout.trim();
       if (!raw) return [];
       const arr = JSON.parse(raw);
       const items = Array.isArray(arr) ? arr : [arr];
-      return items.map((j: { Id?: number; JobStatus?: unknown }) => ({
+      return items.map((j: { Id?: number; JobStatus?: unknown; SubmittedTime?: string }) => ({
         id: String(j.Id ?? ''),
         status: statusText(j.JobStatus),
+        submittedAt: j.SubmittedTime ? new Date(j.SubmittedTime) : undefined,
       }));
     } catch {
       return [];
@@ -772,10 +781,14 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     if (!name || !this.deps.isWindows) return [];
     const jobs = await this.getPrintJobs(name);
     return jobs.map((j, idx) => ({
-      jobId: j.id,
+      // Fall back to the queue position rather than '' so an id-less row does
+      // not collide with every other id-less row on the empty string.
+      jobId: j.id !== '' ? j.id : `pos-${idx}`,
       status: j.status,
       position: idx,
-      submittedAt: new Date(),
+      // Use the real queue time when the spooler provides it, not a fabricated
+      // "just now" — a job stuck since yesterday used to read as fresh (LOW-1).
+      submittedAt: j.submittedAt ?? new Date(),
     }));
   }
 

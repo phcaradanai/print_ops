@@ -49,24 +49,32 @@ export async function v1RunnerJobRoutes(
     // already implements its own interval/backoff.
     void body.wait_ms;
 
-    const queued = await deps.jobs.findAll({ status: 'QUEUED' as JobStatus, limit: 1 });
-    if (queued.length === 0) {
+    // Fetch a handful, not one: with two runners and a full queue, losing the
+    // claim race on the single candidate used to waste a whole poll interval.
+    // Try each until a claim sticks (LOW-7).
+    const candidates = await deps.jobs.findAll({ status: 'QUEUED' as JobStatus, limit: 5 });
+    if (candidates.length === 0) {
       return reply.status(200).send({ job: null });
     }
 
-    const job = queued[0]!;
-    const now = new Date();
-
-    // Claim: QUEUED -> DISPATCHED, conditional on the job still being QUEUED.
-    // Losing the race is a normal idle poll, not an error.
-    const queueWaitMs = job.queuedAt ? now.getTime() - job.queuedAt.getTime() : undefined;
-    const claimed = await deps.jobs.claim(job.id, ['QUEUED' as JobStatus], {
-      status: 'DISPATCHED',
-      dispatchedAt: now,
-      runnerReceivedAt: now,
-      runnerId,
-      latency: { ...job.latency, queueWaitMs },
-    });
+    let claimed: Job | undefined;
+    for (const candidate of candidates) {
+      const now = new Date();
+      // Claim: QUEUED -> DISPATCHED, conditional on the job still being QUEUED.
+      // Losing the race is a normal idle poll, not an error.
+      const queueWaitMs = candidate.queuedAt ? now.getTime() - candidate.queuedAt.getTime() : undefined;
+      const got = await deps.jobs.claim(candidate.id, ['QUEUED' as JobStatus], {
+        status: 'DISPATCHED',
+        dispatchedAt: now,
+        runnerReceivedAt: now,
+        runnerId,
+        latency: { ...candidate.latency, queueWaitMs },
+      });
+      if (got) {
+        claimed = got;
+        break;
+      }
+    }
     if (!claimed) {
       return reply.status(200).send({ job: null });
     }
@@ -74,12 +82,12 @@ export async function v1RunnerJobRoutes(
     deps.events.publish({
       eventId: generateId(),
       eventType: 'JobDispatched',
-      traceId: job.traceId,
-      correlationId: job.correlationId,
-      occurredAt: now,
-      jobId: job.id,
+      traceId: claimed.traceId,
+      correlationId: claimed.correlationId,
+      occurredAt: claimed.dispatchedAt ?? new Date(),
+      jobId: claimed.id,
       runnerId,
-      printerId: job.printerId,
+      printerId: claimed.printerId,
     });
 
     // Include printer protocol + connectionUri so the runner can select the
@@ -197,7 +205,22 @@ export async function v1RunnerJobRoutes(
       patch.errorMessage = body.safe_message ?? 'runner could not verify the print';
     }
 
-    const updated = await deps.jobs.update(jobId, patch);
+    // Conditional write: only apply a terminal result while the job is still
+    // DISPATCHED/PRINTING. A duplicate or late result POST (runner crash +
+    // restart, double-report) used to land via update() and could overwrite a
+    // real SUCCESS with a stale FAILED at any time. claim() returning
+    // undefined means the job already resolved — return 409 so the runner logs
+    // it instead of silently double-writing (LOW-5).
+    const updated = await deps.jobs.claim(jobId, ['DISPATCHED', 'PRINTING'], patch);
+    if (!updated) {
+      const current = await deps.jobs.findById(jobId);
+      return reply.status(409).send({
+        ok: false,
+        conflict: true,
+        status: current?.status ?? 'UNKNOWN',
+        message: `Job ${jobId} is no longer DISPATCHED/PRINTING (now ${current?.status ?? 'unknown'}); result not applied`,
+      });
+    }
 
     const trace = await deps.traces.findByJobId(jobId);
     if (trace) {

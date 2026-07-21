@@ -340,7 +340,12 @@ export class ExecuteJobService {
       errorMessage,
     });
 
-    await this.queue.nack(job.id);
+    // Terminal failures (FAILED/UNVERIFIED) are done — ack, not nack. Nothing
+    // dequeues today, so nack only ever accumulated inflight entries and grew
+    // size()/getMetrics() without bound; the day a drainer is wired up, nack
+    // here would re-dispatch a print that may already have produced a page
+    // (LOW-4). A retry, when one exists, must be an explicit new job.
+    await this.queue.ack(job.id);
     return failed;
   }
 }

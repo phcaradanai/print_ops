@@ -33,6 +33,10 @@ export default function Dashboard() {
   }, []);
 
   const failed = jobs.filter((j) => j.status === 'FAILED').length;
+  // UNVERIFIED is a terminal status an operator must act on (paper may have
+  // come out — do NOT blind-retry). Without a tile it appeared in no counter,
+  // so the status that most needs eyes was invisible on the dashboard (LOW-3).
+  const unverified = jobs.filter((j) => j.status === 'UNVERIFIED').length;
   const printing = jobs.filter((j) => ['DISPATCHED', 'PRINTING'].includes(j.status)).length;
   const queued = jobs.filter((j) => j.status === 'QUEUED').length;
   const onlineRunners = runners.filter((r) => r.status === 'online').length;
@@ -47,10 +51,11 @@ export default function Dashboard() {
       <h1 style={{ marginBottom: '1.5rem' }}>{t('page.dashboard.title')}</h1>
       {loading ? <p style={{ color: '#888' }}>{t('common.loading')}</p> : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
             <StatCard label={t('page.dashboard.activePrinters')} value={activePrinters} />
             <StatCard label={t('page.dashboard.runnersOnline')} value={onlineRunners} color="#40a02b" />
             <StatCard label={t('page.dashboard.jobsQueued')} value={queued} color="#1e66f5" />
+            <StatCard label={t('page.dashboard.unverifiedJobs')} value={unverified} color={unverified > 0 ? '#f5c97b' : undefined} />
             <StatCard label={t('page.dashboard.failedJobs')} value={failed} color={failed > 0 ? '#f38ba8' : undefined} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginTop: '1rem' }}>
