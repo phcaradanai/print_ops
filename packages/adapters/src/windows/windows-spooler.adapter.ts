@@ -231,7 +231,9 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     }
 
     // --- Check printer is actually online before sending ---
-    const status = await this.getPrinterStatus(printerName);
+    // Pass the job/printer metadata so the device probe honours snmpHost /
+    // snmpCommunity / snmpEnabled (MEDIUM-7) — same path as send+verify.
+    const status = await this.getPrinterStatus(printerName, command.metadata);
     if (status.code === 'offline') {
       return {
         success: false,
@@ -680,17 +682,21 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
    * Device-level status over SNMP, or undefined when the printer does not
    * answer. Reports what the hardware says — paper out, jam, cover open —
    * which the spooler does not surface.
+   *
+   * Goes through resolveSnmpTarget so it honours the same snmpHost /
+   * snmpCommunity / snmpEnabled metadata the send+verify path uses (MEDIUM-7).
+   * Two SNMP paths that disagree on configuration is how a printer set to
+   * community "private" gets probed with "public", times out, and burns 2s on
+   * every pre-flight for no reason.
    */
-  private async getDeviceStatus(printerName: string): Promise<PrinterStatus | undefined> {
-    let host: string | undefined;
-    try {
-      host = await this.deps.resolveSnmpHost(printerName);
-    } catch {
-      return undefined;
-    }
-    if (!host) return undefined;
+  private async getDeviceStatus(
+    printerName: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<PrinterStatus | undefined> {
+    const snmp = await this.resolveSnmpTarget(metadata, printerName);
+    if (!snmp) return undefined;
 
-    const state = await this.deps.readDeviceState(host);
+    const state = await this.deps.readDeviceState(snmp.host, { community: snmp.community });
     if (!state) return undefined;
 
     const code: PrinterStatus['code'] = state.blocked
@@ -715,8 +721,11 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
   }
 
   /** Get printer status (internal helper, no connectionUri parsing needed). */
-  private async getPrinterStatus(printerName: string): Promise<PrinterStatus> {
-    const deviceStatus = await this.getDeviceStatus(printerName);
+  private async getPrinterStatus(
+    printerName: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<PrinterStatus> {
+    const deviceStatus = await this.getDeviceStatus(printerName, metadata);
     if (deviceStatus) return deviceStatus;
 
     try {

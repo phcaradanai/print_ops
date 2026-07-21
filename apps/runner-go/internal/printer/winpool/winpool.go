@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -174,6 +175,11 @@ func (e *Executor) Execute(ctx context.Context, job printer.PrintJob) (*printer.
 	}
 
 	// ── Send payload to spooler ──────────────────────────────────────
+	// Snapshot the queue ids now so verifyJobAccepted can tell our job apart
+	// from jobs that were already queued (MEDIUM-8): without this, a stranger's
+	// job stuck Paused makes every new job look blocked.
+	beforeIds := e.getQueueJobIds(printerName)
+
 	cmdCtx, cancel := context.WithTimeout(ctx, e.CommandTimeout)
 	defer cancel()
 
@@ -223,7 +229,7 @@ func (e *Executor) Execute(ctx context.Context, job printer.PrintJob) (*printer.
 	}
 
 	if e.VerifyJobAcceptance {
-		accepted, queueInfo := e.verifyJobAccepted(printerName)
+		accepted, queueInfo := e.verifyJobAccepted(printerName, beforeIds)
 		evidence["queue_verified"] = accepted
 		evidence["queue_info"] = queueInfo
 
@@ -406,14 +412,54 @@ $jobs = @(Get-PrintJob -PrinterName '%s').Count
 	}
 }
 
+// getQueueJobIds returns the set of spooler job ids currently queued for the
+// printer. Used to snapshot the queue before sending so verifyJobAccepted can
+// tell our job apart from jobs that were already there (MEDIUM-8): a stranger's
+// job stuck Paused since last week must not make every new job fail.
+func (e *Executor) getQueueJobIds(printerName string) map[string]struct{} {
+	ids := make(map[string]struct{})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	script := fmt.Sprintf(`$ErrorActionPreference='SilentlyContinue'
+$jobs = @(Get-PrintJob -PrinterName '%s')
+$jobs | Select-Object -ExpandProperty Id -ErrorAction SilentlyContinue | ConvertTo-Json -Compress`, escapeForPS(printerName))
+	out, err := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).Output()
+	if err != nil {
+		return ids
+	}
+	raw := strings.TrimSpace(string(out))
+	if raw == "" {
+		return ids
+	}
+	// Id may come back as a single number or a JSON array of numbers.
+	var asNum int64
+	if json.Unmarshal([]byte(raw), &asNum) == nil {
+		ids[strconv.FormatInt(asNum, 10)] = struct{}{}
+		return ids
+	}
+	var asArr []int64
+	if json.Unmarshal([]byte(raw), &asArr) == nil {
+		for _, n := range asArr {
+			ids[strconv.FormatInt(n, 10)] = struct{}{}
+		}
+	}
+	return ids
+}
+
 // verifyJobAccepted polls the print queue to confirm the job was accepted.
-// Returns (true, info) when a job appears in the queue carrying no blocking
-// flag, or when the queue has drained without error (indicating acceptance).
+// Returns (true, info) when a NEW job (one not in beforeIds) appears carrying
+// no blocking flag, or when the queue has drained past beforeIds without error
+// (indicating acceptance).
+//
+// Only jobs absent from beforeIds are considered. Counting every queue entry
+// the way this used to fails whenever an unrelated job is already stuck: a
+// queue that never clears reads as permanently blocked (MEDIUM-8). Mirrors the
+// beforeIds set-difference the TypeScript adapter does in waitForSpooler.
 //
 // JobStatus is a flags enum, so classification goes through isBlockedStatus
 // rather than a string compare — see jobflags.go. Acceptance is never proof of
 // printing; it only means the spooler has not disproved it yet.
-func (e *Executor) verifyJobAccepted(printerName string) (bool, map[string]any) {
+func (e *Executor) verifyJobAccepted(printerName string, beforeIds map[string]struct{}) (bool, map[string]any) {
 	deadline := time.Now().Add(e.QueueAcceptTimeout)
 	interval := e.QueuePollInterval
 	if interval <= 0 {
@@ -422,12 +468,8 @@ func (e *Executor) verifyJobAccepted(printerName string) (bool, map[string]any) 
 
 	script := fmt.Sprintf(`$ErrorActionPreference='SilentlyContinue'
 $jobs = @(Get-PrintJob -PrinterName '%s')
-$active = $jobs | Where-Object { $_.JobStatus -notin @('Printed','Deleting','Cancelled') }
 [ordered]@{
-  "total"=$jobs.Count
-  "active"=@($active).Count
-  "hasError"=($jobs | Where-Object { $_.JobStatus -eq 'Error' }).Count
-  "statuses"=@($jobs | Select-Object -ExpandProperty JobStatus -ErrorAction SilentlyContinue | Sort-Object -Unique) -join ','
+  "jobs"=$jobs | Select-Object Id,@{Name='JobStatus';Expression={[string]$_.JobStatus}} | ConvertTo-Json -Compress
 } | ConvertTo-Json -Compress`, escapeForPS(printerName))
 
 	attempts := 0
@@ -445,10 +487,7 @@ $active = $jobs | Where-Object { $_.JobStatus -notin @('Printed','Deleting','Can
 		}
 
 		var info struct {
-			Total    int    `json:"total"`
-			Active   int    `json:"active"`
-			HasError int    `json:"hasError"`
-			Statuses string `json:"statuses"`
+			Jobs json.RawMessage `json:"jobs"`
 		}
 		if jErr := json.Unmarshal(out, &info); jErr != nil {
 			lastInfo = map[string]any{"note": "parse failed", "attempts": attempts}
@@ -456,30 +495,40 @@ $active = $jobs | Where-Object { $_.JobStatus -notin @('Printed','Deleting','Can
 			continue
 		}
 
+		queueJobs := parseQueueJobs(info.Jobs)
+		// Only jobs we did NOT see before sending are ours to judge.
+		ours := make([]queueJob, 0, len(queueJobs))
+		for _, qj := range queueJobs {
+			if _, was := beforeIds[qj.ID]; !was {
+				ours = append(ours, qj)
+			}
+		}
+		statuses := uniqueStatuses(ours)
+
 		lastInfo = map[string]any{
-			"queue_total":  info.Total,
-			"queue_active": info.Active,
-			"queue_errors": info.HasError,
-			"statuses":     info.Statuses,
+			"queue_total":  len(queueJobs),
+			"queue_ours":   len(ours),
+			"statuses":     strings.Join(statuses, ","),
 			"attempts":     attempts,
 		}
 
-		// Job appeared in queue. Being visible is only acceptance while the
-		// spooler raises no fault: the state observed on a real printer was
-		// "Error, Printing", which the bare presence check read as accepted.
-		if info.Total > 0 {
-			if isBlockedStatus(info.Statuses) {
-				lastInfo["note"] = fmt.Sprintf("job blocked in print queue (status: %s)", info.Statuses)
+		// Our job appeared. Being visible is only acceptance while the spooler
+		// raises no fault on OUR jobs — a stranger's stuck job no longer counts.
+		if len(ours) > 0 {
+			if isBlockedStatus(strings.Join(statuses, ",")) {
+				lastInfo["note"] = fmt.Sprintf("our job blocked in print queue (status: %s)", strings.Join(statuses, ","))
 				return false, lastInfo
 			}
-			lastInfo["note"] = "job visible in print queue"
+			lastInfo["note"] = "our job visible in print queue"
 			return true, lastInfo
 		}
 
-		// No active jobs and no errors — job may have been printed instantly
-		// (common for fast laser printers). Accept as verified.
-		if info.Total == 0 && info.HasError == 0 && attempts >= 2 {
-			lastInfo["note"] = "queue drained — job likely printed immediately"
+		// Our job is not in the queue. If it was before but drained without a
+		// blocking status, it was accepted (and likely printed instantly for a
+		// fast laser printer). Two+ attempts guards against a query that raced
+		// the spooler registering the job.
+		if len(ours) == 0 && attempts >= 2 && !hasBlockingInQueue(queueJobs) {
+			lastInfo["note"] = "our job left the queue — likely printed immediately"
 			return true, lastInfo
 		}
 
@@ -488,6 +537,64 @@ $active = $jobs | Where-Object { $_.JobStatus -notin @('Printed','Deleting','Can
 
 	lastInfo["note"] = fmt.Sprintf("no confirmation after %d attempts (%.1fs)", attempts, e.QueueAcceptTimeout.Seconds())
 	return false, lastInfo
+}
+
+// queueJob is a single spooler entry for the filtered-queue check.
+type queueJob struct {
+	ID     string
+	Status string
+}
+
+func parseQueueJobs(raw json.RawMessage) []queueJob {
+	if len(raw) == 0 {
+		return nil
+	}
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return nil
+	}
+	// Single object vs array: normalize to array.
+	one := struct {
+		ID        json.Number `json:"Id"`
+		JobStatus string      `json:"JobStatus"`
+	}{}
+	if json.Unmarshal(raw, &one) == nil && one.ID != "" {
+		return []queueJob{{ID: string(one.ID), Status: one.JobStatus}}
+	}
+	var arr []struct {
+		ID        json.Number `json:"Id"`
+		JobStatus string      `json:"JobStatus"`
+	}
+	if json.Unmarshal(raw, &arr) != nil {
+		return nil
+	}
+	out := make([]queueJob, 0, len(arr))
+	for _, j := range arr {
+		out = append(out, queueJob{ID: string(j.ID), Status: j.JobStatus})
+	}
+	return out
+}
+
+func uniqueStatuses(jobs []queueJob) []string {
+	seen := make(map[string]struct{})
+	var out []string
+	for _, j := range jobs {
+		s := strings.TrimSpace(j.Status)
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
+func hasBlockingInQueue(jobs []queueJob) bool {
+	statuses := uniqueStatuses(jobs)
+	return isBlockedStatus(strings.Join(statuses, ","))
 }
 
 // resolvePrinterName picks the Windows printer name from executor config,
