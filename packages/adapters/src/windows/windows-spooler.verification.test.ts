@@ -48,6 +48,15 @@ function deviceState(overrides: Partial<PrinterDeviceState> = {}): PrinterDevice
  * Build an adapter whose whole outside world is scripted. `emitted` collects
  * what was actually handed to the spooler, so a refusal can be told apart from
  * a print that went out and was then disowned.
+ *
+ * Dispatch caveat (MEDIUM-9): the PowerShell stub keys on the EXACT command
+ * verb, checked in specificity order (Get-Printer before Get-PrintJob), not on
+ * a loose includes() that a rename could silently misroute — e.g. a future
+ * Get-PrinterStatus must not fall into the Get-PrintJob branch. The device-state
+ * series is shared across pre-flight, baseline, and the confirmation loop:
+ * adding an SNMP read anywhere shifts every later index, so each scenario is
+ * written to be terminal on its first poll (the nextStatus/nextJobs/nextDeviceState
+ * readers repeat their last entry, which is why that works).
  */
 function makeAdapter(scenario: Scenario = {}) {
   const nextStatus = series(scenario.printerStatus ?? ['Normal']);
@@ -59,12 +68,18 @@ function makeAdapter(scenario: Scenario = {}) {
   const deps: WindowsSpoolerDeps = {
     isWindows: true,
     async runPowerShell(command) {
-      // The chain asks PowerShell exactly two things; dispatch on which.
-      if (command.includes('Get-PrintJob')) {
+      // Specificity-ordered dispatch: the most specific verb first so a
+      // command that happens to contain a substring of another cannot be
+      // misrouted. Get-PrinterStatus contains neither verb exactly today,
+      // but check it explicitly so a rename fails loudly rather than routing
+      // to Get-PrintJob or the empty fallthrough.
+      if (/Get-Printer(\s|$|-)/.test(command) || command.includes('PrinterStatus')) {
+        return nextStatus();
+      }
+      if (/Get-PrintJob(\s|$|-)/.test(command)) {
         const jobs = nextJobs();
         return jobs.length === 0 ? '' : JSON.stringify(jobs);
       }
-      if (command.includes('PrinterStatus')) return nextStatus();
       return '';
     },
     async pipeToPowerShell(_command, input) {
