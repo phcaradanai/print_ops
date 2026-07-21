@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/printer"
@@ -65,6 +66,14 @@ type Executor struct {
 	// and unverifiable branches of waitForDeviceConfirmation be exercised
 	// without a live printer, which is why HIGH-2 went unnoticed before.
 	readDeviceStateFn readDeviceStateFn
+	// printerLocks serialises send+verify per printer. prtMarkerLifeCount is a
+	// device-global counter, so two jobs on one printer race on it — job A's
+	// verify can see the +1 job B produced and report SUCCESS for a page that
+	// was never A's (MEDIUM-5). Locking makes the counter delta attributable
+	// to a single job. This covers this executor only (one host); a second
+	// host sharing the printer is documented as residual risk.
+	printerLockMu sync.Mutex
+	printerLocks  map[string]*sync.Mutex
 }
 
 // New returns a Windows spooler executor with queue and device verification
@@ -103,6 +112,13 @@ func (e *Executor) Execute(ctx context.Context, job printer.PrintJob) (*printer.
 	if len(job.RenderedPayload) == 0 {
 		return e.fail(start, job, "empty payload", fmt.Errorf("payload is empty")), nil
 	}
+
+	// Serialise send+verify per printer so the device-global page counter delta
+	// is attributable to this job alone (MEDIUM-5). Cheap pre-flight checks
+	// above stay outside the lock; everything that touches the spooler or the
+	// counter is inside it.
+	unlock := e.lockPrinter(printerName)
+	defer unlock()
 
 	// ── Pre-flight: check printer is online and not in error ─────────
 	preflightStatus, preflightErr := e.checkPrinterStatus(printerName)
@@ -487,6 +503,25 @@ func (e *Executor) resolvePrinterName(job printer.PrintJob) string {
 		return job.PrinterCode
 	}
 	return ""
+}
+
+// lockPrinter returns an unlock function for the per-printer mutex, lazily
+// creating it on first use. Holding a dedicated mutex per printer means a job
+// on printer B never waits on a job on printer A. See the MEDIUM-5 note on
+// printerLocks for why this serialisation exists.
+func (e *Executor) lockPrinter(printerName string) func() {
+	e.printerLockMu.Lock()
+	mu, ok := e.printerLocks[printerName]
+	if !ok {
+		mu = &sync.Mutex{}
+		if e.printerLocks == nil {
+			e.printerLocks = make(map[string]*sync.Mutex)
+		}
+		e.printerLocks[printerName] = mu
+	}
+	e.printerLockMu.Unlock()
+	mu.Lock()
+	return mu.Unlock
 }
 
 func (e *Executor) fail(start time.Time, job printer.PrintJob, msg string, err error) *printer.PrintResult {

@@ -91,6 +91,23 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
 
   private readonly deps: WindowsSpoolerDeps;
 
+  /**
+   * Per-printer send+verify locks.
+   *
+   * prtMarkerLifeCount is a device-global page counter: any job from any host
+   * that prints to the same printer advances it. Two PrintOps jobs running
+   * concurrently against one printer therefore race on the counter — job A's
+   * verification can observe the +1 that job B produced and report SUCCESS for
+   * a page that was never A's (MEDIUM-5). Serialising the send+verify window
+   * per printer makes the counter delta attributable to a single job, which is
+   * the assumption the verification logic was written under.
+   *
+   * This only covers jobs this adapter instance dispatches (one host, one
+   * process). A second host sharing the printer is still out of reach and is
+   * documented in the invariant note above sendAndVerify.
+   */
+  private readonly printerLocks = new Map<string, Promise<unknown>>();
+
   constructor(deps: Partial<WindowsSpoolerDeps> = {}) {
     this.deps = { ...defaultDeps, ...deps };
   }
@@ -265,7 +282,7 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
   }
 
   /**
-   * Send a document and decide whether it printed.
+   * Send a document and decide whether it printed, serialised per printer.
    *
    * SUCCESS is reported only when a device-level channel proved a page came
    * out. The spooler may DISPROVE a print but may never PROVE one, and a
@@ -273,6 +290,13 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
    * confirmed. Every caller goes through here: an invariant enforced in two
    * places is an invariant that only holds until the two drift apart, which is
    * how the test-page route came to report success on the spooler's word alone.
+   *
+   * Single-writer assumption: the device page counter is shared across all
+   * hosts. This lock only serialises jobs dispatched by THIS adapter (one host,
+   * one process); a second host printing to the same device can still advance
+   * the counter and be misattributed. That residual risk is why the counter is
+   * evidence, not proof — see MEDIUM-5. For a clinic with one PrintOps host
+   * per printer (the expected deployment), serialising here closes the race.
    */
   private async sendAndVerify(params: {
     printerName: string;
@@ -283,6 +307,36 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     /** How to name this print in operator-facing messages. */
     subject: string;
     /** Hand one copy to the spooler. */
+    emit: () => Promise<void>;
+  }): Promise<PrinterAdapterResult> {
+    // Chain this call onto the tail of the per-printer promise so concurrent
+    // jobs on the same printer run their send+verify one at a time. A job on a
+    // different printer is unaffected.
+    const prev = this.printerLocks.get(params.printerName) ?? Promise.resolve();
+    const next = prev.then(
+      () => this.sendAndVerifyLocked(params),
+      () => this.sendAndVerifyLocked(params),
+    );
+    this.printerLocks.set(params.printerName, next);
+    // Drop the entry once settled so the map doesn't grow without bound. The
+    // set/delete pair is safe under JS single-threaded async: no two callbacks
+    // run truly concurrently, and the await below guarantees the stored promise
+    // is the one we chained onto.
+    try {
+      return await next;
+    } finally {
+      if (this.printerLocks.get(params.printerName) === next) {
+        this.printerLocks.delete(params.printerName);
+      }
+    }
+  }
+
+  private async sendAndVerifyLocked(params: {
+    printerName: string;
+    copies: number;
+    metadata: Record<string, unknown> | undefined;
+    jobId?: string;
+    subject: string;
     emit: () => Promise<void>;
   }): Promise<PrinterAdapterResult> {
     const { printerName, copies, jobId, subject } = params;
@@ -439,6 +493,17 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
 
   /**
    * Poll the device page counter until it advances by the number of copies.
+   *
+   * Page-count semantics (MEDIUM-6): the check is `delta >= copies`, which
+   * assumes one physical page per copy. That holds for the label printers
+   * PrintOps targets (ZPL/TSPL — one label = one page), where `copies` is the
+   * number of labels and the counter delta is exactly that. It does NOT hold
+   * for a multi-page document printed with copies=1: a 10-page report that
+   * jams after page 1 shows delta +1 and would be reported SUCCESS with 9
+   * pages missing. PrintOps is a label gateway today; if document printing is
+   * added, this must require `pagesPerDocument * copies` (derive
+   * pagesPerDocument from the spooler's TotalPages job attribute) rather than
+   * `copies` alone.
    *
    * A raised blocking error (out of paper, jam, cover open) fails immediately
    * with the device's own reason — that is the whole point of reading SNMP

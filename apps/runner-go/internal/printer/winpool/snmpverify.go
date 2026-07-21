@@ -118,6 +118,16 @@ func (e *Executor) readDeviceState(target snmpTarget) *snmp.DeviceState {
 // waitForDeviceConfirmation polls the device until the page counter has
 // advanced by copies pages.
 //
+// Page-count semantics (MEDIUM-6): the check is delta >= copies, which assumes
+// one physical page per copy. That holds for the label printers PrintOps
+// targets (ZPL/TSPL — one label = one page), where copies is the number of
+// labels and the counter delta is exactly that. It does NOT hold for a
+// multi-page document printed with copies=1: a 10-page report that jams after
+// page 1 shows delta +1 and would be reported SUCCESS with 9 pages missing.
+// PrintOps is a label gateway today; if document printing is added, this must
+// require pagesPerDocument * copies (derive pagesPerDocument from the spooler's
+// TotalPages job attribute) rather than copies alone.
+//
 // A raised blocking error (out of paper, jam, cover open) ends the wait
 // immediately with the device's own reason — that is the whole point of reading
 // SNMP rather than trusting the spooler.
