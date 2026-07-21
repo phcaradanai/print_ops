@@ -95,7 +95,9 @@ export async function v1RunnerPrinterRoutes(
       const msg = err instanceof Error ? err.message : 'registration failed';
       const status =
         msg.includes('not found') ? 404 :
-        msg.includes('permission') || msg.includes('Permission') ? 403 : 400;
+        msg.includes('permission') || msg.includes('Permission') ? 403 :
+        msg.includes('Already registered') ? 409 :
+        400;
       return reply.status(status).send({ error: msg });
     }
   });

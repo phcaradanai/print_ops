@@ -36,7 +36,9 @@ export async function v1RunnerJobRoutes(
   const auth = { onRequest: [app.authenticate] };
 
   // ---- Claim next job --------------------------------------------------
-  // Atomically claim the next QUEUED job for this runner.
+  // Claim the next QUEUED job for this runner via a conditional write, so two
+  // runners polling in the same tick cannot both be handed the same job and
+  // both print it.
   // Returns { job: null } when no job is available (instead of 404) so the
   // runner can treat it as a normal idle poll without error-path logging.
   app.post('/runners/:runnerId/jobs/next', auth, async (req: FastifyRequest, reply: FastifyReply) => {
@@ -55,15 +57,19 @@ export async function v1RunnerJobRoutes(
     const job = queued[0]!;
     const now = new Date();
 
-    // Claim: QUEUED -> DISPATCHED (idempotent-ish; matches execute-job flow).
+    // Claim: QUEUED -> DISPATCHED, conditional on the job still being QUEUED.
+    // Losing the race is a normal idle poll, not an error.
     const queueWaitMs = job.queuedAt ? now.getTime() - job.queuedAt.getTime() : undefined;
-    const claimed = await deps.jobs.update(job.id, {
+    const claimed = await deps.jobs.claim(job.id, ['QUEUED' as JobStatus], {
       status: 'DISPATCHED',
       dispatchedAt: now,
       runnerReceivedAt: now,
       runnerId,
       latency: { ...job.latency, queueWaitMs },
     });
+    if (!claimed) {
+      return reply.status(200).send({ job: null });
+    }
 
     deps.events.publish({
       eventId: generateId(),
@@ -178,8 +184,17 @@ export async function v1RunnerJobRoutes(
       latency,
     };
     if (status === 'FAILED') {
-      patch.errorCode = 'RUNNER_FAILED';
+      // Keep the executor's specific error code when it sent one (e.g.
+      // PRINT_JOB_ERROR, PRINTER_DEVICE_ERROR) — it is how operators and the
+      // dashboard tell a real fault from an ambiguous one. Fall back to the
+      // generic runner-failed code only when the runner had nothing to say.
+      patch.errorCode = (body.evidence?.['error_code'] as string) ?? 'RUNNER_FAILED';
       patch.errorMessage = body.safe_message ?? 'runner reported failure';
+    } else if (status === 'UNVERIFIED') {
+      // UNVERIFIED must never be re-executable: EXECUTE relies on errorCode, so
+      // stamp PRINT_NOT_VERIFIABLE explicitly even if the runner omitted it.
+      patch.errorCode = 'PRINT_NOT_VERIFIABLE';
+      patch.errorMessage = body.safe_message ?? 'runner could not verify the print';
     }
 
     const updated = await deps.jobs.update(jobId, patch);
@@ -241,8 +256,8 @@ export async function v1RunnerJobRoutes(
         correlationId: job.correlationId,
         occurredAt: finishedAt,
         jobId,
-        errorCode: 'RUNNER_FAILED',
-        errorMessage: body.safe_message ?? 'runner reported failure',
+        errorCode: patch.errorCode ?? 'RUNNER_FAILED',
+        errorMessage: patch.errorMessage ?? 'runner reported failure',
       };
       deps.events.publish(evt);
     }
@@ -280,9 +295,17 @@ interface RunnerResultInput {
 
 // ---- helpers ----------------------------------------------------------
 
-function normalizeStatus(raw: string): 'SUCCESS' | 'FAILED' {
+function normalizeStatus(raw: string): 'SUCCESS' | 'UNVERIFIED' | 'FAILED' {
   const upper = (raw ?? '').toUpperCase();
   if (upper === 'SUCCESS' || upper === 'SUCCEEDED' || upper === 'DONE' || upper === 'OK') return 'SUCCESS';
+  // UNVERIFIED is a distinct terminal status, not FAILED: a page may have come
+  // out, so re-running the job risks a duplicate. The Go runner reports it on
+  // the result line, and PRINTER_NOT_VERIFIABLE / PRINT_NOT_VERIFIABLE arrive
+  // through the evidence error_code from both runners — collapse both spellings
+  // to the same status so an operator is never invited to blind-retry.
+  if (upper === 'UNVERIFIED' || upper === 'NOT_VERIFIABLE' || upper === 'PRINT_NOT_VERIFIABLE') {
+    return 'UNVERIFIED';
+  }
   return 'FAILED';
 }
 

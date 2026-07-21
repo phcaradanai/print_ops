@@ -12,7 +12,6 @@ building a print request, and calling the PrintOps API.
 - `apps/api` - Fastify REST API for jobs, printers, runners, auth, audit logs, and exports.
 - `apps/web` - Vite + React dashboard for operators.
 - `apps/runner-go` - **Production Go runner.** Statically compiled binary that registers with the API, polls jobs, sends heartbeats, executes print jobs, and syncs printer discovery. Replaces the TypeScript runner for all default workflows.
-- `apps/runner` - **Legacy reference.** TypeScript runner preserved for dev comparison and historical tests. Not started by `npm run dev` or built by `npm run build`.
 - `apps/desktop` - Tauri shell that loads the web UI and launches the Go runner binary.
 - `packages/domain` - Domain models, ports, and events.
 - `packages/adapters` - Printer adapter implementations and helpers.

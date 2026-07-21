@@ -94,6 +94,107 @@ describe('Job Lifecycle: create → queued → running → success', () => {
     expect(auditLogs.some((l) => l.action === 'job.succeeded')).toBe(true);
   });
 
+  it('refuses to execute a job a runner has already claimed', async () => {
+    const printer = await createPrinter.execute(
+      { name: 'Claimed Printer', protocol: 'fake', connectionUri: 'fake://claimed', metadata: {} },
+      'user-1'
+    );
+
+    const job = await createJob.execute(
+      {
+        printerId: printer.id,
+        createdBy: 'user-1',
+        mimeType: 'application/pdf',
+        copies: 1,
+        duplex: false,
+        colorMode: 'monochrome',
+        metadata: {},
+      },
+      'user-1'
+    );
+
+    // What the Go runner's POST /runners/:id/jobs/next does to a claimed job.
+    await jobRepo.update(job.id, { status: 'DISPATCHED', runnerId: 'go-runner' });
+
+    await expect(executeJob.execute(job.id, 'in-process')).rejects.toThrow(/DISPATCHED/);
+  });
+
+  it('lets only one of two concurrent executions claim the job', async () => {
+    const printer = await createPrinter.execute(
+      { name: 'Raced Printer', protocol: 'fake', connectionUri: 'fake://raced', metadata: {} },
+      'user-1'
+    );
+
+    const job = await createJob.execute(
+      {
+        printerId: printer.id,
+        createdBy: 'user-1',
+        mimeType: 'application/pdf',
+        copies: 1,
+        duplex: false,
+        colorMode: 'monochrome',
+        metadata: {},
+      },
+      'user-1'
+    );
+
+    // A double-clicked Print button: both calls read QUEUED before either writes.
+    const results = await Promise.allSettled([
+      executeJob.execute(job.id, 'runner-a'),
+      executeJob.execute(job.id, 'runner-b'),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+  });
+
+  it('records an unconfirmable print as UNVERIFIED, not FAILED', async () => {
+    // The adapter reports PRINT_NOT_VERIFIABLE when no device channel could
+    // confirm the page. A page may exist, so the job must not land in a status
+    // that invites a blind retry.
+    const unverifiableRegistry = new AdapterRegistry();
+    unverifiableRegistry.registerAdapter({
+      adapterName: 'UnverifiableAdapter',
+      protocol: 'fake',
+      executeCommand: async () => ({
+        success: false,
+        errorCode: 'PRINT_NOT_VERIFIABLE',
+        message: 'sent, but the printer could not confirm it',
+      }),
+    } as unknown as FakePrinterAdapter);
+
+    const unverifiableExecuteJob = new ExecuteJobService(
+      jobRepo, printerRepo, traceRepo, auditRepo, queue, eventBus, unverifiableRegistry
+    );
+
+    const printer = await createPrinter.execute(
+      { name: 'Silent Printer', protocol: 'fake', connectionUri: 'fake://silent', metadata: {} },
+      'user-1'
+    );
+
+    const job = await createJob.execute(
+      {
+        printerId: printer.id,
+        createdBy: 'user-1',
+        mimeType: 'application/pdf',
+        copies: 1,
+        duplex: false,
+        colorMode: 'monochrome',
+        metadata: {},
+      },
+      'user-1'
+    );
+
+    const result = await unverifiableExecuteJob.execute(job.id, 'runner-1');
+    expect(result.status).toBe('UNVERIFIED');
+    expect(result.errorCode).toBe('PRINT_NOT_VERIFIABLE');
+
+    // And it must not be re-runnable, or the operator gets a duplicate page.
+    await expect(unverifiableExecuteJob.execute(job.id, 'runner-1')).rejects.toThrow(/UNVERIFIED/);
+  });
+
   it('transitions to FAILED when FakeAdapter is configured to fail', async () => {
     const failRegistry = new AdapterRegistry();
     failRegistry.registerAdapter(new FakePrinterAdapter({ shouldFail: true, latencyMs: 0 }));

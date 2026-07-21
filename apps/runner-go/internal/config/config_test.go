@@ -27,6 +27,9 @@ func clearAll(t *testing.T) {
 		"PRINTOPS_DISCOVERY_MODE",
 		"PRINTOPS_EXECUTOR_MODE",
 		"PRINTOPS_LOG_LEVEL",
+		"PRINTOPS_SNMP_ENABLED",
+		"PRINTOPS_SNMP_COMMUNITY",
+		"PRINTOPS_JOBS_ENABLED",
 	} {
 		t.Setenv(k, "")
 		_ = os.Unsetenv(k)
@@ -176,5 +179,143 @@ func TestResolveDiscoveryMode(t *testing.T) {
 	cfg.DiscoveryMode = DiscoveryFake
 	if got := cfg.ResolveDiscoveryMode(); got != DiscoveryFake {
 		t.Errorf("explicit fake -> %q, want fake", got)
+	}
+}
+
+func TestLoad_SNMPDefaults(t *testing.T) {
+	clearAll(t)
+	t.Setenv("PRINTOPS_API_BASE_URL", "http://localhost:3001")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	if !cfg.SNMPEnabled {
+		t.Error("SNMPEnabled should default to true")
+	}
+	if cfg.SNMPCommunity != "public" {
+		t.Errorf("SNMPCommunity default = %q, want public", cfg.SNMPCommunity)
+	}
+}
+
+func TestLoad_SNMPOverrides(t *testing.T) {
+	clearAll(t)
+	setEnv(t, map[string]string{
+		"PRINTOPS_API_BASE_URL":   "http://localhost:3001",
+		"PRINTOPS_SNMP_ENABLED":   "false",
+		"PRINTOPS_SNMP_COMMUNITY": "lab-ro",
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	if cfg.SNMPEnabled {
+		t.Error("PRINTOPS_SNMP_ENABLED=false should disable SNMP")
+	}
+	if cfg.SNMPCommunity != "lab-ro" {
+		t.Errorf("SNMPCommunity = %q, want lab-ro", cfg.SNMPCommunity)
+	}
+}
+
+func TestLoad_SNMPEnabledInvalid(t *testing.T) {
+	clearAll(t)
+	setEnv(t, map[string]string{
+		"PRINTOPS_API_BASE_URL": "http://localhost:3001",
+		"PRINTOPS_SNMP_ENABLED": "maybe",
+	})
+
+	if _, err := Load(); err == nil {
+		t.Error("expected an error for an invalid PRINTOPS_SNMP_ENABLED")
+	} else if !strings.Contains(err.Error(), "PRINTOPS_SNMP_ENABLED") {
+		t.Errorf("error should name the variable, got: %v", err)
+	}
+}
+
+func TestParseBool(t *testing.T) {
+	cases := []struct {
+		raw     string
+		def     bool
+		want    bool
+		wantErr bool
+	}{
+		{"", true, true, false},
+		{"", false, false, false},
+		{"true", false, true, false},
+		{"TRUE", false, true, false},
+		{" yes ", false, true, false},
+		{"1", false, true, false},
+		{"on", false, true, false},
+		{"false", true, false, false},
+		{"no", true, false, false},
+		{"0", true, false, false},
+		{"off", true, false, false},
+		{"maybe", true, false, true},
+	}
+	for _, tc := range cases {
+		got, err := parseBool(tc.raw, tc.def)
+		if (err != nil) != tc.wantErr {
+			t.Errorf("parseBool(%q, %v) error = %v, wantErr %v", tc.raw, tc.def, err, tc.wantErr)
+			continue
+		}
+		if err == nil && got != tc.want {
+			t.Errorf("parseBool(%q, %v) = %v, want %v", tc.raw, tc.def, got, tc.want)
+		}
+	}
+}
+
+func TestLoad_JobsEnabledDefaultsTrue(t *testing.T) {
+	clearAll(t)
+	t.Setenv("PRINTOPS_API_BASE_URL", "http://localhost:3001")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	if !cfg.JobsEnabled {
+		t.Error("JobsEnabled should default to true")
+	}
+}
+
+func TestLoad_JobsEnabledOverride(t *testing.T) {
+	clearAll(t)
+	setEnv(t, map[string]string{
+		"PRINTOPS_API_BASE_URL": "http://localhost:3001",
+		"PRINTOPS_JOBS_ENABLED": "false",
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	if cfg.JobsEnabled {
+		t.Error("PRINTOPS_JOBS_ENABLED=false should disable job polling")
+	}
+}
+
+func TestLoad_JobsEnabledInvalid(t *testing.T) {
+	clearAll(t)
+	setEnv(t, map[string]string{
+		"PRINTOPS_API_BASE_URL": "http://localhost:3001",
+		"PRINTOPS_JOBS_ENABLED": "maybe",
+	})
+
+	if _, err := Load(); err == nil {
+		t.Error("expected an error for an invalid PRINTOPS_JOBS_ENABLED")
+	} else if !strings.Contains(err.Error(), "PRINTOPS_JOBS_ENABLED") {
+		t.Errorf("error should name the variable, got: %v", err)
+	}
+}
+
+// TestRedactedHidesCustomCommunity keeps a site-specific community out of logs.
+func TestRedactedHidesCustomCommunity(t *testing.T) {
+	cfg := &Config{SNMPEnabled: true, SNMPCommunity: "s3cret-community"}
+	red := cfg.Redacted()
+	if red["snmp_community"] == "s3cret-community" {
+		t.Error("a custom SNMP community must not appear in Redacted()")
+	}
+	cfg.SNMPCommunity = "public"
+	if red := cfg.Redacted(); red["snmp_community"] != "public" {
+		t.Errorf("snmp_community = %v, want public", red["snmp_community"])
 	}
 }

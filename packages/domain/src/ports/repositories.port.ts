@@ -39,6 +39,18 @@ export interface JobRepositoryPort {
   findAll(opts?: ListOptions & { status?: JobStatus; printerId?: string }): Promise<Job[]>;
   create(input: CreateJobInput & { id: string; traceId: string; correlationId: string }): Promise<Job>;
   update(id: string, patch: Partial<Job>): Promise<Job>;
+  /**
+   * Apply `patch` only if the job is currently in one of `fromStatuses`, and
+   * report whether the caller won.
+   *
+   * Reading the status and then updating leaves a gap in which a second caller
+   * reads the same status: both then print the same document. Claiming has to
+   * be one conditional write for that to be impossible.
+   *
+   * Returns the updated job, or undefined when the job was already claimed by
+   * someone else (or no longer exists).
+   */
+  claim(id: string, fromStatuses: JobStatus[], patch: Partial<Job>): Promise<Job | undefined>;
 }
 
 export interface TraceRepositoryPort {

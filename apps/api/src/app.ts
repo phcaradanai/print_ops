@@ -166,7 +166,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     auditRepo,
   );
 
-  const sandboxSvc = new SandboxService(templateRepo, paperRepo, templateRenderer, createJob);
+  const sandboxSvc = new SandboxService(templateRepo, paperRepo, templateRenderer, createJob, executeJob);
   const connectivitySvc = new PrinterConnectivityService(printerRepo, registry);
 
   // API key middleware
@@ -340,7 +340,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1RunnerJobRoutes(v1, { jobs: jobRepo, printers: printerRepo, traces: traceRepo, audit: auditRepo, events: eventBus });
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
     await sandboxRoutes(v1, { sandbox: sandboxSvc, connectivity: connectivitySvc, audit: auditRepo });
-    await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob });
+    await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob, getPrinterStatus });
     await paperProfileImportRoutes(v1, { importService: importPaperProfile });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 

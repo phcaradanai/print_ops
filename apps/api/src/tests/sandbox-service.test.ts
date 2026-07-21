@@ -13,6 +13,7 @@ import { SimpleTemplateRenderer } from '../infra/template/simple-template-render
 import { SandboxService } from '../services/sandbox.service.js';
 import { CreatePrinterService } from '../services/create-printer.service.js';
 import { CreatePrintJobService } from '../services/create-print-job.service.js';
+import { ExecuteJobService } from '../services/execute-job.service.js';
 
 let printerRepo: InMemoryPrinterRepository;
 let jobRepo: InMemoryJobRepository;
@@ -24,9 +25,11 @@ let eventBus: InMemoryEventBus;
 let queue: InMemoryJobQueue;
 let renderer: SimpleTemplateRenderer;
 let createJob: CreatePrintJobService;
+let executeJob: ExecuteJobService;
+let registry: AdapterRegistry;
 
 function makeService() {
-  return new SandboxService(templateRepo, paperRepo, renderer, createJob);
+  return new SandboxService(templateRepo, paperRepo, renderer, createJob, executeJob);
 }
 
 describe('SandboxService', () => {
@@ -41,9 +44,10 @@ describe('SandboxService', () => {
     queue = new InMemoryJobQueue();
     renderer = new SimpleTemplateRenderer();
 
-    const registry = new AdapterRegistry();
+    registry = new AdapterRegistry();
     registry.registerAdapter(new FakePrinterAdapter({ latencyMs: 0 }));
     createJob = new CreatePrintJobService(jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus);
+    executeJob = new ExecuteJobService(jobRepo, printerRepo, traceRepo, auditRepo, queue, eventBus, registry);
 
     // Seed paper profile
     await paperRepo.create({
@@ -198,5 +202,7 @@ describe('SandboxService', () => {
 
     expect(result.testJobId).toBeDefined();
     expect(result.testPrintSuccess).toBe(true);
+    expect(result.testPrintStatus).toBe('SUCCESS');
+    expect(result.testPrintError).toBeUndefined();
   });
 });

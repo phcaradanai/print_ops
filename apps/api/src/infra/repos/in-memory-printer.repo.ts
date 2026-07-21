@@ -21,7 +21,7 @@ export class InMemoryPrinterRepository implements PrinterRepositoryPort {
 
   async create(input: CreatePrinterInput): Promise<Printer> {
     const now = new Date();
-    const code = input.code ?? input.name.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
+    const code = (input.code ?? input.name.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '')) || `PRINTER_${generateId().slice(0, 8)}`;
     const printer: Printer = {
       ...input,
       id: generateId(),

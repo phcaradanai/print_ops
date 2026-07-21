@@ -14,13 +14,14 @@
  *   DISPATCHED          #cba6f7  white 2.03:1 (fail)  navy 8.07:1 (pass)
  *   PRINTING            #fab387  white 1.77:1 (fail)  navy 9.27:1 (pass)
  *   SUCCESS             #a6e3a1  white 1.49:1 (fail)  navy 11.03:1 (pass)
+ *   UNVERIFIED          #eba0ac  white 2.07:1 (fail)  navy 7.93:1 (pass)
  *   FAILED              #f38ba8  white 2.32:1 (fail)  navy 7.08:1 (pass)
  *   TIMEOUT             #f9e2af  white 1.27:1 (fail)  navy 12.91:1 (pass)
  *   CANCELLED           #9399b2  white 2.82:1 (fail)  navy 5.81:1 (pass)
  *   DUPLICATE_RETURNED  #bac2de  white 1.77:1 (fail)  navy 9.26:1 (pass)
  *
  * Every background fails WCAG AA (4.5:1) with white text and clears it
- * comfortably with Deep Navy (#1e1e2e) text — so all 10 statuses use navy.
+ * comfortably with Deep Navy (#1e1e2e) text — so all 11 statuses use navy.
  * Kept as a per-status record (rather than a single constant) so any future
  * background swap is re-verified status by status instead of assumed safe.
  */
@@ -37,6 +38,7 @@ export const STATUS_BADGE: Record<string, StatusBadgeColors> = {
   DISPATCHED: { bg: '#cba6f7', text: '#1e1e2e' },
   PRINTING: { bg: '#fab387', text: '#1e1e2e' },
   SUCCESS: { bg: '#a6e3a1', text: '#1e1e2e' },
+  UNVERIFIED: { bg: '#eba0ac', text: '#1e1e2e' },
   FAILED: { bg: '#f38ba8', text: '#1e1e2e' },
   TIMEOUT: { bg: '#f9e2af', text: '#1e1e2e' },
   CANCELLED: { bg: '#9399b2', text: '#1e1e2e' },

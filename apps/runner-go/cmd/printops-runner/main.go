@@ -107,7 +107,7 @@ func runRunner(ctx context.Context) error {
 	// Build the multi-executor dispatcher. This registers ALL available
 	// executors so the runner can dispatch per-job based on printer protocol.
 	// This fixes the root cause of the "fake executor always used" bug.
-	executor := buildDispatcher(log)
+	executor := buildDispatcher(cfg, log)
 
 	// Graceful shutdown on SIGINT/SIGTERM.
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
@@ -131,7 +131,18 @@ func runRunner(ctx context.Context) error {
 	go hb.Run(ctx)
 
 	log.Info("runner ready", "poll_interval_ms", cfg.PollInterval.Milliseconds(), "executor", executor.Name())
-	jobLooper.Run(ctx)
+
+	// The job poll/claim loop is gated by PRINTOPS_JOBS_ENABLED. Some
+	// deployments (the desktop app) run this runner for printer discovery
+	// only: the API executes jobs in-process via its own executor, so a
+	// second claimant on the same queue would double-claim/double-print.
+	// Heartbeat and discovery already run as goroutines above regardless.
+	if cfg.JobsEnabled {
+		jobLooper.Run(ctx)
+	} else {
+		log.Info("job polling disabled (PRINTOPS_JOBS_ENABLED=false) — discovery only")
+		<-ctx.Done()
+	}
 
 	log.Info("runner stopped",
 		"completed", jobLooper.Completed(), "failed", jobLooper.Failed(),
@@ -171,10 +182,15 @@ func buildDiscovery(mode config.DiscoveryMode, log *logging.Logger) (discovery.P
 //
 // The multi-dispatcher resolves aliases (e.g. "zpl" → rawtcp since ZPL is a
 // payload format, not a transport protocol).
-func buildDispatcher(log *logging.Logger) *multi.Dispatcher {
+func buildDispatcher(cfg *config.Config, log *logging.Logger) *multi.Dispatcher {
 	fakeExec := fake.New()
 	rawTCPExec := rawtcp.New()
+
+	// The Windows spooler executor confirms prints against the device's own
+	// SNMP page counter when the printer answers; see internal/printer/winpool.
 	winSpoolerExec := winpool.New()
+	winSpoolerExec.SNMPEnabled = cfg.SNMPEnabled
+	winSpoolerExec.SNMPCommunity = cfg.SNMPCommunity
 
 	dispatcher := multi.New(fakeExec)
 	dispatcher.Register("raw-tcp-9100", rawTCPExec)
@@ -187,7 +203,8 @@ func buildDispatcher(log *logging.Logger) *multi.Dispatcher {
 	dispatcher.Register("winspool", winSpoolerExec)
 
 	log.Info("executor dispatcher configured",
-		"protocols", []string{"fake", "raw-tcp-9100", "windows-spooler", "zpl", "tspl"})
+		"protocols", []string{"fake", "raw-tcp-9100", "windows-spooler", "zpl", "tspl"},
+		"snmp_enabled", cfg.SNMPEnabled)
 
 	return dispatcher
 }

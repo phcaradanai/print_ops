@@ -5,6 +5,9 @@ import type {
   AuditRepositoryPort,
   EventBusPort,
   PrinterRepositoryPort,
+  PrintTemplateRepositoryPort,
+  PaperProfileRepositoryPort,
+  TemplateRendererPort,
   Job,
   JobPriority,
 } from '@printerops/domain';
@@ -48,7 +51,10 @@ export class AcceptExternalJobService {
     queue: JobQueuePort,
     traces: TraceRepositoryPort,
     audit: AuditRepositoryPort,
-    events: EventBusPort
+    events: EventBusPort,
+    private templates?: PrintTemplateRepositoryPort,
+    private papers?: PaperProfileRepositoryPort,
+    private renderer?: TemplateRendererPort,
   ) {
     this.createJob = new CreatePrintJobService(jobs, printers, queue, traces, audit, events);
   }
@@ -71,6 +77,28 @@ export class AcceptExternalJobService {
       };
     }
 
+    // Render template if a template_code is provided and renderer is available.
+    // The rendered bytes are stored in metadata._renderedPayload and passed to
+    // the job as renderedPrintPayload so the runner can send them to the printer.
+    let renderedPrintPayload: string | undefined;
+    let renderWarnings: string[] = [];
+    if (req.template_code && this.templates && this.renderer && this.papers) {
+      const template = await this.templates.findByCode(req.template_code);
+      if (template) {
+        const paperId = template.paperProfileId;
+        const paper = paperId ? await this.papers.findById(paperId) : undefined;
+        if (paper) {
+          try {
+            const rendered = await this.renderer.renderPrintPayload(template, req.payload, paper);
+            renderedPrintPayload = rendered.renderedPrintPayload;
+            renderWarnings = rendered.warnings ?? [];
+          } catch (err) {
+            renderWarnings.push(`render error: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+      }
+    }
+
     const job = await this.createJob.execute(
       {
         printerId: '',
@@ -80,15 +108,17 @@ export class AcceptExternalJobService {
         sourceReference: req.source_reference,
         requestId: req.request_id,
         createdBy: actorId,
-        mimeType: 'application/octet-stream',
+        mimeType: 'text/plain',
         copies: req.copies ?? 1,
         duplex: false,
         colorMode: 'auto',
         priorityLabel: req.priority ?? 'normal',
         payloadSnapshot: snapshotPayload(req.payload),
+        renderedPrintPayload,
         metadata: {
           ...(req.metadata ?? {}),
           payload: req.payload,
+          ...(renderWarnings.length > 0 ? { renderWarnings } : {}),
         },
       },
       actorId

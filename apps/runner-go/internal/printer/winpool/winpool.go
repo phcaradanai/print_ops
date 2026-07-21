@@ -3,11 +3,20 @@
 // bypass the print driver and send the payload directly (needed for ZPL/TSPL
 // label printers that don't understand GDI/Page Description Language).
 //
+// SUCCESS is reported only when a device-level channel proved a page came out.
+// The executor watches the device's own page counter over SNMP, because the
+// spooler reports a job done once it has handed the bytes to the driver — on a
+// real EPSON that is roughly 15 seconds before the page appears. The spooler may
+// DISPROVE a print but may never PROVE one: when no device channel answers, the
+// job is reported as unverified (PRINT_NOT_VERIFIABLE) with the reason the
+// device could not be asked, never as success.
+//
 // STATUS: production for Windows label printers. No-op on non-Windows.
 package winpool
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -15,33 +24,70 @@ import (
 	"time"
 
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/printer"
+	"github.com/phcaradanai/print_ops/apps/runner-go/internal/snmp"
 )
+
+// errCodeNotVerifiable marks a job that was handed to the spooler without any
+// device channel able to confirm a page came out. It matches the errorCode the
+// TypeScript WindowsSpoolerAdapter returns for the same situation.
+const errCodeNotVerifiable = "PRINT_NOT_VERIFIABLE"
 
 // Executor sends raw payload bytes to a Windows printer share via the spooler.
 type Executor struct {
-	// PrinterName overrides the printer name resolved from job.Options. When
-	// empty, the executor uses job.Options["windows_printer_name"] or
-	// job.PrinterCode.
-	PrinterName string
-	// CommandTimeout bounds the PowerShell subprocess. Defaults to 30s.
+	PrinterName    string
 	CommandTimeout time.Duration
+	// VerifyJobAcceptance, when true, queries the print queue after sending
+	// to confirm the job was accepted (not silently dropped). Default true.
+	VerifyJobAcceptance bool
+	// QueuePollInterval controls how often we re-check the queue while waiting
+	// for the job to be accepted. Default 200ms.
+	QueuePollInterval time.Duration
+	// QueueAcceptTimeout is the max time to wait for job acceptance confirmation.
+	// Default 10s.
+	QueueAcceptTimeout time.Duration
+
+	// SNMPEnabled turns device-level confirmation on. Default true. Disabling
+	// it leaves the executor with spooler-acceptance semantics only.
+	SNMPEnabled bool
+	// SNMPCommunity is the SNMPv1 read community. Default "public".
+	SNMPCommunity string
+	// DeviceVerifyTimeout is the max time to wait for the device page counter
+	// to advance after the spooler accepted the job. Default 90s.
+	DeviceVerifyTimeout time.Duration
+	// DevicePollInterval controls how often the page counter is re-read.
+	// Default 1s.
+	DevicePollInterval time.Duration
+
+	// snmpHosts caches printer name -> SNMP address resolutions.
+	snmpHosts *snmpHostResolver
+	// readDeviceStateFn overrides the SNMP reader for tests; nil = production
+	// (snmp.ReadDeviceState). This is the only seam that lets the not-confirmed
+	// and unverifiable branches of waitForDeviceConfirmation be exercised
+	// without a live printer, which is why HIGH-2 went unnoticed before.
+	readDeviceStateFn readDeviceStateFn
 }
 
-// New returns a Windows spooler executor with default settings.
+// New returns a Windows spooler executor with queue and device verification
+// enabled.
 func New() *Executor {
 	return &Executor{
-		CommandTimeout: 30 * time.Second,
+		CommandTimeout:      30 * time.Second,
+		VerifyJobAcceptance: true,
+		QueuePollInterval:   200 * time.Millisecond,
+		QueueAcceptTimeout:  10 * time.Second,
+		SNMPEnabled:         true,
+		SNMPCommunity:       defaultSNMPCommunity,
+		DeviceVerifyTimeout: defaultDeviceVerifyTimeout,
+		DevicePollInterval:  defaultDevicePollInterval,
+		snmpHosts:           newSNMPHostResolver(),
 	}
 }
 
 // Name implements PrintExecutor.
 func (e *Executor) Name() string { return "windows-spooler" }
 
-// Execute sends the raw payload to the printer via PowerShell.
-//
-// It constructs a small C# snippet embedded in PowerShell that P/Invokes
-// WritePrinter against the spooler, sending the bytes directly to the printer.
-// This is the standard approach for raw ZPL/TSPL on Windows.
+// Execute sends the raw payload to the printer via PowerShell, then verifies
+// that the job was actually accepted by the spooler queue.
 func (e *Executor) Execute(ctx context.Context, job printer.PrintJob) (*printer.PrintResult, error) {
 	start := time.Now()
 
@@ -58,14 +104,64 @@ func (e *Executor) Execute(ctx context.Context, job printer.PrintJob) (*printer.
 		return e.fail(start, job, "empty payload", fmt.Errorf("payload is empty")), nil
 	}
 
+	// ── Pre-flight: check printer is online and not in error ─────────
+	preflightStatus, preflightErr := e.checkPrinterStatus(printerName)
+	if preflightErr != nil {
+		// Non-fatal: log but continue (some printers don't support status query)
+		preflightStatus = "unknown"
+	}
+	if preflightStatus == "offline" || preflightStatus == "error" || preflightStatus == "paperJam" || preflightStatus == "paperOut" {
+		return &printer.PrintResult{
+			Status:      printer.StatusFailed,
+			Executor:    e.Name(),
+			SafeMessage: fmt.Sprintf("printer %q is %s — cannot accept job", printerName, preflightStatus),
+			DurationMs:  time.Since(start).Milliseconds(),
+			StartedAt:   start,
+			FinishedAt:  time.Now(),
+			Evidence: map[string]any{
+				"printer_name":     printerName,
+				"preflight_status": preflightStatus,
+				"preflight_error":  errString(preflightErr),
+			},
+			Err: fmt.Errorf("printer %s: %s", printerName, preflightStatus),
+		}, nil
+	}
+
+	// ── Device pre-flight over SNMP ──────────────────────────────────
+	// The baseline page count MUST be captured here, before anything is sent:
+	// a baseline read after printing started under-counts and would produce a
+	// false "counter did not advance". A printer that does not answer, or does
+	// not expose the counter, simply leaves deviceBefore nil and the job keeps
+	// today's spooler-acceptance semantics.
+	target := e.resolveSNMPTarget(ctx, job, printerName)
+	var deviceBefore *snmp.DeviceState
+	if target != nil {
+		deviceBefore = e.readDeviceState(*target)
+		if deviceBefore != nil && deviceBefore.Blocked {
+			return &printer.PrintResult{
+				Status:      printer.StatusFailed,
+				Executor:    e.Name(),
+				SafeMessage: fmt.Sprintf("printer %q reports %s — not sending job", printerName, strings.Join(deviceBefore.Errors, ", ")),
+				DurationMs:  time.Since(start).Milliseconds(),
+				StartedAt:   start,
+				FinishedAt:  time.Now(),
+				Evidence: map[string]any{
+					"printer_name":     printerName,
+					"preflight_status": preflightStatus,
+					"snmp_host":        target.Host,
+					"device_errors":    deviceBefore.Errors,
+					"device_confirmed": false,
+				},
+				Err: fmt.Errorf("printer %s device error: %s", printerName, strings.Join(deviceBefore.Errors, ", ")),
+			}, nil
+		}
+	}
+
+	// ── Send payload to spooler ──────────────────────────────────────
 	cmdCtx, cancel := context.WithTimeout(ctx, e.CommandTimeout)
 	defer cancel()
 
-	// Build PowerShell script that uses RawPrinterHelper to send raw bytes.
-	// This is the canonical method for sending ZPL/TSPL to label printers on
-	// Windows without going through the GDI driver.
 	script := buildRawPrintScript(printerName, job.RenderedPayload)
-
 	cmd := exec.CommandContext(cmdCtx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 	output, err := cmd.CombinedOutput()
 	finished := time.Now()
@@ -79,29 +175,303 @@ func (e *Executor) Execute(ctx context.Context, job printer.PrintJob) (*printer.
 			StartedAt:   start,
 			FinishedAt:  finished,
 			Evidence: map[string]any{
-				"printer_name":  printerName,
-				"payload_size":  len(job.RenderedPayload),
-				"copies":        job.Copies,
-				"powershell_ok": false,
+				"printer_name":     printerName,
+				"payload_size":     len(job.RenderedPayload),
+				"copies":           job.Copies,
+				"powershell_ok":    false,
+				"preflight_status": preflightStatus,
 			},
 			Err: err,
 		}, nil
 	}
 
+	// ── Verify job acceptance ────────────────────────────────────────
+	evidence := map[string]any{
+		"printer_name":     printerName,
+		"payload_size":     len(job.RenderedPayload),
+		"copies":           job.Copies,
+		"powershell_ok":    true,
+		"preflight_status": preflightStatus,
+		"device_confirmed": false,
+	}
+	if target != nil {
+		evidence["snmp_host"] = target.Host
+	}
+	if deviceBefore != nil {
+		if deviceBefore.PageCount != nil {
+			evidence["pages_before"] = *deviceBefore.PageCount
+		}
+		if len(deviceBefore.Errors) > 0 {
+			evidence["device_errors"] = deviceBefore.Errors
+		}
+	}
+
+	if e.VerifyJobAcceptance {
+		accepted, queueInfo := e.verifyJobAccepted(printerName)
+		evidence["queue_verified"] = accepted
+		evidence["queue_info"] = queueInfo
+
+		if !accepted {
+			return &printer.PrintResult{
+				Status:      printer.StatusFailed,
+				Executor:    e.Name(),
+				SafeMessage: fmt.Sprintf("job sent to spooler but not confirmed in queue (printer may have rejected or silently dropped): %s", queueInfo["note"]),
+				DurationMs:  time.Since(start).Milliseconds(),
+				StartedAt:   start,
+				FinishedAt:  time.Now(),
+				Evidence:    evidence,
+				Err:         fmt.Errorf("job not confirmed in print queue"),
+			}, nil
+		}
+	}
+
+	// ── Device confirmation: did paper actually come out? ────────────
+	// A live pre-send baseline is the only thing that can prove a page exists.
+	// Without one (SNMP disabled, no host resolved, no answer, or a printer
+	// that does not expose prtMarkerLifeCount) nothing here knows whether paper
+	// came out, so the job is reported unverified rather than successful.
+	// A device reading that already confirmed the print is never demoted.
+	if target != nil && deviceBefore != nil && deviceBefore.PageCount != nil {
+		copies := max(1, job.Copies)
+		confirmation := e.waitForDeviceConfirmation(ctx, *target, *deviceBefore.PageCount, copies)
+		evidence["pages_after"] = confirmation.PagesAfter
+		evidence["device_confirmed"] = confirmation.Confirmed
+		if len(confirmation.Errors) > 0 {
+			evidence["device_errors"] = confirmation.Errors
+		}
+
+		switch {
+		case confirmation.Confirmed:
+			return &printer.PrintResult{
+				Status:      printer.StatusSuccess,
+				Executor:    e.Name(),
+				SafeMessage: fmt.Sprintf("sent %d bytes to %s via spooler — %s", len(job.RenderedPayload), printerName, confirmation.Detail),
+				DurationMs:  time.Since(start).Milliseconds(),
+				StartedAt:   start,
+				FinishedAt:  time.Now(),
+				Evidence:    evidence,
+			}, nil
+		case confirmation.Inconclusive:
+			// The wait ended without a device verdict. No verdict is not proof
+			// of printing, and the spooler cannot stand in for the device
+			// reading that is missing — report it unverified, with the detail
+			// that says verification was interrupted rather than refused.
+			evidence["device_verify_note"] = confirmation.Detail
+			evidence["error_code"] = errCodeNotVerifiable
+			return &printer.PrintResult{
+				Status:      printer.StatusUnverified,
+				Executor:    e.Name(),
+				SafeMessage: fmt.Sprintf("sent %d bytes to %s via spooler, but the print is unverified: %s", len(job.RenderedPayload), printerName, confirmation.Detail),
+				DurationMs:  time.Since(start).Milliseconds(),
+				StartedAt:   start,
+				FinishedAt:  time.Now(),
+				Evidence:    evidence,
+				Err:         fmt.Errorf("%s: %s", errCodeNotVerifiable, confirmation.Detail),
+			}, nil
+		case confirmation.Outcome == outcomeUnverifiable:
+			// No device read succeeded during the whole verify window: the
+			// device went quiet after the baseline. Nothing here disproves the
+			// print either, so this is "we don't know" — UNVERIFIED, never
+			// FAILED (a retry would risk a duplicate page for a print that may
+			// already have happened). Mirrors the TypeScript "unverifiable"
+			// outcome in waitForDeviceConfirmation.
+			evidence["device_verify_note"] = confirmation.Detail
+			evidence["error_code"] = errCodeNotVerifiable
+			return &printer.PrintResult{
+				Status:      printer.StatusUnverified,
+				Executor:    e.Name(),
+				SafeMessage: fmt.Sprintf("sent %d bytes to %s via spooler, but the print is unverified: %s", len(job.RenderedPayload), printerName, confirmation.Detail),
+				DurationMs:  time.Since(start).Milliseconds(),
+				StartedAt:   start,
+				FinishedAt:  time.Now(),
+				Evidence:    evidence,
+				Err:         fmt.Errorf("%s: %s", errCodeNotVerifiable, confirmation.Detail),
+			}, nil
+		default:
+			// not-confirmed: the counter WAS read and did not advance — a real
+			// negative, so a retry is safe. FAILED (not UNVERIFIED) is correct.
+			evidence["error_code"] = "PRINT_NOT_CONFIRMED_BY_DEVICE"
+			return &printer.PrintResult{
+				Status:      printer.StatusFailed,
+				Executor:    e.Name(),
+				SafeMessage: fmt.Sprintf("spooler accepted the job but the device did not confirm printing on %s: %s", printerName, confirmation.Detail),
+				DurationMs:  time.Since(start).Milliseconds(),
+				StartedAt:   start,
+				FinishedAt:  time.Now(),
+				Evidence:    evidence,
+				Err:         fmt.Errorf("print not confirmed by device: %s", confirmation.Detail),
+			}, nil
+		}
+	}
+
+	// No device channel answered, so nothing here knows whether a page exists.
+	// Reporting success on the spooler's word is exactly how a job was marked
+	// SUCCESS while the printer sat in Error and no paper came out.
+	gap := describeVerificationGap(printerName, target, deviceBefore)
+	evidence["error_code"] = errCodeNotVerifiable
 	return &printer.PrintResult{
-		Status:      printer.StatusSuccess,
+		Status:      printer.StatusUnverified,
 		Executor:    e.Name(),
-		SafeMessage: fmt.Sprintf("sent %d bytes to %s via spooler", len(job.RenderedPayload), printerName),
-		DurationMs:  finished.Sub(start).Milliseconds(),
+		SafeMessage: fmt.Sprintf("sent %d bytes to %s via spooler, but the printer could not confirm it. %s", len(job.RenderedPayload), printerName, gap),
+		DurationMs:  time.Since(start).Milliseconds(),
 		StartedAt:   start,
-		FinishedAt:  finished,
-		Evidence: map[string]any{
-			"printer_name":  printerName,
-			"payload_size":  len(job.RenderedPayload),
-			"copies":        job.Copies,
-			"powershell_ok": true,
-		},
+		FinishedAt:  time.Now(),
+		Evidence:    evidence,
+		Err:         fmt.Errorf("%s: %s", errCodeNotVerifiable, gap),
 	}, nil
+}
+
+// describeVerificationGap explains why the device could not be asked, and what
+// would make it answerable. Without this the operator sees "not confirmed" and
+// has no way to tell a broken printer from a printer we simply cannot reach.
+//
+// Mirrors describeVerificationGap in
+// packages/adapters/src/windows/windows-spooler.adapter.ts.
+func describeVerificationGap(printerName string, target *snmpTarget, deviceBefore *snmp.DeviceState) string {
+	if target == nil {
+		return fmt.Sprintf("No SNMP address could be derived for %q — its Windows port exposes none. "+
+			"Install the vendor driver on a Standard TCP/IP port, or set the job's snmp_host option.", printerName)
+	}
+	if deviceBefore == nil {
+		return fmt.Sprintf("The device at %s did not answer SNMP on port 161. "+
+			"Check that the printer is powered on and on this network, and that SNMP is enabled on it.", target.Host)
+	}
+	return fmt.Sprintf("The device at %s answered SNMP but exposes no page counter (prtMarkerLifeCount). "+
+		"Install the vendor driver for this model, or point snmp_host at an interface that reports it.", target.Host)
+}
+
+// checkPrinterStatus queries the Windows printer status via Get-Printer.
+// Returns one of: "idle", "printing", "offline", "error", "paperJam",
+// "paperOut", "unknown".
+func (e *Executor) checkPrinterStatus(printerName string) (string, error) {
+	script := fmt.Sprintf(`$ErrorActionPreference='SilentlyContinue'
+$p = Get-Printer -Name '%s' | Select-Object -First 1
+if ($null -eq $p) { '{"status":"unknown","note":"printer not found"}' ; exit }
+$state = $p.PrinterStatus
+$jobs = @(Get-PrintJob -PrinterName '%s').Count
+[ordered]@{ "status"=$state; "jobCount"=$jobs } | ConvertTo-Json -Compress`,
+		escapeForPS(printerName), escapeForPS(printerName))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+	out, err := cmd.Output()
+	if err != nil {
+		return "unknown", err
+	}
+
+	var info struct {
+		Status   string `json:"status"`
+		JobCount int    `json:"jobCount"`
+	}
+	if jErr := json.Unmarshal(out, &info); jErr != nil {
+		return "unknown", jErr
+	}
+
+	// Normalize Windows printer status strings.
+	s := strings.ToLower(strings.TrimSpace(info.Status))
+	switch {
+	case strings.Contains(s, "idle"):
+		return "idle", nil
+	case strings.Contains(s, "printing"):
+		return "printing", nil
+	case strings.Contains(s, "offline"):
+		return "offline", nil
+	case strings.Contains(s, "error"):
+		return "error", nil
+	case strings.Contains(s, "paper") && strings.Contains(s, "jam"):
+		return "paperJam", nil
+	case strings.Contains(s, "paper") && (strings.Contains(s, "out") || strings.Contains(s, "empty")):
+		return "paperOut", nil
+	case strings.Contains(s, "normal"), s == "":
+		return "idle", nil
+	default:
+		return s, nil
+	}
+}
+
+// verifyJobAccepted polls the print queue to confirm the job was accepted.
+// Returns (true, info) when a job appears in the queue carrying no blocking
+// flag, or when the queue has drained without error (indicating acceptance).
+//
+// JobStatus is a flags enum, so classification goes through isBlockedStatus
+// rather than a string compare — see jobflags.go. Acceptance is never proof of
+// printing; it only means the spooler has not disproved it yet.
+func (e *Executor) verifyJobAccepted(printerName string) (bool, map[string]any) {
+	deadline := time.Now().Add(e.QueueAcceptTimeout)
+	interval := e.QueuePollInterval
+	if interval <= 0 {
+		interval = 200 * time.Millisecond
+	}
+
+	script := fmt.Sprintf(`$ErrorActionPreference='SilentlyContinue'
+$jobs = @(Get-PrintJob -PrinterName '%s')
+$active = $jobs | Where-Object { $_.JobStatus -notin @('Printed','Deleting','Cancelled') }
+[ordered]@{
+  "total"=$jobs.Count
+  "active"=@($active).Count
+  "hasError"=($jobs | Where-Object { $_.JobStatus -eq 'Error' }).Count
+  "statuses"=@($jobs | Select-Object -ExpandProperty JobStatus -ErrorAction SilentlyContinue | Sort-Object -Unique) -join ','
+} | ConvertTo-Json -Compress`, escapeForPS(printerName))
+
+	attempts := 0
+	lastInfo := map[string]any{}
+	for time.Now().Before(deadline) {
+		attempts++
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+		out, err := cmd.Output()
+		cancel()
+		if err != nil {
+			lastInfo = map[string]any{"note": "query failed", "error": err.Error(), "attempts": attempts}
+			time.Sleep(interval)
+			continue
+		}
+
+		var info struct {
+			Total    int    `json:"total"`
+			Active   int    `json:"active"`
+			HasError int    `json:"hasError"`
+			Statuses string `json:"statuses"`
+		}
+		if jErr := json.Unmarshal(out, &info); jErr != nil {
+			lastInfo = map[string]any{"note": "parse failed", "attempts": attempts}
+			time.Sleep(interval)
+			continue
+		}
+
+		lastInfo = map[string]any{
+			"queue_total":  info.Total,
+			"queue_active": info.Active,
+			"queue_errors": info.HasError,
+			"statuses":     info.Statuses,
+			"attempts":     attempts,
+		}
+
+		// Job appeared in queue. Being visible is only acceptance while the
+		// spooler raises no fault: the state observed on a real printer was
+		// "Error, Printing", which the bare presence check read as accepted.
+		if info.Total > 0 {
+			if isBlockedStatus(info.Statuses) {
+				lastInfo["note"] = fmt.Sprintf("job blocked in print queue (status: %s)", info.Statuses)
+				return false, lastInfo
+			}
+			lastInfo["note"] = "job visible in print queue"
+			return true, lastInfo
+		}
+
+		// No active jobs and no errors — job may have been printed instantly
+		// (common for fast laser printers). Accept as verified.
+		if info.Total == 0 && info.HasError == 0 && attempts >= 2 {
+			lastInfo["note"] = "queue drained — job likely printed immediately"
+			return true, lastInfo
+		}
+
+		time.Sleep(interval)
+	}
+
+	lastInfo["note"] = fmt.Sprintf("no confirmation after %d attempts (%.1fs)", attempts, e.QueueAcceptTimeout.Seconds())
+	return false, lastInfo
 }
 
 // resolvePrinterName picks the Windows printer name from executor config,
@@ -137,13 +507,8 @@ func (e *Executor) fail(start time.Time, job printer.PrintJob, msg string, err e
 
 // buildRawPrintScript generates a PowerShell script that sends raw bytes to a
 // Windows printer using the RawPrinterHelper class (P/Invoke winspool.drv).
-// The payload is base64-encoded to safely pass through the command line.
 func buildRawPrintScript(printerName string, payload []byte) string {
-	// Encode payload as base64 to avoid escaping issues.
 	b64 := base64Encode(payload)
-
-	// The script defines RawPrinterHelper, creates a temp file from base64,
-	// reads it as bytes, and sends those bytes directly to the spooler.
 	return fmt.Sprintf(`$ErrorActionPreference='Stop'
 Add-Type -TypeDefinition @'
 using System;
@@ -209,6 +574,10 @@ try {
 `, b64, escapePrinterName(printerName))
 }
 
+func escapeForPS(s string) string {
+	return strings.ReplaceAll(s, "'", "''")
+}
+
 func base64Encode(data []byte) string {
 	const table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 	var sb strings.Builder
@@ -245,4 +614,11 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

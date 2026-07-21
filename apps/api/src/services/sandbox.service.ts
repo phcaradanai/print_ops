@@ -8,9 +8,11 @@ import type {
   PrinterRepositoryPort,
   PrintTemplate,
   PaperProfile,
+  JobStatus,
 } from '@printerops/domain';
 import { generateId, NotFoundError, ValidationError } from '@printerops/shared';
 import { CreatePrintJobService } from './create-print-job.service.js';
+import type { ExecuteJobService } from './execute-job.service.js';
 
 /** Extracts all {{field}} placeholders from template content. */
 function extractTemplateFields(template: PrintTemplate): string[] {
@@ -40,6 +42,8 @@ export class SandboxService {
     private renderer: TemplateRendererPort,
     /** Optional — only needed when sending real test prints */
     private createJob?: CreatePrintJobService,
+    /** Execute job synchronously for real test-print results */
+    private executeJob?: ExecuteJobService,
   ) {}
 
   /** Run a single sandbox rehearsal against a template. */
@@ -82,6 +86,8 @@ export class SandboxService {
 
     let testJobId: string | undefined;
     let testPrintSuccess: boolean | undefined;
+    let testPrintStatus: JobStatus | undefined;
+    let testPrintError: string | undefined;
 
     if (input.testPrint) {
       try {
@@ -106,9 +112,24 @@ export class SandboxService {
           'sandbox',
         );
         testJobId = job.id;
-        testPrintSuccess = job.status === 'QUEUED' || job.status === 'SUCCESS';
+
+        // Execute the job synchronously through the real printer adapter
+        // instead of just checking QUEUED status
+        if (this.executeJob) {
+          const executedJob = await this.executeJob.execute(job.id, 'sandbox');
+          testPrintStatus = executedJob.status;
+          testPrintSuccess = executedJob.status === 'SUCCESS';
+          testPrintError = executedJob.errorMessage;
+        } else {
+          // Fallback: no executor available, can only check queue status
+          testPrintStatus = job.status;
+          testPrintSuccess = false;
+          testPrintError = 'Runner not available — job queued but not executed';
+        }
       } catch (err) {
         testPrintSuccess = false;
+        testPrintError = err instanceof Error ? err.message : String(err);
+        testPrintStatus = 'FAILED';
       }
     }
 
@@ -129,6 +150,8 @@ export class SandboxService {
       performedAt: new Date(),
       testJobId,
       testPrintSuccess,
+      testPrintStatus,
+      testPrintError,
     };
   }
 

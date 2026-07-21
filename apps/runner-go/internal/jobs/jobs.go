@@ -24,6 +24,16 @@ import (
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/telemetry"
 )
 
+// executionTimeout is the outer ceiling on a single Execute call.
+//
+// It must exceed the slowest executor's own budget, or that executor can never
+// reach its verdict. The Windows spooler executor sends with a 30s command
+// timeout and then waits up to 90s for the printer's SNMP page counter to
+// advance (the counter moves ~15s after the spooler reports the job done), so
+// the ceiling is set well above the sum. Every executor bounds its own work;
+// this value only stops a wedged call from blocking the loop forever.
+const executionTimeout = 180 * time.Second
+
 // Config tunes the poll loop.
 type Config struct {
 	Interval       time.Duration // base poll interval
@@ -192,7 +202,7 @@ func (l *Looper) pollOnce(ctx context.Context) (bool, error) {
 		}
 	}
 
-	execCtx, execCancel := context.WithTimeout(ctx, 30*time.Second)
+	execCtx, execCancel := context.WithTimeout(ctx, executionTimeout)
 	result, execErr := l.Executor.Execute(execCtx, pj)
 	execCancel()
 
@@ -204,7 +214,7 @@ func (l *Looper) pollOnce(ctx context.Context) (bool, error) {
 		l.failed.Add(1)
 		l.lastError.Store(execErr.Error())
 		l.reportEvent(ctx, log, job.ID, traceID, "RUNNER_EXECUTION_FAILED", executionFinishedAt, execMs, "failed", safeErr(execErr))
-		l.reportResult(ctx, log, job.ID, traceID, "FAILED", execMs, executionStartedAt, executionFinishedAt, execErr)
+		l.reportResult(ctx, log, job.ID, traceID, "FAILED", result, execErr)
 		return true, nil
 	}
 	if result != nil && result.Status == printer.StatusFailed {
@@ -213,7 +223,22 @@ func (l *Looper) pollOnce(ctx context.Context) (bool, error) {
 			l.lastError.Store(result.Err.Error())
 		}
 		l.reportEvent(ctx, log, job.ID, traceID, "RUNNER_EXECUTION_FAILED", executionFinishedAt, result.DurationMs, "failed", result.SafeMessage)
-		l.reportResult(ctx, log, job.ID, traceID, "FAILED", result.DurationMs, result.StartedAt, result.FinishedAt, result.Err)
+		l.reportResult(ctx, log, job.ID, traceID, "FAILED", result, execErr)
+		return true, nil
+	}
+	if result != nil && result.Status == printer.StatusUnverified {
+		// Unverified is a page-may-have-come-out outcome: it must land as
+		// UNVERIFIED, not FAILED, or an operator will be invited to retry a
+		// print that may already have happened (duplicate page). The result's
+		// evidence (carrying error_code=PRINT_NOT_VERIFIABLE) must reach the
+		// API so normalizeStatus + the evidence errorCode passthrough keep
+		// the unverified status intact.
+		l.failed.Add(1)
+		if result.Err != nil {
+			l.lastError.Store(result.Err.Error())
+		}
+		l.reportEvent(ctx, log, job.ID, traceID, "RUNNER_EXECUTION_UNVERIFIED", executionFinishedAt, result.DurationMs, "unverified", result.SafeMessage)
+		l.reportResult(ctx, log, job.ID, traceID, "UNVERIFIED", result, execErr)
 		return true, nil
 	}
 
@@ -226,9 +251,9 @@ func (l *Looper) pollOnce(ctx context.Context) (bool, error) {
 
 	// Report result (terminal).
 	if result != nil {
-		l.reportResult(ctx, log, job.ID, traceID, "SUCCESS", result.DurationMs, result.StartedAt, result.FinishedAt, nil)
+		l.reportResult(ctx, log, job.ID, traceID, "SUCCESS", result, nil)
 	} else {
-		l.reportResult(ctx, log, job.ID, traceID, "SUCCESS", execMs, executionStartedAt, executionFinishedAt, nil)
+		l.reportResult(ctx, log, job.ID, traceID, "SUCCESS", nil, nil)
 	}
 
 	// Best-effort: also call legacy execute endpoint for backward compatibility.
@@ -266,21 +291,44 @@ func (l *Looper) reportEvent(ctx context.Context, log *logging.Logger, jobID, tr
 	}
 }
 
-func (l *Looper) reportResult(ctx context.Context, log *logging.Logger, jobID, traceID, status string, durMs int64, startedAt, finishedAt time.Time, execErr error) {
+func (l *Looper) reportResult(ctx context.Context, log *logging.Logger, jobID, traceID, status string, result *printer.PrintResult, execErr error) {
+	// Evidence: prefer the executor's own evidence (carries error_code on
+	// UNVERIFIED/FAILED), then layer the runner's discovery/executor mode on
+	// top for operator context. Without forwarding result.Evidence the API
+	// never sees error_code=PRINT_NOT_VERIFIABLE, so a Go-runner UNVERIFIED
+	// collapses to RUNNER_FAILED and becomes re-executable.
+	evidence := map[string]any{
+		"discovery_mode": l.Discovery,
+		"executor_mode":  l.Mode,
+	}
+	if result != nil && len(result.Evidence) > 0 {
+		for k, v := range result.Evidence {
+			evidence[k] = v
+		}
+	}
+
+	var durMs int64
+	var startedAt, finishedAt time.Time
+	if result != nil {
+		durMs = result.DurationMs
+		startedAt = result.StartedAt
+		finishedAt = result.FinishedAt
+	} else {
+		// execErr path: no result struct, synthesise timing from execErr-only.
+		finishedAt = time.Now()
+	}
+
 	req := api.JobResultRequest{
 		TraceID:     traceID,
 		JobID:       jobID,
 		RunnerID:    l.RunnerID,
 		Status:      status,
 		Executor:    l.Mode,
-		SafeMessage: statusMessage(status, execErr),
+		SafeMessage: statusMessage(status, result, execErr),
 		DurationMs:  durMs,
 		StartedAt:   startedAt,
 		FinishedAt:  finishedAt,
-		Evidence: map[string]any{
-			"discovery_mode": l.Discovery,
-			"executor_mode":  l.Mode,
-		},
+		Evidence:    evidence,
 	}
 	t := telemetry.StartTimer()
 	err := l.Client.ReportResult(ctx, l.RunnerID, req)
@@ -348,9 +396,14 @@ func safeErr(err error) string {
 	return err.Error()
 }
 
-func statusMessage(status string, err error) string {
+func statusMessage(status string, result *printer.PrintResult, err error) string {
 	if status == "SUCCESS" {
 		return "execution completed"
+	}
+	// Prefer the executor's own safe message — it carries the operator-facing
+	// reason (e.g. "sent 512 bytes to ... but the print is unverified: ...").
+	if result != nil && result.SafeMessage != "" {
+		return result.SafeMessage
 	}
 	if err != nil {
 		return err.Error()

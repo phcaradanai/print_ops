@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 import { getStatusBadgeColors } from '../statusColors.js';
@@ -40,7 +41,7 @@ export default function JobQueue() {
             {jobs.map((j) => (
               <tr key={j.id} style={{ borderTop: '1px solid #eee' }}>
                 <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                  <a href={`/jobs/${j.id}`} style={{ color: '#1e66f5' }}>{j.id.slice(0, 10)}…</a>
+                  <Link to={`/jobs/${j.id}`} style={{ color: '#1e66f5' }}>{j.id.slice(0, 10)}…</Link>
                 </td>
                 <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.85rem', fontWeight: 600 }}>
                   {j.printerCode ?? j.printerId.slice(0, 8)}

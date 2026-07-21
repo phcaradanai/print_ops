@@ -7,8 +7,7 @@
 | `apps/api` | TypeScript | **Production** | REST API, job queue, runner management, audit |
 | `apps/web` | TypeScript (React) | **Production** | Admin UI |
 | `apps/desktop` | TypeScript (Electron) | **Existing** | Desktop app |
-| `apps/runner` | TypeScript | **Dev/Reference** | Mock/reference runner |
-| `apps/runner-go` | Go | **Production Candidate** | Parallel production runner |
+| `apps/runner-go` | Go | **Production** | The only runner; the TypeScript runner was removed |
 
 ## Key Decision (2025-07)
 

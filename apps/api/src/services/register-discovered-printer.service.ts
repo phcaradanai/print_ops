@@ -28,7 +28,8 @@ export class RegisterDiscoveredPrinterService {
 
     const code =
       opts.printerCode ??
-      dp.localPrinterName.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
+      ((dp.localPrinterName.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '')) ||
+       `PRINTER_${discoveredPrinterId.slice(0, 8).toUpperCase()}`);
 
     const existing = await this.printers.findByCode(code);
     if (existing) throw new Error(`Printer code ${code} already in use`);

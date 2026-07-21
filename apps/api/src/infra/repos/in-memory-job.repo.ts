@@ -77,4 +77,15 @@ export class InMemoryJobRepository implements JobRepositoryPort {
     this.store.set(id, updated);
     return updated;
   }
+
+  async claim(id: string, fromStatuses: JobStatus[], patch: Partial<Job>): Promise<Job | undefined> {
+    // Read and write with no await in between: on Node's single thread nothing
+    // else can observe the old status once this starts, which is what makes the
+    // claim atomic without a lock.
+    const existing = this.store.get(id);
+    if (!existing || !fromStatuses.includes(existing.status)) return undefined;
+    const updated: Job = { ...existing, ...patch, id, updatedAt: new Date() };
+    this.store.set(id, updated);
+    return updated;
+  }
 }

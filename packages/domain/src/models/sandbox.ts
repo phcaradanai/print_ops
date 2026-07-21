@@ -1,3 +1,5 @@
+import type { JobStatus } from './job.js';
+
 /** Result of a single sandbox (template rehearsal) run. */
 export interface SandboxRunResult {
   /** Unique run identifier */
@@ -30,8 +32,12 @@ export interface SandboxRunResult {
   performedAt: Date;
   /** Optional job ID if a test-print was sent */
   testJobId?: string;
-  /** Optional test-print result */
+  /** Optional test-print result (true = printer acknowledged success) */
   testPrintSuccess?: boolean;
+  /** Real job status from the printer adapter execution */
+  testPrintStatus?: JobStatus;
+  /** Error message if test-print failed */
+  testPrintError?: string;
 }
 
 /** Input for a sandbox run */

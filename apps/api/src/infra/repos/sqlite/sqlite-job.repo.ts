@@ -181,19 +181,49 @@ export class SqliteJobRepository implements JobRepositoryPort {
   }
 
   async update(id: string, patch: Partial<Job>): Promise<Job> {
-    const db = getDb();
-
     const existing = await this.findById(id);
     if (!existing) throw new Error(`Job ${id} not found`);
 
-    const now = dateStr(new Date());
-    const fields: string[] = [];
-    const values: SqlValue[] = [];
+    const { fields, values } = buildJobPatch(patch);
+    if (fields.length > 0) {
+      getDb().run(`UPDATE jobs SET ${fields.join(', ')} WHERE id = ?`, [...values, id as SqlValue]);
+    }
 
-    const add = (col: string, val: unknown) => {
-      fields.push(`${col} = ?`);
-      values.push(val as SqlValue);
-    };
+    return (await this.findById(id))!;
+  }
+
+  async claim(id: string, fromStatuses: JobStatus[], patch: Partial<Job>): Promise<Job | undefined> {
+    const { fields, values } = buildJobPatch(patch);
+    if (fields.length === 0) return undefined;
+
+    // One conditional write. A caller that reads the status first and updates
+    // second leaves a window in which a second caller sees the same status —
+    // and both then print the same document.
+    const db = getDb();
+    const placeholders = fromStatuses.map(() => '?').join(', ');
+    db.run(
+      `UPDATE jobs SET ${fields.join(', ')} WHERE id = ? AND status IN (${placeholders})`,
+      [...values, id as SqlValue, ...(fromStatuses as SqlValue[])]
+    );
+
+    if (db.getRowsModified() === 0) return undefined;
+    return await this.findById(id);
+  }
+}
+
+/**
+ * Turn a job patch into a SET clause plus its bound values, so `update` and
+ * `claim` cannot drift apart on which columns they know how to write.
+ */
+function buildJobPatch(patch: Partial<Job>): { fields: string[]; values: SqlValue[] } {
+  const now = dateStr(new Date());
+  const fields: string[] = [];
+  const values: SqlValue[] = [];
+
+  const add = (col: string, val: unknown) => {
+    fields.push(`${col} = ?`);
+    values.push(val as SqlValue);
+  };
 
     if ('printerId' in patch) add('printer_id', patch.printerId);
     if ('printerCode' in patch) add('printer_code', patch.printerCode ?? null);
@@ -242,12 +272,5 @@ export class SqliteJobRepository implements JobRepositoryPort {
 
     add('updated_at', now);
 
-    if (fields.length > 0) {
-      const sql = `UPDATE jobs SET ${fields.join(', ')} WHERE id = ?`;
-      values.push(id as SqlValue);
-      db.run(sql, values);
-    }
-
-    return (await this.findById(id))!;
-  }
+  return { fields, values };
 }

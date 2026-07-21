@@ -5,6 +5,12 @@ export type JobStatus =
   | 'DISPATCHED'
   | 'PRINTING'
   | 'SUCCESS'
+  /**
+   * Sent, and nothing reported a fault, but no device channel could confirm a
+   * page came out. Distinct from FAILED on purpose: a page may well exist, so
+   * reprinting is an operator decision rather than a safe automatic retry.
+   */
+  | 'UNVERIFIED'
   | 'FAILED'
   | 'TIMEOUT'
   | 'CANCELLED'

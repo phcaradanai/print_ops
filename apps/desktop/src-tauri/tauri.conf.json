@@ -4,14 +4,15 @@
   "version": "0.1.0",
   "identifier": "com.printerops.desktop",
   "build": {
-    "beforeDevCommand": "npm --prefix ../.. run dev -w @printerops/web",
+    "beforeDevCommand": "",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "node src-tauri/scripts/bundle-resources.js"
+    "beforeBuildCommand": "node src-tauri/scripts/build-all.js"
   },
   "app": {
     "withGlobalTauri": false,
     "windows": [
       {
+        "label": "main",
         "title": "PrinterOps",
         "url": "http://127.0.0.1:31415",
         "width": 1280,
@@ -48,8 +49,7 @@
       "resources/server.exe",
       "resources/static",
       "resources/sql-wasm.wasm",
-      "resources/printops-runner.exe",
-      "resources/launcher.bat"
+      "resources/printops-runner.exe"
     ],
     "externalBin": []
   }

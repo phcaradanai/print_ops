@@ -10,7 +10,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "bundle": "npm run build && npm run build:web && npm run copy:static && esbuild dist/server.js --bundle --platform=node --target=node20 --outfile=dist/server.bundle.cjs --format=cjs && node -e \"var f=require('fs');var w=require.resolve('sql.js/dist/sql-wasm.wasm');f.copyFileSync(w,'dist/sql-wasm.wasm')\" && pkg dist/server.bundle.cjs --targets node18-win-x64 --output dist/printops-server.exe",
+    "bundle": "npm run build && npm run build:web && npm run copy:static && esbuild dist/server.js --bundle --platform=node --target=node20 --outfile=dist/server.bundle.cjs --format=cjs && node -e \"var f=require('fs');var w=require.resolve('sql.js/dist/sql-wasm.wasm');f.copyFileSync(w,'dist/sql-wasm.wasm')\" && pkg dist/server.bundle.cjs --targets node18-win-x64 --output dist/server.exe",
     "build:web": "cd ../web && npm run build",
     "copy:static": "node -e \"var fs=require('fs');var p=require('path');var src='../web/dist';var dst='dist/static';fs.rmSync(dst,{recursive:true,force:true});fs.cpSync(src,dst,{recursive:true});console.log('static copied:',fs.readdirSync(dst))\""
   },

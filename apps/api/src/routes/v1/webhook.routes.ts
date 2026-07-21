@@ -11,6 +11,7 @@ import type {
 import type { DynamicIntakeService } from '../../services/dynamic-intake.service.js';
 import type { CreatePrintJobService } from '../../services/create-print-job.service.js';
 import type { ExecuteJobService } from '../../services/execute-job.service.js';
+import type { GetPrinterStatusService } from '../../services/get-printer-status.service.js';
 import { actor, requirePermission } from './permission-guard.js';
 
 const PRIORITY_MAP: Record<string, JobPriority> = {
@@ -29,6 +30,7 @@ export async function webhookRoutes(
     audit: AuditRepositoryPort;
     createJob: CreatePrintJobService;
     executeJob: ExecuteJobService;
+    getPrinterStatus: GetPrinterStatusService;
   }
 ): Promise<void> {
   app.get('/webhook-endpoints', { onRequest: [requirePermission('webhook:read')] }, async () => deps.endpoints.findAll());
@@ -147,6 +149,27 @@ export async function webhookRoutes(
       actorId
     );
 
+    // ── Check printer is actually online before executing ──
+    let printerStatus: { code: string; message?: string } | undefined;
+    try {
+      printerStatus = await deps.getPrinterStatus.execute(job.printerId);
+    } catch {
+      // Can't query printer status — fall through and try anyway
+    }
+
+    if (printerStatus && (printerStatus.code === 'offline' || printerStatus.code === 'error')) {
+      return reply.status(502).send({
+        accepted: false,
+        jobId: job.id,
+        traceId: job.traceId,
+        status: 'FAILED',
+        printerStatus: printerStatus.code,
+        printerMessage: printerStatus.message ?? `Printer is ${printerStatus.code}`,
+        error: `Printer is ${printerStatus.code}: ${printerStatus.message ?? 'unavailable'}`,
+        warnings: rendered.warnings,
+      });
+    }
+
     // Execute immediately (synchronous for MVP)
     const completed = await deps.executeJob.execute(job.id, 'sandbox-runner');
 
@@ -161,15 +184,17 @@ export async function webhookRoutes(
         templateCode: template.templateCode,
         copies: body.copies ?? 1,
         status: completed.status,
+        printerStatus: printerStatus?.code,
         warnings: rendered.warnings,
       },
     });
 
     return {
-      accepted: true,
+      accepted: completed.status === 'SUCCESS',
       jobId: job.id,
       traceId: job.traceId,
       status: completed.status,
+      printerStatus: printerStatus?.code,
       warnings: rendered.warnings,
     };
   });

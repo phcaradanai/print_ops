@@ -14,7 +14,6 @@
     "build:runner-go": "cd apps/runner-go && go build -o printops-runner ./cmd/printops-runner",
     "test:runner-go": "cd apps/runner-go && go test ./...",
     "typecheck:runner-go": "cd apps/runner-go && go test ./...",
-    "dev:runner-ts": "npm run dev -w apps/runner",
     "clean": "find . -name 'dist' -not -path '*/node_modules/*' -exec rm -rf {} + 2>/dev/null; true"
   },
   "devDependencies": {

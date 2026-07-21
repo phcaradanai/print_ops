@@ -69,7 +69,7 @@ export class SqlitePrinterRepository implements PrinterRepositoryPort {
     const now = new Date();
     const nowStr = dateStr(now);
     const id = generateId();
-    const code = input.code ?? input.name.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
+    const code = (input.code ?? input.name.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '')) || `PRINTER_${id.slice(0, 8)}`;
     const isActive = input.isActive ?? true;
 
     db.run(
