@@ -2,9 +2,15 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import type { Job, JobStatus } from '@printerops/domain';
 import { SqliteJobRepository } from '../infra/repos/sqlite/sqlite-job.repo.js';
 import { initDatabase, closeDatabase } from '../infra/db/sqlite.js';
+
+// npm workspaces hoist sql.js to the repo-root node_modules, not apps/api's
+// own — a path built from process.cwd() misses it. require.resolve follows
+// Node's real module resolution (and therefore the hoist) instead of guessing.
+const SQL_WASM_PATH = createRequire(import.meta.url).resolve('sql.js/dist/sql-wasm.wasm');
 
 /**
  * SqliteJobRepository.claim is the production concurrency guard (DB_MODE=sqlite),
@@ -47,8 +53,8 @@ beforeEach(async () => {
   process.env['PRINTOPS_DB_PATH'] = join(tmpDir, 'test.db');
   // Point sql.js at the real WASM asset. locateFile() in sqlite.ts honours
   // SQL_WASM_PATH when it exists, else falls back to a path relative to the
-  // executable — which under vitest resolves to the repo root and misses.
-  process.env['SQL_WASM_PATH'] = join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
+  // executable — which under vitest resolves to the vitest binary and misses.
+  process.env['SQL_WASM_PATH'] = SQL_WASM_PATH;
   await initDatabase();
   repo = new SqliteJobRepository();
 });
