@@ -26,8 +26,10 @@ building a print request, and calling the PrintOps API.
 
 - Node.js `>=20.0.0`
 - npm `>=10.0.0`
-- Go `>=1.21.0` (required for the production runner)
-- Optional for the desktop app: Rust and Tauri CLI
+- Go `>=1.21.0` (required for the production runner, and to build the Go runner binary bundled into the desktop installer)
+- Optional, only for building the desktop installer (see [Build The Desktop Installer](#build-the-desktop-installer)):
+  - Rust via [rustup](https://rustup.rs/), plus the MSVC C++ build tools (Visual Studio Build Tools — "Desktop development with C++" workload) on Windows
+  - The Tauri CLI itself does **not** need a separate install — it's `apps/desktop`'s `@tauri-apps/cli` devDependency, pulled in by `npm install`
 - Optional for future persistence work: Docker, PostgreSQL, and Redis
 - Optional for printer discovery:
   - macOS/Linux: `lpstat`
@@ -131,6 +133,60 @@ npm run tauri:dev -w apps/desktop
 
 The desktop app expects the web dev server at `http://localhost:3000` and launches the Go runner binary automatically.
 
+### Build The Desktop Installer
+
+The desktop installer (`.msi` and `.exe`) bundles everything into one package: the
+React web UI, the API as a standalone `server.exe` (via `pkg`), and the Go runner
+as `printops-runner.exe`. It does **not** need the dev servers running — it's a
+from-scratch production build.
+
+Prerequisites beyond Node and Go: Rust (via [rustup](https://rustup.rs/)) and, on
+Windows, the MSVC C++ build tools (Visual Studio Build Tools with the "Desktop
+development with C++" workload). The WiX (`.msi`) and NSIS (`.exe`) bundlers
+themselves are downloaded automatically by Tauri on first build — no separate
+install needed, but the first build does need internet access for that download.
+
+From the repo root:
+
+```bash
+npm install
+cd apps/desktop
+npm run tauri:build
+```
+
+This runs `tauri build`, which first runs `beforeBuildCommand`
+(`node src-tauri/scripts/build-all.js`) and then produces the installers.
+`build-all.js` does, in order:
+
+1. Builds `packages/domain`, `packages/shared`, `packages/adapters`.
+2. Builds `apps/web` (`vite build`).
+3. Builds and `pkg`-bundles `apps/api` into `apps/api/dist/server.exe`.
+4. Runs `go build` in `apps/runner-go` to produce `printops-runner.exe`. If Go
+   is not found, this step is skipped with a warning and the installer is
+   still produced, but printer discovery/printing will be disabled at runtime.
+5. Copies all of the above into `apps/desktop/src-tauri/resources/`.
+
+The finished installers land at:
+
+```text
+apps/desktop/src-tauri/target/release/bundle/msi/PrinterOps_<version>_x64_en-US.msi
+apps/desktop/src-tauri/target/release/bundle/nsis/PrinterOps_<version>_x64-setup.exe
+```
+
+To build without producing an installer (e.g. to sanity-check that everything
+compiles and the resources get assembled), run the resource step alone:
+
+```bash
+node apps/desktop/src-tauri/scripts/build-all.js
+```
+
+**Known build-cache trap:** if `tauri:build` fails partway with esbuild unable to
+resolve `dist/server.js` (or `dist/app.js`) even though the preceding `tsc` step
+reported no errors, delete `apps/api/tsconfig.tsbuildinfo` and rebuild. TypeScript's
+incremental-build cache can desync when `tsc --noEmit` (typecheck) and `tsc -p
+tsconfig.json` (emit) are run against the same cache file — `tsc` then believes the
+`.js` output is already current and silently skips writing it.
+
 ### Test, Typecheck, And Build
 
 ```bash
@@ -165,11 +221,6 @@ npm test -w apps/api
 npm run build -w apps/web
 ```
 
-Note: at the time this README was last updated, `npm run typecheck` in the
-TypeScript workspaces fails in `apps/web/src/pages/LocalDiagnostics.tsx` because
-`apiFetch` is called with a second argument that its helper signature does not
-accept. This is an application code issue, not a setup step.
-
 ### Useful Development API Test
 
 Start the API and runner first, then send a fake print job:
@@ -202,6 +253,8 @@ API should return the existing job instead of creating a second print.
 | Data disappears after restart | Current runtime repositories are in-memory. PostgreSQL persistence is documented but not wired as the active runtime path. |
 | Real printer does not print | Real printer adapters are skeleton/incomplete in the current repo. Use the fake adapter path for verified local flow. |
 | Docker Compose does not build | `infra/docker/docker-compose.yml` references Dockerfiles that are not present. This is TBD / ต้องยืนยัน. |
+| `tauri:build` fails on `Could not resolve "dist/server.js"` | Stale `apps/api/tsconfig.tsbuildinfo`. Delete it and rebuild — see [Build The Desktop Installer](#build-the-desktop-installer). |
+| `tauri:build` fails / hangs while running the installer | The desktop app may already be running and holding the old `resources/*.exe` files locked. Stop `printerops-desktop.exe`, `server.exe`, and `printops-runner.exe` first. |
 
 ## Client/User Usage
 
@@ -356,8 +409,10 @@ PrintOps คือระบบกลางสำหรับรับคำส�
 
 - Node.js `>=20.0.0`
 - npm `>=10.0.0`
-- Go `>=1.21.0` (จำเป็นสำหรับ production runner)
-- ถ้าจะรัน desktop app: ต้องมี Rust และ Tauri CLI
+- Go `>=1.21.0` (จำเป็นสำหรับ production runner และสำหรับ build ตัว Go runner ที่ bundle เข้า desktop installer)
+- ถ้าจะ build desktop installer เอง (ดู [Build ตัวติดตั้ง Desktop](#build-ตัวติดตั้ง-desktop)):
+  - ต้องมี Rust ผ่าน [rustup](https://rustup.rs/) และบน Windows ต้องมี MSVC C++ build tools (Visual Studio Build Tools เลือก workload "Desktop development with C++")
+  - Tauri CLI ไม่ต้องติดตั้งแยก — เป็น devDependency (`@tauri-apps/cli`) ของ `apps/desktop` อยู่แล้ว ติดมากับ `npm install`
 - ถ้าจะทดสอบ printer discovery:
   - macOS/Linux ใช้ `lpstat`
   - Windows ใช้ PowerShell `Get-Printer`
@@ -445,6 +500,57 @@ npm run tauri:dev -w apps/desktop
 
 ต้องเปิด web dev server ที่ `http://localhost:3000` ก่อน
 
+#### Build ตัวติดตั้ง Desktop
+
+ตัวติดตั้ง desktop (`.msi` และ `.exe`) รวมทุกอย่างไว้ในไฟล์เดียว: web UI (React),
+API ที่ build เป็น `server.exe` แบบ standalone (ผ่าน `pkg`), และ Go runner เป็น
+`printops-runner.exe` ไม่ต้องเปิด dev server ใด ๆ ไว้ก่อน — เป็นการ build จากศูนย์เพื่อ production
+
+สิ่งที่ต้องมีเพิ่มจาก Node และ Go: Rust (ผ่าน [rustup](https://rustup.rs/)) และบน
+Windows ต้องมี MSVC C++ build tools (Visual Studio Build Tools workload "Desktop
+development with C++") ตัว bundler WiX (`.msi`) และ NSIS (`.exe`) เอง Tauri จะ
+ดาวน์โหลดให้อัตโนมัติตอน build ครั้งแรก ไม่ต้องติดตั้งเอง แต่ build ครั้งแรกต้องมีอินเทอร์เน็ต
+
+รันจาก root ของ repo:
+
+```bash
+npm install
+cd apps/desktop
+npm run tauri:build
+```
+
+คำสั่งนี้รัน `tauri build` ซึ่งจะรัน `beforeBuildCommand`
+(`node src-tauri/scripts/build-all.js`) ก่อน แล้วค่อยสร้างตัวติดตั้ง
+`build-all.js` ทำตามลำดับนี้:
+
+1. build `packages/domain`, `packages/shared`, `packages/adapters`
+2. build `apps/web` (`vite build`)
+3. build และ bundle `apps/api` ด้วย `pkg` ออกมาเป็น `apps/api/dist/server.exe`
+4. รัน `go build` ใน `apps/runner-go` เพื่อสร้าง `printops-runner.exe` ถ้าไม่เจอ Go
+   ขั้นตอนนี้จะข้ามพร้อม warning แต่ตัวติดตั้งยังสร้างได้ เพียงแต่ printer
+   discovery/printing จะใช้งานไม่ได้ตอนรันจริง
+5. copy ทุกอย่างด้านบนเข้า `apps/desktop/src-tauri/resources/`
+
+ตัวติดตั้งที่ได้จะอยู่ที่:
+
+```text
+apps/desktop/src-tauri/target/release/bundle/msi/PrinterOps_<version>_x64_en-US.msi
+apps/desktop/src-tauri/target/release/bundle/nsis/PrinterOps_<version>_x64-setup.exe
+```
+
+ถ้าต้องการแค่ build เพื่อเช็คว่าคอมไพล์ผ่านและ resource ครบ โดยไม่ต้องสร้างตัวติดตั้งจริง:
+
+```bash
+node apps/desktop/src-tauri/scripts/build-all.js
+```
+
+**กับดัก build-cache ที่เคยเจอ:** ถ้า `tauri:build` fail กลางทางที่ esbuild หา
+`dist/server.js` (หรือ `dist/app.js`) ไม่เจอ ทั้งที่ `tsc` ก่อนหน้าไม่ error เลย ให้ลบ
+`apps/api/tsconfig.tsbuildinfo` แล้ว build ใหม่ สาเหตุคือ cache แบบ incremental
+build ของ TypeScript desync ได้ เมื่อรัน `tsc --noEmit` (typecheck) กับ `tsc -p
+tsconfig.json` (emit จริง) ด้วย cache ไฟล์เดียวกัน — `tsc` จะเข้าใจผิดว่าไฟล์ `.js`
+เป็นของปัจจุบันอยู่แล้ว แล้วเงียบ ๆ ไม่ยอม emit
+
 #### ทดสอบและ build
 
 ```bash
@@ -471,8 +577,6 @@ npm run build:runner-go     # build Go runner binary
 npm run test:runner-go      # รัน Go runner tests (go test ./...)
 npm run typecheck:runner-go # รัน Go runner typecheck (go test ./...)
 ```
-
-หมายเหตุ: ณ ตอนเขียน README นี้ `npm run typecheck` ใน TypeScript workspace ยัง fail ที่ `apps/web/src/pages/LocalDiagnostics.tsx` เพราะเรียก `apiFetch` ด้วย argument ตัวที่สอง ทั้งที่ helper รับ argument เดียว นี่เป็น issue ใน application code ไม่ใช่ขั้นตอน setup
 
 #### ตัวอย่างส่งงานพิมพ์สำหรับ dev
 
@@ -505,6 +609,8 @@ curl -X POST http://localhost:3001/api/v1/print-jobs \
 | restart แล้วข้อมูลหาย | runtime ปัจจุบันใช้ in-memory storage |
 | printer จริงไม่พิมพ์ | real printer adapters ยังไม่ยืนยันว่า production-ready |
 | Docker Compose build ไม่ได้ | `infra/docker/docker-compose.yml` อ้างถึง Dockerfile ที่ยังไม่มี ต้องยืนยัน |
+| `tauri:build` fail ที่ `Could not resolve "dist/server.js"` | `apps/api/tsconfig.tsbuildinfo` ค้าง ลบแล้ว build ใหม่ — ดู [Build ตัวติดตั้ง Desktop](#build-ตัวติดตั้ง-desktop) |
+| `tauri:build` fail หรือค้างตอนสร้างตัวติดตั้ง | แอป desktop อาจรันอยู่และล็อกไฟล์ `resources/*.exe` เก่าไว้ ให้ปิด `printerops-desktop.exe`, `server.exe`, `printops-runner.exe` ก่อน |
 
 ### สำหรับลูกค้า/ผู้ใช้งาน
 
