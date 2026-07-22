@@ -146,6 +146,65 @@ development with C++" workload). The WiX (`.msi`) and NSIS (`.exe`) bundlers
 themselves are downloaded automatically by Tauri on first build — no separate
 install needed, but the first build does need internet access for that download.
 
+#### Step 1: Update Version
+
+Update the version in all package files before building. The version appears in:
+- Root `package.json`
+- `apps/desktop/src-tauri/tauri.conf.json` (controls MSI/NSIS filename: `PrinterOps_X.Y.Z_...`)
+- `apps/api/package.json`
+- `apps/web/package.json`
+
+**PowerShell script** (save as `scripts/bump-version.ps1`):
+
+```powershell
+$VERSION = "0.2.0"  # Change this to desired version
+
+@(
+    "package.json",
+    "apps/api/package.json",
+    "apps/web/package.json"
+) | ForEach-Object {
+    (Get-Content $_) | ConvertFrom-Json | ForEach-Object { $_.version = $VERSION } | ConvertTo-Json | Set-Content $_
+}
+
+$tauri = (Get-Content "apps/desktop/src-tauri/tauri.conf.json") | ConvertFrom-Json
+$tauri.version = $VERSION
+$tauri.productVersion = $VERSION
+$tauri | ConvertTo-Json | Set-Content "apps/desktop/src-tauri/tauri.conf.json"
+
+Write-Host "✓ Version updated to $VERSION"
+```
+
+Run:
+```powershell
+.\scripts\bump-version.ps1
+```
+
+Or **Bash script** (save as `scripts/bump-version.sh`):
+
+```bash
+#!/bin/bash
+VERSION="0.2.0"  # Change this
+
+jq --arg v "$VERSION" '.version = $v' package.json > package.json.tmp && mv package.json.tmp package.json
+
+jq --arg v "$VERSION" '.version = $v' apps/api/package.json > package.json.tmp && mv package.json.tmp apps/api/package.json
+
+jq --arg v "$VERSION" '.version = $v' apps/web/package.json > package.json.tmp && mv package.json.tmp apps/web/package.json
+
+jq --arg v "$VERSION" '.version = $v | .productVersion = $v' apps/desktop/src-tauri/tauri.conf.json > tauri.conf.json.tmp && mv tauri.conf.json.tmp apps/desktop/src-tauri/tauri.conf.json
+
+echo "✓ Version updated to $VERSION"
+```
+
+Run:
+```bash
+chmod +x scripts/bump-version.sh
+./scripts/bump-version.sh
+```
+
+#### Step 2: Build Desktop Installer
+
 From the repo root:
 
 ```bash
@@ -510,6 +569,65 @@ API ที่ build เป็น `server.exe` แบบ standalone (ผ่าน
 Windows ต้องมี MSVC C++ build tools (Visual Studio Build Tools workload "Desktop
 development with C++") ตัว bundler WiX (`.msi`) และ NSIS (`.exe`) เอง Tauri จะ
 ดาวน์โหลดให้อัตโนมัติตอน build ครั้งแรก ไม่ต้องติดตั้งเอง แต่ build ครั้งแรกต้องมีอินเทอร์เน็ต
+
+##### ขั้นตอนที่ 1: อัพเดต Version
+
+อัพเดต version ในไฟล์ package ทั้งหมดก่อน build ตัวติดตั้ง version ปรากฏในไฟล์:
+- Root `package.json`
+- `apps/desktop/src-tauri/tauri.conf.json` (ควบคุม MSI/NSIS filename: `PrinterOps_X.Y.Z_...`)
+- `apps/api/package.json`
+- `apps/web/package.json`
+
+**PowerShell script** (บันทึกเป็น `scripts/bump-version.ps1`):
+
+```powershell
+$VERSION = "0.2.0"  # เปลี่ยนเป็น version ที่ต้องการ
+
+@(
+    "package.json",
+    "apps/api/package.json",
+    "apps/web/package.json"
+) | ForEach-Object {
+    (Get-Content $_) | ConvertFrom-Json | ForEach-Object { $_.version = $VERSION } | ConvertTo-Json | Set-Content $_
+}
+
+$tauri = (Get-Content "apps/desktop/src-tauri/tauri.conf.json") | ConvertFrom-Json
+$tauri.version = $VERSION
+$tauri.productVersion = $VERSION
+$tauri | ConvertTo-Json | Set-Content "apps/desktop/src-tauri/tauri.conf.json"
+
+Write-Host "✓ Version updated to $VERSION"
+```
+
+รัน:
+```powershell
+.\scripts\bump-version.ps1
+```
+
+หรือ **Bash script** (บันทึกเป็น `scripts/bump-version.sh`):
+
+```bash
+#!/bin/bash
+VERSION="0.2.0"  # เปลี่ยนเป็น version ที่ต้องการ
+
+jq --arg v "$VERSION" '.version = $v' package.json > package.json.tmp && mv package.json.tmp package.json
+
+jq --arg v "$VERSION" '.version = $v' apps/api/package.json > package.json.tmp && mv package.json.tmp apps/api/package.json
+
+jq --arg v "$VERSION" '.version = $v' apps/web/package.json > package.json.tmp && mv package.json.tmp apps/web/package.json
+
+jq --arg v "$VERSION" '.version = $v | .productVersion = $v' apps/desktop/src-tauri/tauri.conf.json > tauri.conf.json.tmp && mv tauri.conf.json.tmp apps/desktop/src-tauri/tauri.conf.json
+
+echo "✓ Version updated to $VERSION"
+```
+
+รัน:
+```bash
+chmod +x scripts/bump-version.sh
+./scripts/bump-version.sh
+```
+
+##### ขั้นตอนที่ 2: Build Desktop Installer
 
 รันจาก root ของ repo:
 
