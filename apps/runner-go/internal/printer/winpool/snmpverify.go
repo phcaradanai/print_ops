@@ -200,7 +200,7 @@ func (e *Executor) waitForDeviceConfirmation(ctx context.Context, target snmpTar
 		// honest verdict is "we don't know" — map to UNVERIFIABLE (→ UNVERIFIED),
 		// not a plain not-confirmed (→ FAILED → re-executable).
 		return deviceConfirmation{
-			Outcome:     outcomeUnverifiable,
+			Outcome:      outcomeUnverifiable,
 			Unverifiable: true,
 			PagesAfter:   lastCount,
 			Detail: fmt.Sprintf("device stopped answering SNMP during verification (no counter read in %s). "+

@@ -506,10 +506,10 @@ $jobs = @(Get-PrintJob -PrinterName '%s')
 		statuses := uniqueStatuses(ours)
 
 		lastInfo = map[string]any{
-			"queue_total":  len(queueJobs),
-			"queue_ours":   len(ours),
-			"statuses":     strings.Join(statuses, ","),
-			"attempts":     attempts,
+			"queue_total": len(queueJobs),
+			"queue_ours":  len(ours),
+			"statuses":    strings.Join(statuses, ","),
+			"attempts":    attempts,
 		}
 
 		// Our job appeared. Being visible is only acceptance while the spooler

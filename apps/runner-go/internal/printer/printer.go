@@ -30,9 +30,9 @@ type PrintJob struct {
 type ResultStatus string
 
 const (
-	StatusSuccess   ResultStatus = "SUCCESS"
+	StatusSuccess    ResultStatus = "SUCCESS"
 	StatusUnverified ResultStatus = "UNVERIFIED"
-	StatusFailed    ResultStatus = "FAILED"
+	StatusFailed     ResultStatus = "FAILED"
 )
 
 // PrintResult is the outcome of executing a PrintJob.
