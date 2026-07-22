@@ -32,6 +32,15 @@ interface Scenario {
   deviceStates?: Array<PrinterDeviceState | undefined>;
   /** Successive page-counter readings. */
   pageCounts?: Array<number | undefined>;
+  /**
+   * Milliseconds the injected clock advances on every `now()` call. Lets a
+   * timeout branch (waitForSpooler's `timeout`, waitForDeviceConfirmation's
+   * `not-confirmed` / `unverifiable`) resolve after a handful of scripted
+   * polls instead of the real 30s/90s deadline — without this, those branches
+   * had zero coverage because a test that reached one would spin at full CPU
+   * for the real wall-clock duration.
+   */
+  nowStepMs?: number;
 }
 
 /** Read a scripted series, repeating the final entry once it runs out. */
@@ -54,9 +63,11 @@ function deviceState(overrides: Partial<PrinterDeviceState> = {}): PrinterDevice
  * a loose includes() that a rename could silently misroute — e.g. a future
  * Get-PrinterStatus must not fall into the Get-PrintJob branch. The device-state
  * series is shared across pre-flight, baseline, and the confirmation loop:
- * adding an SNMP read anywhere shifts every later index, so each scenario is
- * written to be terminal on its first poll (the nextStatus/nextJobs/nextDeviceState
- * readers repeat their last entry, which is why that works).
+ * adding an SNMP read anywhere shifts every later index. Most scenarios below
+ * are written to resolve on their first poll (the nextStatus/nextJobs/
+ * nextDeviceState readers repeat their last entry, which is why that works);
+ * the ones that deliberately run to a timeout instead rely on the scripted
+ * `now()` clock above to get there in a few scripted polls.
  */
 function makeAdapter(scenario: Scenario = {}) {
   const nextStatus = series(scenario.printerStatus ?? ['Normal']);
@@ -94,9 +105,19 @@ function makeAdapter(scenario: Scenario = {}) {
     async resolveSnmpHost() {
       return scenario.snmpHost;
     },
-    // Real wall-clock deadlines still apply; every scenario below is terminal
-    // on its first poll, so no loop here spins.
     async sleep() {},
+    // A scripted clock: every read advances it by nowStepMs, so a scenario
+    // that runs to a timeout gets there in a handful of scripted polls rather
+    // than the real 30s/90s wall-clock wait.
+    now: (() => {
+      let clock = 0;
+      const step = scenario.nowStepMs ?? 10_000;
+      return () => {
+        const t = clock;
+        clock += step;
+        return t;
+      };
+    })(),
   };
 
   return { adapter: new WindowsSpoolerAdapter(deps), emitted };
@@ -209,6 +230,68 @@ describe('print verification chain', () => {
     expect(result.errorCode).toBe('PRINTER_DEVICE_ERROR');
     expect(result.message).toContain('reports noPaper, doorOpen — not sending job');
     expect(emitted).toHaveLength(0);
+  });
+});
+
+describe('timeouts', () => {
+  it('treats a device that never answers during verification as unverifiable, not failed', async () => {
+    // The counter is readable at the pre-send baseline (so the device channel
+    // is live) but goes silent for the whole confirmation window — a network
+    // blip, not a "no page" answer. HIGH-2: this must land on PRINT_NOT_VERIFIABLE
+    // (→ UNVERIFIED, not retryable), never PRINT_NOT_CONFIRMED_BY_DEVICE
+    // (→ FAILED, retryable — which risks a duplicate page for paper that may
+    // already have printed).
+    const { adapter } = makeAdapter({
+      snmpHost: SNMP_HOST,
+      // First read is the pre-send baseline; every read after that (all of
+      // them inside waitForDeviceConfirmation) returns undefined.
+      deviceStates: [deviceState({ pageCount: 100 }), undefined],
+      pageCounts: [undefined],
+    });
+
+    const result = await adapter.printTestPage(CONNECTION_URI, 'printer-1');
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe('PRINT_NOT_VERIFIABLE');
+    expect(result.message).toContain('device stopped answering SNMP during verification');
+    expect(result.message).toContain('Paper may have come out — do not auto-retry.');
+  });
+
+  it('treats a counter that was read but never moved as a real negative', async () => {
+    // The opposite of the case above: the device answers throughout, the
+    // counter just never advances. That IS a proven non-print, so retrying is
+    // safe and this must stay PRINT_NOT_CONFIRMED_BY_DEVICE (→ FAILED).
+    const { adapter } = makeAdapter({
+      snmpHost: SNMP_HOST,
+      deviceStates: [deviceState({ pageCount: 100 })],
+      pageCounts: [100],
+    });
+
+    const result = await adapter.printTestPage(CONNECTION_URI, 'printer-1');
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe('PRINT_NOT_CONFIRMED_BY_DEVICE');
+    expect(result.message).toContain('page counter did not advance within');
+    expect(result.message).toContain('counter 100 → 100');
+  });
+
+  it("reports the spooler's own timeout when the job never leaves the queue", async () => {
+    // No SNMP at all, so this isolates waitForSpooler's `timeout` outcome: a
+    // job that sits at an active (non-terminal, non-blocking) status forever.
+    const { adapter } = makeAdapter({
+      // Empty before the print is sent (the beforeIds snapshot), then our own
+      // job shows up and stays "Printing" — active, not blocking, not done —
+      // for the rest of the run.
+      jobs: [[], [{ Id: 99, JobStatus: 'Printing' }]],
+      snmpHost: undefined,
+    });
+
+    const result = await adapter.printTestPage(CONNECTION_URI, 'printer-1');
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe('PRINT_NOT_VERIFIABLE');
+    expect(result.message).toContain('still queued after');
+    expect(result.message).toContain('last status: Printing');
   });
 });
 

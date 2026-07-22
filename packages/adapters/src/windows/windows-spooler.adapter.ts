@@ -40,6 +40,13 @@ export interface WindowsSpoolerDeps {
   readPageCount: typeof readPageCount;
   resolveSnmpHost: typeof resolveSnmpHost;
   sleep(ms: number): Promise<void>;
+  /**
+   * Wall-clock reader for the two verification deadlines. Injectable so a test
+   * can advance it deterministically instead of spinning at full CPU for the
+   * real 30s/90s timeouts — which is why, before this seam existed, neither
+   * timeout branch had any test coverage at all.
+   */
+  now(): number;
 }
 
 const defaultDeps: WindowsSpoolerDeps = {
@@ -70,6 +77,7 @@ const defaultDeps: WindowsSpoolerDeps = {
   readPageCount,
   resolveSnmpHost,
   sleep,
+  now: Date.now,
 };
 
 /**
@@ -516,7 +524,7 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     pagesBefore: number,
     copies: number,
   ): Promise<{ outcome: 'confirmed' | 'not-confirmed' | 'unverifiable'; detail: string }> {
-    const deadline = Date.now() + this.DEVICE_VERIFY_TIMEOUT_MS;
+    const deadline = this.deps.now() + this.DEVICE_VERIFY_TIMEOUT_MS;
     let lastCount = pagesBefore;
     // The wait must distinguish two timeouts that look identical without this
     // flag: a counter that was read and stayed put (a real negative — the page
@@ -526,7 +534,7 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     // network blip during verification files a printed page as retryable-FAILED.
     let anyReadSucceeded = false;
 
-    while (Date.now() < deadline) {
+    while (this.deps.now() < deadline) {
       // LOW-6 note: readDeviceState already returns pageCount, so a future
       // refactor could drop the separate readPageCount call and halve the SNMP
       // probes per poll. Not done here because the test harness keys
@@ -589,14 +597,14 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     printerName: string,
     beforeIds: Set<string>,
   ): Promise<SpoolerVerdict> {
-    const deadline = Date.now() + this.PRINT_TIMEOUT_MS;
+    const deadline = this.deps.now() + this.PRINT_TIMEOUT_MS;
     let lastStatus = 'unknown';
     let seenOurJob = false;
 
     // Give the spooler a moment to register the job.
     await this.deps.sleep(1000);
 
-    while (Date.now() < deadline) {
+    while (this.deps.now() < deadline) {
       // The device fault the spooler surfaces on the printer itself — this is
       // what "PrinterStatus: Error" looks like when a WSD printer goes away.
       const printerFault = await this.readPrinterFault(printerName);
