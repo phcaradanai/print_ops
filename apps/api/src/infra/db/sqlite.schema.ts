@@ -223,6 +223,7 @@ export function runSchemaMigration(db: Database): void {
       dpi INTEGER NOT NULL DEFAULT 203,
       orientation TEXT NOT NULL DEFAULT 'portrait',
       unit TEXT NOT NULL DEFAULT 'mm',
+      fields TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )

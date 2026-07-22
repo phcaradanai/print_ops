@@ -23,6 +23,7 @@ export type AuditAction =
   | 'permission.denied'
   | 'printer.registered_from_discovery'
   | 'template.created'
+  | 'template.auto_created'
   | 'template.updated'
   | 'template.published'
   | 'template.test_print.requested'

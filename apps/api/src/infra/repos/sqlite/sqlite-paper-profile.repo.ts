@@ -2,7 +2,7 @@ import type { SqlValue } from 'sql.js';
 import type { CreatePaperProfileInput, ListOptions, PaperProfile, PaperProfileRepositoryPort } from '@printerops/domain';
 import { generateId } from '@printerops/shared';
 import { getDb } from '../../db/sqlite.js';
-import { toDate, dateStr } from '../../db/json.js';
+import { toDate, dateStr, toJson, fromJson } from '../../db/json.js';
 
 function rowToPaperProfile(row: Record<string, unknown>): PaperProfile {
   return {
@@ -18,6 +18,7 @@ function rowToPaperProfile(row: Record<string, unknown>): PaperProfile {
     dpi: row['dpi'] as number,
     orientation: row['orientation'] as PaperProfile['orientation'],
     unit: row['unit'] as PaperProfile['unit'],
+    fields: fromJson(row['fields'], []),
     createdAt: toDate(row['created_at']),
     updatedAt: toDate(row['updated_at']),
   };
@@ -70,8 +71,8 @@ export class SqlitePaperProfileRepository implements PaperProfileRepositoryPort 
     const now = dateStr(new Date());
 
     db.run(
-      `INSERT INTO paper_profiles (id, code, name, width_mm, height_mm, margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm, dpi, orientation, unit, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO paper_profiles (id, code, name, width_mm, height_mm, margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm, dpi, orientation, unit, fields, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.code,
@@ -85,6 +86,7 @@ export class SqlitePaperProfileRepository implements PaperProfileRepositoryPort 
         input.dpi,
         input.orientation,
         input.unit,
+        toJson(input.fields ?? []),
         now,
         now,
       ],
@@ -122,6 +124,7 @@ export class SqlitePaperProfileRepository implements PaperProfileRepositoryPort 
     if ('dpi' in patch) add('dpi', patch.dpi);
     if ('orientation' in patch) add('orientation', patch.orientation);
     if ('unit' in patch) add('unit', patch.unit);
+    if ('fields' in patch) add('fields', toJson(patch.fields ?? []));
 
     add('updated_at', dateStr(new Date()));
 

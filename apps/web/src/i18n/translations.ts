@@ -257,6 +257,8 @@ const en: TranslationDict = {
   'page.templates.version': 'Version',
   'page.templates.status': 'Status',
   'page.templates.actions': 'Actions',
+  'page.templates.noPaperProfile': 'No paper profile',
+  'page.templates.availableKeys': 'Available keys',
 
   // PaperProfiles
   'page.paperProfiles.title': 'Paper Profiles',
@@ -761,6 +763,8 @@ const th: TranslationDict = {
   'page.templates.version': 'เวอร์ชัน',
   'page.templates.status': 'สถานะ',
   'page.templates.actions': 'ดำเนินการ',
+  'page.templates.noPaperProfile': 'ไม่ระบุโปรไฟล์กระดาษ',
+  'page.templates.availableKeys': 'คีย์ที่ใช้ได้',
 
   // PaperProfiles
   'page.paperProfiles.title': 'โปรไฟล์กระดาษ',

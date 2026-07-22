@@ -258,6 +258,7 @@ interface PaperProfile {
   dpi: number;
   orientation: 'portrait' | 'landscape';
   unit: 'mm' | 'inch';
+  fields: DynamicField[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -1107,15 +1108,34 @@ export default function PaperProfiles() {
   function convertDim(valMm: number): string {
     return String(displayVal(valMm, du, dpi));
   }
+  // Holds what the user is actively typing, keyed by form field. Without this,
+  // the input's value snaps to the .toFixed(1)-formatted mm value on every
+  // keystroke (convertDim re-runs each render), so typing "10.5" reformats to
+  // "10.0" after the "." and the "5" can never land — decimals were
+  // unreachable. The raw buffer wins over the formatted value while present;
+  // it's cleared on blur so the field reformats once editing is done.
+  const [dimRawInputs, setDimRawInputs] = useState<Partial<Record<keyof PaperForm, string>>>({});
+  useEffect(() => { setDimRawInputs({}); }, [du]);
   function dimInput(key: keyof PaperForm, labelKey: string) {
     const mmVal = form[key] as number;
+    const raw = dimRawInputs[key];
     return (
       <div>
         <label style={s.label}>{t(labelKey) + ' (' + du + ')'}</label>
-        <input type="number" value={convertDim(mmVal)}
+        <input type="number" value={raw !== undefined ? raw : convertDim(mmVal)}
           onChange={(e) => {
-            const v = parseFloat(e.target.value);
+            const text = e.target.value;
+            setDimRawInputs((cur) => ({ ...cur, [key]: text }));
+            const v = parseFloat(text);
             if (!isNaN(v)) patch(key, toMm(v, du, dpi));
+          }}
+          onBlur={() => {
+            setDimRawInputs((cur) => {
+              if (!(key in cur)) return cur;
+              const next = { ...cur };
+              delete next[key];
+              return next;
+            });
           }}
           style={s.input} step="any" />
       </div>
@@ -1219,7 +1239,11 @@ export default function PaperProfiles() {
     setSaveStatus('saving');
     setSaveError(null);
     try {
-      const body = { ...form, code: form.code || form.name.toLowerCase().replace(/\s+/g, '_') };
+      const body = {
+        ...form,
+        code: form.code || form.name.toLowerCase().replace(/\s+/g, '_'),
+        fields: ux.dynamicFields,
+      };
       if (editingId) {
         await apiFetch('/v1/paper-profiles/' + editingId, { method: 'PUT', body: JSON.stringify(body) });
       } else {
@@ -1451,6 +1475,8 @@ export default function PaperProfiles() {
       marginBottomMm: p.marginBottomMm, marginLeftMm: p.marginLeftMm,
       dpi: p.dpi, orientation: p.orientation, unit: p.unit,
     });
+    setUx((u) => ({ ...u, dynamicFields: p.fields ?? [] }));
+    setSelectedFieldId(null);
     setEditingId(p.id);
     setSaveStatus('idle');
     setSaveError(null);

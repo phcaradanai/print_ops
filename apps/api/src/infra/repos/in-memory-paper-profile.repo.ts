@@ -31,7 +31,13 @@ export class InMemoryPaperProfileRepository implements PaperProfileRepositoryPor
       throw new Error(`PaperProfile with code "${input.code}" already exists`);
     }
     const now = new Date();
-    const profile: PaperProfile = { ...input, id: generateId(), createdAt: now, updatedAt: now };
+    const profile: PaperProfile = {
+      ...input,
+      fields: input.fields ?? [],
+      id: generateId(),
+      createdAt: now,
+      updatedAt: now,
+    };
     this.store.set(profile.id, profile);
     return profile;
   }

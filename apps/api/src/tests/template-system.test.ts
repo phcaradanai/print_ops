@@ -84,6 +84,62 @@ describe('Template management, sandbox, and dynamic intake', () => {
     expect(JSON.stringify(audit.json())).toContain('template.created');
   });
 
+  it('persists paper profile fields and keeps a companion HTML template in sync', async () => {
+    const { app } = await buildApp();
+    const admin = await login(app, 'admin@printerops.local');
+
+    const field = {
+      id: 'f1', key: 'hn_masked', label: 'HN', defaultValue: '', type: 'text',
+      xMm: 5.5, yMm: 10, fontSize: 12, bold: true, color: '#111111', align: 'center',
+    };
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/paper-profiles',
+      headers: auth(admin),
+      payload: {
+        code: 'FIELD_SYNC_TEST', name: 'Field Sync Test',
+        widthMm: 70, heightMm: 30,
+        marginTopMm: 2, marginRightMm: 2, marginBottomMm: 2, marginLeftMm: 2,
+        dpi: 203, orientation: 'portrait', unit: 'mm',
+        fields: [field],
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const profile = created.json() as { id: string; fields: unknown[] };
+    expect(profile.fields).toEqual([field]);
+
+    // Re-fetching must return the same fields — this is what "field
+    // disappears after save" meant: fields were UI-only and never round-tripped.
+    const refetched = await app.inject({ method: 'GET', url: `/api/v1/paper-profiles/${profile.id}`, headers: auth(admin) });
+    expect((refetched.json() as { fields: unknown[] }).fields).toEqual([field]);
+
+    const templates = await app.inject({ method: 'GET', url: '/api/v1/templates', headers: auth(admin) });
+    const companion = (templates.json() as { paperProfileId?: string; engine: string; content: string }[])
+      .find((t) => t.paperProfileId === profile.id);
+    expect(companion).toBeDefined();
+    expect(companion!.engine).toBe('HTML');
+    expect(companion!.content).toContain('{{hn_masked}}');
+    expect(companion!.content).toContain('left:5.5mm');
+    expect(companion!.content).toContain('top:10mm');
+    expect(companion!.content).toContain('translateX(-50%)'); // center align
+
+    // Editing the profile's fields updates the SAME template, not a duplicate.
+    const updatedField = { ...field, key: 'hn_masked_v2' };
+    await app.inject({
+      method: 'PUT',
+      url: `/api/v1/paper-profiles/${profile.id}`,
+      headers: auth(admin),
+      payload: { fields: [updatedField] },
+    });
+
+    const templatesAfter = await app.inject({ method: 'GET', url: '/api/v1/templates', headers: auth(admin) });
+    const companionsAfter = (templatesAfter.json() as { paperProfileId?: string; content: string }[])
+      .filter((t) => t.paperProfileId === profile.id);
+    expect(companionsAfter).toHaveLength(1);
+    expect(companionsAfter[0]!.content).toContain('{{hn_masked_v2}}');
+  });
+
   it('allows sysadmin sandbox access and denies normal user sandbox', async () => {
     const { app } = await buildApp();
     const owner = await login(app, 'sysadmin@printerops.local');

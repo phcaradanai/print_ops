@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type {
   AuditRepositoryPort,
+  PaperProfile,
   PaperProfileRepositoryPort,
   PrinterTemplateBindingRepositoryPort,
   PrintTemplateRepositoryPort,
@@ -8,6 +9,42 @@ import type {
   PrinterRepositoryPort,
 } from '@printerops/domain';
 import { actor, requirePermission } from './permission-guard.js';
+
+/**
+ * CSS anchor transform for a field's text alignment — kept in lockstep with
+ * apps/web/src/pages/PaperProfiles.tsx's anchorTransform() so the printed HTML
+ * lands where the paper-profile editor's preview shows it.
+ */
+function fieldAnchorTransform(align: PaperProfile['fields'][number]['align']): string {
+  if (align === 'center') return 'transform:translateX(-50%);';
+  if (align === 'right') return 'transform:translateX(-100%);';
+  return '';
+}
+
+function escapeHtmlAttr(raw: string): string {
+  return raw.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Render a paper profile's fields as absolutely-positioned {{key}} spans, in
+ * real mm/pt units — this is what "print at the real position" means: no
+ * ZPL/TSPL dot-coordinate generation, just HTML the existing HTML engine
+ * (and WindowsSpoolerAdapter's printHtml) already renders literally.
+ */
+function buildFieldsTemplateHtml(profile: PaperProfile): string {
+  const spans = (profile.fields ?? [])
+    .map((f) => {
+      const placeholderKey = f.key.trim() || f.id;
+      const style =
+        `position:absolute;left:${f.xMm}mm;top:${f.yMm}mm;` +
+        `font-size:${f.fontSize}pt;font-weight:${f.bold ? 700 : 400};` +
+        `color:${escapeHtmlAttr(f.color)};white-space:nowrap;` +
+        fieldAnchorTransform(f.align);
+      return `  <span style="${style}">{{${placeholderKey}}}</span>`;
+    })
+    .join('\n');
+  return `<div style="position:relative;width:${profile.widthMm}mm;height:${profile.heightMm}mm;">\n${spans}\n</div>`;
+}
 
 export async function templateRoutes(
   app: FastifyInstance,
@@ -70,10 +107,45 @@ export async function templateRoutes(
     return { accepted: true, templateId: id };
   });
 
+  /**
+   * Keep a paper profile's fields and its companion print template in sync,
+   * one HTML template per profile. Without this, a profile's fields (set up
+   * visually, with a key per field) had nowhere to go: the template had to be
+   * hand-authored with matching {{key}} text and no link back to the profile.
+   */
+  async function uniqueTemplateCode(base: string): Promise<string> {
+    let candidate = `${base}_auto`;
+    for (let suffix = 2; await deps.templates.findByCode(candidate); suffix++) {
+      candidate = `${base}_auto_${suffix}`;
+    }
+    return candidate;
+  }
+
+  async function ensureFieldsTemplate(profile: PaperProfile, createdBy: string): Promise<void> {
+    const content = buildFieldsTemplateHtml(profile);
+    const existing = (await deps.templates.findAll()).find((t) => t.paperProfileId === profile.id);
+    if (existing) {
+      if (existing.content !== content) {
+        await deps.templates.update(existing.id, { content });
+      }
+      return;
+    }
+    const template = await deps.templates.create({
+      templateCode: await uniqueTemplateCode(profile.code),
+      name: `${profile.name} (auto)`,
+      engine: 'HTML',
+      content,
+      paperProfileId: profile.id,
+      createdBy,
+    });
+    await deps.audit.create({ traceId: 'paper', action: 'template.auto_created', actorId: createdBy, resourceType: 'template', resourceId: template.id, after: template as unknown as Record<string, unknown>, metadata: { paperProfileId: profile.id } });
+  }
+
   app.get('/paper-profiles', { onRequest: [requirePermission('paper-profile:read')] }, async () => deps.papers.findAll());
   app.post('/paper-profiles', { onRequest: [requirePermission('paper-profile:create')] }, async (req, reply) => {
     const profile = await deps.papers.create(req.body as Parameters<typeof deps.papers.create>[0]);
     await deps.audit.create({ traceId: 'paper', action: 'paper_profile.created', actorId: actor(req), resourceType: 'paper_profile', resourceId: profile.id, after: profile as unknown as Record<string, unknown>, metadata: {} });
+    await ensureFieldsTemplate(profile, actor(req));
     return reply.status(201).send(profile);
   });
   app.get('/paper-profiles/:id', { onRequest: [requirePermission('paper-profile:read')] }, async (req, reply) => {
@@ -86,6 +158,7 @@ export async function templateRoutes(
     const { id } = req.params as { id: string };
     const profile = await deps.papers.update(id, req.body as Record<string, unknown>);
     await deps.audit.create({ traceId: 'paper', action: 'paper_profile.updated', actorId: actor(req), resourceType: 'paper_profile', resourceId: id, after: profile as unknown as Record<string, unknown>, metadata: {} });
+    await ensureFieldsTemplate(profile, actor(req));
     return profile;
   });
 

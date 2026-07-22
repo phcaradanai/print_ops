@@ -13,14 +13,26 @@ interface Template {
   paperProfileId?: string;
 }
 
+interface PaperProfileOption {
+  id: string;
+  code: string;
+  name: string;
+  fields: { key: string }[];
+}
+
 export default function Templates() {
   const { t } = useLocale();
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [profiles, setProfiles] = useState<PaperProfileOption[]>([]);
   const [form, setForm] = useState({ templateCode: '', name: '', engine: 'RAW_TEXT', content: 'TEST {{label}}\\n{{barcode}}', paperProfileId: '' });
   const [preview, setPreview] = useState<string>('');
 
   const load = () => apiFetch<Template[]>('/v1/templates').then(setTemplates).catch(() => {});
-  useEffect(() => { void load(); }, []);
+  const loadProfiles = () => apiFetch<PaperProfileOption[]>('/v1/paper-profiles').then(setProfiles).catch(() => {});
+  useEffect(() => { void load(); void loadProfiles(); }, []);
+
+  const selectedProfile = profiles.find((p) => p.id === form.paperProfileId);
+  const selectedProfileKeys = selectedProfile?.fields.map((f) => f.key).filter(Boolean) ?? [];
 
   async function create() {
     await apiFetch('/v1/templates', {
@@ -50,9 +62,18 @@ export default function Templates() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
         <section style={{ background: '#fff', padding: '1rem', borderRadius: 8 }}>
           <h2 style={{ fontSize: '1rem' }}>{t('page.templates.createTemplate')}</h2>
-          {(['templateCode', 'name', 'paperProfileId'] as const).map((key) => (
+          {(['templateCode', 'name'] as const).map((key) => (
             <input key={key} placeholder={key} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} style={{ width: '100%', marginBottom: 8, padding: 8 }} />
           ))}
+          <select value={form.paperProfileId} onChange={(e) => setForm({ ...form, paperProfileId: e.target.value })} style={{ width: '100%', marginBottom: 4, padding: 8 }}>
+            <option value="">{t('page.templates.noPaperProfile')}</option>
+            {profiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}
+          </select>
+          {selectedProfileKeys.length > 0 && (
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 0, marginBottom: 8 }}>
+              {t('page.templates.availableKeys')}: {selectedProfileKeys.map((k) => `{{${k}}}`).join(', ')}
+            </p>
+          )}
           <select value={form.engine} onChange={(e) => setForm({ ...form, engine: e.target.value })} style={{ width: '100%', marginBottom: 8, padding: 8 }}>
             {['RAW_TEXT', 'ZPL', 'TSPL', 'HTML', 'JSON_LAYOUT'].map((e) => <option key={e}>{e}</option>)}
           </select>

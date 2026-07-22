@@ -37,6 +37,26 @@ export type CreatePrintTemplateInput = Omit<
   updatedBy?: string;
 };
 
+export type PaperProfileFieldType = 'text' | 'barcode' | 'date' | 'number';
+
+/**
+ * A named print position on a paper profile — set up visually in the paper
+ * profile editor, referenced as {{key}} by the profile's companion template.
+ */
+export interface PaperProfileField {
+  id: string;
+  key: string;
+  label: string;
+  defaultValue: string;
+  type: PaperProfileFieldType;
+  xMm: number;
+  yMm: number;
+  fontSize: number;
+  bold: boolean;
+  color: string;
+  align: 'left' | 'center' | 'right';
+}
+
 export interface PaperProfile {
   id: string;
   code: string;
@@ -50,11 +70,14 @@ export interface PaperProfile {
   dpi: number;
   orientation: Orientation;
   unit: PaperUnit;
+  fields: PaperProfileField[];
   createdAt: Date;
   updatedAt: Date;
 }
 
-export type CreatePaperProfileInput = Omit<PaperProfile, 'id' | 'createdAt' | 'updatedAt'>;
+export type CreatePaperProfileInput = Omit<PaperProfile, 'id' | 'createdAt' | 'updatedAt' | 'fields'> & {
+  fields?: PaperProfileField[];
+};
 
 export interface PrinterTemplateBinding {
   id: string;
