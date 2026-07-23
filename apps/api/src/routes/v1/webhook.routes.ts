@@ -144,7 +144,23 @@ export async function webhookRoutes(
         createdBy: actorId,
         sourceSystem: 'sandbox',
         sourceReference: 'sandbox.test-print',
-        metadata: { warnings: rendered.warnings, sandbox: true },
+        // Driver media settings come from the selected profile. A sandbox job
+        // follows the same device-confirmation rule as production: queue-only
+        // acceptance is never stored as physical print success.
+        metadata: {
+          warnings: rendered.warnings,
+          sandbox: true,
+          paperProfile: {
+            widthMm: paper.widthMm,
+            heightMm: paper.heightMm,
+            marginTopMm: paper.marginTopMm,
+            marginRightMm: paper.marginRightMm,
+            marginBottomMm: paper.marginBottomMm,
+            marginLeftMm: paper.marginLeftMm,
+            orientation: paper.orientation,
+            dpi: paper.dpi,
+          },
+        },
       },
       actorId
     );
@@ -157,45 +173,42 @@ export async function webhookRoutes(
       // Can't query printer status — fall through and try anyway
     }
 
-    if (printerStatus && (printerStatus.code === 'offline' || printerStatus.code === 'error')) {
-      return reply.status(502).send({
-        accepted: false,
-        jobId: job.id,
+    // Do not return early on a fault after creating the job: that used to
+    // strand it in QUEUED forever. ExecuteJobService lets the adapter persist
+    // the concrete PaperOut/Offline error as a terminal FAILED status.
+
+    // Execute in the background. Device confirmation can legitimately take
+    // tens of seconds; the UI polls the persisted job instead of keeping one
+    // HTTP request open and appearing frozen.
+    void deps.executeJob.execute(job.id, 'sandbox-runner').then(async (completed) => {
+      await deps.audit.create({
         traceId: job.traceId,
-        status: 'FAILED',
-        printerStatus: printerStatus.code,
-        printerMessage: printerStatus.message ?? `Printer is ${printerStatus.code}`,
-        error: `Printer is ${printerStatus.code}: ${printerStatus.message ?? 'unavailable'}`,
-        warnings: rendered.warnings,
+        action: 'sandbox.test_print',
+        actorId,
+        resourceType: 'sandbox',
+        resourceId: job.id,
+        metadata: {
+          printerCode: body.printerCode,
+          templateCode: template.templateCode,
+          copies: body.copies ?? 1,
+          status: completed.status,
+          printerStatus: printerStatus?.code,
+          warnings: rendered.warnings,
+        },
       });
-    }
-
-    // Execute immediately (synchronous for MVP)
-    const completed = await deps.executeJob.execute(job.id, 'sandbox-runner');
-
-    await deps.audit.create({
-      traceId: job.traceId,
-      action: 'sandbox.test_print',
-      actorId,
-      resourceType: 'sandbox',
-      resourceId: job.id,
-      metadata: {
-        printerCode: body.printerCode,
-        templateCode: template.templateCode,
-        copies: body.copies ?? 1,
-        status: completed.status,
-        printerStatus: printerStatus?.code,
-        warnings: rendered.warnings,
-      },
+    }).catch((err: unknown) => {
+      // ExecuteJobService persists adapter failures. This catches only an
+      // unexpected route-level failure so it is visible in server logs.
+      app.log.error({ err, jobId: job.id }, 'sandbox background execution failed');
     });
 
-    return {
-      accepted: completed.status === 'SUCCESS',
+    return reply.status(202).send({
+      accepted: true,
       jobId: job.id,
       traceId: job.traceId,
-      status: completed.status,
+      status: job.status,
       printerStatus: printerStatus?.code,
       warnings: rendered.warnings,
-    };
+    });
   });
 }

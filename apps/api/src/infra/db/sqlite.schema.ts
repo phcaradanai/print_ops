@@ -1,5 +1,23 @@
 import type { Database } from 'sql.js';
 
+function hasColumn(db: Database, table: string, column: string): boolean {
+  const stmt = db.prepare(`PRAGMA table_info(${table})`);
+  try {
+    while (stmt.step()) {
+      if (stmt.getAsObject()['name'] === column) return true;
+    }
+    return false;
+  } finally {
+    stmt.free();
+  }
+}
+
+function ensureColumn(db: Database, table: string, column: string, definition: string): void {
+  if (!hasColumn(db, table, column)) {
+    db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 /** Run CREATE TABLE IF NOT EXISTS for all entities. Idempotent — safe to call every boot. */
 export function runSchemaMigration(db: Database): void {
   db.run('PRAGMA journal_mode=WAL');
@@ -132,12 +150,18 @@ export function runSchemaMigration(db: Database): void {
       actor_email TEXT,
       resource_type TEXT NOT NULL,
       resource_id TEXT NOT NULL,
-      before_snapshot TEXT,       -- JSON
-      after_snapshot TEXT,        -- JSON
+      before TEXT,                -- JSON
+      after TEXT,                 -- JSON
       metadata TEXT NOT NULL DEFAULT '{}',
       occurred_at TEXT NOT NULL
     )
   `);
+
+  // Earlier desktop builds created audit_logs with before_snapshot and
+  // after_snapshot, while the repository has always read/write before and
+  // after. Add the canonical columns without touching existing audit history.
+  ensureColumn(db, 'audit_logs', 'before', 'TEXT');
+  ensureColumn(db, 'audit_logs', 'after', 'TEXT');
 
   db.run(`
     CREATE INDEX IF NOT EXISTS idx_audit_resource ON audit_logs(resource_type, resource_id);

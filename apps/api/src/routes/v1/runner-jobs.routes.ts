@@ -171,7 +171,18 @@ export async function v1RunnerJobRoutes(
     const job = await deps.jobs.findById(jobId);
     if (!job) return reply.status(404).send({ error: `Job ${jobId} not found` });
 
-    const status = normalizeStatus(body.status);
+    let status = normalizeStatus(body.status);
+    const printer = job.printerId ? await deps.printers.findById(job.printerId) : undefined;
+    const executionContext = {
+      executor: body.executor,
+      evidence: body.evidence,
+      printerProtocol: printer?.protocol,
+    };
+    const windowsExecutor = isWindowsSpoolerExecution(executionContext);
+    const deviceConfirmed = hasDeviceConfirmation(body.evidence);
+    const ippJobConfirmed = hasIppJobConfirmation(body.evidence);
+    const windowsPrintConfirmed = deviceConfirmed && ippJobConfirmed;
+    status = enforceWindowsSpoolerConfirmation(status, executionContext);
     const startedAt = body.started_at ? new Date(body.started_at) : job.dispatchedAt ?? new Date();
     const finishedAt = body.finished_at ? new Date(body.finished_at) : new Date();
     const runnerExecMs = body.duration_ms ?? (finishedAt.getTime() - startedAt.getTime());
@@ -187,10 +198,13 @@ export async function v1RunnerJobRoutes(
       status,
       finishedAt,
       completedAt: finishedAt,
-      printerAckAt: finishedAt,
       adapterUsed: body.executor ?? job.adapterUsed,
+      metadata: buildRunnerResultMetadata(job.metadata, body.evidence),
       latency,
     };
+    if (status === 'SUCCESS' && (!windowsExecutor || windowsPrintConfirmed)) {
+      patch.printerAckAt = finishedAt;
+    }
     if (status === 'FAILED') {
       // Keep the executor's specific error code when it sent one (e.g.
       // PRINT_JOB_ERROR, PRINTER_DEVICE_ERROR) — it is how operators and the
@@ -318,6 +332,57 @@ interface RunnerResultInput {
 
 // ---- helpers ----------------------------------------------------------
 
+type WindowsSpoolerExecutionInput = {
+  executor?: unknown;
+  evidence?: Record<string, unknown>;
+  printerProtocol?: unknown;
+};
+
+/**
+ * Identify the concrete Windows spooler path, not just the runner's configured
+ * mode. The Go multi-dispatcher reports its mode in `executor` and the selected
+ * backend in evidence, so either source (or the persisted printer protocol)
+ * must be able to activate the stricter confirmation gate.
+ */
+export function isWindowsSpoolerExecution(input: WindowsSpoolerExecutionInput): boolean {
+  const candidates = [
+    input.executor,
+    input.evidence?.['dispatched_executor'],
+    input.evidence?.['dispatchedExecutor'],
+    input.printerProtocol,
+  ];
+  return candidates.some((candidate) => {
+    if (typeof candidate !== 'string') return false;
+    const compact = candidate.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    return compact === 'spooler' || compact.includes('windowsspool') || compact.includes('winspool');
+  });
+}
+
+/** Accept evidence emitted by both Go (snake_case) and TypeScript (camelCase). */
+export function hasDeviceConfirmation(evidence?: Record<string, unknown>): boolean {
+  return evidence?.['device_confirmed'] === true || evidence?.['deviceConfirmed'] === true;
+}
+
+/** Exact printer-side job proof; a printer-global SNMP counter is insufficient. */
+export function hasIppJobConfirmation(evidence?: Record<string, unknown>): boolean {
+  return evidence?.['ipp_job_confirmed'] === true || evidence?.['ippJobConfirmed'] === true;
+}
+
+/**
+ * A Windows queue completion and a printer-global SNMP delta cannot identify
+ * which host produced a page. Preserve SUCCESS only when the runner also
+ * supplies exact printer-side IPP job confirmation.
+ */
+export function enforceWindowsSpoolerConfirmation(
+  status: 'SUCCESS' | 'UNVERIFIED' | 'FAILED',
+  input: WindowsSpoolerExecutionInput,
+): 'SUCCESS' | 'UNVERIFIED' | 'FAILED' {
+  if (status !== 'SUCCESS' || !isWindowsSpoolerExecution(input)) return status;
+  return hasDeviceConfirmation(input.evidence) && hasIppJobConfirmation(input.evidence)
+    ? 'SUCCESS'
+    : 'UNVERIFIED';
+}
+
 function normalizeStatus(raw: string): 'SUCCESS' | 'UNVERIFIED' | 'FAILED' {
   const upper = (raw ?? '').toUpperCase();
   if (upper === 'SUCCESS' || upper === 'SUCCEEDED' || upper === 'DONE' || upper === 'OK') return 'SUCCESS';
@@ -365,6 +430,17 @@ function sanitizeEvidence(ev?: Record<string, unknown>): Record<string, unknown>
     out[k] = v;
   }
   return out;
+}
+
+/** Keep remote-runner proof visible on the job without persisting secrets. */
+export function buildRunnerResultMetadata(
+  existing: Record<string, unknown> | undefined,
+  evidence?: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...(existing ?? {}),
+    printEvidence: sanitizeEvidence(evidence) ?? {},
+  };
 }
 
 /** Project the job to the fields the runner needs for local execution.

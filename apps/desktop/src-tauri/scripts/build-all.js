@@ -15,6 +15,7 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 const RUNNER_DIR = path.join(ROOT, 'apps', 'runner-go');
+const PRINT_HELPER_DIR = path.join(ROOT, 'apps', 'windows-print-helper');
 
 function run(cmd, opts = {}) {
   console.log(`\n  > ${cmd}`);
@@ -79,6 +80,20 @@ step('Building Go runner (printops-runner.exe)', () => {
   }
 });
 
+// ──── Windows HTML print helper ─────────────────────────────────────
+step('Building WebView2 HTML print helper', () => {
+  try {
+    execSync(
+      'dotnet publish PrintOps.HtmlPrint.csproj -c Release -r win-x64 --self-contained false -o publish',
+      { stdio: 'inherit', cwd: PRINT_HELPER_DIR },
+    );
+    console.log('[BUILD] OK: WebView2 print helper built');
+  } catch (e) {
+    console.error('[BUILD] ERROR: WebView2 print helper build failed.');
+    throw e;
+  }
+});
+
 // ──── Copy resources ──────────────────────────────────────────────────
 step('Copying resources into src-tauri/resources/', () => {
   const d = path.resolve(__dirname, '..', 'resources');
@@ -131,6 +146,17 @@ step('Copying resources into src-tauri/resources/', () => {
   } else {
     console.warn('[BUILD] WARNING: printops-runner.exe not found — printer discovery disabled');
     console.warn('[BUILD]   cd apps/runner-go && go build -o printops-runner.exe ./cmd/printops-runner/');
+  }
+
+  // Copy WebView2 HTML print helper and its managed/native dependencies.
+  const printHelperPublish = path.join(PRINT_HELPER_DIR, 'publish');
+  const printHelperDst = path.join(d, 'print-helper');
+  if (f.existsSync(printHelperPublish)) {
+    f.cpSync(printHelperPublish, printHelperDst, { recursive: true });
+    console.log('[BUILD] Copied WebView2 HTML print helper');
+  } else {
+    console.error('[BUILD] ERROR: WebView2 HTML print helper not found!');
+    process.exit(1);
   }
 });
 

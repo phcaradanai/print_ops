@@ -104,6 +104,16 @@ fn kill_child(slot: &Mutex<Option<Child>>, log: &Path, label: &str) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // This must be the first plugin registered. A second Desktop launch is
+        // routed back to this process instead of spawning another API/runner
+        // pair against the same sql.js database.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let exe_dir = std::env::current_exe()
@@ -122,7 +132,10 @@ pub fn run() {
                 }));
             }
 
-            let resource_dir = app.path().resource_dir().unwrap_or_else(|_| exe_dir.clone());
+            let resource_dir = app
+                .path()
+                .resource_dir()
+                .unwrap_or_else(|_| exe_dir.clone());
             let res_dir = resolve_resource_dir(&resource_dir, &exe_dir);
 
             let server_exe = res_dir.join("server.exe");
@@ -130,8 +143,14 @@ pub fn run() {
             let wasm_path = res_dir.join("sql-wasm.wasm");
 
             log_line(&app_log, "--- PrintOps desktop starting ---");
-            log_line(&app_log, &format!("resource_dir: {}", resource_dir.display()));
-            log_line(&app_log, &format!("resolved res_dir: {}", res_dir.display()));
+            log_line(
+                &app_log,
+                &format!("resource_dir: {}", resource_dir.display()),
+            );
+            log_line(
+                &app_log,
+                &format!("resolved res_dir: {}", res_dir.display()),
+            );
             log_line(
                 &app_log,
                 &format!(
@@ -151,7 +170,10 @@ pub fn run() {
 
             // Database lives in the per-user app data dir so the app still works
             // when installed to a read-only location.
-            let data_dir = app.path().app_data_dir().unwrap_or_else(|_| res_dir.clone());
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| res_dir.clone());
             let _ = fs::create_dir_all(&data_dir);
             let db_path = data_dir.join("printops.db");
             log_line(&app_log, &format!("db path: {}", db_path.display()));
@@ -160,14 +182,19 @@ pub fn run() {
             let server_child = if server_exe.exists() {
                 let (out, err) = child_stdio(&logs.join("desktop-server.log"));
                 let mut cmd = Command::new(&server_exe);
-                // DB_MODE stays "memory": the API's sqlite path calls getDb()
-                // without ever calling initDatabase(), so DB_MODE=sqlite makes
-                // server.exe exit on boot.
+                // Store settings, paper profiles, and registered printers in
+                // the per-user database above. This survives app restarts and
+                // desktop upgrades because it is outside the install folder.
                 cmd.current_dir(&res_dir)
                     .env("PORT", SERVER_PORT)
-                    .env("DB_MODE", "memory")
+                    .env("DB_MODE", "sqlite")
+                    .env("PRINTOPS_LOCAL_WORKER", "true")
                     .env("PRINTOPS_DB_PATH", &db_path)
                     .env("SQL_WASM_PATH", &wasm_path)
+                    .env(
+                        "PRINTOPS_HTML_PRINT_HELPER",
+                        res_dir.join("print-helper").join("printops-html-print.exe"),
+                    )
                     .stdin(Stdio::null())
                     .stdout(out)
                     .stderr(err);
@@ -223,7 +250,10 @@ pub fn run() {
                 let deadline = std::time::Instant::now() + Duration::from_secs(60);
                 let mut healthy = false;
                 while std::time::Instant::now() < deadline {
-                    match ureq::get(&health_url).timeout(Duration::from_secs(2)).call() {
+                    match ureq::get(&health_url)
+                        .timeout(Duration::from_secs(2))
+                        .call()
+                    {
                         Ok(resp) if resp.status() == 200 => {
                             healthy = true;
                             break;
@@ -233,7 +263,10 @@ pub fn run() {
                 }
 
                 if !healthy {
-                    log_line(&health_log, "ERROR: server health check timed out after 60s");
+                    log_line(
+                        &health_log,
+                        "ERROR: server health check timed out after 60s",
+                    );
                     return;
                 }
                 log_line(&health_log, "Server is healthy");

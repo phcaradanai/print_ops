@@ -115,7 +115,11 @@ export class DynamicIntakeService {
         sourceSystem: endpoint.sourceSystem,
         requestId,
         createdBy: endpoint.id,
-        mimeType: 'text/plain',
+        mimeType:
+          template.engine === 'HTML' ? 'text/html' :
+          template.engine === 'RAW_TEXT' ? 'text/plain' :
+          template.engine === 'PDF_LIKE_PREVIEW' ? 'application/pdf' :
+          `application/${template.engine.toLowerCase()}`,
         copies: typeof req.body['copies'] === 'number' ? Math.max(1, Math.min(req.body['copies'], 100)) : 1,
         duplex: false,
         colorMode: 'auto',
@@ -133,6 +137,16 @@ export class DynamicIntakeService {
           routePolicyCode: policy.policyCode,
           warnings: rendered.warnings,
           mappedPayload: route.mappedPayload,
+          paperProfile: {
+            widthMm: paper.widthMm,
+            heightMm: paper.heightMm,
+            marginTopMm: paper.marginTopMm,
+            marginRightMm: paper.marginRightMm,
+            marginBottomMm: paper.marginBottomMm,
+            marginLeftMm: paper.marginLeftMm,
+            orientation: paper.orientation,
+            dpi: paper.dpi,
+          },
         },
       },
       endpoint.id

@@ -17,9 +17,19 @@ export default function JobQueue() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiFetch<Job[]>('/jobs?limit=100')
-      .then((data) => { setJobs(data); setLoading(false); })
-      .catch(() => setLoading(false));
+    let active = true;
+    const load = () => {
+      void apiFetch<Job[]>('/jobs?limit=100')
+        .then((data) => { if (active) setJobs(data); })
+        .catch(() => {})
+        .finally(() => { if (active) setLoading(false); });
+    };
+    load();
+    const interval = window.setInterval(load, 1_500);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
   }, []);
 
   return (

@@ -82,12 +82,29 @@ export class AcceptExternalJobService {
     // the job as renderedPrintPayload so the runner can send them to the printer.
     let renderedPrintPayload: string | undefined;
     let renderWarnings: string[] = [];
+    let resolvedMimeType = 'text/plain';
+    let paperProfileMetadata: Record<string, unknown> | undefined;
     if (req.template_code && this.templates && this.renderer && this.papers) {
       const template = await this.templates.findByCode(req.template_code);
       if (template) {
+        resolvedMimeType =
+          template.engine === 'HTML' ? 'text/html' :
+          template.engine === 'RAW_TEXT' ? 'text/plain' :
+          template.engine === 'PDF_LIKE_PREVIEW' ? 'application/pdf' :
+          `application/${template.engine.toLowerCase()}`;
         const paperId = template.paperProfileId;
         const paper = paperId ? await this.papers.findById(paperId) : undefined;
         if (paper) {
+          paperProfileMetadata = {
+            widthMm: paper.widthMm,
+            heightMm: paper.heightMm,
+            marginTopMm: paper.marginTopMm,
+            marginRightMm: paper.marginRightMm,
+            marginBottomMm: paper.marginBottomMm,
+            marginLeftMm: paper.marginLeftMm,
+            orientation: paper.orientation,
+            dpi: paper.dpi,
+          };
           try {
             const rendered = await this.renderer.renderPrintPayload(template, req.payload, paper);
             renderedPrintPayload = rendered.renderedPrintPayload;
@@ -108,7 +125,7 @@ export class AcceptExternalJobService {
         sourceReference: req.source_reference,
         requestId: req.request_id,
         createdBy: actorId,
-        mimeType: 'text/plain',
+        mimeType: resolvedMimeType,
         copies: req.copies ?? 1,
         duplex: false,
         colorMode: 'auto',
@@ -118,6 +135,7 @@ export class AcceptExternalJobService {
         metadata: {
           ...(req.metadata ?? {}),
           payload: req.payload,
+          ...(paperProfileMetadata ? { paperProfile: paperProfileMetadata } : {}),
           ...(renderWarnings.length > 0 ? { renderWarnings } : {}),
         },
       },

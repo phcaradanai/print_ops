@@ -16,6 +16,45 @@ function auth(token: string): { authorization: string } {
 }
 
 describe('Template management, sandbox, and dynamic intake', () => {
+  it('returns a sandbox job immediately and persists its terminal result', async () => {
+    const { app } = await buildApp();
+    const admin = await login(app, 'sysadmin@printerops.local');
+    const templates = (await app.inject({
+      method: 'GET', url: '/api/v1/sandbox/templates', headers: auth(admin),
+    })).json() as Array<{ id: string; paperProfileId?: string }>;
+    const printers = (await app.inject({
+      method: 'GET', url: '/printers', headers: auth(admin),
+    })).json() as Array<{ id: string; protocol: string }>;
+    const template = templates.find((item) => item.paperProfileId);
+    const printer = printers.find((item) => item.protocol === 'fake');
+    expect(template).toBeDefined();
+    expect(printer).toBeDefined();
+
+    const submitted = await app.inject({
+      method: 'POST',
+      url: '/api/v1/sandbox/test-print',
+      headers: auth(admin),
+      payload: {
+        templateId: template!.id,
+        paperProfileId: template!.paperProfileId,
+        printerId: printer!.id,
+        copies: 1,
+        samplePayload: { label: 'test', barcode: 'ABC123' },
+      },
+    });
+    expect(submitted.statusCode).toBe(202);
+    const body = submitted.json() as { accepted: boolean; jobId: string };
+    expect(body.accepted).toBe(true);
+
+    let status = '';
+    for (let attempt = 0; attempt < 20 && status !== 'SUCCESS'; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const read = await app.inject({ method: 'GET', url: `/jobs/${body.jobId}`, headers: auth(admin) });
+      status = (read.json() as { status: string }).status;
+    }
+    expect(status).toBe('SUCCESS');
+  });
+
   it('allows admin to create paper profile and denies viewer create', async () => {
     const { app } = await buildApp();
     const admin = await login(app, 'admin@printerops.local');
@@ -120,9 +159,14 @@ describe('Template management, sandbox, and dynamic intake', () => {
     expect(companion).toBeDefined();
     expect(companion!.engine).toBe('HTML');
     expect(companion!.content).toContain('{{hn_masked}}');
-    expect(companion!.content).toContain('left:5.5mm');
-    expect(companion!.content).toContain('top:10mm');
+    // Stored geometry is 70x30 (landscape), but explicit orientation is
+    // portrait. Match the editor's clockwise point mapping while leaving the
+    // actual glyph upright: x'=(30-2-2)-10=16, y'=5.5.
+    expect(companion!.content).toContain('width:30mm;height:70mm');
+    expect(companion!.content).toContain('left:16mm');
+    expect(companion!.content).toContain('top:5.5mm');
     expect(companion!.content).toContain('translateX(-50%)'); // center align
+    expect(companion!.content).not.toContain('rotate(');
 
     // Editing the profile's fields updates the SAME template, not a duplicate.
     const updatedField = { ...field, key: 'hn_masked_v2' };

@@ -32,18 +32,31 @@ function escapeHtmlAttr(raw: string): string {
  * (and WindowsSpoolerAdapter's printHtml) already renders literally.
  */
 function buildFieldsTemplateHtml(profile: PaperProfile): string {
+  const naturalOrientation = profile.widthMm > profile.heightMm ? 'landscape' : 'portrait';
+  const rotated = naturalOrientation !== profile.orientation;
+  const widthMm = rotated ? profile.heightMm : profile.widthMm;
+  const heightMm = rotated ? profile.widthMm : profile.heightMm;
+  const sourcePrintableHeightMm = Math.max(
+    0,
+    profile.heightMm - profile.marginTopMm - profile.marginBottomMm,
+  );
   const spans = (profile.fields ?? [])
     .map((f) => {
       const placeholderKey = f.key.trim() || f.id;
+      // Match mapPrintablePointToVisual() in the profile editor. Rotate only
+      // the stored coordinate system; keeping the span itself unrotated means
+      // text and barcodes stay upright exactly as they do in the preview.
+      const xMm = rotated ? sourcePrintableHeightMm - f.yMm : f.xMm;
+      const yMm = rotated ? f.xMm : f.yMm;
       const style =
-        `position:absolute;left:${f.xMm}mm;top:${f.yMm}mm;` +
+        `position:absolute;left:${xMm}mm;top:${yMm}mm;` +
         `font-size:${f.fontSize}pt;font-weight:${f.bold ? 700 : 400};` +
         `color:${escapeHtmlAttr(f.color)};white-space:nowrap;` +
         fieldAnchorTransform(f.align);
       return `  <span style="${style}">{{${placeholderKey}}}</span>`;
     })
     .join('\n');
-  return `<div style="position:relative;width:${profile.widthMm}mm;height:${profile.heightMm}mm;">\n${spans}\n</div>`;
+  return `<div style="position:relative;width:${widthMm}mm;height:${heightMm}mm;">\n${spans}\n</div>`;
 }
 
 export async function templateRoutes(
@@ -123,7 +136,9 @@ export async function templateRoutes(
 
   async function ensureFieldsTemplate(profile: PaperProfile, createdBy: string): Promise<void> {
     const content = buildFieldsTemplateHtml(profile);
-    const existing = (await deps.templates.findAll()).find((t) => t.paperProfileId === profile.id);
+    const existing = (await deps.templates.findAll()).find(
+      (t) => t.paperProfileId === profile.id && t.engine === 'HTML',
+    );
     if (existing) {
       if (existing.content !== content) {
         await deps.templates.update(existing.id, { content });

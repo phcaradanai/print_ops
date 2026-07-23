@@ -65,6 +65,15 @@ export interface PrintCommand {
   mediaType?: string;
   resolution?: string;
   metadata: Record<string, unknown>;
+  /** In-process adapters can report a correlated native spooler job before
+   * terminal device verification finishes. */
+  onProgress?: (progress: PrinterAdapterProgress) => Promise<void> | void;
+}
+
+export interface PrinterAdapterProgress {
+  stage: 'SPOOLER_ACCEPTED';
+  occurredAt: Date;
+  evidence: Record<string, unknown>;
 }
 
 export type CreatePrinterInput = Omit<Printer, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'code' | 'isActive'> & {

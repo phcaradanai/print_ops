@@ -4,6 +4,7 @@ export * from './snmp/snmp-printer-status.adapter.js';
 export * from './snmp/snmp-client.js';
 export * from './snmp/printer-mib.js';
 export * from './windows/snmp-host-resolver.js';
+export * from './windows/ipp-printer-client.js';
 export * from './cups/cups-printer.adapter.js';
 export * from './windows/windows-spooler.adapter.js';
 export * from './raw-tcp-9100/raw-tcp-9100.adapter.js';

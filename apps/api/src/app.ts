@@ -75,6 +75,7 @@ import { paperProfileImportRoutes } from './routes/v1/paper-profile-imports.rout
 import { sandboxRoutes } from './routes/v1/sandbox.routes.js';
 import { join, dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { initDatabase } from './infra/db/sqlite.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -103,9 +104,12 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     }
   });
 
-  // Infra — use SQLite when DB_MODE=sqlite, otherwise in-memory
+  // Infra — use SQLite when DB_MODE=sqlite, otherwise in-memory.
+  // Repositories rely on the sql.js singleton, so initialise it before any
+  // repository is constructed or seeded.
   const dbMode = process.env['DB_MODE'] ?? 'memory';
   const useSqlite = dbMode === 'sqlite';
+  if (useSqlite) await initDatabase();
 
   const printerRepo = useSqlite ? new SqlitePrinterRepository() : new InMemoryPrinterRepository();
   const jobRepo = useSqlite ? new SqliteJobRepository() : new InMemoryJobRepository();
@@ -169,8 +173,134 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const sandboxSvc = new SandboxService(templateRepo, paperRepo, templateRenderer, createJob, executeJob);
   const connectivitySvc = new PrinterConnectivityService(printerRepo, registry);
 
+  // Desktop mode owns a local, in-process worker so every queued job uses the
+  // same driver-rendered Windows adapter as Sandbox. The Go runner remains the
+  // discovery agent; it must not RAW-send HTML/JSON to an IPP office printer.
+  let localWorkerTimer: ReturnType<typeof setInterval> | undefined;
+  if (process.env['PRINTOPS_LOCAL_WORKER'] === 'true') {
+    // ACCEPTED/VALIDATED are pre-dispatch states. A crash in job creation can
+    // leave them behind before the durable QUEUED transition; no page can have
+    // been submitted yet, so completing that transition is safe.
+    for (const safeRecoveryStatus of ['ACCEPTED', 'VALIDATED'] as const) {
+      const recoverableJobs = await jobRepo.findAll({ status: safeRecoveryStatus });
+      for (const recoverableJob of recoverableJobs) {
+        const currentJob = await jobRepo.findById(recoverableJob.id);
+        if (!currentJob || currentJob.status !== safeRecoveryStatus) continue;
+        await jobRepo.update(currentJob.id, {
+          status: 'QUEUED',
+          queuedAt: currentJob.queuedAt ?? new Date(),
+          metadata: {
+            ...currentJob.metadata,
+            recovery: {
+              previousStatus: safeRecoveryStatus,
+              recoveredAt: new Date().toISOString(),
+              safePreDispatchRecovery: true,
+            },
+          },
+        });
+      }
+    }
+
+    // A previous desktop process may have stopped after dispatching a document
+    // but before recording the device verdict. Replaying such a job can print a
+    // duplicate; leaving it eternally DISPATCHED/PRINTING is also misleading.
+    // Close the ambiguity honestly and require an intentional operator action.
+    for (const staleStatus of ['DISPATCHED', 'PRINTING'] as const) {
+      const staleJobs = await jobRepo.findAll({ status: staleStatus });
+      for (const staleJob of staleJobs) {
+        const currentJob = await jobRepo.findById(staleJob.id);
+        if (!currentJob || currentJob.status !== staleStatus) continue;
+        const recoveredAt = new Date();
+        await jobRepo.update(currentJob.id, {
+          status: 'UNVERIFIED',
+          finishedAt: recoveredAt,
+          completedAt: recoveredAt,
+          errorCode: 'RECOVERY_PRINT_STATUS_UNKNOWN',
+          errorMessage:
+            `Desktop restarted while the job was ${staleStatus}; a page may have printed. ` +
+            'The job was not replayed to prevent a duplicate.',
+          metadata: {
+            ...currentJob.metadata,
+            recovery: {
+              previousStatus: staleStatus,
+              recoveredAt: recoveredAt.toISOString(),
+              autoReplaySuppressed: true,
+            },
+          },
+        });
+      }
+    }
+
+    // The queue itself is intentionally in-memory, while jobs are persisted in
+    // desktop mode. Rebuild only the safe-to-dispatch portion after a restart.
+    // Jobs that reached DISPATCHED/PRINTING/UNVERIFIED may already have put a
+    // physical page on the wire, so automatically replaying those is unsafe.
+    const persistedQueuedJobs = await jobRepo.findAll({ status: 'QUEUED' });
+    persistedQueuedJobs.sort((left, right) => {
+      const leftQueuedAt = left.queuedAt ?? left.createdAt;
+      const rightQueuedAt = right.queuedAt ?? right.createdAt;
+      return leftQueuedAt.getTime() - rightQueuedAt.getTime();
+    });
+
+    let rehydratedJobCount = 0;
+    for (const persistedJob of persistedQueuedJobs) {
+      // Re-read immediately before enqueueing. This keeps a job that was
+      // claimed between the list query and this loop out of the rebuilt queue.
+      const currentJob = await jobRepo.findById(persistedJob.id);
+      if (!currentJob || currentJob.status !== 'QUEUED') continue;
+
+      await queue.enqueue({
+        jobId: currentJob.id,
+        printerId: currentJob.printerId,
+        traceId: currentJob.traceId,
+        correlationId: currentJob.correlationId,
+        priority: currentJob.priority,
+        enqueuedAt: currentJob.queuedAt ?? currentJob.createdAt,
+      });
+      rehydratedJobCount += 1;
+    }
+    if (rehydratedJobCount > 0) {
+      app.log.info({ rehydratedJobCount }, 'rehydrated persisted queued print jobs');
+    }
+
+    let workerBusy = false;
+    const drainOne = async () => {
+      if (workerBusy) return;
+      workerBusy = true;
+      try {
+        const queuedMessage = await queue.dequeue();
+        if (!queuedMessage) return;
+        const jobId = queuedMessage.jobId;
+        const queuedJob = await jobRepo.findById(jobId);
+        if (!queuedJob || queuedJob.status !== 'QUEUED') {
+          await queue.ack(jobId);
+          return;
+        }
+        await executeJob.execute(jobId, 'desktop-local-worker');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        // A direct Sandbox execution may win the conditional claim. That is a
+        // normal race and cannot double-print; other failures remain visible.
+        if (!message.includes('already claimed') && !message.includes('cannot be executed again')) {
+          app.log.error({ err }, 'local print worker failed');
+        }
+      } finally {
+        workerBusy = false;
+      }
+    };
+    localWorkerTimer = setInterval(() => { void drainOne(); }, 500);
+    localWorkerTimer.unref?.();
+    app.addHook('onClose', async () => {
+      if (localWorkerTimer) clearInterval(localWorkerTimer);
+    });
+  }
+
   // API key middleware
   const apiKeyHook = buildApiKeyAuth(serviceAccountRepo);
+
+  // A persistent store must never be re-seeded as a new instance on every
+  // desktop start; doing so duplicates sample data and can overwrite records.
+  const shouldSeedDemoData = !useSqlite || (await userRepo.findAll({ limit: 1 })).length === 0;
 
   // Seed default local users. MVP auth accepts any password for these accounts.
   for (const user of [
@@ -179,35 +309,40 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     { email: 'user@printerops.local', name: 'User', role: 'OPERATOR' as const },
     { email: 'viewer@printerops.local', name: 'Viewer', role: 'VIEWER' as const },
   ]) {
-    userRepo.seed({
+    if (!(await userRepo.findByEmail(user.email))) {
+      userRepo.seed({
+        id: generateId(),
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+  }
+
+  // Seed dev service account
+  const devKey = DEV_API_KEY;
+  if (!(await serviceAccountRepo.findBySourceSystem('integration-service'))) {
+    serviceAccountRepo.seed({
       id: generateId(),
-      email: user.email,
-      name: user.name,
-      role: user.role,
+      name: 'Dev Integration Service',
+      sourceSystem: 'integration-service',
+      apiKeyHash: hashApiKey(devKey),
+      apiKeyPrefix: apiKeyPrefix(devKey),
       isActive: true,
+      allowedPrinterCodes: [],
+      allowedTemplateCodes: [],
+      maxCopiesPerJob: 100,
+      maxPayloadBytes: 65536,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
   }
 
-  // Seed dev service account
-  const devKey = DEV_API_KEY;
-  serviceAccountRepo.seed({
-    id: generateId(),
-    name: 'Dev Integration Service',
-    sourceSystem: 'integration-service',
-    apiKeyHash: hashApiKey(devKey),
-    apiKeyPrefix: apiKeyPrefix(devKey),
-    isActive: true,
-    allowedPrinterCodes: [],
-    allowedTemplateCodes: [],
-    maxCopiesPerJob: 100,
-    maxPayloadBytes: 65536,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
-
   // Seed sample printers for dev
+  if (shouldSeedDemoData) {
   await printerRepo.create({
     code: 'LAB_LABEL_01',
     name: 'Lab Label Printer (EPSON L15160)',
@@ -317,6 +452,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     enabled: true,
     routePolicyId: labPolicy.id,
   });
+  }
 
   // Health check (no auth)
   app.get('/health', async () => ({ status: 'ok', uptime: process.uptime() }));

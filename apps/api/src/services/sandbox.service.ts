@@ -103,11 +103,28 @@ export class SandboxService {
             paperProfileId: paper.id,
             renderedPrintPayload: rendered.renderedPrintPayload,
             createdBy: 'sandbox',
-            mimeType: 'text/plain',
+            mimeType:
+              template.engine === 'HTML' ? 'text/html' :
+              template.engine === 'RAW_TEXT' ? 'text/plain' :
+              template.engine === 'PDF_LIKE_PREVIEW' ? 'application/pdf' :
+              `application/${template.engine.toLowerCase()}`,
             copies: 1,
             duplex: false,
             colorMode: 'auto',
-            metadata: { sandbox: true, runId },
+            metadata: {
+              sandbox: true,
+              runId,
+              paperProfile: {
+                widthMm: paper.widthMm,
+                heightMm: paper.heightMm,
+                marginTopMm: paper.marginTopMm,
+                marginRightMm: paper.marginRightMm,
+                marginBottomMm: paper.marginBottomMm,
+                marginLeftMm: paper.marginLeftMm,
+                orientation: paper.orientation,
+                dpi: paper.dpi,
+              },
+            },
           },
           'sandbox',
         );

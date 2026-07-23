@@ -47,6 +47,17 @@ const EXECUTABLE_STATUSES: readonly JobStatus[] = [
  */
 const UNVERIFIABLE_ERROR_CODE = 'PRINT_NOT_VERIFIABLE';
 
+function adapterEvidence(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return raw as Record<string, unknown>;
+}
+
+function evidenceDate(value: unknown): Date | undefined {
+  if (typeof value !== 'string') return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 export class ExecuteJobService {
   constructor(
     private jobs: JobRepositoryPort,
@@ -104,11 +115,10 @@ export class ExecuteJobService {
     });
 
     const startedAt = new Date();
-    // DISPATCHED → PRINTING
+    // Execution has started, but PRINTING is reserved for a correlated native
+    // Windows job. The adapter's progress callback performs that transition.
     await this.jobs.update(jobId, {
-      status: 'PRINTING',
       startedAt,
-      spoolerSentAt: startedAt,
     });
 
     this.events.publish({
@@ -123,6 +133,7 @@ export class ExecuteJobService {
     });
 
     const trace = await this.traces.findByJobId(jobId);
+    let acceptedProgress: { occurredAt: Date; evidence: Record<string, unknown> } | undefined;
 
     try {
       const adapter = this.registry.getAdapterForPrinter(printer);
@@ -148,17 +159,63 @@ export class ExecuteJobService {
           printerName: printer.name,
           printerCode: printer.code,
         },
+        onProgress: async (progress) => {
+          if (progress.stage !== 'SPOOLER_ACCEPTED') return;
+          acceptedProgress = { occurredAt: progress.occurredAt, evidence: progress.evidence };
+          try {
+            await this.jobs.update(jobId, {
+              status: 'PRINTING',
+              spoolerSentAt: progress.occurredAt,
+              metadata: {
+                ...job.metadata,
+                printEvidence: progress.evidence,
+              },
+            });
+          } catch (err) {
+            // The print has already reached Windows. Keep verification running;
+            // retrying because this intermediate write failed can duplicate it.
+            // eslint-disable-next-line no-console
+            console.error(`[ExecuteJobService] job ${jobId} progress persistence failed:`, err);
+          }
+        },
       });
 
-      const printerAckAt = new Date();
-      const finishedAt = printerAckAt;
+      const finishedAt = new Date();
       const runnerExecMs = finishedAt.getTime() - startedAt.getTime();
       const dispatchMs = startedAt.getTime() - dispatchedAt.getTime();
       const totalLatencyMs = job.receivedAt
         ? finishedAt.getTime() - job.receivedAt.getTime()
         : undefined;
 
+      const evidence = {
+        ...(acceptedProgress?.evidence ?? {}),
+        ...adapterEvidence(result.raw),
+      };
+      if (
+        result.success &&
+        adapter.protocol === 'windows_spooler' &&
+        (
+          evidence['deviceConfirmed'] !== true ||
+          evidence['ippJobConfirmed'] !== true
+        )
+      ) {
+        return await this.handleFailure(
+          job,
+          runnerId,
+          UNVERIFIABLE_ERROR_CODE,
+          result.message ??
+            'Windows accepted the job, but no exact printer-side IPP job confirmed the physical output',
+          startedAt,
+          dispatchedAt,
+          queueWaitMs,
+          trace ?? undefined,
+          adapter.adapterName,
+          evidence,
+        );
+      }
+
       if (result.success) {
+        const printerAckAt = finishedAt;
         const latency: JobLatency = {
           ...(job.latency ?? {}),
           queueWaitMs,
@@ -174,6 +231,10 @@ export class ExecuteJobService {
           completedAt: finishedAt,
           printerAckAt,
           adapterUsed: adapter.adapterName,
+          metadata: {
+            ...job.metadata,
+            printEvidence: evidence,
+          },
           latency,
         });
 
@@ -185,6 +246,10 @@ export class ExecuteJobService {
             finishedAt,
             durationMs: runnerExecMs,
             status: 'SUCCESS',
+            evidence: {
+              ...trace.evidence,
+              print: evidence,
+            },
             steps: [
               ...trace.steps,
               {
@@ -213,7 +278,13 @@ export class ExecuteJobService {
           resourceType: 'job',
           resourceId: jobId,
           after: completed as unknown as Record<string, unknown>,
-          metadata: { runnerId, durationMs: runnerExecMs, totalLatencyMs, adapter: adapter.adapterName },
+          metadata: {
+            runnerId,
+            durationMs: runnerExecMs,
+            totalLatencyMs,
+            adapter: adapter.adapterName,
+            evidence,
+          },
         });
 
         this.events.publish({
@@ -231,7 +302,7 @@ export class ExecuteJobService {
       } else {
         return await this.handleFailure(
           job, runnerId, result.errorCode ?? 'UNKNOWN', result.message ?? 'Adapter failed',
-          startedAt, dispatchedAt, queueWaitMs, trace ?? undefined, adapter.adapterName
+          startedAt, dispatchedAt, queueWaitMs, trace ?? undefined, adapter.adapterName, evidence
         );
       }
     } catch (err) {
@@ -240,8 +311,18 @@ export class ExecuteJobService {
       // eslint-disable-next-line no-console
       console.error(`[ExecuteJobService] job ${jobId} threw during execution:`, err);
       const errMsg = err instanceof Error ? err.message : String(err);
+      const mayHavePrinted = acceptedProgress !== undefined;
       return await this.handleFailure(
-        job, runnerId, 'EXECUTION_ERROR', errMsg, startedAt, dispatchedAt, queueWaitMs, trace ?? undefined, 'unknown'
+        job,
+        runnerId,
+        mayHavePrinted ? UNVERIFIABLE_ERROR_CODE : 'EXECUTION_ERROR',
+        mayHavePrinted ? `${errMsg}. Windows had already accepted the job; do not auto-retry.` : errMsg,
+        startedAt,
+        dispatchedAt,
+        queueWaitMs,
+        trace ?? undefined,
+        'unknown',
+        acceptedProgress?.evidence ?? {},
       );
     }
   }
@@ -254,8 +335,9 @@ export class ExecuteJobService {
     startedAt: Date,
     dispatchedAt: Date,
     queueWaitMs: number | undefined,
-    trace?: { id: string; steps: TraceStep[] },
-    adapterName?: string
+    trace?: { id: string; steps: TraceStep[]; evidence: Record<string, unknown> },
+    adapterName?: string,
+    evidence: Record<string, unknown> = {},
   ): Promise<Job> {
     const finishedAt = new Date();
     const runnerExecMs = finishedAt.getTime() - startedAt.getTime();
@@ -279,6 +361,7 @@ export class ExecuteJobService {
     const terminalStatus: JobStatus =
       errorCode === UNVERIFIABLE_ERROR_CODE ? 'UNVERIFIED' : 'FAILED';
 
+    const spoolerSentAt = evidenceDate(evidence['spoolerAcceptedAt']);
     const failed = await this.jobs.update(job.id, {
       status: terminalStatus,
       finishedAt,
@@ -286,6 +369,11 @@ export class ExecuteJobService {
       errorCode,
       errorMessage,
       adapterUsed: adapterName,
+      ...(spoolerSentAt ? { spoolerSentAt } : {}),
+      metadata: {
+        ...job.metadata,
+        printEvidence: evidence,
+      },
       latency,
     });
 
@@ -295,9 +383,13 @@ export class ExecuteJobService {
         startedAt,
         finishedAt,
         durationMs: runnerExecMs,
-        status: 'FAILED',
+        status: terminalStatus,
         errorCode,
         errorMessage,
+        evidence: {
+          ...trace.evidence,
+          print: evidence,
+        },
         steps: [
           ...trace.steps,
           {
@@ -326,7 +418,7 @@ export class ExecuteJobService {
       resourceType: 'job',
       resourceId: job.id,
       after: failed as unknown as Record<string, unknown>,
-      metadata: { runnerId, errorCode, errorMessage, totalLatencyMs },
+      metadata: { runnerId, errorCode, errorMessage, totalLatencyMs, evidence },
     });
 
     this.events.publish({

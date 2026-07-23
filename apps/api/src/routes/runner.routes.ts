@@ -1,7 +1,22 @@
 import type { FastifyInstance } from 'fastify';
 import type { RegisterRunnerService } from '../services/register-runner.service.js';
 import type { RunnerHeartbeatService } from '../services/runner-heartbeat.service.js';
-import type { RunnerRepositoryPort, RegisterRunnerInput, JobRepositoryPort } from '@printerops/domain';
+import type { RunnerRepositoryPort, RegisterRunnerInput, JobRepositoryPort, Runner } from '@printerops/domain';
+
+/**
+ * Old desktop releases created a new record on every launch. Keep the public
+ * runner list to one card per logical runner while the registration service
+ * reuses the newest matching record from now on.
+ */
+export function latestRunnersByIdentity(runners: Runner[]): Runner[] {
+  const seen = new Set<string>();
+  return runners.filter((runner) => {
+    const identity = `${runner.hostname}\u0000${runner.name}`;
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+}
 
 export async function runnerRoutes(
   app: FastifyInstance,
@@ -15,7 +30,7 @@ export async function runnerRoutes(
   const auth = { onRequest: [app.authenticate] };
 
   app.get('/runners', auth, async () => {
-    return deps.runners.findAll();
+    return latestRunnersByIdentity(await deps.runners.findAll());
   });
 
   app.post('/runners/register', auth, async (req, reply) => {

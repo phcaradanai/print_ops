@@ -2223,3 +2223,121 @@ body {
     padding: 1rem;
   }
 }
+
+/* ---- job detail: physical printer evidence ---- */
+
+.print-evidence {
+  margin: 1rem 0;
+  padding: 1rem 0;
+  border-top: 1px solid var(--neutral-border);
+  border-bottom: 1px solid var(--neutral-border);
+}
+
+.print-evidence__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.print-evidence__header h2 {
+  margin: 0;
+  color: var(--neutral-deep);
+  font-size: 1rem;
+}
+
+.print-evidence__outcome {
+  padding: 2px 8px;
+  border-radius: var(--rounded-sm);
+  background: var(--semantic-warning);
+  color: #713f12;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.print-evidence__outcome--confirmed {
+  background: var(--semantic-success);
+  color: #14532d;
+}
+
+.print-evidence__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0;
+}
+
+.print-evidence__fact {
+  min-width: 0;
+}
+
+.print-evidence__fact--wide {
+  grid-column: 1 / -1;
+}
+
+.print-evidence__fact dt {
+  margin-bottom: 0.15rem;
+  color: var(--neutral-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.print-evidence__fact dd {
+  margin: 0;
+  color: var(--neutral-text);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.print-evidence__fact code,
+.print-evidence__table code {
+  font-family: var(--font-mono-family);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.print-evidence__jobs-heading {
+  margin: 1rem 0 0.5rem;
+  color: var(--neutral-text);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.print-evidence__jobs-heading span {
+  color: var(--neutral-text-muted);
+  font-weight: 400;
+}
+
+.print-evidence__table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.print-evidence__table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--neutral-surface);
+  font-size: 0.78rem;
+}
+
+.print-evidence__table th,
+.print-evidence__table td {
+  padding: 0.55rem 0.6rem;
+  border-top: 1px solid var(--neutral-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.print-evidence__table th {
+  background: var(--neutral-subtle);
+  color: var(--neutral-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.print-evidence__empty {
+  margin: 0;
+  color: var(--neutral-text-muted);
+  font-size: 0.8rem;
+}

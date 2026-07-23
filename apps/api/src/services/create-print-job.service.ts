@@ -117,21 +117,24 @@ export class CreatePrintJobService {
       ],
     });
 
-    // Enqueue → QUEUED
+    // Persist QUEUED before touching the volatile in-memory queue. If the
+    // process stops between these two operations, desktop startup can safely
+    // rehydrate the durable row. The reverse ordering can lose a job forever
+    // (or let the worker dequeue it while the database still says VALIDATED).
     const priority = input.priority ?? PRIORITY_MAP[input.priorityLabel ?? 'normal'];
+    const queuedAt = new Date();
+    const queuedJob = await this.jobs.update(job.id, {
+      status: 'QUEUED',
+      queuedAt,
+    });
+
     await this.queue.enqueue({
       jobId: job.id,
       printerId: printer.id,
       traceId,
       correlationId,
       priority,
-      enqueuedAt: new Date(),
-    });
-
-    const queuedAt = new Date();
-    const queuedJob = await this.jobs.update(job.id, {
-      status: 'QUEUED',
-      queuedAt,
+      enqueuedAt: queuedAt,
     });
 
     await this.audit.create({
