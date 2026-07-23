@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { apiFetch, fileToBase64 } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
+import { exportJsonFile } from '../tauri.js';
 
 // ── Types ──────────────────────────────────────────────────────────
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -1264,6 +1265,95 @@ export default function PaperProfiles() {
   function dismissSaveError() {
     setSaveError(null);
     setSaveStatus('idle');
+  }
+
+  const jsonInputRef = useRef<HTMLInputElement>(null);
+
+  async function deleteProfile(profile: PaperProfile) {
+    const confirmMsg = t('page.paperProfiles.confirmDelete').replace('{code}', profile.code);
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      await apiFetch('/v1/paper-profiles/' + profile.id, { method: 'DELETE' });
+      if (editingId === profile.id) {
+        setEditingId(null);
+        setForm(DEFAULT_FORM);
+        setUx(DEFAULT_UX);
+        setSelectedFieldId(null);
+      }
+      load();
+    } catch (err: any) {
+      const msg = err?.message || t('page.paperProfiles.deleteFailed');
+      alert(msg);
+    }
+  }
+
+  async function exportProfileJson(profile: PaperProfile) {
+    const exportData = {
+      version: '1.0',
+      type: 'paper_profile_export',
+      exportedAt: new Date().toISOString(),
+      profiles: [
+        {
+          code: profile.code,
+          name: profile.name,
+          widthMm: profile.widthMm,
+          heightMm: profile.heightMm,
+          marginTopMm: profile.marginTopMm,
+          marginRightMm: profile.marginRightMm,
+          marginBottomMm: profile.marginBottomMm,
+          marginLeftMm: profile.marginLeftMm,
+          dpi: profile.dpi,
+          orientation: profile.orientation,
+          unit: profile.unit,
+          fields: profile.fields ?? [],
+        },
+      ],
+    };
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const workspacePath = localStorage.getItem('printops-workspace-path') ?? '';
+    await exportJsonFile(`paper-profile-${profile.code}.json`, jsonStr, workspacePath || undefined);
+  }
+
+  async function exportAllProfilesJson() {
+    if (profiles.length === 0) return;
+    const exportData = {
+      version: '1.0',
+      type: 'paper_profile_export',
+      exportedAt: new Date().toISOString(),
+      profiles: profiles.map((p) => ({
+        code: p.code,
+        name: p.name,
+        widthMm: p.widthMm,
+        heightMm: p.heightMm,
+        marginTopMm: p.marginTopMm,
+        marginRightMm: p.marginRightMm,
+        marginBottomMm: p.marginBottomMm,
+        marginLeftMm: p.marginLeftMm,
+        dpi: p.dpi,
+        orientation: p.orientation,
+        unit: p.unit,
+        fields: p.fields ?? [],
+      })),
+    };
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const workspacePath = localStorage.getItem('printops-workspace-path') ?? '';
+    await exportJsonFile('paper-profiles-export.json', jsonStr, workspacePath || undefined);
+  }
+
+  async function importProfilesJsonFile(file: File) {
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      const res = await apiFetch<{ imported: PaperProfile[]; count: number }>('/v1/paper-profiles/import', {
+        method: 'POST',
+        body: JSON.stringify(json),
+      });
+      load();
+      alert(t('page.paperProfiles.importJsonSuccess').replace('{n}', String(res.count)));
+    } catch (err: any) {
+      alert(err?.message || t('page.paperProfiles.importJsonFailed'));
+    }
   }
 
   // ── Import Design handlers ──────────────────────────────────────
@@ -2551,8 +2641,40 @@ export default function PaperProfiles() {
 
       {/* ─── Profile list ─── */}
       <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-        <div style={{ padding: '0.65rem 0.85rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ padding: '0.65rem 0.85rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
           <h2 style={{ fontSize: '0.875rem', margin: 0 }}>{t('page.paperProfiles.savedProfiles').replace('{n}', String(profiles.length))}</h2>
+          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+            <input
+              type="file"
+              ref={jsonInputRef}
+              accept=".json,application/json"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  void importProfilesJsonFile(file);
+                  e.target.value = '';
+                }
+              }}
+            />
+            <button
+              type="button"
+              style={{ ...s.btnSmall, fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+              onClick={() => jsonInputRef.current?.click()}
+              title={t('page.paperProfiles.importJsonProfile')}
+            >
+              📥 {t('page.paperProfiles.importJsonProfile')}
+            </button>
+            <button
+              type="button"
+              style={{ ...s.btnSmall, fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+              onClick={exportAllProfilesJson}
+              disabled={profiles.length === 0}
+              title={t('page.paperProfiles.exportAllProfiles')}
+            >
+              📦 {t('page.paperProfiles.exportAllProfiles')}
+            </button>
+          </div>
         </div>
         <div style={{ overflowX: 'auto', maxHeight: 200, overflowY: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
@@ -2581,8 +2703,10 @@ export default function PaperProfiles() {
                   <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem', color: '#6b7280' }}>{p.marginTopMm}/{p.marginRightMm}/{p.marginBottomMm}/{p.marginLeftMm}</td>
                   <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>{p.orientation === 'portrait' ? t('page.paperProfiles.portrait') : t('page.paperProfiles.landscape')}</td>
                   <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>{p.dpi}</td>
-                  <td style={{ padding: '0.5rem 0.6rem' }}>
-                    <button style={{ ...s.btnSmall, padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => startEdit(p)} aria-label={t('page.paperProfiles.editingProfile')}>✏️</button>
+                  <td style={{ padding: '0.5rem 0.6rem', display: 'flex', gap: '0.25rem' }}>
+                    <button style={{ ...s.btnSmall, padding: '0.25rem 0.4rem', fontSize: '0.75rem' }} onClick={() => startEdit(p)} title={t('page.paperProfiles.editingProfile')}>✏️</button>
+                    <button style={{ ...s.btnSmall, padding: '0.25rem 0.4rem', fontSize: '0.75rem' }} onClick={() => exportProfileJson(p)} title={t('page.paperProfiles.exportProfile')}>📤</button>
+                    <button style={{ ...s.btnDanger, padding: '0.25rem 0.4rem', fontSize: '0.75rem' }} onClick={() => void deleteProfile(p)} title={t('page.paperProfiles.deleteProfile')}>🗑️</button>
                   </td>
                 </tr>
               ))}

@@ -70,6 +70,13 @@ fn load_nats_settings(data_dir: &Path, log: &Path) -> NatsSettings {
     }
 }
 
+/// Writes export content to a path the user already picked via the native save
+/// dialog. No fs-plugin scope is needed: the dialog itself is the consent step.
+#[tauri::command]
+fn write_export_file(path: String, content: String) -> Result<(), String> {
+    fs::write(&path, content).map_err(|err| err.to_string())
+}
+
 #[tauri::command]
 fn get_nats_settings(app: tauri::AppHandle) -> Result<NatsSettings, String> {
     let data_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
@@ -207,6 +214,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let exe_dir = std::env::current_exe()
                 .ok()
@@ -400,7 +408,11 @@ pub fn run() {
             log_line(&app_log, "Desktop ready");
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_nats_settings, save_nats_settings])
+        .invoke_handler(tauri::generate_handler![
+            get_nats_settings,
+            save_nats_settings,
+            write_export_file
+        ])
         // Do not use WindowEvent::Destroyed here. On Windows it runs after the
         // Tao event-loop state has started moving and can panic before the
         // spawned server/runner are terminated, leaving their .exe files locked

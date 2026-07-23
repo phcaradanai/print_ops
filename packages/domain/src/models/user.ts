@@ -54,7 +54,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'runner:read', 'runner:manage',
     'audit:read', 'trace:read', 'export:read',
     'template:read', 'template:create', 'template:update', 'template:preview', 'template:publish',
-    'paper-profile:read', 'paper-profile:create', 'paper-profile:update',
+    'paper-profile:read', 'paper-profile:create', 'paper-profile:update', 'paper-profile:delete',
     'webhook:read', 'webhook:create', 'webhook:update', 'webhook:test', 'webhook:disable',
     'sandbox:run',
   ],

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
+import { exportJsonFile } from '../tauri.js';
+
+const WS_PATH_KEY = 'printops-workspace-path';
 
 interface Template {
   id: string;
@@ -411,7 +414,7 @@ export default function Templates() {
   }
 
   /** Export uses paperProfileCode, not the local profile id, so a file stays portable across installs. */
-  function exportTemplates() {
+  async function exportTemplates() {
     const rows = templates;
     if (rows.length === 0) {
       setMessage({ tone: 'error', text: t('page.templates.exportEmpty') });
@@ -430,14 +433,22 @@ export default function Templates() {
         paperProfileCode: profiles.find((p) => p.id === tpl.paperProfileId)?.code,
       })),
     };
-    const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `printops-templates-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-    setMessage({ tone: 'ok', text: t('page.templates.exported').replace('{n}', String(rows.length)) });
+    const json = JSON.stringify(file, null, 2);
+    const filename = `printops-templates-${new Date().toISOString().slice(0, 10)}.json`;
+    const workspacePath = localStorage.getItem(WS_PATH_KEY) ?? '';
+
+    const result = await exportJsonFile(filename, json, workspacePath || undefined);
+    if (result.cancelled) return;
+    if (!result.success) {
+      setMessage({ tone: 'error', text: t('page.templates.actionFailed') });
+      return;
+    }
+    setMessage({
+      tone: 'ok',
+      text: result.path
+        ? t('page.templates.exportedTo').replace('{n}', String(rows.length)).replace('{path}', result.path)
+        : t('page.templates.exported').replace('{n}', String(rows.length)),
+    });
   }
 
   function parseImport(raw: string): TemplateExportEntry[] | null {

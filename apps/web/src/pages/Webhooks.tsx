@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
+import { saveOrDownloadJsonFile } from '../utils/fileExport.js';
 
 interface Endpoint {
   id: string;
@@ -301,7 +302,7 @@ export default function Webhooks() {
   }
 
   // --- Export Feature ---
-  const handleExportJSON = (targetEndpoints?: Endpoint[]) => {
+  const handleExportJSON = async (targetEndpoints?: Endpoint[]) => {
     const listToExport = targetEndpoints || (selectedIds.length > 0
       ? endpoints.filter((e) => selectedIds.includes(e.id))
       : endpoints);
@@ -330,16 +331,15 @@ export default function Webhooks() {
       })),
     };
 
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
-    const downloadAnchor = document.createElement('a');
     const filename = `webhook-endpoints-export-${new Date().toISOString().slice(0, 10)}.json`;
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', filename);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+    const res = await saveOrDownloadJsonFile(filename, exportPayload);
+    if (res.cancelled) return;
 
-    showToast(`ส่งออกเอนด์พอยต์จำนวน ${listToExport.length} รายการเป็นไฟล์ JSON เรียบร้อยแล้ว`);
+    if (res.success) {
+      showToast(res.message || `ส่งออกเอนด์พอยต์จำนวน ${listToExport.length} รายการเป็นไฟล์ JSON เรียบร้อยแล้ว`);
+    } else {
+      showToast(res.message || 'ไม่สามารถส่งออกไฟล์ได้', 'error');
+    }
   };
 
   // --- Import Feature ---

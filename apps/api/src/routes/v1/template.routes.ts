@@ -184,18 +184,218 @@ export async function templateRoutes(
     await ensureFieldsTemplate(profile, actor(req));
     return reply.status(201).send(profile);
   });
+
+  app.post('/paper-profiles/export', { onRequest: [requirePermission('paper-profile:read')] }, async (req, reply) => {
+    const body = (req.body ?? {}) as { ids?: string[] };
+    const all = await deps.papers.findAll();
+    const targets = body.ids && body.ids.length > 0
+      ? all.filter((p) => body.ids!.includes(p.id))
+      : all;
+
+    await deps.audit.create({
+      traceId: 'paper',
+      action: 'paper_profile.exported',
+      actorId: actor(req),
+      resourceType: 'paper_profile',
+      resourceId: 'batch',
+      metadata: { count: targets.length },
+    });
+
+    const exportData = {
+      version: '1.0',
+      type: 'paper_profile_export',
+      exportedAt: new Date().toISOString(),
+      profiles: targets.map((profile) => ({
+        code: profile.code,
+        name: profile.name,
+        widthMm: profile.widthMm,
+        heightMm: profile.heightMm,
+        marginTopMm: profile.marginTopMm,
+        marginRightMm: profile.marginRightMm,
+        marginBottomMm: profile.marginBottomMm,
+        marginLeftMm: profile.marginLeftMm,
+        dpi: profile.dpi,
+        orientation: profile.orientation,
+        unit: profile.unit,
+        fields: profile.fields ?? [],
+      })),
+    };
+
+    return reply
+      .header('Content-Type', 'application/json')
+      .header('Content-Disposition', 'attachment; filename="paper-profiles-export.json"')
+      .send(exportData);
+  });
+
+  app.post('/paper-profiles/import', { onRequest: [requirePermission('paper-profile:create')] }, async (req, reply) => {
+    const rawBody = (req.body ?? {}) as any;
+    const query = (req.query ?? {}) as { overwrite?: string };
+    const overwrite = query.overwrite === 'true' || query.overwrite === '1' || Boolean(rawBody?.overwrite);
+
+    let rawProfiles: any[] = [];
+    if (Array.isArray(rawBody)) {
+      rawProfiles = rawBody;
+    } else if (rawBody && Array.isArray(rawBody.profiles)) {
+      rawProfiles = rawBody.profiles;
+    } else if (rawBody && typeof rawBody === 'object') {
+      rawProfiles = [rawBody];
+    }
+
+    if (rawProfiles.length === 0) {
+      return reply.status(400).send({ error: 'No paper profiles found in import payload' });
+    }
+
+    const importedResults: PaperProfile[] = [];
+
+    for (const item of rawProfiles) {
+      if (!item.name || typeof item.name !== 'string' || !item.name.trim()) {
+        return reply.status(400).send({ error: 'Invalid profile: name is required' });
+      }
+      const baseCode = (item.code && typeof item.code === 'string' && item.code.trim())
+        ? item.code.trim()
+        : item.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+      const widthMm = Number(item.widthMm) || 100;
+      const heightMm = Number(item.heightMm) || 150;
+
+      const profileInput = {
+        code: baseCode,
+        name: item.name.trim(),
+        widthMm,
+        heightMm,
+        marginTopMm: Number(item.marginTopMm) || 0,
+        marginRightMm: Number(item.marginRightMm) || 0,
+        marginBottomMm: Number(item.marginBottomMm) || 0,
+        marginLeftMm: Number(item.marginLeftMm) || 0,
+        dpi: Number(item.dpi) || 203,
+        orientation: (item.orientation === 'landscape' ? 'landscape' : 'portrait') as 'portrait' | 'landscape',
+        unit: (item.unit === 'inch' ? 'inch' : 'mm') as 'mm' | 'inch',
+        fields: Array.isArray(item.fields) ? item.fields : [],
+      };
+
+      const existing = await deps.papers.findByCode(profileInput.code);
+      let finalProfile: PaperProfile;
+
+      if (existing) {
+        if (overwrite) {
+          finalProfile = await deps.papers.update(existing.id, profileInput);
+        } else {
+          let candidateCode = `${profileInput.code}_copy`;
+          for (let suffix = 2; await deps.papers.findByCode(candidateCode); suffix++) {
+            candidateCode = `${profileInput.code}_copy_${suffix}`;
+          }
+          finalProfile = await deps.papers.create({ ...profileInput, code: candidateCode });
+        }
+      } else {
+        finalProfile = await deps.papers.create(profileInput);
+      }
+
+      await ensureFieldsTemplate(finalProfile, actor(req));
+      await deps.audit.create({
+        traceId: 'paper',
+        action: 'paper_profile.imported',
+        actorId: actor(req),
+        resourceType: 'paper_profile',
+        resourceId: finalProfile.id,
+        after: finalProfile as unknown as Record<string, unknown>,
+        metadata: { originalCode: profileInput.code },
+      });
+
+      importedResults.push(finalProfile);
+    }
+
+    return reply.status(201).send({ imported: importedResults, count: importedResults.length });
+  });
+
   app.get('/paper-profiles/:id', { onRequest: [requirePermission('paper-profile:read')] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const profile = await deps.papers.findById(id);
     if (!profile) return reply.status(404).send({ error: 'Paper profile not found' });
     return profile;
   });
+
+  app.get('/paper-profiles/:id/export', { onRequest: [requirePermission('paper-profile:read')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const profile = await deps.papers.findById(id);
+    if (!profile) return reply.status(404).send({ error: 'Paper profile not found' });
+
+    await deps.audit.create({
+      traceId: 'paper',
+      action: 'paper_profile.exported',
+      actorId: actor(req),
+      resourceType: 'paper_profile',
+      resourceId: id,
+      metadata: { single: true },
+    });
+
+    const exportData = {
+      version: '1.0',
+      type: 'paper_profile_export',
+      exportedAt: new Date().toISOString(),
+      profiles: [
+        {
+          code: profile.code,
+          name: profile.name,
+          widthMm: profile.widthMm,
+          heightMm: profile.heightMm,
+          marginTopMm: profile.marginTopMm,
+          marginRightMm: profile.marginRightMm,
+          marginBottomMm: profile.marginBottomMm,
+          marginLeftMm: profile.marginLeftMm,
+          dpi: profile.dpi,
+          orientation: profile.orientation,
+          unit: profile.unit,
+          fields: profile.fields ?? [],
+        },
+      ],
+    };
+
+    return reply
+      .header('Content-Type', 'application/json')
+      .header('Content-Disposition', `attachment; filename="paper-profile-${profile.code}.json"`)
+      .send(exportData);
+  });
+
   app.put('/paper-profiles/:id', { onRequest: [requirePermission('paper-profile:update')] }, async (req) => {
     const { id } = req.params as { id: string };
     const profile = await deps.papers.update(id, req.body as Record<string, unknown>);
     await deps.audit.create({ traceId: 'paper', action: 'paper_profile.updated', actorId: actor(req), resourceType: 'paper_profile', resourceId: id, after: profile as unknown as Record<string, unknown>, metadata: {} });
     await ensureFieldsTemplate(profile, actor(req));
     return profile;
+  });
+
+  app.delete('/paper-profiles/:id', { onRequest: [requirePermission('paper-profile:delete')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const profile = await deps.papers.findById(id);
+    if (!profile) return reply.status(404).send({ error: 'Paper profile not found' });
+
+    const templates = await deps.templates.findAll();
+    const customReferencingTemplates = templates.filter(
+      (t) => t.paperProfileId === id && !t.name.endsWith('(auto)'),
+    );
+    if (customReferencingTemplates.length > 0) {
+      return reply.status(409).send({
+        error: 'Paper profile is used by templates',
+        templates: customReferencingTemplates.map((t) => t.name),
+      });
+    }
+
+    const autoTemplates = templates.filter((t) => t.paperProfileId === id && t.name.endsWith('(auto)'));
+    for (const autoT of autoTemplates) {
+      await deps.templates.delete(autoT.id);
+    }
+
+    await deps.papers.delete(id);
+    await deps.audit.create({
+      traceId: 'paper',
+      action: 'paper_profile.deleted',
+      actorId: actor(req),
+      resourceType: 'paper_profile',
+      resourceId: id,
+      before: profile as unknown as Record<string, unknown>,
+      metadata: {},
+    });
+    return reply.send({ deleted: true, id });
   });
 
   app.get('/printer-template-bindings', { onRequest: [requirePermission('template:read')] }, async () => deps.bindings.findAll());
