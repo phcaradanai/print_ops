@@ -125,6 +125,7 @@ export interface WebhookEndpointRepositoryPort {
   findAll(opts?: ListOptions): Promise<WebhookEndpoint[]>;
   create(input: CreateWebhookEndpointInput): Promise<WebhookEndpoint>;
   update(id: string, patch: Partial<WebhookEndpoint>): Promise<WebhookEndpoint>;
+  delete(id: string): Promise<void>;
 }
 
 export interface WebhookRoutePolicyRepositoryPort {

@@ -5,15 +5,49 @@ export interface SessionUser {
   role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER';
 }
 
+const API_KEY_STORAGE_KEY = 'printops-api-key';
+
+export function getApiKey(): string {
+  try {
+    const stored = localStorage.getItem(API_KEY_STORAGE_KEY);
+    if (stored !== null && stored.trim() !== '') {
+      return stored.trim();
+    }
+  } catch {
+    // localStorage unavailable
+  }
+  return (import.meta.env.VITE_API_KEY as string | undefined) ??
+         (import.meta.env.VITE_DEV_API_KEY as string | undefined) ??
+         'printops-dev-apikey-2026';
+}
+
+export function saveApiKey(key: string): void {
+  try {
+    if (key.trim()) {
+      localStorage.setItem(API_KEY_STORAGE_KEY, key.trim());
+    } else {
+      localStorage.removeItem(API_KEY_STORAGE_KEY);
+    }
+  } catch {
+    // localStorage unavailable
+  }
+}
+
 function token(): string {
   return localStorage.getItem('token') ?? '';
 }
 
 function authHeaders(): HeadersInit {
   const authToken = token();
-  return authToken
-    ? { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` }
-    : { 'Content-Type': 'application/json' };
+  const apiKey = getApiKey();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  if (apiKey) {
+    headers['X-Api-Key'] = apiKey;
+  }
+  return headers;
 }
 
 // API base — empty string means same-origin relative (dev Vite proxy or prod .exe)
@@ -70,13 +104,16 @@ export function logout(): void {
 
 export async function apiDownload(path: string, filename: string): Promise<void> {
   const authToken = token();
+  const apiKey = getApiKey();
   const a = document.createElement('a');
   a.href = apiUrl(path);
   a.download = filename;
   a.setAttribute('data-auth', authToken);
   // Trigger via fetch + blob to attach auth header
-  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
-  const res = await fetch(apiUrl(path), { headers });
+  const headers: Record<string, string> = {};
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  if (apiKey) headers['X-Api-Key'] = apiKey;
+  const res = await fetch(apiUrl(path), { headers: Object.keys(headers).length ? headers : undefined });
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);

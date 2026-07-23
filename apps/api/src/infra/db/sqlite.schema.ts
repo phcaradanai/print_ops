@@ -276,10 +276,30 @@ export function runSchemaMigration(db: Database): void {
       api_key TEXT,
       enabled INTEGER NOT NULL DEFAULT 1,
       route_policy_id TEXT NOT NULL,
+      callback_transport TEXT NOT NULL DEFAULT 'NONE',
+      callback_url TEXT,
+      callback_nats_subject TEXT,
+      callback_payload_template TEXT,
+      callback_on_print_result INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   `);
+
+  // Migration: add callback columns that shipped after the first schema version.
+  for (const col of [
+    'ALTER TABLE webhook_endpoints ADD COLUMN callback_transport TEXT NOT NULL DEFAULT \'NONE\'',
+    'ALTER TABLE webhook_endpoints ADD COLUMN callback_url TEXT',
+    'ALTER TABLE webhook_endpoints ADD COLUMN callback_nats_subject TEXT',
+    'ALTER TABLE webhook_endpoints ADD COLUMN callback_payload_template TEXT',
+    'ALTER TABLE webhook_endpoints ADD COLUMN callback_on_print_result INTEGER NOT NULL DEFAULT 0',
+  ]) {
+    try {
+      db.run(col);
+    } catch {
+      // column already exists — ignore
+    }
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS webhook_route_policies (

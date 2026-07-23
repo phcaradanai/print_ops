@@ -123,6 +123,26 @@ export interface WebhookEndpoint {
   apiKey?: string;
   enabled: boolean;
   routePolicyId: string;
+  /**
+   * How PrintOps notifies the caller after the job is created (and, optionally,
+   * after the print result is known). Supports BOTH an HTTP callback (POST to a
+   * URL) and a NATS reply on a subject — the same endpoint can fan out to
+   * either or both transports independently.
+   */
+  callbackTransport?: 'NONE' | 'HTTP' | 'NATS' | 'BOTH';
+  /** HTTP callback target. May be a literal URL or a `$.field` path into the intake payload (dynamic per request). */
+  callbackUrl?: string;
+  /** NATS reply subject template. May be a literal subject or a `$.field` path into the intake payload. */
+  callbackNatsSubject?: string;
+  /**
+   * Optional JSON payload template sent to the callback. Keys map to literal
+   * values, `$.field` references resolve from the ORIGINAL intake payload
+   * (so the caller gets back what they sent). When empty, a default envelope
+   * `{ request_id, print_job_id, status, trace_id, duplicate }` is used.
+   */
+  callbackPayloadTemplate?: Record<string, unknown>;
+  /** Send the callback only after the print result (success/failure) is known, instead of immediately after job creation. Defaults to false. */
+  callbackOnPrintResult?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

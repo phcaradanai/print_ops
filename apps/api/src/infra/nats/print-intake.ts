@@ -103,10 +103,17 @@ interface PrintIntakeEnvelope {
  * closes the connection. Throws only on the initial connect/consumer setup;
  * callers may treat that as non-fatal.
  */
+export interface PrintIntakeHandle {
+  /** Drains in-flight handlers and closes the connection. */
+  stop(): Promise<void>;
+  /** Publish a JSON payload to an arbitrary subject on this connection. */
+  publishTo(subject: string, payload: Record<string, unknown>): void;
+}
+
 export async function startPrintIntakeConsumer(
   deps: { dynamicPrint: DynamicPrintService; logger: PrintIntakeLogger },
   cfg: PrintIntakeConfig,
-): Promise<() => Promise<void>> {
+): Promise<PrintIntakeHandle> {
   // The stream is owned by the publisher's environment and may not exist yet on
   // a cold boot (print_ops can start before medisync-core ensures MEDISYNC).
   // Retry setup a bounded number of times so a boot-order race self-heals
@@ -162,13 +169,22 @@ export async function startPrintIntakeConsumer(
     }
   })();
 
-  return async () => {
-    try {
-      await messages.close();
-    } catch {
-      // best-effort
-    }
-    await connection.drain();
+  return {
+    async stop() {
+      try {
+        await messages.close();
+      } catch {
+        // best-effort
+      }
+      await connection.drain();
+    },
+    publishTo(subject: string, payload: Record<string, unknown>): void {
+      try {
+        connection.publish(subject, JSON.stringify(payload));
+      } catch (err) {
+        deps.logger.error({ subject, error: errMsg(err) }, 'print-intake callback publish failed');
+      }
+    },
   };
 }
 

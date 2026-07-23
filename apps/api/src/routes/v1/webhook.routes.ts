@@ -12,6 +12,7 @@ import type { DynamicIntakeService } from '../../services/dynamic-intake.service
 import type { CreatePrintJobService } from '../../services/create-print-job.service.js';
 import type { ExecuteJobService } from '../../services/execute-job.service.js';
 import type { GetPrinterStatusService } from '../../services/get-printer-status.service.js';
+import type { HttpClient, NatsPublisher, WebhookCallbackLogger } from '../../services/webhook-callback.service.js';
 import { actor, requirePermission } from './permission-guard.js';
 
 const PRIORITY_MAP: Record<string, JobPriority> = {
@@ -31,6 +32,9 @@ export async function webhookRoutes(
     createJob: CreatePrintJobService;
     executeJob: ExecuteJobService;
     getPrinterStatus: GetPrinterStatusService;
+    logger: WebhookCallbackLogger;
+    callbackSender: HttpClient;
+    callbackNats?: NatsPublisher;
   }
 ): Promise<void> {
   app.get('/webhook-endpoints', { onRequest: [requirePermission('webhook:read')] }, async () => deps.endpoints.findAll());
@@ -45,10 +49,30 @@ export async function webhookRoutes(
     await deps.audit.create({ traceId: 'webhook', action: 'webhook_endpoint.updated', actorId: actor(req), resourceType: 'webhook_endpoint', resourceId: id, metadata: {} });
     return endpoint;
   });
+  app.delete('/webhook-endpoints/:id', { onRequest: [requirePermission('webhook:update')] }, async (req) => {
+    const { id } = req.params as { id: string };
+    await deps.endpoints.delete(id);
+    await deps.audit.create({ traceId: 'webhook', action: 'webhook_endpoint.deleted', actorId: actor(req), resourceType: 'webhook_endpoint', resourceId: id, metadata: {} });
+    return { ok: true, id };
+  });
   app.post('/webhook-endpoints/:id/test', { onRequest: [requirePermission('webhook:test')] }, async (req) => {
     const { id } = req.params as { id: string };
     await deps.audit.create({ traceId: 'webhook', action: 'webhook_endpoint.tested', actorId: actor(req), resourceType: 'webhook_endpoint', resourceId: id, metadata: {} });
     return { ok: true, id };
+  });
+
+  // Test-fire the endpoint's callback (HTTP and/or NATS) with a sample payload,
+  // so operators can verify the destination before going live.
+  app.post('/webhook-endpoints/:id/callback-test', { onRequest: [requirePermission('webhook:test')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const endpoint = await deps.endpoints.findById(id);
+    if (!endpoint) return reply.status(404).send({ error: 'WebhookEndpoint not found' });
+    const sample = (req.body as { samplePayload?: Record<string, unknown> })?.samplePayload ?? {};
+    const { WebhookCallbackService } = await import('../../services/webhook-callback.service.js');
+    const service = new WebhookCallbackService(deps.logger, deps.callbackSender, deps.callbackNats);
+    const result = { request_id: 'callback-test', print_job_id: 'test', status: 'QUEUED', trace_id: 'test', duplicate: false };
+    await service.send({ endpoint, intakePayload: sample, result });
+    return { ok: true, id, transport: endpoint.callbackTransport };
   });
 
   app.get('/webhook-route-policies', { onRequest: [requirePermission('webhook:read')] }, async () => deps.policies.findAll());

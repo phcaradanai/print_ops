@@ -12,22 +12,29 @@ import {
 
 const WS_PROJECT_KEY = 'printops-workspace-project';
 const WS_PATH_KEY = 'printops-workspace-path';
+const API_KEY_STORAGE_KEY = 'printops-api-key';
 
-function loadWorkspace(): { projectName: string; workspacePath: string } {
+function loadWorkspace(): { projectName: string; workspacePath: string; apiKey: string } {
   try {
     return {
       projectName: localStorage.getItem(WS_PROJECT_KEY) ?? '',
       workspacePath: localStorage.getItem(WS_PATH_KEY) ?? '',
+      apiKey: localStorage.getItem(API_KEY_STORAGE_KEY) ?? '',
     };
   } catch {
-    return { projectName: '', workspacePath: '' };
+    return { projectName: '', workspacePath: '', apiKey: '' };
   }
 }
 
-function saveWorkspace(projectName: string, workspacePath: string): void {
+function saveWorkspace(projectName: string, workspacePath: string, apiKey: string): void {
   try {
     localStorage.setItem(WS_PROJECT_KEY, projectName);
     localStorage.setItem(WS_PATH_KEY, workspacePath);
+    if (apiKey.trim()) {
+      localStorage.setItem(API_KEY_STORAGE_KEY, apiKey.trim());
+    } else {
+      localStorage.removeItem(API_KEY_STORAGE_KEY);
+    }
   } catch {
     // localStorage unavailable
   }
@@ -102,12 +109,13 @@ export default function Settings() {
   );
 
   const handleWsChange = useCallback(
-    (field: 'projectName' | 'workspacePath', value: string) => {
+    (field: 'projectName' | 'workspacePath' | 'apiKey', value: string) => {
       const next = { ...wsDraft, [field]: value };
       setWsDraft(next);
       setWsDirty(
         next.projectName !== ws.projectName ||
-          next.workspacePath !== ws.workspacePath,
+          next.workspacePath !== ws.workspacePath ||
+          next.apiKey !== ws.apiKey,
       );
     },
     [ws, wsDraft],
@@ -116,7 +124,7 @@ export default function Settings() {
   const handleWsSave = useCallback(() => {
     setSaving(true);
     try {
-      saveWorkspace(wsDraft.projectName, wsDraft.workspacePath);
+      saveWorkspace(wsDraft.projectName, wsDraft.workspacePath, wsDraft.apiKey);
       setWs(wsDraft);
       setWsDirty(false);
       setMessage({ text: t('settings.saved'), kind: 'success' });
@@ -137,8 +145,8 @@ export default function Settings() {
     try {
       setLocale('th');
       setLang('th');
-      const defaults = { projectName: '', workspacePath: '' };
-      saveWorkspace('', '');
+      const defaults = { projectName: '', workspacePath: '', apiKey: '' };
+      saveWorkspace('', '', '');
       setWs(defaults);
       setWsDraft(defaults);
       setWsDirty(false);
@@ -254,6 +262,22 @@ export default function Settings() {
             onChange={(e) => handleWsChange('workspacePath', e.target.value)}
             disabled={saving || resetting}
           />
+        </div>
+        <div className="settings-field">
+          <label htmlFor="settings-ws-apikey">
+            {t('settings.workspace.apiKey')}
+          </label>
+          <input
+            id="settings-ws-apikey"
+            type="text"
+            value={wsDraft.apiKey}
+            placeholder={t('settings.workspace.apiKeyPlaceholder')}
+            onChange={(e) => handleWsChange('apiKey', e.target.value)}
+            disabled={saving || resetting}
+          />
+          <p className="settings-hint">
+            {t('settings.workspace.apiKeyHint')}
+          </p>
         </div>
         <div className="settings-actions">
           <button

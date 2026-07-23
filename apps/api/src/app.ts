@@ -74,6 +74,7 @@ import { v1RunnerPrinterRoutes } from './routes/v1/runner-printers.routes.js';
 import { v1RunnerJobRoutes } from './routes/v1/runner-jobs.routes.js';
 import { templateRoutes } from './routes/v1/template.routes.js';
 import { webhookRoutes } from './routes/v1/webhook.routes.js';
+import { WebhookCallbackService, type NatsPublisher } from './services/webhook-callback.service.js';
 import { paperProfileImportRoutes } from './routes/v1/paper-profile-imports.routes.js';
 import { sandboxRoutes } from './routes/v1/sandbox.routes.js';
 import { startPrintIntakeConsumer, printIntakeConfigFromEnv, type PrintIntakeConfig } from './infra/nats/print-intake.js';
@@ -85,6 +86,19 @@ import { initDatabase } from './infra/db/sqlite.js';
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
   process.env['PRINTOPS_DEV_API_KEY'] ?? 'printops-dev-apikey-2026';
+
+// Webhook HTTP callback sender (best-effort). Used by WebhookCallbackService
+// to POST a JSON payload to a caller-supplied URL after a job is accepted.
+async function httpCallbackSender(url: string, body: unknown): Promise<void> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`webhook callback HTTP ${res.status} to ${url}`);
+  }
+}
 
 // __dirname is available in the CJS bundle produced by esbuild/pkg
 declare var __dirname: string;
@@ -166,7 +180,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     traceRepo,
     auditRepo,
     eventBus,
-    templateRenderer
+    templateRenderer,
+    undefined, // callbacks — assigned after the optional NATS consumer is wired below
+    app.log,
   );
 
   const resolvePrinterBinding = new ResolvePrinterBindingService(paperRepo, bindingRepo, templateRepo);
@@ -507,6 +523,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     authMode: 'NONE',
     enabled: true,
     routePolicyId: labPolicy.id,
+    callbackTransport: 'NONE',
+    callbackOnPrintResult: false,
   });
   }
 
@@ -514,6 +532,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // (or PRINTOPS_NATS_URL) is set; the HTTP API works identically without it.
   // Read here (before routes) so the print-flow config endpoint can report it.
   let printIntakeCfg: PrintIntakeConfig | undefined;
+  // NATS publisher for webhook callbacks; assigned if the print-intake
+  // consumer (which owns the connection) successfully starts.
+  let natsPublisher: NatsPublisher | undefined;
   try {
     printIntakeCfg = printIntakeConfigFromEnv();
   } catch (err) {
@@ -547,18 +568,26 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1RunnerJobRoutes(v1, { jobs: jobRepo, printers: printerRepo, traces: traceRepo, audit: auditRepo, events: eventBus });
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
     await sandboxRoutes(v1, { sandbox: sandboxSvc, connectivity: connectivitySvc, audit: auditRepo });
-    await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob, getPrinterStatus });
+    await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob, getPrinterStatus, logger: app.log, callbackSender: httpCallbackSender, callbackNats: natsPublisher });
     await paperProfileImportRoutes(v1, { importService: importPaperProfile });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
   if (printIntakeCfg) {
     try {
-      const stopPrintIntake = await startPrintIntakeConsumer(
+      const printIntakeHandle = await startPrintIntakeConsumer(
         { dynamicPrint, logger: app.log },
         printIntakeCfg,
       );
+      const natsPublisherLocal: NatsPublisher = (subject, payload) =>
+        printIntakeHandle.publishTo(subject, payload);
+      // Webhook callbacks can fan out to BOTH HTTP and NATS. The NATS
+      // publisher reuses the print-intake consumer's connection so a
+      // caller-supplied reply subject is reachable on the same broker.
+      natsPublisher = natsPublisherLocal;
+      const callbackService = new WebhookCallbackService(app.log, httpCallbackSender, natsPublisherLocal);
+      dynamicIntake.setCallbackService(callbackService);
       app.addHook('onClose', async () => {
-        await stopPrintIntake();
+        await printIntakeHandle.stop();
       });
     } catch (err) {
       app.log.error({ err }, 'print-intake consumer failed to start; continuing without NATS transport');

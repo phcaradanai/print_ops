@@ -10,11 +10,13 @@ import type {
   TraceRepositoryPort,
   WebhookEndpointRepositoryPort,
   WebhookRoutePolicyRepositoryPort,
+  WebhookEndpoint,
+  EventBusPort,
 } from '@printerops/domain';
 import { NotFoundError, ValidationError } from '@printerops/shared';
 import { CreatePrintJobService } from './create-print-job.service.js';
 import { RoutePolicyResolverService } from './route-policy-resolver.service.js';
-import type { EventBusPort } from '@printerops/domain';
+import type { WebhookCallbackService, WebhookCallbackLogger } from './webhook-callback.service.js';
 
 export interface IntakeRequest {
   endpointCode: string;
@@ -48,6 +50,7 @@ function requestIdFrom(body: Record<string, unknown>): string {
 export class DynamicIntakeService {
   private createJob: CreatePrintJobService;
   private resolver = new RoutePolicyResolverService();
+  private callbacks: WebhookCallbackService | undefined;
 
   constructor(
     private endpoints: WebhookEndpointRepositoryPort,
@@ -61,10 +64,25 @@ export class DynamicIntakeService {
     private traces: TraceRepositoryPort,
     private audit: AuditRepositoryPort,
     events: EventBusPort,
-    private renderer: TemplateRendererPort
+    private renderer: TemplateRendererPort,
+    callbacks?: WebhookCallbackService,
+    callbackLogger?: WebhookCallbackLogger,
   ) {
     this.createJob = new CreatePrintJobService(jobs, printers, queue, traces, audit, events);
+    this.callbacks = callbacks;
+    if (callbackLogger) this.callbackLogger = callbackLogger;
   }
+
+  /** Late-bind the callback service (e.g. after the NATS consumer is up). */
+  setCallbackService(service: WebhookCallbackService): void {
+    this.callbacks = service;
+  }
+
+  private callbackLogger: WebhookCallbackLogger = {
+    info: (obj, msg) => console.info(msg, obj),
+    warn: (obj, msg) => console.warn(msg, obj),
+    error: (obj, msg) => console.error(msg, obj),
+  };
 
   async execute(req: IntakeRequest): Promise<IntakeResponse> {
     const intakeReceivedAt = new Date();
@@ -76,7 +94,7 @@ export class DynamicIntakeService {
     const requestId = requestIdFrom(req.body);
     const existing = await this.jobs.findByRequestId(requestId, endpoint.sourceSystem);
     if (existing) {
-      return {
+      const result: IntakeResponse = {
         accepted: true,
         print_job_id: existing.id,
         request_id: requestId,
@@ -86,6 +104,8 @@ export class DynamicIntakeService {
         status: 'DUPLICATE_RETURNED',
         duplicate: true,
       };
+      void this.fireCallback(endpoint, req.body, result);
+      return result;
     }
 
     const policy = await this.policies.findById(endpoint.routePolicyId);
@@ -98,7 +118,6 @@ export class DynamicIntakeService {
     if (!template || template.status !== 'PUBLISHED') throw new NotFoundError('PrintTemplate', route.templateCode);
     const templateResolvedAt = new Date();
     const paper = await this.resolvePaper(route.printerCode, route.templateCode, template.paperProfileId);
-
     const rendered = await this.renderer.renderPrintPayload(template, route.mappedPayload, paper);
     const renderedAt = new Date();
     const routeResolveMs = routeResolvedAt.getTime() - routeStart;
@@ -162,7 +181,7 @@ export class DynamicIntakeService {
       metadata: { endpointCode: endpoint.endpointCode, routePolicyCode: policy.policyCode },
     });
 
-    return {
+    const result: IntakeResponse = {
       accepted: true,
       print_job_id: job.id,
       request_id: requestId,
@@ -171,6 +190,13 @@ export class DynamicIntakeService {
       resolved_template_code: route.templateCode,
       status: job.status,
     };
+
+    // Defer to the intake caller via the endpoint's configured callback
+    // (HTTP and/or NATS), if any. Best-effort: failures are logged
+    // inside the callback service and never fail the accept path.
+    void this.fireCallback(endpoint, req.body, result);
+
+    return result;
   }
 
   private async resolvePaper(printerCode: string, templateCode: string, templatePaperId?: string) {
@@ -206,4 +232,22 @@ export class DynamicIntakeService {
       ],
     });
   }
+
+  private fireCallback(
+    endpoint: WebhookEndpoint,
+    intakePayload: Record<string, unknown>,
+    result: IntakeResponse,
+  ): void {
+    if (!this.callbacks) return;
+    if ((endpoint.callbackTransport ?? 'NONE') === 'NONE') return;
+    void this.callbacks
+      .send({ endpoint, intakePayload, result: result as unknown as Record<string, unknown> })
+      .catch((err: unknown) => {
+        this.callbackLogger.error({ endpointId: endpoint.id, error: errMsg(err) }, 'webhook callback send failed');
+      });
+  }
+}
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
