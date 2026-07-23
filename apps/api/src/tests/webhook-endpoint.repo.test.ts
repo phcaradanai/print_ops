@@ -91,4 +91,16 @@ describe('SqliteWebhookEndpointRepository (callback fields)', () => {
     expect(updated.callbackPayloadTemplate).toEqual({ a: 'b' });
     expect(updated.callbackOnPrintResult).toBe(true);
   });
+
+  it('deletes endpoint from SQLite database', async () => {
+    const created = await repo.create({
+      endpointCode: 'cb-del', name: 'To Delete', sourceSystem: 'sys',
+      authMode: 'NONE', enabled: true, routePolicyId: 'rp-1',
+    });
+    expect(await repo.findById(created.id)).toBeDefined();
+
+    await repo.delete(created.id);
+    expect(await repo.findById(created.id)).toBeUndefined();
+    expect(await repo.findByCode('cb-del')).toBeUndefined();
+  });
 });

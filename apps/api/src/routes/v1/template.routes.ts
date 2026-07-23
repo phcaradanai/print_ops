@@ -93,6 +93,27 @@ export async function templateRoutes(
     return reply.send(template);
   });
 
+  /**
+   * Deleting a template that a printer binding still points at would break
+   * dispatch at print time with no trace back to this action, so a bound
+   * template is refused (409) instead of silently removed.
+   */
+  app.delete('/templates/:id', { onRequest: [requirePermission('template:delete')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const template = await deps.templates.findById(id);
+    if (!template) return reply.status(404).send({ error: 'Template not found' });
+    const bound = await deps.bindings.findAll({ templateCode: template.templateCode });
+    if (bound.length > 0) {
+      return reply.status(409).send({
+        error: 'Template is bound to a printer',
+        bindings: bound.map((b) => b.printerCode),
+      });
+    }
+    await deps.templates.delete(id);
+    await deps.audit.create({ traceId: 'template', action: 'template.deleted', actorId: actor(req), resourceType: 'template', resourceId: id, before: template as unknown as Record<string, unknown>, metadata: {} });
+    return reply.send({ deleted: true, id });
+  });
+
   app.post('/templates/:id/preview', { onRequest: [requirePermission('template:preview')] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = req.body as { samplePayload?: Record<string, unknown>; paperProfileId?: string };

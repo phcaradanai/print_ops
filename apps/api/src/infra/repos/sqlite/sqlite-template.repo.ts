@@ -146,4 +146,9 @@ export class SqlitePrintTemplateRepository implements PrintTemplateRepositoryPor
 
     return (await this.findById(id))!;
   }
+
+  async delete(id: string): Promise<void> {
+    const db = getDb();
+    db.run('DELETE FROM print_templates WHERE id = ?', [id]);
+  }
 }

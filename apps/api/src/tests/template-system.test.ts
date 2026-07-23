@@ -278,4 +278,63 @@ describe('Template management, sandbox, and dynamic intake', () => {
     expect(intake.statusCode).toBe(202);
     expect((intake.json() as { resolved_template_code: string }).resolved_template_code).toBe('LAB_LABEL_DEFAULT');
   });
+
+  it('deletes an unbound template, writes an audit entry, and refuses a bound one', async () => {
+    const { app } = await buildApp();
+    const owner = await login(app, 'sysadmin@printerops.local');
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/templates',
+      headers: auth(owner),
+      payload: { templateCode: 'DELETE_ME', name: 'Delete Me', engine: 'RAW_TEXT', content: '{{label}}' },
+    });
+    expect(created.statusCode).toBe(201);
+    const templateId = (created.json() as { id: string }).id;
+
+    const deleted = await app.inject({ method: 'DELETE', url: `/api/v1/templates/${templateId}`, headers: auth(owner) });
+    expect(deleted.statusCode).toBe(200);
+    expect((deleted.json() as { deleted: boolean }).deleted).toBe(true);
+
+    const gone = await app.inject({ method: 'GET', url: `/api/v1/templates/${templateId}`, headers: auth(owner) });
+    expect(gone.statusCode).toBe(404);
+
+    const audit = await app.inject({ method: 'GET', url: '/audit-logs?resourceType=template', headers: auth(owner) });
+    expect(JSON.stringify(audit.json())).toContain('template.deleted');
+
+    const bound = await app.inject({
+      method: 'POST',
+      url: '/api/v1/templates',
+      headers: auth(owner),
+      payload: { templateCode: 'BOUND_TPL', name: 'Bound', engine: 'RAW_TEXT', content: '{{label}}' },
+    });
+    const boundId = (bound.json() as { id: string }).id;
+    const profiles = (await app.inject({ method: 'GET', url: '/api/v1/paper-profiles', headers: auth(owner) })).json() as Array<{ id: string }>;
+    const binding = await app.inject({
+      method: 'POST',
+      url: '/api/v1/printer-template-bindings',
+      headers: auth(owner),
+      payload: { printerCode: 'LAB_LABEL_01', templateCode: 'BOUND_TPL', paperProfileId: profiles[0]!.id, isDefault: false, enabled: true },
+    });
+    expect(binding.statusCode).toBe(201);
+
+    const refused = await app.inject({ method: 'DELETE', url: `/api/v1/templates/${boundId}`, headers: auth(owner) });
+    expect(refused.statusCode).toBe(409);
+    expect((refused.json() as { bindings: string[] }).bindings).toContain('LAB_LABEL_01');
+  });
+
+  it('denies template delete for a viewer', async () => {
+    const { app } = await buildApp();
+    const owner = await login(app, 'sysadmin@printerops.local');
+    const viewer = await login(app, 'viewer@printerops.local');
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/templates',
+      headers: auth(owner),
+      payload: { templateCode: 'VIEWER_NO_DELETE', name: 'Nope', engine: 'RAW_TEXT', content: 'x' },
+    });
+    const id = (created.json() as { id: string }).id;
+    const res = await app.inject({ method: 'DELETE', url: `/api/v1/templates/${id}`, headers: auth(viewer) });
+    expect(res.statusCode).toBe(403);
+  });
 });

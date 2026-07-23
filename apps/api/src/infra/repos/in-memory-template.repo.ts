@@ -54,4 +54,8 @@ export class InMemoryPrintTemplateRepository implements PrintTemplateRepositoryP
     this.store.set(id, updated);
     return updated;
   }
+
+  async delete(id: string): Promise<void> {
+    this.store.delete(id);
+  }
 }

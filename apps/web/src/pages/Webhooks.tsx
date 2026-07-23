@@ -79,13 +79,23 @@ export default function Webhooks() {
   const [pageSize, setPageSize] = useState(10);
   const [selectedEndpointModal, setSelectedEndpointModal] = useState<Endpoint | null>(null);
 
+  // Bulk Selection & Import/Export State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [importModalEndpoints, setImportModalEndpoints] = useState<Partial<Endpoint>[] | null>(null);
+  const [overwriteExistingOnImport, setOverwriteExistingOnImport] = useState(true);
+
   const endpointCodeInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formCardRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = () => {
-    void apiFetch<Endpoint[]>('/v1/webhook-endpoints').then(setEndpoints).catch(() => {
+    void apiFetch<Endpoint[]>('/v1/webhook-endpoints').then((res) => {
+      setEndpoints(res);
+      // Remove selected IDs that no longer exist
+      setSelectedIds((prev) => prev.filter((id) => res.some((e) => e.id === id)));
+    }).catch(() => {
       showToast('ไม่สามารถโหลดข้อมูลเอนด์พอยต์ได้', 'error');
     });
     void apiFetch<Policy[]>('/v1/webhook-route-policies').then(setPolicies).catch(() => {});
@@ -290,6 +300,157 @@ export default function Webhooks() {
     }
   }
 
+  // --- Export Feature ---
+  const handleExportJSON = (targetEndpoints?: Endpoint[]) => {
+    const listToExport = targetEndpoints || (selectedIds.length > 0
+      ? endpoints.filter((e) => selectedIds.includes(e.id))
+      : endpoints);
+
+    if (listToExport.length === 0) {
+      showToast('ไม่มีข้อมูลเอนด์พอยต์สำหรับส่งออก', 'info');
+      return;
+    }
+
+    const exportPayload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      count: listToExport.length,
+      endpoints: listToExport.map((e) => ({
+        endpointCode: e.endpointCode,
+        name: e.name,
+        sourceSystem: e.sourceSystem,
+        authMode: e.authMode,
+        enabled: e.enabled,
+        routePolicyId: e.routePolicyId,
+        callbackTransport: e.callbackTransport,
+        callbackUrl: e.callbackUrl,
+        callbackNatsSubject: e.callbackNatsSubject,
+        callbackPayloadTemplate: e.callbackPayloadTemplate,
+        callbackOnPrintResult: e.callbackOnPrintResult,
+      })),
+    };
+
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
+    const downloadAnchor = document.createElement('a');
+    const filename = `webhook-endpoints-export-${new Date().toISOString().slice(0, 10)}.json`;
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', filename);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+
+    showToast(`ส่งออกเอนด์พอยต์จำนวน ${listToExport.length} รายการเป็นไฟล์ JSON เรียบร้อยแล้ว`);
+  };
+
+  // --- Import Feature ---
+  const handleFileChange = (ev: React.ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const parsed = JSON.parse(text);
+        const importedList: Partial<Endpoint>[] = Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(parsed?.endpoints)
+          ? parsed.endpoints
+          : [];
+
+        if (importedList.length === 0) {
+          showToast('ไม่พบข้อมูลเอนด์พอยต์ในไฟล์ JSON ที่เลือก', 'error');
+          return;
+        }
+
+        // Validate required fields
+        const validList = importedList.filter((item) => item.endpointCode && item.name);
+        if (validList.length === 0) {
+          showToast('ไฟล์ JSON ไม่มีโครงสร้างเอนด์พอยต์ที่ถูกต้อง (ต้องมี endpointCode และ name)', 'error');
+          return;
+        }
+
+        setImportModalEndpoints(validList);
+      } catch {
+        showToast('ไม่สามารถอ่านไฟล์ JSON ได้ กรุณาตรวจสอบรูปแบบไฟล์', 'error');
+      }
+    };
+    reader.readAsText(file);
+    ev.target.value = '';
+  };
+
+  const confirmImport = async () => {
+    if (!importModalEndpoints || importModalEndpoints.length === 0) return;
+
+    let successCount = 0;
+    showToast(`กำลังนำเข้าเอนด์พอยต์ ${importModalEndpoints.length} รายการ...`, 'info');
+
+    for (const item of importModalEndpoints) {
+      if (!item.endpointCode || !item.name) continue;
+
+      const existing = endpoints.find((e) => e.endpointCode === item.endpointCode);
+      const payload: Record<string, unknown> = {
+        endpointCode: item.endpointCode,
+        name: item.name,
+        sourceSystem: item.sourceSystem || 'integration-service',
+        authMode: item.authMode || 'NONE',
+        routePolicyId: item.routePolicyId || '',
+        enabled: item.enabled ?? true,
+        callbackTransport: item.callbackTransport || 'NONE',
+        callbackUrl: item.callbackUrl || undefined,
+        callbackNatsSubject: item.callbackNatsSubject || undefined,
+        callbackPayloadTemplate: item.callbackPayloadTemplate || undefined,
+        callbackOnPrintResult: !!item.callbackOnPrintResult,
+      };
+
+      try {
+        if (existing && overwriteExistingOnImport) {
+          await apiFetch(`/v1/webhook-endpoints/${existing.id}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+          });
+          successCount++;
+        } else if (!existing) {
+          await apiFetch('/v1/webhook-endpoints', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          });
+          successCount++;
+        }
+      } catch {
+        // Continue import loop for remaining items
+      }
+    }
+
+    setImportModalEndpoints(null);
+    showToast(`นำเข้าเอนด์พอยต์สำเร็จ ${successCount} จาก ${importModalEndpoints.length} รายการ`);
+    loadData();
+  };
+
+  // --- Batch Delete Feature ---
+  const handleBatchDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`คุณต้องการลบเอนด์พอยต์จำนวน ${selectedIds.length} รายการที่เลือกใช่หรือไม่?`)) return;
+
+    showToast(`กำลังลบเอนด์พอยต์ ${selectedIds.length} รายการ...`, 'info');
+    let deletedCount = 0;
+
+    await Promise.all(
+      selectedIds.map(async (id) => {
+        try {
+          await apiFetch(`/v1/webhook-endpoints/${id}`, { method: 'DELETE' });
+          deletedCount++;
+        } catch {
+          // ignore individual delete failure
+        }
+      })
+    );
+
+    setSelectedIds([]);
+    showToast(`ลบเอนด์พอยต์เรียบร้อยแล้ว ${deletedCount} รายการ`);
+    loadData();
+  };
+
   // Calculate tabs count
   const counts = useMemo(() => {
     return {
@@ -332,6 +493,28 @@ export default function Webhooks() {
     return filteredEndpoints.slice(start, start + pageSize);
   }, [filteredEndpoints, page, pageSize]);
 
+  // Checkbox Selection logic
+  const isAllPaginatedSelected = useMemo(() => {
+    if (paginatedEndpoints.length === 0) return false;
+    return paginatedEndpoints.every((e) => selectedIds.includes(e.id));
+  }, [paginatedEndpoints, selectedIds]);
+
+  const toggleSelectAllPaginated = () => {
+    if (isAllPaginatedSelected) {
+      const pageIds = paginatedEndpoints.map((e) => e.id);
+      setSelectedIds((prev) => prev.filter((id) => !pageIds.includes(id)));
+    } else {
+      const pageIds = paginatedEndpoints.map((e) => e.id);
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...pageIds])));
+    }
+  };
+
+  const toggleSelectRow = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
   // Lines count for template textarea
   const lineNumbers = useMemo(() => {
     const lineCount = (form.callbackPayloadTemplate.match(/\n/g) || []).length + 1;
@@ -356,6 +539,15 @@ export default function Webhooks() {
 
   return (
     <div className="wh-container">
+      {/* Hidden File Input for Import */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
+
       {/* Toast Notification Banner */}
       {toast && (
         <div className={`wh-toast wh-toast--${toast.type}`}>
@@ -378,7 +570,15 @@ export default function Webhooks() {
             <p>จัดการเอนด์พอยต์สำหรับรับเหตุการณ์จากระบบภายนอก และจัดการการตอบกลับ (Callback)</p>
           </div>
         </div>
+
         <div className="wh-header-actions">
+          <button className="wh-btn-outline" onClick={() => handleExportJSON()} title="ส่งออกเอนด์พอยต์เป็นไฟล์ JSON">
+            📥 {t('page.webhooks.export')}
+          </button>
+          <button className="wh-btn-outline" onClick={() => fileInputRef.current?.click()} title="นำเข้าเอนด์พอยต์จากไฟล์ JSON">
+            📤 {t('page.webhooks.import')}
+          </button>
+
           <div className="wh-search-box">
             <span className="wh-search-icon-left">🔍</span>
             <input
@@ -391,11 +591,32 @@ export default function Webhooks() {
             />
             <span className="wh-search-badge">Ctrl + K</span>
           </div>
+
           <button className="wh-btn-primary" onClick={scrollToFormAndFocus}>
             <span>+</span> {t('page.webhooks.create')}
           </button>
         </div>
       </header>
+
+      {/* Bulk Selection Action Bar */}
+      {selectedIds.length > 0 && (
+        <div className="wh-bulk-bar">
+          <div>
+            ✓ เลือกอยู่ <strong>{selectedIds.length}</strong> รายการ
+          </div>
+          <div className="wh-bulk-actions">
+            <button className="wh-btn-outline" style={{ height: 34, fontSize: '0.8rem' }} onClick={() => handleExportJSON(endpoints.filter((e) => selectedIds.includes(e.id)))}>
+              📥 ส่งออกรายการที่เลือก
+            </button>
+            <button className="wh-btn-danger" onClick={() => void handleBatchDelete()}>
+              🗑️ ลบรายการที่เลือก ({selectedIds.length})
+            </button>
+            <button className="wh-action-btn" style={{ height: 34, fontSize: '0.8rem' }} onClick={() => setSelectedIds([])}>
+              ✕ ยกเลิกการเลือก
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Card 1: Form Section */}
       <div className="wh-card" ref={formCardRef}>
@@ -735,6 +956,14 @@ export default function Webhooks() {
           <table className="wh-table">
             <thead>
               <tr>
+                <th style={{ width: 36, textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={isAllPaginatedSelected}
+                    onChange={toggleSelectAllPaginated}
+                    title="เลือกทั้งหมดในหน้านี้"
+                  />
+                </th>
                 <th>{t('page.webhooks.endpoint')}</th>
                 <th>{t('page.webhooks.source')}</th>
                 <th>{t('page.webhooks.auth')}</th>
@@ -747,13 +976,20 @@ export default function Webhooks() {
             <tbody>
               {paginatedEndpoints.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
                     ไม่พบเอนด์พอยต์ที่ค้นหา
                   </td>
                 </tr>
               ) : (
                 paginatedEndpoints.map((e) => (
-                  <tr key={e.id}>
+                  <tr key={e.id} style={{ background: selectedIds.includes(e.id) ? '#eff6ff' : undefined }}>
+                    <td style={{ textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(e.id)}
+                        onChange={() => toggleSelectRow(e.id)}
+                      />
+                    </td>
                     <td>
                       <button
                         className="wh-endpoint-link"
@@ -866,7 +1102,110 @@ export default function Webhooks() {
         </div>
       </div>
 
-      {/* Endpoint Details / Intake Test Modal */}
+      {/* Modal 1: Import Preview Confirmation */}
+      {importModalEndpoints && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '1rem',
+          }}
+          onClick={() => setImportModalEndpoints(null)}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: 12,
+              maxWidth: 600,
+              width: '100%',
+              padding: '1.5rem',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#0f172a' }}>
+                📤 นำเข้าเอนด์พอยต์ ({importModalEndpoints.length} รายการ)
+              </h3>
+              <button
+                onClick={() => setImportModalEndpoints(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#64748b' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.875rem', color: '#475569', margin: '0 0 1rem' }}>
+              พบข้อมูลเอนด์พอยต์ในไฟล์ JSON ดังนี้ กรุณาตรวจสอบก่อนยืนยันการนำเข้าเข้าสู่ระบบ:
+            </p>
+
+            <div
+              style={{
+                maxHeight: 240,
+                overflowY: 'auto',
+                border: '1px solid #e2e8f0',
+                borderRadius: 8,
+                marginBottom: '1rem',
+              }}
+            >
+              <table className="wh-table" style={{ fontSize: '0.8rem' }}>
+                <thead>
+                  <tr>
+                    <th>รหัสเอนด์พอยต์</th>
+                    <th>ชื่อ</th>
+                    <th>แหล่งที่มา</th>
+                    <th>สถานะเดิมในระบบ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importModalEndpoints.map((item, idx) => {
+                    const exists = endpoints.some((e) => e.endpointCode === item.endpointCode);
+                    return (
+                      <tr key={idx}>
+                        <td><code>{item.endpointCode}</code></td>
+                        <td>{item.name}</td>
+                        <td>{item.sourceSystem || 'integration-service'}</td>
+                        <td>
+                          {exists ? (
+                            <span style={{ color: '#b45309', fontWeight: 600 }}>⚠️ มีอยู่แล้ว (จะอัปเดต)</span>
+                          ) : (
+                            <span style={{ color: '#15803d', fontWeight: 600 }}>✨ รายการใหม่</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#334155', marginBottom: '1.25rem' }}>
+              <input
+                type="checkbox"
+                checked={overwriteExistingOnImport}
+                onChange={(e) => setOverwriteExistingOnImport(e.target.checked)}
+              />
+              <span>เขียนทับเอนด์พอยต์ที่มีอยู่แล้วในระบบ</span>
+            </label>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button className="wh-btn-outline" onClick={() => setImportModalEndpoints(null)}>
+                ยกเลิก
+              </button>
+              <button className="wh-btn-primary" onClick={() => void confirmImport()}>
+                ยืนยันการนำเข้า ({importModalEndpoints.length} รายการ)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 2: Endpoint Details / Intake Test Modal */}
       {selectedEndpointModal && (
         <div
           style={{

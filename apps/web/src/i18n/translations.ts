@@ -344,6 +344,18 @@ const en: TranslationDict = {
   'page.templates.varDate': 'Date',
   'page.templates.varTime': 'Time',
   'page.templates.varSeq': 'Sequence',
+  'page.templates.exportBtn': 'Export',
+  'page.templates.importBtn': 'Import',
+  'page.templates.exportEmpty': 'Nothing to export.',
+  'page.templates.exported': 'Exported {n} templates.',
+  'page.templates.importInvalid': 'Invalid import file.',
+  'page.templates.importDone': 'Import finished — {created} created, {updated} updated, {failed} failed.',
+  'page.templates.delete': 'Delete',
+  'page.templates.deleteTitle': 'Delete template',
+  'page.templates.deleteBody': 'Delete "{name}"? This cannot be undone.',
+  'page.templates.deletedOk': 'Template deleted.',
+  'page.templates.deleteBound': 'This template is bound to a printer. Remove the binding first.',
+  'page.templates.deleteForbidden': 'Your role cannot delete templates.',
 
   // PaperProfiles
   'page.paperProfiles.title': 'Paper Profiles',
@@ -550,6 +562,10 @@ const en: TranslationDict = {
   'page.webhooks.callbackNats': 'NATS reply subject (or $.field)',
   'page.webhooks.payloadTemplate': 'Response payload template (JSON; use $.field to echo intake values)',
   'page.webhooks.onPrintResult': 'Send only after print result is known',
+  'page.webhooks.export': 'Export JSON',
+  'page.webhooks.import': 'Import JSON',
+  'page.webhooks.batchDelete': 'Delete Selected',
+  'page.webhooks.selectCount': '{n} selected',
 
   // RoutePolicies
   'page.routePolicies.title': 'Route Policies',
@@ -1000,6 +1016,18 @@ const th: TranslationDict = {
   'page.templates.varDate': 'วันที่',
   'page.templates.varTime': 'เวลา',
   'page.templates.varSeq': 'ลำดับที่',
+  'page.templates.exportBtn': 'ส่งออก',
+  'page.templates.importBtn': 'นำเข้า',
+  'page.templates.exportEmpty': 'ไม่มีข้อมูลให้ส่งออก',
+  'page.templates.exported': 'ส่งออกเทมเพลต {n} รายการแล้ว',
+  'page.templates.importInvalid': 'ไฟล์นำเข้าไม่ถูกต้อง',
+  'page.templates.importDone': 'นำเข้าเสร็จ — สร้าง {created} อัปเดต {updated} ล้มเหลว {failed}',
+  'page.templates.delete': 'ลบ',
+  'page.templates.deleteTitle': 'ลบเทมเพลต',
+  'page.templates.deleteBody': 'ต้องการลบ "{name}" หรือไม่ การลบนี้ย้อนกลับไม่ได้',
+  'page.templates.deletedOk': 'ลบเทมเพลตแล้ว',
+  'page.templates.deleteBound': 'เทมเพลตนี้ถูกผูกกับเครื่องพิมพ์อยู่ ให้ยกเลิกการผูกก่อน',
+  'page.templates.deleteForbidden': 'บทบาทของคุณไม่มีสิทธิ์ลบเทมเพลต',
 
   // PaperProfiles
   'page.paperProfiles.title': 'โปรไฟล์กระดาษ',
@@ -1206,6 +1234,10 @@ const th: TranslationDict = {
   'page.webhooks.callbackNats': 'NATS reply subject (หรือ $.field)',
   'page.webhooks.payloadTemplate': 'เทมเพลต payload ตอบกลับ (JSON; ใช้ $.field เพื่อส่งค่ากลับ)',
   'page.webhooks.onPrintResult': 'ส่งต่อเมื่อทราบผลการพิมพ์แล้ว',
+  'page.webhooks.export': 'ส่งออก JSON',
+  'page.webhooks.import': 'นำเข้า JSON',
+  'page.webhooks.batchDelete': 'ลบรายการที่เลือก',
+  'page.webhooks.selectCount': 'เลือกอยู่ {n} รายการ',
 
   // RoutePolicies
   'page.routePolicies.title': 'นโยบายเส้นทาง',

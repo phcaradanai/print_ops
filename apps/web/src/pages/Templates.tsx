@@ -39,6 +39,25 @@ interface PreviewResponse {
 
 type SampleMode = 'default' | 'profile' | 'empty';
 
+/** Portable shape written by Export and accepted by Import. */
+interface TemplateExportEntry {
+  templateCode: string;
+  name: string;
+  engine: string;
+  content: string;
+  status?: string;
+  paperProfileCode?: string;
+}
+
+interface TemplateExportFile {
+  kind: 'printops.templates';
+  version: 1;
+  exportedAt: string;
+  templates: TemplateExportEntry[];
+}
+
+const EXPORT_KIND = 'printops.templates';
+
 const ENGINES = ['RAW_TEXT', 'ZPL', 'HTML', 'JSON_LAYOUT', 'TSPL', 'EPL', 'PDF_LIKE_PREVIEW'] as const;
 
 const ENGINE_ICON: Record<string, string> = {
@@ -180,6 +199,8 @@ export default function Templates() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Template | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
@@ -361,6 +382,129 @@ export default function Templates() {
     }
   }
 
+  async function confirmDelete() {
+    const target = pendingDelete;
+    if (!target) return;
+    setPendingDelete(null);
+    try {
+      await apiFetch(`/v1/templates/${target.id}`, { method: 'DELETE' });
+      if (selectedId === target.id) {
+        setSelectedId(null);
+        setPreview(null);
+        setPreviewHtml('');
+      }
+      if (editingId === target.id) {
+        setEditingId(null);
+        setForm({ ...EMPTY_FORM });
+      }
+      setMessage({ tone: 'ok', text: t('page.templates.deletedOk') });
+      await load();
+    } catch (err) {
+      const status = String(err instanceof Error ? err.message : '');
+      const text = status.endsWith('409')
+        ? t('page.templates.deleteBound')
+        : status.endsWith('403')
+          ? t('page.templates.deleteForbidden')
+          : t('page.templates.actionFailed');
+      setMessage({ tone: 'error', text });
+    }
+  }
+
+  /** Export uses paperProfileCode, not the local profile id, so a file stays portable across installs. */
+  function exportTemplates() {
+    const rows = templates;
+    if (rows.length === 0) {
+      setMessage({ tone: 'error', text: t('page.templates.exportEmpty') });
+      return;
+    }
+    const file: TemplateExportFile = {
+      kind: EXPORT_KIND,
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      templates: rows.map((tpl) => ({
+        templateCode: tpl.templateCode,
+        name: tpl.name,
+        engine: tpl.engine,
+        content: tpl.content,
+        status: tpl.status,
+        paperProfileCode: profiles.find((p) => p.id === tpl.paperProfileId)?.code,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `printops-templates-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    setMessage({ tone: 'ok', text: t('page.templates.exported').replace('{n}', String(rows.length)) });
+  }
+
+  function parseImport(raw: string): TemplateExportEntry[] | null {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+    const list = Array.isArray(parsed)
+      ? parsed
+      : typeof parsed === 'object' && parsed !== null && Array.isArray((parsed as TemplateExportFile).templates)
+        ? (parsed as TemplateExportFile).templates
+        : null;
+    if (!list) return null;
+    const entries = list.filter((entry): entry is TemplateExportEntry =>
+      typeof entry === 'object' && entry !== null &&
+      typeof (entry as TemplateExportEntry).templateCode === 'string' &&
+      typeof (entry as TemplateExportEntry).content === 'string');
+    return entries.length > 0 ? entries : null;
+  }
+
+  async function importTemplates(file: File) {
+    const entries = parseImport(await file.text());
+    if (!entries) {
+      setMessage({ tone: 'error', text: t('page.templates.importInvalid') });
+      return;
+    }
+    setBusy(true);
+    let created = 0;
+    let updated = 0;
+    let failed = 0;
+    for (const entry of entries) {
+      const paperProfileId = entry.paperProfileCode
+        ? profiles.find((p) => p.code === entry.paperProfileCode)?.id
+        : undefined;
+      const payload = {
+        templateCode: entry.templateCode,
+        name: entry.name || entry.templateCode,
+        engine: ENGINES.includes(entry.engine as typeof ENGINES[number]) ? entry.engine : 'RAW_TEXT',
+        content: entry.content,
+        paperProfileId,
+      };
+      const existing = templates.find((tpl) => tpl.templateCode === entry.templateCode);
+      try {
+        if (existing) {
+          await apiFetch(`/v1/templates/${existing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+          updated++;
+        } else {
+          await apiFetch('/v1/templates', { method: 'POST', body: JSON.stringify(payload) });
+          created++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+    setBusy(false);
+    setMessage({
+      tone: failed > 0 ? 'error' : 'ok',
+      text: t('page.templates.importDone')
+        .replace('{created}', String(created))
+        .replace('{updated}', String(updated))
+        .replace('{failed}', String(failed)),
+    });
+    await load();
+  }
+
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const tpl of templates) counts[tpl.status] = (counts[tpl.status] ?? 0) + 1;
@@ -427,6 +571,28 @@ export default function Templates() {
               aria-label={t('page.templates.searchPlaceholder')}
             />
           </label>
+          <button type="button" className="tpl-btn tpl-btn--ghost" onClick={exportTemplates}>
+            ⤓ {t('page.templates.exportBtn')}
+          </button>
+          <button
+            type="button"
+            className="tpl-btn tpl-btn--ghost"
+            onClick={() => importInputRef.current?.click()}
+            disabled={busy}
+          >
+            ⤒ {t('page.templates.importBtn')}
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="tpl-file-input"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) void importTemplates(file);
+            }}
+          />
           <button type="button" className="tpl-btn tpl-btn--primary" onClick={newTemplate}>
             + {t('page.templates.newTemplate')}
           </button>
@@ -726,6 +892,14 @@ export default function Templates() {
                             <button type="button" role="menuitem" onClick={() => void testPrint(tpl.id)}>
                               {t('page.templates.testPrint')}
                             </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="tpl-menu__danger"
+                              onClick={() => { setMenuFor(null); setPendingDelete(tpl); }}
+                            >
+                              {t('page.templates.delete')}
+                            </button>
                           </div>
                         )}
                       </div>
@@ -785,6 +959,34 @@ export default function Templates() {
           </select>
         </div>
       </section>
+
+      {pendingDelete && (
+        <div className="tpl-modal" role="dialog" aria-modal="true" onClick={() => setPendingDelete(null)}>
+          <div className="tpl-modal__panel tpl-modal__panel--sm" onClick={(e) => e.stopPropagation()}>
+            <div className="tpl-modal__header">
+              <h2>{t('page.templates.deleteTitle')}</h2>
+              <button
+                type="button"
+                className="tpl-icon-btn"
+                onClick={() => setPendingDelete(null)}
+                aria-label={t('common.cancel')}
+              >✕</button>
+            </div>
+            <div className="tpl-confirm">
+              <p>{t('page.templates.deleteBody').replace('{name}', pendingDelete.name)}</p>
+              <code>{pendingDelete.templateCode}</code>
+            </div>
+            <div className="tpl-confirm__actions">
+              <button type="button" className="tpl-btn tpl-btn--ghost" onClick={() => setPendingDelete(null)}>
+                {t('common.cancel')}
+              </button>
+              <button type="button" className="tpl-btn tpl-btn--danger" onClick={() => void confirmDelete()}>
+                🗑 {t('page.templates.delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {fullPage && (
         <div className="tpl-modal" role="dialog" aria-modal="true" onClick={() => setFullPage(false)}>

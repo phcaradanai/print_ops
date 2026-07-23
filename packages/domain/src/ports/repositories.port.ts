@@ -101,6 +101,7 @@ export interface PrintTemplateRepositoryPort {
   findAll(opts?: ListOptions & { status?: string }): Promise<PrintTemplate[]>;
   create(input: CreatePrintTemplateInput): Promise<PrintTemplate>;
   update(id: string, patch: Partial<PrintTemplate>): Promise<PrintTemplate>;
+  delete(id: string): Promise<void>;
 }
 
 export interface PaperProfileRepositoryPort {
