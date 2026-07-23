@@ -2,8 +2,9 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use serde::{Deserialize, Serialize};
 use tauri::{Manager, Url};
 
 #[cfg(windows)]
@@ -13,10 +14,101 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 const SERVER_URL: &str = "http://127.0.0.1:31415";
 const SERVER_PORT: &str = "31415";
+const NATS_SETTINGS_FILE: &str = "nats-settings.json";
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NatsSettings {
+    enabled: bool,
+    url: String,
+    client_id: String,
+    subject_prefix: String,
+}
+
+fn validate_nats_settings(settings: &NatsSettings) -> Result<(), String> {
+    if !settings.enabled {
+        return Ok(());
+    }
+    if settings.url.trim().is_empty() {
+        return Err("NATS URL is required when NATS is enabled".into());
+    }
+    if !settings.url.trim().starts_with("nats://") {
+        return Err("NATS URL must start with nats://".into());
+    }
+    if !is_nats_token(&settings.client_id) {
+        return Err("Client ID may contain only letters, digits, _ and -".into());
+    }
+    if !is_nats_subject_prefix(&settings.subject_prefix) {
+        return Err("Subject prefix must contain literal NATS tokens separated by dots".into());
+    }
+    Ok(())
+}
+
+fn is_nats_token(value: &str) -> bool {
+    !value.is_empty() && value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+fn is_nats_subject_prefix(value: &str) -> bool {
+    !value.is_empty() && value.split('.').all(is_nats_token)
+}
+
+fn nats_settings_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(NATS_SETTINGS_FILE)
+}
+
+fn load_nats_settings(data_dir: &Path, log: &Path) -> NatsSettings {
+    let path = nats_settings_path(data_dir);
+    match fs::read_to_string(&path) {
+        Ok(raw) => match serde_json::from_str::<NatsSettings>(&raw) {
+            Ok(settings) if validate_nats_settings(&settings).is_ok() => settings,
+            Ok(_) | Err(_) => {
+                log_line(log, "WARNING: ignoring invalid local NATS settings");
+                NatsSettings::default()
+            }
+        },
+        Err(_) => NatsSettings::default(),
+    }
+}
+
+#[tauri::command]
+fn get_nats_settings(app: tauri::AppHandle) -> Result<NatsSettings, String> {
+    let data_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
+    let log = log_dir(&data_dir).join("desktop.log");
+    Ok(load_nats_settings(&data_dir, &log))
+}
+
+#[tauri::command]
+fn save_nats_settings(app: tauri::AppHandle, settings: NatsSettings) -> Result<(), String> {
+    validate_nats_settings(&settings)?;
+    let data_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
+    fs::create_dir_all(&data_dir).map_err(|err| err.to_string())?;
+    let path = nats_settings_path(&data_dir);
+    let temporary = path.with_extension("json.tmp");
+    let json = serde_json::to_vec_pretty(&settings).map_err(|err| err.to_string())?;
+    fs::write(&temporary, json).map_err(|err| err.to_string())?;
+    fs::rename(&temporary, &path).map_err(|err| err.to_string())?;
+    log_line(&log_dir(&data_dir).join("desktop.log"), "NATS settings saved; restarting desktop to apply");
+    app.restart();
+}
 
 struct AppState {
     server_child: Mutex<Option<Child>>,
     runner_child: Mutex<Option<Child>>,
+    shutdown: ShutdownGuard,
+}
+
+/// `ExitRequested` and `Exit` can both fire during one close operation. The
+/// cleanup needs to run before Tauri destroys its event-loop state, and exactly
+/// once so the sidecars cannot survive an app update or be killed twice.
+#[derive(Default)]
+struct ShutdownGuard(AtomicBool);
+
+impl ShutdownGuard {
+    fn begin(&self) -> bool {
+        self.0
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
 }
 
 /// Directory used for diagnostic logs. Falls back to the exe directory when the
@@ -177,6 +269,18 @@ pub fn run() {
             let _ = fs::create_dir_all(&data_dir);
             let db_path = data_dir.join("printops.db");
             log_line(&app_log, &format!("db path: {}", db_path.display()));
+            let nats_settings = load_nats_settings(&data_dir, &app_log);
+            if nats_settings.enabled {
+                log_line(
+                    &app_log,
+                    &format!(
+                        "NATS intake enabled for client {} on subject {}.{}",
+                        nats_settings.client_id,
+                        nats_settings.subject_prefix,
+                        nats_settings.client_id,
+                    ),
+                );
+            }
 
             // ── Start API server ──
             let server_child = if server_exe.exists() {
@@ -198,6 +302,18 @@ pub fn run() {
                     .stdin(Stdio::null())
                     .stdout(out)
                     .stderr(err);
+                if nats_settings.enabled {
+                    cmd.env("PRINTOPS_NATS_URL", &nats_settings.url)
+                        .env("PRINTOPS_NATS_CLIENT_ID", &nats_settings.client_id)
+                        .env("PRINTOPS_NATS_SUBJECT_PREFIX", &nats_settings.subject_prefix);
+                } else {
+                    // Do not inherit accidental machine-level NATS variables.
+                    cmd.env_remove("NATS_URL")
+                        .env_remove("PRINTOPS_NATS_URL")
+                        .env_remove("PRINTOPS_NATS_CLIENT_ID")
+                        .env_remove("PRINTOPS_NATS_SUBJECT_PREFIX")
+                        .env_remove("PRINTOPS_NATS_DURABLE");
+                }
                 spawn_child(cmd, &app_log, "server.exe")
             } else {
                 log_line(&app_log, "ERROR: server.exe not found — API will not start");
@@ -238,6 +354,7 @@ pub fn run() {
             app.manage(AppState {
                 server_child: Mutex::new(server_child),
                 runner_child: Mutex::new(runner_child),
+                shutdown: ShutdownGuard::default(),
             });
 
             // The config window is created before `setup` runs, so its first load
@@ -283,21 +400,68 @@ pub fn run() {
             log_line(&app_log, "Desktop ready");
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                let app = window.app_handle();
+        .invoke_handler(tauri::generate_handler![get_nats_settings, save_nats_settings])
+        // Do not use WindowEvent::Destroyed here. On Windows it runs after the
+        // Tao event-loop state has started moving and can panic before the
+        // spawned server/runner are terminated, leaving their .exe files locked
+        // and blocking an NSIS update.
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app: &tauri::AppHandle, event| {
+            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
                 let log = std::env::current_exe()
                     .ok()
                     .and_then(|p| p.parent().map(Path::to_path_buf))
                     .map(|d| log_dir(&d).join("desktop.log"))
                     .unwrap_or_else(|| PathBuf::from("desktop.log"));
                 if let Some(state) = app.try_state::<AppState>() {
-                    kill_child(&state.runner_child, &log, "runner");
-                    kill_child(&state.server_child, &log, "server");
+                    if state.shutdown.begin() {
+                        log_line(&log, "Desktop exit requested; stopping sidecars before shutdown...");
+                        kill_child(&state.runner_child, &log, "runner");
+                        kill_child(&state.server_child, &log, "server");
+                        log_line(&log, "Sidecars stopped");
+                    }
                 }
             }
+        });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_nats_settings, NatsSettings, ShutdownGuard};
+
+    #[test]
+    fn shutdown_guard_runs_cleanup_only_once() {
+        let guard = ShutdownGuard::default();
+
+        assert!(guard.begin());
+        assert!(!guard.begin());
+    }
+
+    #[test]
+    fn nats_settings_require_url_and_safe_client_id_when_enabled() {
+        assert!(validate_nats_settings(&NatsSettings {
+            enabled: true,
+            url: "nats://nats.example:4222".into(),
+            client_id: "pharmacy-counter-01".into(),
+            subject_prefix: "medisync.print.intake".into(),
         })
-        .invoke_handler(tauri::generate_handler![])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .is_ok());
+
+        assert!(validate_nats_settings(&NatsSettings {
+            enabled: true,
+            url: "".into(),
+            client_id: "pharmacy-counter-01".into(),
+            subject_prefix: "medisync.print.intake".into(),
+        })
+        .is_err());
+
+        assert!(validate_nats_settings(&NatsSettings {
+            enabled: true,
+            url: "nats://nats.example:4222".into(),
+            client_id: "counter.*".into(),
+            subject_prefix: "medisync.print.intake".into(),
+        })
+        .is_err());
+    }
 }

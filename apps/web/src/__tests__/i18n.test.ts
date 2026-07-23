@@ -67,6 +67,15 @@ describe('i18n translations', () => {
       'settings.appearance',
       'settings.workspace',
       'settings.saved',
+      'settings.nats.title',
+      'settings.nats.description',
+      'settings.nats.desktopOnly',
+      'settings.nats.enabled',
+      'settings.nats.url',
+      'settings.nats.clientId',
+      'settings.nats.subjectPrefix',
+      'settings.nats.subjectPreviewDisabled',
+      'settings.nats.applyAndRestart',
     ];
     for (const key of keys) {
       expect(t('en', key)).toBeTruthy();

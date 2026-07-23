@@ -26,6 +26,7 @@ import TemplateSandbox from './pages/TemplateSandbox.js';
 import Webhooks from './pages/Webhooks.js';
 import RoutePolicies from './pages/RoutePolicies.js';
 import PrinterBindings from './pages/PrinterBindings.js';
+import PrintFlowBindings from './pages/PrintFlowBindings.js';
 import { getCurrentUser, login, logout, healthUrl, type SessionUser } from './api/client.js';
 import { LocaleProvider, useLocale } from './i18n/index.js';
 
@@ -55,6 +56,7 @@ const NAV_ITEM_ICONS: Record<string, string> = {
   '/webhooks': '\u{1F517}',            // 🔗 Webhooks
   '/route-policies': '\u{1F5FA}',      // 🗺️ Route Policies
   '/printer-bindings': '\u{1F4CE}',    // 📎 Printer Bindings
+  '/print-flow': '\u{1F500}',          // 🔀 Print Flow (dynamic bindings)
   '/audit-logs': '\u{1F4DD}',          // 📝 Audit Logs
   '/users': '\u{1F465}',               // 👥 Users & Roles
   '/export': '\u{1F4E4}',              // 📤 Export Center
@@ -148,6 +150,13 @@ const NAV_ITEMS: NavItem[] = [
     roles: ['OWNER', 'ADMIN'],
     group: 'admin',
     icon: NAV_ITEM_ICONS['/printer-bindings'],
+  },
+  {
+    to: '/print-flow',
+    key: 'nav.printFlow',
+    roles: ['OWNER'],
+    group: 'admin',
+    icon: NAV_ITEM_ICONS['/print-flow'],
   },
   {
     to: '/audit-logs',
@@ -485,6 +494,29 @@ function AppNav({
 
 // ----- App shell -----
 
+/** Route-level gate: renders children only for the given roles, otherwise a
+ *  "not authorized" notice. Blocks direct-URL access, not just nav visibility. */
+function RequireRoles({
+  user,
+  roles,
+  children,
+}: {
+  user: SessionUser;
+  roles: SessionUser['role'][];
+  children: ReactNode;
+}) {
+  const { t } = useLocale();
+  if (!roles.includes(user.role)) {
+    return (
+      <div className="not-authorized" role="alert">
+        <h1>{t('auth.notAuthorized.title')}</h1>
+        <p>{t('auth.notAuthorized.message')}</p>
+      </div>
+    );
+  }
+  return <>{children}</>;
+}
+
 function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
   return (
     <div className="app-shell">
@@ -505,6 +537,14 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
           <Route path="/webhooks" element={<Webhooks />} />
           <Route path="/route-policies" element={<RoutePolicies />} />
           <Route path="/printer-bindings" element={<PrinterBindings />} />
+          <Route
+            path="/print-flow"
+            element={
+              <RequireRoles user={user} roles={['OWNER']}>
+                <PrintFlowBindings />
+              </RequireRoles>
+            }
+          />
           <Route path="/audit-logs" element={<AuditLogs />} />
           <Route path="/users" element={<UsersRoles />} />
           <Route path="/export" element={<ExportCenter />} />

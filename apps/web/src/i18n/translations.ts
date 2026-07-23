@@ -14,6 +14,7 @@ const en: TranslationDict = {
   'nav.webhooks': 'Webhooks',
   'nav.routePolicies': 'Route Policies',
   'nav.bindings': 'Bindings',
+  'nav.printFlow': 'Print Flow',
   'nav.jobQueue': 'Job Queue',
   'nav.runners': 'Runners',
   'nav.auditLogs': 'Audit Logs',
@@ -483,6 +484,40 @@ const en: TranslationDict = {
   'page.bindings.paper': 'Paper',
   'page.bindings.enabled': 'Enabled',
 
+  // Print Flow (dynamic print bindings — sysadmin only)
+  'page.printFlow.title': 'Print Flow',
+  'page.printFlow.description': 'Map a template + paper profile to a printer. The dynamic print endpoint resolves the printer from these bindings.',
+  'page.printFlow.endpoint': 'Dynamic print endpoint',
+  'page.printFlow.newBinding': 'New Binding',
+  'page.printFlow.existing': 'Existing Bindings',
+  'page.printFlow.template': 'Template (code_template)',
+  'page.printFlow.profile': 'Paper Profile (code_profile)',
+  'page.printFlow.printer': 'Printer',
+  'page.printFlow.select': 'Select…',
+  'page.printFlow.default': 'Default binding',
+  'page.printFlow.enabled': 'Enabled',
+  'page.printFlow.makeDefault': 'Make default',
+  'page.printFlow.created': 'Binding created',
+  'page.printFlow.saveError': 'Could not save binding',
+  'page.printFlow.httpTransport': 'HTTP Transport',
+  'page.printFlow.natsTransport': 'NATS JetStream Transport',
+  'page.printFlow.path': 'Path',
+  'page.printFlow.auth': 'Auth header',
+  'page.printFlow.authRequired': '(required)',
+  'page.printFlow.examplePayload': 'Example JSON payload',
+  'page.printFlow.natsDisabled': 'NATS is not configured. Set NATS_URL to enable this transport.',
+  'page.printFlow.natsNoAuth': 'No auth header required — the NATS intake is open to any publisher on the internal network. Do not expose the NATS port outside it.',
+  'page.printFlow.subject': 'Subject (publish here)',
+  'page.printFlow.stream': 'Stream',
+  'page.printFlow.durable': 'Durable consumer',
+  'page.printFlow.server': 'Server',
+  'page.printFlow.dlq': 'Dead-letter subject',
+  'page.printFlow.maxDeliver': 'max deliver',
+
+  // Authorization
+  'auth.notAuthorized.title': 'Not authorized',
+  'auth.notAuthorized.message': 'This page is restricted to sysadmin.',
+
   // Import Design (Paper Profiles)
   'page.paperProfiles.importDesign': 'Import Design',
   'page.paperProfiles.importDesignTitle': 'Import Design',
@@ -525,6 +560,18 @@ const en: TranslationDict = {
   'error.standalone.title': 'Something went wrong',
   'error.standalone.message': 'An unexpected error occurred while rendering the page. Please try restarting the application.',
   'error.standalone.restart': 'Restart App',
+
+  'settings.nats.title': 'NATS Print Intake',
+  'settings.nats.description':
+    'Connect this workstation to a NATS JetStream broker to receive print jobs for its local printers. Each site must use a unique Client ID so jobs are never delivered to the wrong printer.',
+  'settings.nats.desktopOnly':
+    'NATS configuration is only available in the PrinterOps desktop app.',
+  'settings.nats.enabled': 'Enable NATS print intake',
+  'settings.nats.url': 'NATS URL',
+  'settings.nats.clientId': 'Client ID',
+  'settings.nats.subjectPrefix': 'Subject prefix',
+  'settings.nats.subjectPreviewDisabled': 'Enable NATS and set a Client ID to preview the subscription subject.',
+  'settings.nats.applyAndRestart': 'Save & restart',
 };
 
 const th: TranslationDict = {
@@ -539,6 +586,7 @@ const th: TranslationDict = {
   'nav.webhooks': 'เว็บฮุก',
   'nav.routePolicies': 'นโยบายเส้นทาง',
   'nav.bindings': 'การผูก',
+  'nav.printFlow': 'โฟลว์การพิมพ์',
   'nav.jobQueue': 'คิวงาน',
   'nav.runners': 'ตัวรับงาน',
   'nav.auditLogs': 'บันทึกการตรวจสอบ',
@@ -1008,6 +1056,40 @@ const th: TranslationDict = {
   'page.bindings.paper': 'กระดาษ',
   'page.bindings.enabled': 'เปิดใช้งาน',
 
+  // Print Flow (การผูกการพิมพ์แบบไดนามิก — เฉพาะผู้ดูแลระบบ)
+  'page.printFlow.title': 'โฟลว์การพิมพ์',
+  'page.printFlow.description': 'จับคู่เทมเพลต + โปรไฟล์กระดาษเข้ากับเครื่องพิมพ์ ปลายทางการพิมพ์แบบไดนามิกจะเลือกเครื่องพิมพ์จากการผูกเหล่านี้',
+  'page.printFlow.endpoint': 'ปลายทางการพิมพ์แบบไดนามิก',
+  'page.printFlow.newBinding': 'เพิ่มการผูกใหม่',
+  'page.printFlow.existing': 'การผูกที่มีอยู่',
+  'page.printFlow.template': 'เทมเพลต (code_template)',
+  'page.printFlow.profile': 'โปรไฟล์กระดาษ (code_profile)',
+  'page.printFlow.printer': 'เครื่องพิมพ์',
+  'page.printFlow.select': 'เลือก…',
+  'page.printFlow.default': 'การผูกค่าเริ่มต้น',
+  'page.printFlow.enabled': 'เปิดใช้งาน',
+  'page.printFlow.makeDefault': 'ตั้งเป็นค่าเริ่มต้น',
+  'page.printFlow.created': 'สร้างการผูกแล้ว',
+  'page.printFlow.saveError': 'ไม่สามารถบันทึกการผูกได้',
+  'page.printFlow.httpTransport': 'ช่องทาง HTTP',
+  'page.printFlow.natsTransport': 'ช่องทาง NATS JetStream',
+  'page.printFlow.path': 'พาธ',
+  'page.printFlow.auth': 'เฮดเดอร์ยืนยันตัวตน',
+  'page.printFlow.authRequired': '(จำเป็น)',
+  'page.printFlow.examplePayload': 'ตัวอย่าง payload JSON',
+  'page.printFlow.natsDisabled': 'ยังไม่ได้ตั้งค่า NATS ตั้งค่า NATS_URL เพื่อเปิดใช้งานช่องทางนี้',
+  'page.printFlow.natsNoAuth': 'ไม่ต้องมีเฮดเดอร์ยืนยันตัวตน — ใครก็ได้ในเครือข่ายภายในสามารถส่งงานเข้ามาได้ ห้ามเปิดพอร์ต NATS ออกสู่ภายนอก',
+  'page.printFlow.subject': 'Subject (ส่งมาที่นี่)',
+  'page.printFlow.stream': 'สตรีม',
+  'page.printFlow.durable': 'ตัวรับแบบถาวร',
+  'page.printFlow.server': 'เซิร์ฟเวอร์',
+  'page.printFlow.dlq': 'Subject สำหรับข้อความเสีย',
+  'page.printFlow.maxDeliver': 'ส่งซ้ำสูงสุด',
+
+  // Authorization
+  'auth.notAuthorized.title': 'ไม่มีสิทธิ์เข้าถึง',
+  'auth.notAuthorized.message': 'หน้านี้จำกัดเฉพาะผู้ดูแลระบบเท่านั้น',
+
   // Import Design (Paper Profiles)
   'page.paperProfiles.importDesign': 'นำเข้าการออกแบบ',
   'page.paperProfiles.importDesignTitle': 'นำเข้าการออกแบบ',
@@ -1050,6 +1132,18 @@ const th: TranslationDict = {
   'error.standalone.title': 'เกิดข้อผิดพลาด',
   'error.standalone.message': 'เกิดข้อผิดพลาดที่ไม่คาดคิดขณะแสดงผลหน้า กรุณาลองเริ่มแอปพลิเคชันใหม่',
   'error.standalone.restart': 'เริ่มแอปใหม่',
+
+  'settings.nats.title': 'รับงานพิมพ์ผ่าน NATS',
+  'settings.nats.description':
+    'เชื่อมต่อเครื่องนี้กับ NATS JetStream เพื่อรับงานพิมพ์ไปยังเครื่องพิมพ์ในเครื่อง ทุกสาขาต้องใช้ Client ID ที่ไม่ซ้ำกัน เพื่อไม่ให้งานส่งไปเครื่องพิมพ์ผิดที่',
+  'settings.nats.desktopOnly':
+    'การตั้งค่า NATS ใช้งานได้ในแอป PrinterOps เดสก์ท็อปเท่านั้น',
+  'settings.nats.enabled': 'เปิดใช้งานรับงานพิมพ์ผ่าน NATS',
+  'settings.nats.url': 'NATS URL',
+  'settings.nats.clientId': 'Client ID',
+  'settings.nats.subjectPrefix': 'คำนำหน้า subject',
+  'settings.nats.subjectPreviewDisabled': 'เปิด NATS และตั้ง Client ID เพื่อดู subject ที่รับข้อความ',
+  'settings.nats.applyAndRestart': 'บันทึกและเริ่มใหม่',
 };
 
 export const translations: Record<Locale, TranslationDict> = { en, th };

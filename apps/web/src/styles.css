@@ -445,6 +445,37 @@ body {
   color: #f38ba8;
 }
 
+.settings-field--checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0;
+}
+
+.settings-field--checkbox input[type='checkbox'] {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: #1e66f5;
+  flex: none;
+}
+
+.settings-hint {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin: 0 0 0.75rem;
+  line-height: 1.45;
+}
+
+.settings-hint--mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: #f3f4f6;
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  color: #1f2937;
+}
+
 .settings-actions {
   display: flex;
   gap: 0.75rem;
@@ -2340,4 +2371,201 @@ body {
   margin: 0;
   color: var(--neutral-text-muted);
   font-size: 0.8rem;
+}
+
+/* ----- Print Flow (dynamic print bindings) ----- */
+.print-flow-page {
+  max-width: 820px;
+}
+
+.print-flow-lead {
+  margin: 0 0 1rem;
+  color: var(--neutral-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.print-flow-endpoint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--neutral-border);
+  border-radius: 8px;
+  background: var(--neutral-subtle);
+  overflow-x: auto;
+}
+
+.print-flow-method {
+  flex: 0 0 auto;
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  background: var(--primary);
+  color: var(--neutral-surface);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.print-flow-path {
+  font-family: var(--font-mono-family);
+  font-size: 0.8rem;
+  color: var(--neutral-text);
+  white-space: nowrap;
+}
+
+.print-flow-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.print-flow-checkbox input {
+  width: auto;
+}
+
+.print-flow-table-wrap {
+  overflow-x: auto;
+}
+
+.print-flow-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.print-flow-table th,
+.print-flow-table td {
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  border-top: 1px solid var(--neutral-border);
+}
+
+.print-flow-table th {
+  border-top: none;
+  color: var(--neutral-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.print-flow-table code {
+  font-family: var(--font-mono-family);
+  font-size: 0.8rem;
+}
+
+.print-flow-empty {
+  color: var(--neutral-text-muted);
+  text-align: center;
+}
+
+.print-flow-pill {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--neutral-border-strong);
+  border-radius: 999px;
+  background: var(--neutral-surface);
+  color: var(--neutral-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.print-flow-pill--on {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--neutral-surface);
+}
+
+.print-flow-pill:disabled {
+  cursor: default;
+}
+
+.print-flow-kv {
+  display: grid;
+  grid-template-columns: minmax(9rem, auto) 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+}
+
+.print-flow-kv dt {
+  color: var(--neutral-text-muted);
+  font-weight: 600;
+}
+
+.print-flow-kv dd {
+  margin: 0;
+  color: var(--neutral-text);
+  overflow-wrap: anywhere;
+}
+
+.print-flow-kv code,
+.print-flow-strong {
+  font-family: var(--font-mono-family);
+  font-size: 0.8rem;
+}
+
+.print-flow-strong {
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: var(--neutral-subtle);
+  font-weight: 700;
+  color: var(--neutral-inverse);
+}
+
+.print-flow-notice {
+  margin-bottom: 1rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--semantic-warning);
+  border-radius: 6px;
+  background: var(--neutral-subtle);
+  color: var(--neutral-text);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.print-flow-example-label {
+  margin-bottom: 0.35rem;
+  color: var(--neutral-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.print-flow-example pre {
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--neutral-border);
+  border-radius: 6px;
+  background: var(--neutral-subtle);
+  overflow-x: auto;
+}
+
+.print-flow-example code {
+  font-family: var(--font-mono-family);
+  font-size: 0.75rem;
+  color: var(--neutral-text);
+  white-space: pre;
+}
+
+.not-authorized {
+  max-width: 480px;
+  margin: 3rem auto;
+  padding: 1.5rem;
+  border: 1px solid var(--neutral-border);
+  border-radius: 8px;
+  background: var(--neutral-surface);
+  text-align: center;
+}
+
+.not-authorized h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  color: var(--neutral-text);
+}
+
+.not-authorized p {
+  margin: 0;
+  color: var(--neutral-text-muted);
 }

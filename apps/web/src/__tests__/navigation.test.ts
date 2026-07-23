@@ -28,6 +28,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/webhooks', key: 'nav.webhooks', roles: ['OWNER', 'ADMIN'], group: 'admin' },
   { to: '/route-policies', key: 'nav.routePolicies', roles: ['OWNER', 'ADMIN'], group: 'admin' },
   { to: '/printer-bindings', key: 'nav.bindings', roles: ['OWNER', 'ADMIN'], group: 'admin' },
+  { to: '/print-flow', key: 'nav.printFlow', roles: ['OWNER'], group: 'admin' },
   { to: '/audit-logs', key: 'nav.auditLogs', roles: ['OWNER', 'ADMIN'], group: 'admin' },
   { to: '/users', key: 'nav.usersRoles', roles: ['OWNER'], group: 'admin' },
   { to: '/export', key: 'nav.export', roles: ['OWNER', 'ADMIN'], group: 'admin' },
@@ -59,8 +60,15 @@ function splitNavItems(items: NavItem[]): { opsItems: NavItem[]; adminItems: Nav
 }
 
 describe('role-filtered navigation', () => {
-  it('OWNER sees all 16 items', () => {
-    expect(filterNavItems('OWNER')).toHaveLength(16);
+  it('OWNER sees all 17 items', () => {
+    expect(filterNavItems('OWNER')).toHaveLength(17);
+  });
+
+  it('print-flow is OWNER-only (sysadmin)', () => {
+    expect(filterNavItems('OWNER').find((i) => i.to === '/print-flow')).toBeDefined();
+    expect(filterNavItems('ADMIN').find((i) => i.to === '/print-flow')).toBeUndefined();
+    expect(filterNavItems('OPERATOR').find((i) => i.to === '/print-flow')).toBeUndefined();
+    expect(filterNavItems('VIEWER').find((i) => i.to === '/print-flow')).toBeUndefined();
   });
 
   it('ADMIN sees fewer items than OWNER', () => {
@@ -110,10 +118,10 @@ describe('navigation grouping', () => {
     expect(opsItems).toHaveLength(6);
   });
 
-  it('admin group contains 10 items for owner', () => {
+  it('admin group contains 11 items for owner', () => {
     const items = filterNavItems('OWNER');
     const { adminItems } = splitNavItems(items);
-    expect(adminItems).toHaveLength(10);
+    expect(adminItems).toHaveLength(11);
   });
 
   it('viewer only gets operations group', () => {

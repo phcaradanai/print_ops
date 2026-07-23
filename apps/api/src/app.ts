@@ -54,6 +54,8 @@ import { CheckPermissionService } from './services/check-permission.service.js';
 import { SyncPrinterDiscoveryService } from './services/sync-printer-discovery.service.js';
 import { RegisterDiscoveredPrinterService } from './services/register-discovered-printer.service.js';
 import { DynamicIntakeService } from './services/dynamic-intake.service.js';
+import { ResolvePrinterBindingService } from './services/resolve-printer-binding.service.js';
+import { DynamicPrintService } from './services/dynamic-print.service.js';
 import { ImportPaperProfileService } from './services/import-paper-profile.service.js';
 import { SandboxService } from './services/sandbox.service.js';
 import { PrinterConnectivityService } from './services/printer-connectivity.service.js';
@@ -65,6 +67,7 @@ import { runnerRoutes } from './routes/runner.routes.js';
 import { auditRoutes } from './routes/audit.routes.js';
 import { exportRoutes } from './routes/export.routes.js';
 import { v1PrintJobRoutes } from './routes/v1/print-jobs.routes.js';
+import { v1PrinterPrintRoutes } from './routes/v1/printer-print.routes.js';
 import { v1PrinterRoutes } from './routes/v1/printers.routes.js';
 import { v1ExportRoutes } from './routes/v1/exports.routes.js';
 import { v1RunnerPrinterRoutes } from './routes/v1/runner-printers.routes.js';
@@ -73,6 +76,8 @@ import { templateRoutes } from './routes/v1/template.routes.js';
 import { webhookRoutes } from './routes/v1/webhook.routes.js';
 import { paperProfileImportRoutes } from './routes/v1/paper-profile-imports.routes.js';
 import { sandboxRoutes } from './routes/v1/sandbox.routes.js';
+import { startPrintIntakeConsumer, printIntakeConfigFromEnv, type PrintIntakeConfig } from './infra/nats/print-intake.js';
+import { v1PrintFlowRoutes } from './routes/v1/print-flow.routes.js';
 import { join, dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { initDatabase } from './infra/db/sqlite.js';
@@ -163,6 +168,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     eventBus,
     templateRenderer
   );
+
+  const resolvePrinterBinding = new ResolvePrinterBindingService(paperRepo, bindingRepo, templateRepo);
+  const dynamicPrint = new DynamicPrintService(resolvePrinterBinding, acceptExternalJob);
 
   const importPaperProfile = new ImportPaperProfileService(
     paperRepo,
@@ -433,6 +441,54 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     enabled: true,
   });
 
+  // Dynamic print-invocation flow (medisync sticker path). The medisync printing
+  // consumer submits code_template=prescription-sticker + code_profile=sticker-profile;
+  // this printer/profile/template/binding make that pair resolve to a real printer.
+  await printerRepo.create({
+    code: 'sticker-printer',
+    name: 'Prescription Sticker Printer (Fake)',
+    location: 'Pharmacy',
+    protocol: 'fake',
+    connectionUri: 'fake://sticker-printer',
+    isActive: true,
+    allowedTemplates: ['prescription-sticker'],
+    maxCopiesPerJob: 10,
+    metadata: { model: 'FakeSticker' },
+  });
+
+  const stickerProfile = await paperRepo.create({
+    code: 'sticker-profile',
+    name: 'Prescription Sticker 100 x 50 mm',
+    widthMm: 100,
+    heightMm: 50,
+    marginTopMm: 2,
+    marginRightMm: 2,
+    marginBottomMm: 2,
+    marginLeftMm: 2,
+    dpi: 203,
+    orientation: 'portrait',
+    unit: 'mm',
+  });
+
+  await templateRepo.create({
+    templateCode: 'prescription-sticker',
+    name: 'Prescription Sticker',
+    description: 'Prescription sticker template for medisync',
+    engine: 'RAW_TEXT',
+    content: 'RX {{prescription_id}}\n{{patient_name}}\nHN {{hn}}',
+    paperProfileId: stickerProfile.id,
+    status: 'PUBLISHED',
+    createdBy: 'seed',
+  });
+
+  await bindingRepo.create({
+    printerCode: 'sticker-printer',
+    templateCode: 'prescription-sticker',
+    paperProfileId: stickerProfile.id,
+    isDefault: true,
+    enabled: true,
+  });
+
   const labPolicy = await webhookPolicyRepo.create({
     policyCode: 'lab-label-static',
     name: 'Lab Label Static',
@@ -454,6 +510,19 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   });
   }
 
+  // Optional NATS JetStream print-intake transport. Enabled only when NATS_URL
+  // (or PRINTOPS_NATS_URL) is set; the HTTP API works identically without it.
+  // Read here (before routes) so the print-flow config endpoint can report it.
+  let printIntakeCfg: PrintIntakeConfig | undefined;
+  try {
+    printIntakeCfg = printIntakeConfigFromEnv();
+  } catch (err) {
+    // A shared/unscoped NATS consumer can send a patient's label to a different
+    // workstation. Disable only that optional transport on bad configuration;
+    // the authenticated HTTP API must remain available for recovery.
+    app.log.error({ err }, 'print-intake disabled: invalid client-scoped NATS configuration');
+  }
+
   // Health check (no auth)
   app.get('/health', async () => ({ status: 'ok', uptime: process.uptime() }));
 
@@ -470,6 +539,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // Routes — external API v1
   await app.register(async (v1) => {
     await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, acceptExternalJob, cancelJob, executeJob, apiKeyHook });
+    await v1PrinterPrintRoutes(v1, { dynamicPrint, apiKeyHook });
+    await v1PrintFlowRoutes(v1, { printIntake: printIntakeCfg });
     await v1PrinterRoutes(v1, { printers: printerRepo, getPrinterStatus, apiKeyHook });
     await v1ExportRoutes(v1, { exportJobs, audit: auditRepo, exporter, apiKeyHook });
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
@@ -479,6 +550,20 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob, getPrinterStatus });
     await paperProfileImportRoutes(v1, { importService: importPaperProfile });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
+
+  if (printIntakeCfg) {
+    try {
+      const stopPrintIntake = await startPrintIntakeConsumer(
+        { dynamicPrint, logger: app.log },
+        printIntakeCfg,
+      );
+      app.addHook('onClose', async () => {
+        await stopPrintIntake();
+      });
+    } catch (err) {
+      app.log.error({ err }, 'print-intake consumer failed to start; continuing without NATS transport');
+    }
+  }
 
   // Landing page — serve Vite index.html if available, otherwise inline UI
   const staticRoots = [
