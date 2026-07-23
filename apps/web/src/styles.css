@@ -4371,3 +4371,244 @@ body {
   background: #f8fafc;
 }
 
+/* ============================================================
+   SHARED DESIGN-SYSTEM PRIMITIVES  (ds-*)
+   Single source of truth for buttons, modals, toasts, badges.
+   All other page-specific variants should delegate here.
+   ============================================================ */
+
+/* ── ds-btn base ── */
+.ds-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 34px;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid transparent;
+  border-radius: var(--rounded-md); /* 6px — clinical, not playful */
+  cursor: pointer;
+  font-family: var(--font-body-family);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+  @media (prefers-reduced-motion: reduce) { transition: none; }
+}
+
+.ds-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.ds-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ── ds-btn--primary: Deep Navy bg, white text ── */
+.ds-btn--primary {
+  background: var(--neutral-deep); /* #1e1e2e per DESIGN.md */
+  border-color: var(--neutral-deep);
+  color: #fff;
+}
+
+.ds-btn--primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+/* ── ds-btn--ghost: white bg, neutral border, primary on hover ── */
+.ds-btn--ghost {
+  background: var(--neutral-surface);
+  border-color: var(--neutral-border-strong);
+  color: var(--neutral-text);
+}
+
+.ds-btn--ghost:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ── ds-btn--danger: destructive action (border style, not filled) ── */
+.ds-btn--danger {
+  background: var(--neutral-surface);
+  border-color: var(--semantic-error);
+  color: #991b1b;
+}
+
+.ds-btn--danger:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
+/* ── ds-btn--icon: square icon-only button ── */
+.ds-btn--icon {
+  min-height: unset;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+/* ── ds-modal overlay ── */
+.ds-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(17, 24, 39, 0.6);
+}
+
+/* ── ds-modal__panel ── */
+.ds-modal__panel {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: 90vh;
+  overflow: hidden;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg); /* 8px */
+  background: var(--neutral-surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); /* panel-float per DESIGN.md */
+}
+
+.ds-modal__panel--sm {
+  width: min(440px, 100%);
+}
+
+.ds-modal__panel--lg {
+  width: min(680px, 100%);
+}
+
+/* ── ds-modal__header ── */
+.ds-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--neutral-border);
+}
+
+.ds-modal__header h2 {
+  margin: 0;
+  color: var(--neutral-deep);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+/* ── ds-modal__body ── */
+.ds-modal__body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--spacing-xl);
+  overflow-y: auto;
+}
+
+/* ── ds-modal__actions ── */
+.ds-modal__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  padding: 0.8rem 1rem;
+  border-top: 1px solid var(--neutral-border);
+  background: var(--neutral-page);
+}
+
+/* ── ds-confirm (content inside a small confirm modal) ── */
+.ds-confirm__body {
+  padding: var(--spacing-xl);
+}
+
+.ds-confirm__body p {
+  margin: 0 0 0.4rem;
+  color: var(--neutral-text);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.ds-confirm__body code {
+  color: var(--neutral-text-muted);
+  font-family: var(--font-mono-family);
+  font-size: var(--font-mono-size);
+}
+
+/* ── ds-toast: floating notification ── */
+.ds-toast {
+  padding: 0.6rem 1rem;
+  border-radius: var(--rounded-md);
+  font-size: 0.82rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  animation: dsToastIn 0.18s ease;
+  @media (prefers-reduced-motion: reduce) { animation: none; }
+}
+
+@keyframes dsToastIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ds-toast__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  opacity: 0.7;
+  padding: 0;
+  line-height: 1;
+}
+
+.ds-toast__close:hover { opacity: 1; }
+
+.ds-toast--success {
+  background: #e6f7e6;
+  color: #2d6a2d;
+  border: 1px solid var(--semantic-success);
+}
+
+.ds-toast--error {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid var(--semantic-error);
+}
+
+.ds-toast--info {
+  background: #eef4ff;
+  color: #1e3a8a;
+  border: 1px solid var(--semantic-info);
+}
+
+/* ── ds-status-badge: inline text badge using semantic colors ── */
+.ds-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--rounded-sm); /* 4px */
+  font-size: 0.75rem;
+  font-family: var(--font-body-family);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--neutral-inverse); /* dark text for WCAG contrast on pastels */
+  white-space: nowrap;
+}
+
+.ds-status-badge--success  { background: var(--semantic-success); }
+.ds-status-badge--warning  { background: var(--semantic-warning); }
+.ds-status-badge--error    { background: var(--semantic-error); }
+.ds-status-badge--info     { background: var(--semantic-info); }
+.ds-status-badge--progress { background: var(--semantic-progress); }
+.ds-status-badge--neutral  { background: var(--semantic-neutral); }
+
+/* Active = info blue, Draft = neutral slate — consistent with endpoint status */
+.ds-status-badge--active { background: var(--semantic-info); }
+.ds-status-badge--draft  { background: var(--semantic-neutral); }

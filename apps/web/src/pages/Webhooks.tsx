@@ -84,6 +84,7 @@ export default function Webhooks() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [importModalEndpoints, setImportModalEndpoints] = useState<Partial<Endpoint>[] | null>(null);
   const [overwriteExistingOnImport, setOverwriteExistingOnImport] = useState(true);
+  const [pendingDeleteEndpoint, setPendingDeleteEndpoint] = useState<Endpoint | null>(null);
 
   const endpointCodeInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -290,7 +291,13 @@ export default function Webhooks() {
   }
 
   async function handleDelete(e: Endpoint) {
-    if (!confirm(`คุณต้องการลบเอนด์พอยต์ "${e.endpointCode}" ใช่หรือไม่?`)) return;
+    setPendingDeleteEndpoint(e);
+  }
+
+  async function confirmDeleteEndpoint() {
+    const e = pendingDeleteEndpoint;
+    if (!e) return;
+    setPendingDeleteEndpoint(null);
     try {
       await apiFetch(`/v1/webhook-endpoints/${e.id}`, { method: 'DELETE' });
       showToast(`ลบเอนด์พอยต์ "${e.endpointCode}" เรียบร้อยแล้ว`);
@@ -550,11 +557,12 @@ export default function Webhooks() {
 
       {/* Toast Notification Banner */}
       {toast && (
-        <div className={`wh-toast wh-toast--${toast.type}`}>
+        <div className={`ds-toast ds-toast--${toast.type}`}>
           <span>{toast.message}</span>
           <button
+            className="ds-toast__close"
             onClick={() => setToast(null)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', color: 'inherit' }}
+            aria-label="ปิด"
           >
             ✕
           </button>
@@ -572,11 +580,11 @@ export default function Webhooks() {
         </div>
 
         <div className="wh-header-actions">
-          <button className="wh-btn-outline" onClick={() => handleExportJSON()} title="ส่งออกเอนด์พอยต์เป็นไฟล์ JSON">
-            📥 {t('page.webhooks.export')}
+          <button className="ds-btn ds-btn--ghost" onClick={() => handleExportJSON()} title="ส่งออกเอนด์พอยต์เป็นไฟล์ JSON">
+            ⤓ {t('page.webhooks.export')}
           </button>
-          <button className="wh-btn-outline" onClick={() => fileInputRef.current?.click()} title="นำเข้าเอนด์พอยต์จากไฟล์ JSON">
-            📤 {t('page.webhooks.import')}
+          <button className="ds-btn ds-btn--ghost" onClick={() => fileInputRef.current?.click()} title="นำเข้าเอนด์พอยต์จากไฟล์ JSON">
+            ⤒ {t('page.webhooks.import')}
           </button>
 
           <div className="wh-search-box">
@@ -592,7 +600,7 @@ export default function Webhooks() {
             <span className="wh-search-badge">Ctrl + K</span>
           </div>
 
-          <button className="wh-btn-primary" onClick={scrollToFormAndFocus}>
+          <button className="ds-btn ds-btn--primary" onClick={scrollToFormAndFocus}>
             <span>+</span> {t('page.webhooks.create')}
           </button>
         </div>
@@ -605,13 +613,13 @@ export default function Webhooks() {
             ✓ เลือกอยู่ <strong>{selectedIds.length}</strong> รายการ
           </div>
           <div className="wh-bulk-actions">
-            <button className="wh-btn-outline" style={{ height: 34, fontSize: '0.8rem' }} onClick={() => handleExportJSON(endpoints.filter((e) => selectedIds.includes(e.id)))}>
-              📥 ส่งออกรายการที่เลือก
+            <button className="ds-btn ds-btn--ghost" onClick={() => handleExportJSON(endpoints.filter((e) => selectedIds.includes(e.id)))}>
+              ⤓ ส่งออกรายการที่เลือก
             </button>
-            <button className="wh-btn-danger" onClick={() => void handleBatchDelete()}>
+            <button className="ds-btn ds-btn--danger" onClick={() => void handleBatchDelete()}>
               🗑️ ลบรายการที่เลือก ({selectedIds.length})
             </button>
-            <button className="wh-action-btn" style={{ height: 34, fontSize: '0.8rem' }} onClick={() => setSelectedIds([])}>
+            <button className="ds-btn ds-btn--ghost" onClick={() => setSelectedIds([])}>
               ✕ ยกเลิกการเลือก
             </button>
           </div>
@@ -805,14 +813,14 @@ export default function Webhooks() {
 
             {/* Form Buttons */}
             <div className="wh-form-actions">
-              <button className="wh-btn-draft" onClick={() => void handleSave(false)}>
+              <button className="ds-btn ds-btn--ghost" onClick={() => void handleSave(false)}>
                 บันทึกแบบร่าง
               </button>
-              <button className="wh-btn-secondary" onClick={() => void testCallback()}>
+              <button className="ds-btn ds-btn--ghost" onClick={() => void testCallback()}>
                 ▷ ทดสอบ
               </button>
-              <button className="wh-btn-primary" onClick={() => void handleSave(true)}>
-                {editingId ? 'บันทึกเอนด์พอยต์' : '🟦 สร้างเอนด์พอยต์'}
+              <button className="ds-btn ds-btn--primary" onClick={() => void handleSave(true)}>
+                {editingId ? 'บันทึกเอนด์พอยต์' : '+ สร้างเอนด์พอยต์'}
               </button>
             </div>
           </div>
@@ -1003,12 +1011,12 @@ export default function Webhooks() {
                     <td>{e.authMode || 'NONE'}</td>
                     <td>
                       {e.enabled ? (
-                        <span className="wh-status-badge wh-status-badge--active">
-                          🟢 เปิดใช้งาน
+                        <span className="ds-status-badge ds-status-badge--active">
+                          เปิดใช้งาน
                         </span>
                       ) : (
-                        <span className="wh-status-badge wh-status-badge--draft">
-                          🟠 ร่าง
+                        <span className="ds-status-badge ds-status-badge--draft">
+                          ร่าง
                         </span>
                       )}
                     </td>
@@ -1105,99 +1113,82 @@ export default function Webhooks() {
       {/* Modal 1: Import Preview Confirmation */}
       {importModalEndpoints && (
         <div
-          style={{
-            position: 'fixed',
-            top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: '1rem',
-          }}
+          className="ds-modal"
           onClick={() => setImportModalEndpoints(null)}
         >
           <div
-            style={{
-              background: '#ffffff',
-              borderRadius: 12,
-              maxWidth: 600,
-              width: '100%',
-              padding: '1.5rem',
-              boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-            }}
+            className="ds-modal__panel ds-modal__panel--lg"
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#0f172a' }}>
-                📤 นำเข้าเอนด์พอยต์ ({importModalEndpoints.length} รายการ)
-              </h3>
+            <div className="ds-modal__header">
+              <h2>⤒ นำเข้าเอนด์พอยต์ ({importModalEndpoints.length} รายการ)</h2>
               <button
+                className="ds-btn ds-btn--icon"
                 onClick={() => setImportModalEndpoints(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#64748b' }}
+                aria-label="ปิด"
+              >✕</button>
+            </div>
+
+            <div className="ds-modal__body" style={{ padding: '1rem' }}>
+              <p style={{ fontSize: '0.875rem', color: 'var(--neutral-text-muted)', margin: '0 0 1rem' }}>
+                พบข้อมูลเอนด์พอยต์ในไฟล์ JSON ดังนี้ กรุณาตรวจสอบก่อนยืนยันการนำเข้าเข้าสู่ระบบ:
+              </p>
+
+              <div
+                style={{
+                  maxHeight: 240,
+                  overflowY: 'auto',
+                  border: '1px solid var(--neutral-border)',
+                  borderRadius: 'var(--rounded-md)',
+                  marginBottom: '1rem',
+                }}
               >
-                ✕
-              </button>
+                <table className="wh-table" style={{ fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr>
+                      <th>รหัสเอนด์พอยต์</th>
+                      <th>ชื่อ</th>
+                      <th>แหล่งที่มา</th>
+                      <th>สถานะเดิมในระบบ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importModalEndpoints.map((item, idx) => {
+                      const exists = endpoints.some((e) => e.endpointCode === item.endpointCode);
+                      return (
+                        <tr key={idx}>
+                          <td><code>{item.endpointCode}</code></td>
+                          <td>{item.name}</td>
+                          <td>{item.sourceSystem || 'integration-service'}</td>
+                          <td>
+                            {exists ? (
+                              <span className="ds-status-badge ds-status-badge--warning">⚠️ มีอยู่แล้ว</span>
+                            ) : (
+                              <span className="ds-status-badge ds-status-badge--success">ใหม่</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--neutral-text)', marginBottom: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={overwriteExistingOnImport}
+                  onChange={(e) => setOverwriteExistingOnImport(e.target.checked)}
+                />
+                <span>เขียนทับเอนด์พอยต์ที่มีอยู่แล้วในระบบ</span>
+              </label>
             </div>
 
-            <p style={{ fontSize: '0.875rem', color: '#475569', margin: '0 0 1rem' }}>
-              พบข้อมูลเอนด์พอยต์ในไฟล์ JSON ดังนี้ กรุณาตรวจสอบก่อนยืนยันการนำเข้าเข้าสู่ระบบ:
-            </p>
-
-            <div
-              style={{
-                maxHeight: 240,
-                overflowY: 'auto',
-                border: '1px solid #e2e8f0',
-                borderRadius: 8,
-                marginBottom: '1rem',
-              }}
-            >
-              <table className="wh-table" style={{ fontSize: '0.8rem' }}>
-                <thead>
-                  <tr>
-                    <th>รหัสเอนด์พอยต์</th>
-                    <th>ชื่อ</th>
-                    <th>แหล่งที่มา</th>
-                    <th>สถานะเดิมในระบบ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {importModalEndpoints.map((item, idx) => {
-                    const exists = endpoints.some((e) => e.endpointCode === item.endpointCode);
-                    return (
-                      <tr key={idx}>
-                        <td><code>{item.endpointCode}</code></td>
-                        <td>{item.name}</td>
-                        <td>{item.sourceSystem || 'integration-service'}</td>
-                        <td>
-                          {exists ? (
-                            <span style={{ color: '#b45309', fontWeight: 600 }}>⚠️ มีอยู่แล้ว (จะอัปเดต)</span>
-                          ) : (
-                            <span style={{ color: '#15803d', fontWeight: 600 }}>✨ รายการใหม่</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#334155', marginBottom: '1.25rem' }}>
-              <input
-                type="checkbox"
-                checked={overwriteExistingOnImport}
-                onChange={(e) => setOverwriteExistingOnImport(e.target.checked)}
-              />
-              <span>เขียนทับเอนด์พอยต์ที่มีอยู่แล้วในระบบ</span>
-            </label>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-              <button className="wh-btn-outline" onClick={() => setImportModalEndpoints(null)}>
+            <div className="ds-modal__actions">
+              <button className="ds-btn ds-btn--ghost" onClick={() => setImportModalEndpoints(null)}>
                 ยกเลิก
               </button>
-              <button className="wh-btn-primary" onClick={() => void confirmImport()}>
+              <button className="ds-btn ds-btn--primary" onClick={() => void confirmImport()}>
                 ยืนยันการนำเข้า ({importModalEndpoints.length} รายการ)
               </button>
             </div>
@@ -1205,45 +1196,26 @@ export default function Webhooks() {
         </div>
       )}
 
-      {/* Modal 2: Endpoint Details / Intake Test Modal */}
+      {/* Modal 2: Endpoint Details */}
       {selectedEndpointModal && (
         <div
-          style={{
-            position: 'fixed',
-            top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: '1rem',
-          }}
+          className="ds-modal"
           onClick={() => setSelectedEndpointModal(null)}
         >
           <div
-            style={{
-              background: '#ffffff',
-              borderRadius: 12,
-              maxWidth: 580,
-              width: '100%',
-              padding: '1.5rem',
-              boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-            }}
+            className="ds-modal__panel"
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#0f172a' }}>
-                🔗 เอนด์พอยต์: {selectedEndpointModal.endpointCode}
-              </h3>
+            <div className="ds-modal__header">
+              <h2>เอนด์พอยต์: {selectedEndpointModal.endpointCode}</h2>
               <button
+                className="ds-btn ds-btn--icon"
                 onClick={() => setSelectedEndpointModal(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#64748b' }}
-              >
-                ✕
-              </button>
+                aria-label="ปิด"
+              >✕</button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.85rem', color: '#334155' }}>
+            <div className="ds-modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.85rem', color: 'var(--neutral-text)' }}>
               <div>
                 <strong>HTTP Intake URL (POST):</strong>
                 <pre className="wh-json-preview" style={{ marginTop: '0.35rem' }}>
@@ -1267,7 +1239,9 @@ export default function Webhooks() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 <div><strong>แหล่งที่มา:</strong> {selectedEndpointModal.sourceSystem}</div>
                 <div><strong>การรับรอง:</strong> {selectedEndpointModal.authMode}</div>
-                <div><strong>สถานะ:</strong> {selectedEndpointModal.enabled ? '🟢 เปิดใช้งาน' : '🟠 ร่าง'}</div>
+                <div><strong>สถานะ:</strong> {selectedEndpointModal.enabled
+                  ? <span className="ds-status-badge ds-status-badge--active">เปิดใช้งาน</span>
+                  : <span className="ds-status-badge ds-status-badge--draft">ร่าง</span>}</div>
                 <div><strong>Callback:</strong> {selectedEndpointModal.callbackTransport}</div>
               </div>
 
@@ -1279,19 +1253,39 @@ export default function Webhooks() {
               )}
             </div>
 
-            <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+            <div className="ds-modal__actions">
               <button
-                className="wh-btn-secondary"
+                className="ds-btn ds-btn--ghost"
                 onClick={() => void testCallback(selectedEndpointModal)}
               >
                 ▷ ทดสอบส่ง Callback
               </button>
               <button
-                className="wh-btn-primary"
+                className="ds-btn ds-btn--primary"
                 onClick={() => setSelectedEndpointModal(null)}
               >
                 ตกลง
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: Confirm Delete Endpoint */}
+      {pendingDeleteEndpoint && (
+        <div className="ds-modal" role="dialog" aria-modal="true" onClick={() => setPendingDeleteEndpoint(null)}>
+          <div className="ds-modal__panel ds-modal__panel--sm" onClick={(e) => e.stopPropagation()}>
+            <div className="ds-modal__header">
+              <h2>ลบเอนด์พอยต์</h2>
+              <button className="ds-btn ds-btn--icon" onClick={() => setPendingDeleteEndpoint(null)} aria-label="ปิด">✕</button>
+            </div>
+            <div className="ds-confirm__body">
+              <p>คุณต้องการลบเอนด์พอยต์นี้ใช่หรือไม่?</p>
+              <code>{pendingDeleteEndpoint.endpointCode}</code>
+            </div>
+            <div className="ds-modal__actions">
+              <button className="ds-btn ds-btn--ghost" onClick={() => setPendingDeleteEndpoint(null)}>ยกเลิก</button>
+              <button className="ds-btn ds-btn--danger" onClick={() => void confirmDeleteEndpoint()}>🗑 ลบเอนด์พอยต์</button>
             </div>
           </div>
         </div>

@@ -1024,6 +1024,7 @@ export default function PaperProfiles() {
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const [modalStageSize, setModalStageSize] = useState({ width: 0, height: 0 });
   const saveInFlightRef = useRef(false);
+  const [pendingDeleteProfile, setPendingDeleteProfile] = useState<PaperProfile | null>(null);
 
   // ── Import Design state ────────────────────────────────────────────
   const [importPhase, setImportPhase] = useState<ImportPhase>('select');
@@ -1270,8 +1271,13 @@ export default function PaperProfiles() {
   const jsonInputRef = useRef<HTMLInputElement>(null);
 
   async function deleteProfile(profile: PaperProfile) {
-    const confirmMsg = t('page.paperProfiles.confirmDelete').replace('{code}', profile.code);
-    if (!window.confirm(confirmMsg)) return;
+    setPendingDeleteProfile(profile);
+  }
+
+  async function confirmDeleteProfile() {
+    const profile = pendingDeleteProfile;
+    if (!profile) return;
+    setPendingDeleteProfile(null);
 
     try {
       await apiFetch('/v1/paper-profiles/' + profile.id, { method: 'DELETE' });
@@ -1284,7 +1290,8 @@ export default function PaperProfiles() {
       load();
     } catch (err: any) {
       const msg = err?.message || t('page.paperProfiles.deleteFailed');
-      alert(msg);
+      setSaveError(msg);
+      setSaveStatus('error');
     }
   }
 
@@ -1895,7 +1902,7 @@ export default function PaperProfiles() {
                 )}
               </div>
               <IconButton icon={allExpanded ? '▾' : '▸'} label={allExpanded ? t('page.paperProfiles.collapseAll') : t('page.paperProfiles.expandAll')} onClick={allExpanded ? collapseAll : expandAll} />
-              <button type="button" className="pp-save-button" style={{ ...s.btn, opacity: saveStatus === 'saving' ? 0.6 : 1 }} onClick={() => void save()}
+              <button type="button" className="ds-btn ds-btn--primary" style={{ opacity: saveStatus === 'saving' ? 0.6 : 1 }} onClick={() => void save()}
                 disabled={saveStatus === 'saving'}
                 title={editingId ? t('page.paperProfiles.updateProfile') : t('page.paperProfiles.saveProfile')}
                 aria-label={editingId ? t('page.paperProfiles.updateProfile') : t('page.paperProfiles.saveProfile')}>
@@ -2663,20 +2670,20 @@ export default function PaperProfiles() {
             />
             <button
               type="button"
-              style={{ ...s.btnSmall, fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+              className="ds-btn ds-btn--ghost"
               onClick={() => jsonInputRef.current?.click()}
               title={t('page.paperProfiles.importJsonProfile')}
             >
-              📥 {t('page.paperProfiles.importJsonProfile')}
+              ⤓ {t('page.paperProfiles.importJsonProfile')}
             </button>
             <button
               type="button"
-              style={{ ...s.btnSmall, fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+              className="ds-btn ds-btn--ghost"
               onClick={exportAllProfilesJson}
               disabled={profiles.length === 0}
               title={t('page.paperProfiles.exportAllProfiles')}
             >
-              📦 {t('page.paperProfiles.exportAllProfiles')}
+              ⤒ {t('page.paperProfiles.exportAllProfiles')}
             </button>
           </div>
         </div>
@@ -2708,9 +2715,9 @@ export default function PaperProfiles() {
                   <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>{p.orientation === 'portrait' ? t('page.paperProfiles.portrait') : t('page.paperProfiles.landscape')}</td>
                   <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem' }}>{p.dpi}</td>
                   <td style={{ padding: '0.5rem 0.6rem', display: 'flex', gap: '0.25rem' }}>
-                    <button style={{ ...s.btnSmall, padding: '0.25rem 0.4rem', fontSize: '0.75rem' }} onClick={() => startEdit(p)} title={t('page.paperProfiles.editingProfile')}>✏️</button>
-                    <button style={{ ...s.btnSmall, padding: '0.25rem 0.4rem', fontSize: '0.75rem' }} onClick={() => exportProfileJson(p)} title={t('page.paperProfiles.exportProfile')}>📤</button>
-                    <button style={{ ...s.btnDanger, padding: '0.25rem 0.4rem', fontSize: '0.75rem' }} onClick={() => void deleteProfile(p)} title={t('page.paperProfiles.deleteProfile')}>🗑️</button>
+                    <button className="ds-btn ds-btn--icon" onClick={() => startEdit(p)} title={t('page.paperProfiles.editingProfile')}>✏️</button>
+                    <button className="ds-btn ds-btn--icon" onClick={() => exportProfileJson(p)} title={t('page.paperProfiles.exportProfile')}>⤒</button>
+                    <button className="ds-btn ds-btn--icon ds-btn--danger" onClick={() => void deleteProfile(p)} title={t('page.paperProfiles.deleteProfile')}>🗑️</button>
                   </td>
                 </tr>
               ))}
@@ -2718,6 +2725,35 @@ export default function PaperProfiles() {
           </table>
         </div>
       </div>
+
+      {/* ── Confirm Delete Profile Modal ── */}
+      {pendingDeleteProfile && (
+        <div className="ds-modal" role="dialog" aria-modal="true" onClick={() => setPendingDeleteProfile(null)}>
+          <div className="ds-modal__panel ds-modal__panel--sm" onClick={(e) => e.stopPropagation()}>
+            <div className="ds-modal__header">
+              <h2>{t('page.paperProfiles.deleteProfile')}</h2>
+              <button
+                type="button"
+                className="ds-btn ds-btn--icon"
+                onClick={() => setPendingDeleteProfile(null)}
+                aria-label={t('common.cancel')}
+              >✕</button>
+            </div>
+            <div className="ds-confirm__body">
+              <p>{t('page.paperProfiles.confirmDelete').replace('{code}', pendingDeleteProfile.code)}</p>
+              <code>{pendingDeleteProfile.code}</code>
+            </div>
+            <div className="ds-modal__actions">
+              <button type="button" className="ds-btn ds-btn--ghost" onClick={() => setPendingDeleteProfile(null)}>
+                {t('common.cancel')}
+              </button>
+              <button type="button" className="ds-btn ds-btn--danger" onClick={() => void confirmDeleteProfile()}>
+                🗑 {t('page.paperProfiles.deleteProfile')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

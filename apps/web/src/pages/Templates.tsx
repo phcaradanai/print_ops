@@ -582,12 +582,12 @@ export default function Templates() {
               aria-label={t('page.templates.searchPlaceholder')}
             />
           </label>
-          <button type="button" className="tpl-btn tpl-btn--ghost" onClick={exportTemplates}>
+          <button type="button" className="ds-btn ds-btn--ghost" onClick={exportTemplates}>
             ⤓ {t('page.templates.exportBtn')}
           </button>
           <button
             type="button"
-            className="tpl-btn tpl-btn--ghost"
+            className="ds-btn ds-btn--ghost"
             onClick={() => importInputRef.current?.click()}
             disabled={busy}
           >
@@ -604,14 +604,17 @@ export default function Templates() {
               if (file) void importTemplates(file);
             }}
           />
-          <button type="button" className="tpl-btn tpl-btn--primary" onClick={newTemplate}>
+          <button type="button" className="ds-btn ds-btn--primary" onClick={newTemplate}>
             + {t('page.templates.newTemplate')}
           </button>
         </div>
       </header>
 
       {message && (
-        <div className={`tpl-message tpl-message--${message.tone}`} role="status">{message.text}</div>
+        <div className={`ds-toast ds-toast--${message.tone === 'ok' ? 'success' : 'error'}`} role="status">
+          <span>{message.text}</span>
+          <button type="button" className="ds-toast__close" onClick={() => setMessage(null)} aria-label={t('common.cancel')}>✕</button>
+        </div>
       )}
 
       <div className="tpl-layout">
@@ -972,26 +975,26 @@ export default function Templates() {
       </section>
 
       {pendingDelete && (
-        <div className="tpl-modal" role="dialog" aria-modal="true" onClick={() => setPendingDelete(null)}>
-          <div className="tpl-modal__panel tpl-modal__panel--sm" onClick={(e) => e.stopPropagation()}>
-            <div className="tpl-modal__header">
+        <div className="ds-modal" role="dialog" aria-modal="true" onClick={() => setPendingDelete(null)}>
+          <div className="ds-modal__panel ds-modal__panel--sm" onClick={(e) => e.stopPropagation()}>
+            <div className="ds-modal__header">
               <h2>{t('page.templates.deleteTitle')}</h2>
               <button
                 type="button"
-                className="tpl-icon-btn"
+                className="ds-btn ds-btn--icon"
                 onClick={() => setPendingDelete(null)}
                 aria-label={t('common.cancel')}
               >✕</button>
             </div>
-            <div className="tpl-confirm">
+            <div className="ds-confirm__body">
               <p>{t('page.templates.deleteBody').replace('{name}', pendingDelete.name)}</p>
               <code>{pendingDelete.templateCode}</code>
             </div>
-            <div className="tpl-confirm__actions">
-              <button type="button" className="tpl-btn tpl-btn--ghost" onClick={() => setPendingDelete(null)}>
+            <div className="ds-modal__actions">
+              <button type="button" className="ds-btn ds-btn--ghost" onClick={() => setPendingDelete(null)}>
                 {t('common.cancel')}
               </button>
-              <button type="button" className="tpl-btn tpl-btn--danger" onClick={() => void confirmDelete()}>
+              <button type="button" className="ds-btn ds-btn--danger" onClick={() => void confirmDelete()}>
                 🗑 {t('page.templates.delete')}
               </button>
             </div>
@@ -1000,18 +1003,18 @@ export default function Templates() {
       )}
 
       {fullPage && (
-        <div className="tpl-modal" role="dialog" aria-modal="true" onClick={() => setFullPage(false)}>
-          <div className="tpl-modal__panel" onClick={(e) => e.stopPropagation()}>
-            <div className="tpl-modal__header">
+        <div className="ds-modal" role="dialog" aria-modal="true" onClick={() => setFullPage(false)}>
+          <div className="ds-modal__panel" style={{ width: 'min(900px, 100%)' }} onClick={(e) => e.stopPropagation()}>
+            <div className="ds-modal__header">
               <h2>{t('page.templates.previewTitle')}</h2>
               <button
                 type="button"
-                className="tpl-icon-btn"
+                className="ds-btn ds-btn--icon"
                 onClick={() => setFullPage(false)}
                 aria-label={t('page.templates.closePreview')}
               >✕</button>
             </div>
-            <div className="tpl-modal__body">
+            <div className="ds-modal__body" style={{ display: 'grid', placeItems: 'center', background: 'var(--neutral-page)' }}>
               <div className="tpl-preview-paper" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>
           </div>
