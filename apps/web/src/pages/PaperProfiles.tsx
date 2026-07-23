@@ -1312,7 +1312,9 @@ export default function PaperProfiles() {
     };
     const jsonStr = JSON.stringify(exportData, null, 2);
     const workspacePath = localStorage.getItem('printops-workspace-path') ?? '';
-    await exportJsonFile(`paper-profile-${profile.code}.json`, jsonStr, workspacePath || undefined);
+    const res = await exportJsonFile(`paper-profile-${profile.code}.json`, jsonStr, workspacePath || undefined);
+    if (res.cancelled) return;
+    if (!res.success) alert(res.message || t('page.paperProfiles.importJsonFailed'));
   }
 
   async function exportAllProfilesJson() {
@@ -1338,7 +1340,9 @@ export default function PaperProfiles() {
     };
     const jsonStr = JSON.stringify(exportData, null, 2);
     const workspacePath = localStorage.getItem('printops-workspace-path') ?? '';
-    await exportJsonFile('paper-profiles-export.json', jsonStr, workspacePath || undefined);
+    const res = await exportJsonFile('paper-profiles-export.json', jsonStr, workspacePath || undefined);
+    if (res.cancelled) return;
+    if (!res.success) alert(res.message || t('page.paperProfiles.importJsonFailed'));
   }
 
   async function importProfilesJsonFile(file: File) {

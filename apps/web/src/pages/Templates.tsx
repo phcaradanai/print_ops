@@ -440,7 +440,7 @@ export default function Templates() {
     const result = await exportJsonFile(filename, json, workspacePath || undefined);
     if (result.cancelled) return;
     if (!result.success) {
-      setMessage({ tone: 'error', text: t('page.templates.actionFailed') });
+      setMessage({ tone: 'error', text: result.message || t('page.templates.actionFailed') });
       return;
     }
     setMessage({

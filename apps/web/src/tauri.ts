@@ -104,11 +104,18 @@ export async function exportJsonFile(
   // the browser-only paths below — those would silently blob-download the
   // file with no visible feedback, which is the exact bug this replaces.
   if (await isTauriAvailable()) {
-    const tauriPath = await saveExportFile(filename, content, workspacePath || undefined);
-    if (tauriPath) {
-      return { success: true, path: tauriPath, message: `บันทึกไฟล์เรียบร้อยแล้ว: ${tauriPath}` };
+    try {
+      const tauriPath = await saveExportFile(filename, content, workspacePath || undefined);
+      if (tauriPath) {
+        return { success: true, path: tauriPath, message: `บันทึกไฟล์เรียบร้อยแล้ว: ${tauriPath}` };
+      }
+      return { success: false, cancelled: true };
+    } catch (err: any) {
+      // Surface the real failure instead of leaving the button looking dead —
+      // a rejected invoke() here previously vanished as an unhandled promise
+      // rejection with zero visible feedback.
+      return { success: false, message: `บันทึกไฟล์ไม่สำเร็จ: ${err?.message ?? String(err)}` };
     }
-    return { success: false, cancelled: true };
   }
 
   // 2. Web Browser File System Access API (showSaveFilePicker)

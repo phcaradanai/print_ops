@@ -3,9 +3,15 @@
   "identifier": "default",
   "description": "Capability granted to the main PrinterOps window",
   "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:31415/*"]
+  },
   "permissions": [
     "core:default",
-    "dialog:allow-save",
+    "dialog:default",
+    "allow-write-export-file",
+    "allow-get-nats-settings",
+    "allow-save-nats-settings",
     "shell:allow-execute",
     "shell:allow-open",
     {
