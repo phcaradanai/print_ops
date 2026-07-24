@@ -129,6 +129,48 @@ describe('SimpleTemplateRenderer — barcode/QR support', () => {
     expect(print.renderedPrintPayload).toContain('<img src="data:image/png;base64,');
   });
 
+  it('defaults to 12mm bar height / 20mm QR size in the img CSS when no paper-profile field size is configured', async () => {
+    const renderer = new SimpleTemplateRenderer();
+    const barcodeTpl = makeTemplate({ engine: 'HTML', content: '<div>{{barcode:code}}</div>' });
+    const barcodePrint = await renderer.renderPrintPayload(barcodeTpl, { code: 'ABC123' }, makePaper());
+    expect(barcodePrint.renderedPrintPayload).toContain('height:12mm');
+    expect(barcodePrint.renderedPrintPayload).toContain('width:auto');
+
+    const qrTpl = makeTemplate({ engine: 'HTML', content: '<div>{{qrcode:hn}}</div>' });
+    const qrPrint = await renderer.renderPrintPayload(qrTpl, { hn: 'HN-0001' }, makePaper());
+    expect(qrPrint.renderedPrintPayload).toContain('height:20mm');
+    expect(qrPrint.renderedPrintPayload).toContain('width:20mm');
+  });
+
+  it('honours a paper-profile field\'s configured barcodeHeightMm/qrSizeMm in the img CSS, for both the plain-inferred and explicit-token forms', async () => {
+    const renderer = new SimpleTemplateRenderer();
+    const paper = makePaper({
+      fields: [
+        {
+          id: 'f1', key: 'code', label: 'Code', defaultValue: '', type: 'barcode',
+          barcodeSymbology: 'code128', barcodeHeightMm: 18, xMm: 5, yMm: 5, fontSize: 10, bold: false, color: '#000', align: 'left',
+        },
+        {
+          id: 'f2', key: 'hn', label: 'HN', defaultValue: '', type: 'qrcode',
+          qrSizeMm: 35, xMm: 5, yMm: 5, fontSize: 10, bold: false, color: '#000', align: 'left',
+        },
+      ],
+    });
+
+    // Plain-inferred: {{code}} / {{hn}} pick up size from the matching field.
+    const plainTpl = makeTemplate({ engine: 'HTML', content: '<div>{{code}}</div><div>{{hn}}</div>' });
+    const plainPrint = await renderer.renderPrintPayload(plainTpl, { code: 'ABC123', hn: 'HN-0001' }, paper);
+    expect(plainPrint.renderedPrintPayload).toContain('height:18mm');
+    expect(plainPrint.renderedPrintPayload).toContain('height:35mm');
+    expect(plainPrint.renderedPrintPayload).toContain('width:35mm');
+
+    // Explicit token naming the same field key still inherits its size.
+    const explicitTpl = makeTemplate({ engine: 'HTML', content: '<div>{{barcode:code}}</div><div>{{qrcode:hn}}</div>' });
+    const explicitPrint = await renderer.renderPrintPayload(explicitTpl, { code: 'ABC123', hn: 'HN-0001' }, paper);
+    expect(explicitPrint.renderedPrintPayload).toContain('height:18mm');
+    expect(explicitPrint.renderedPrintPayload).toContain('height:35mm');
+  });
+
   it('adds a warning and omits the token gracefully when the barcode field is missing from the payload', async () => {
     const renderer = new SimpleTemplateRenderer();
     const template = makeTemplate({ engine: 'HTML', content: '<div>{{barcode:code}}</div>' });

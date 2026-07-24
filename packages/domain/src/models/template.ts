@@ -55,6 +55,10 @@ export interface PaperProfileField {
   type: PaperProfileFieldType;
   /** Only meaningful when type === 'barcode'. */
   barcodeSymbology?: BarcodeSymbology;
+  /** Only meaningful when type === 'barcode'. Bar height in mm. Defaults to 12mm when unset. */
+  barcodeHeightMm?: number;
+  /** Only meaningful when type === 'qrcode'. Side length in mm. Defaults to 20mm when unset. */
+  qrSizeMm?: number;
   xMm: number;
   yMm: number;
   fontSize: number;

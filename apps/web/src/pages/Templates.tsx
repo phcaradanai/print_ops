@@ -27,7 +27,12 @@ interface PaperProfileField {
   defaultValue?: string;
   type?: 'text' | 'barcode' | 'qrcode' | 'date' | 'number';
   barcodeSymbology?: BarcodeSymbology;
+  barcodeHeightMm?: number;
+  qrSizeMm?: number;
 }
+
+const DEFAULT_BARCODE_HEIGHT_MM = 12;
+const DEFAULT_QR_SIZE_MM = 20;
 
 interface PaperProfileOption {
   id: string;
@@ -179,7 +184,19 @@ function localPreview(
     if (kind) {
       if (value == null) return { html: `[${kind}: ${key}]`, raw: false };
       const svg = renderBarcodeSvg(String(value), kind, field?.barcodeSymbology);
-      if (svg) return { html: `<span class="tpl-preview-barcode">${svg}</span>`, raw: true };
+      if (svg) {
+        // Real-size preview: match the paper-profile field's configured
+        // physical size (mm), falling back to the same defaults the server
+        // and Paper Profile editor use, so this preview matches what will
+        // actually print.
+        const heightMm = kind === 'qrcode' ? (field?.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field?.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM);
+        const widthCss = kind === 'qrcode' ? `${heightMm}mm` : 'auto';
+        const sizedSvg = svg.replace('<svg ', `<svg style="height:100%;width:${kind === 'qrcode' ? '100%' : 'auto'}" `);
+        return {
+          html: `<span class="tpl-preview-barcode" style="display:inline-block;height:${heightMm}mm;width:${widthCss};line-height:0;vertical-align:middle">${sizedSvg}</span>`,
+          raw: true,
+        };
+      }
       return { html: `[${kind}: ${String(value)}]`, raw: false };
     }
     return { html: value == null ? '' : String(value), raw: false };

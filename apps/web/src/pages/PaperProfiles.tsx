@@ -407,6 +407,10 @@ interface DynamicField {
   type: DynamicFieldType;
   /** Only meaningful when type === 'barcode'. Defaults to 'code128' when unset. */
   barcodeSymbology?: DynamicFieldBarcodeSymbology;
+  /** Only meaningful when type === 'barcode'. Bar height in mm. Defaults to 12mm when unset. */
+  barcodeHeightMm?: number;
+  /** Only meaningful when type === 'qrcode'. Side length in mm. Defaults to 20mm when unset. */
+  qrSizeMm?: number;
   xMm: number;
   yMm: number;
   fontSize: number;
@@ -414,6 +418,9 @@ interface DynamicField {
   color: string;
   align: 'left' | 'center' | 'right';
 }
+
+export const DEFAULT_BARCODE_HEIGHT_MM = 12;
+export const DEFAULT_QR_SIZE_MM = 20;
 
 // ── Presets ────────────────────────────────────────────────────────
 const PAPER_PRESETS: { label: string; widthMm: number; heightMm: number; dpi: number }[] = [
@@ -789,12 +796,21 @@ function FieldTypeControls({
   selectStyle?: CSSProperties;
 }) {
   const { t } = useLocale();
+  const numberInputStyle: CSSProperties = { ...selectStyle, width: selectStyle?.width ?? 70 };
   return (
     <>
       <select
         aria-label={t('page.paperProfiles.fieldType')}
         value={field.type}
-        onChange={(e) => onUpdate({ type: e.target.value as DynamicFieldType })}
+        onChange={(e) => {
+          const nextType = e.target.value as DynamicFieldType;
+          const patch: Partial<DynamicField> = { type: nextType };
+          // Pre-fill a sensible real-world size the first time a field becomes
+          // a barcode/QR, so the size input never starts out blank/undefined.
+          if (nextType === 'barcode' && field.barcodeHeightMm == null) patch.barcodeHeightMm = DEFAULT_BARCODE_HEIGHT_MM;
+          if (nextType === 'qrcode' && field.qrSizeMm == null) patch.qrSizeMm = DEFAULT_QR_SIZE_MM;
+          onUpdate(patch);
+        }}
         style={selectStyle}
       >
         <option value="text">{t('page.paperProfiles.fieldTypeText')}</option>
@@ -804,19 +820,89 @@ function FieldTypeControls({
         <option value="number">{t('page.paperProfiles.fieldTypeNumber')}</option>
       </select>
       {field.type === 'barcode' && (
-        <select
-          aria-label={t('page.paperProfiles.barcodeSymbology')}
-          value={field.barcodeSymbology ?? 'code128'}
-          onChange={(e) => onUpdate({ barcodeSymbology: e.target.value as DynamicFieldBarcodeSymbology })}
-          style={selectStyle}
-        >
-          <option value="code128">{t('page.paperProfiles.symbologyCode128')}</option>
-          <option value="code39">{t('page.paperProfiles.symbologyCode39')}</option>
-          <option value="ean13">{t('page.paperProfiles.symbologyEan13')}</option>
-          <option value="datamatrix">{t('page.paperProfiles.symbologyDatamatrix')}</option>
-        </select>
+        <>
+          <select
+            aria-label={t('page.paperProfiles.barcodeSymbology')}
+            value={field.barcodeSymbology ?? 'code128'}
+            onChange={(e) => onUpdate({ barcodeSymbology: e.target.value as DynamicFieldBarcodeSymbology })}
+            style={selectStyle}
+          >
+            <option value="code128">{t('page.paperProfiles.symbologyCode128')}</option>
+            <option value="code39">{t('page.paperProfiles.symbologyCode39')}</option>
+            <option value="ean13">{t('page.paperProfiles.symbologyEan13')}</option>
+            <option value="datamatrix">{t('page.paperProfiles.symbologyDatamatrix')}</option>
+          </select>
+          <input
+            aria-label={t('page.paperProfiles.barcodeHeightMm')}
+            title={t('page.paperProfiles.barcodeHeightMm')}
+            type="number"
+            min={4}
+            max={60}
+            step={0.5}
+            value={field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              if (!isNaN(v)) onUpdate({ barcodeHeightMm: Math.max(4, Math.min(60, v)) });
+            }}
+            style={numberInputStyle}
+          />
+        </>
+      )}
+      {field.type === 'qrcode' && (
+        <input
+          aria-label={t('page.paperProfiles.qrSizeMm')}
+          title={t('page.paperProfiles.qrSizeMm')}
+          type="number"
+          min={4}
+          max={100}
+          step={0.5}
+          value={field.qrSizeMm ?? DEFAULT_QR_SIZE_MM}
+          onChange={(e) => {
+            const v = parseFloat(e.target.value);
+            if (!isNaN(v)) onUpdate({ qrSizeMm: Math.max(4, Math.min(100, v)) });
+          }}
+          style={numberInputStyle}
+        />
       )}
     </>
+  );
+}
+
+/**
+ * Real-size live preview shown directly beside the settings controls (not
+ * just on the far-away design canvas), so adjusting symbology/size/default
+ * value gives immediate visual feedback about what will actually print.
+ * Rendered at true physical scale using CSS mm units — SVG has no fixed
+ * width/height (only a viewBox), so it scales cleanly to any box size.
+ */
+function FieldBarcodePreview({ field }: { field: DynamicField }) {
+  const { t } = useLocale();
+  if (field.type !== 'barcode' && field.type !== 'qrcode') return null;
+  const sample = field.defaultValue || field.label || field.key || (field.type === 'qrcode' ? 'QR-SAMPLE' : '123456');
+  const svg = renderBarcodeSvg(sample, field.type, field.barcodeSymbology);
+  const heightMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM);
+  const widthMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : undefined;
+  return (
+    <div className="pp-barcode-preview" style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem',
+      padding: '0.4rem', marginTop: '0.3rem', background: '#fff',
+      border: '1px solid #e5e7eb', borderRadius: 4, width: 'fit-content',
+    }}>
+      {svg ? (
+        <span
+          aria-label={`${field.type} preview for ${sample}`}
+          style={{ display: 'inline-block', height: `${heightMm}mm`, width: widthMm ? `${widthMm}mm` : 'auto', lineHeight: 0 }}
+          dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', `<svg style="height:100%;width:${widthMm ? '100%' : 'auto'}" `) }}
+        />
+      ) : (
+        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>[{field.type}: {sample || '?'}]</span>
+      )}
+      <span style={{ fontSize: '0.65rem', color: '#6b7280' }}>
+        {t('page.paperProfiles.barcodeApproxSize')
+          .replace('{w}', widthMm ? widthMm.toFixed(1) : '—')
+          .replace('{h}', heightMm.toFixed(1))}
+      </span>
+    </div>
   );
 }
 
@@ -830,7 +916,8 @@ function FieldPreviewContent({ field, scale }: { field: DynamicField; scale: num
     const sample = field.defaultValue || field.label || field.key || (field.type === 'qrcode' ? 'QR-SAMPLE' : '123456');
     const svg = renderBarcodeSvg(sample, field.type, field.barcodeSymbology);
     if (svg) {
-      const heightPx = Math.max(24, field.type === 'qrcode' ? 18 * scale : 14 * scale);
+      const realHeightMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM);
+      const heightPx = Math.max(10, realHeightMm * scale);
       return (
         <span
           aria-label={`${field.type} preview for ${sample}`}
@@ -2118,6 +2205,7 @@ export default function PaperProfiles() {
                       <input aria-label={t('page.paperProfiles.bold')} type="checkbox" checked={f.bold} onChange={(e) => updField(f.id, { bold: e.target.checked })} /> {t('page.paperProfiles.fieldBoldLabel')}
                     </label>
                   </div>
+                  <FieldBarcodePreview field={f} />
                 </div>
               ))}
             </div>
@@ -2354,6 +2442,7 @@ export default function PaperProfiles() {
                         <label><input type="checkbox" checked={f.bold} onChange={(e) => updField(f.id, { bold: e.target.checked })} /> {t('page.paperProfiles.bold')}</label>
                         <span>{f.xMm.toFixed(1)} × {f.yMm.toFixed(1)} mm</span>
                       </div>
+                      <FieldBarcodePreview field={f} />
                     </div>
                   ))}
                 </div>
@@ -2407,6 +2496,7 @@ export default function PaperProfiles() {
                       <label htmlFor={'bold-'+f.id} style={{ fontSize: '0.75rem' }}>{t('page.paperProfiles.bold')}</label>
                     </div>
                   </div>
+                  <FieldBarcodePreview field={f} />
                 </div>
               ))}
             </div>

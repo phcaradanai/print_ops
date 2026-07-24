@@ -31,6 +31,12 @@ interface BarcodeToken {
   kind: 'barcode' | 'qrcode';
   key: string;
   symbology?: BarcodeSymbology;
+  /** Bar height in mm, inherited from the matching paper-profile field (see
+   *  `findBarcodeTokens`). Only meaningful for kind === 'barcode'. */
+  heightMm?: number;
+  /** Side length in mm, inherited from the matching paper-profile field. Only
+   *  meaningful for kind === 'qrcode'. */
+  sizeMm?: number;
 }
 
 function extractFields(content: string): string[] {
@@ -82,13 +88,33 @@ function findBarcodeTokens(content: string, paperProfile?: PaperProfile): Map<st
     if (tokens.has(raw)) continue;
     const [, kind, explicitKey, symbology, plainKey] = m;
     if (kind && explicitKey) {
-      tokens.set(raw, { raw, kind: kind as 'barcode' | 'qrcode', key: explicitKey, symbology: symbology as BarcodeSymbology | undefined });
+      // An explicit {{barcode:key}} / {{qrcode:key}} token doesn't have to
+      // name a paper-profile field at all (it can target any payload key),
+      // but when a profile field of the same key exists, inherit its
+      // configured real-world size so the template stays consistent with
+      // whatever the operator set up visually in the paper profile editor.
+      const matchingField = paperProfile?.fields.find((f) => f.key === explicitKey);
+      tokens.set(raw, {
+        raw,
+        kind: kind as 'barcode' | 'qrcode',
+        key: explicitKey,
+        symbology: (symbology as BarcodeSymbology | undefined) ?? matchingField?.barcodeSymbology,
+        heightMm: matchingField?.barcodeHeightMm,
+        sizeMm: matchingField?.qrSizeMm,
+      });
       continue;
     }
     if (plainKey && paperProfile?.fields) {
       const field = paperProfile.fields.find((f) => f.key === plainKey);
       if (field && (field.type === 'barcode' || field.type === 'qrcode')) {
-        tokens.set(raw, { raw, kind: field.type, key: plainKey, symbology: field.barcodeSymbology });
+        tokens.set(raw, {
+          raw,
+          kind: field.type,
+          key: plainKey,
+          symbology: field.barcodeSymbology,
+          heightMm: field.barcodeHeightMm,
+          sizeMm: field.qrSizeMm,
+        });
       }
     }
   }
@@ -110,7 +136,10 @@ async function resolveBarcodeImages(
         return;
       }
       try {
-        const dataUri = await renderBarcodeDataUri(String(value), tok.kind, tok.symbology);
+        const dataUri = await renderBarcodeDataUri(String(value), tok.kind, tok.symbology, {
+          heightMm: tok.heightMm,
+          qrSizeMm: tok.sizeMm,
+        });
         results.set(tok.raw, { dataUri });
       } catch (err) {
         results.set(tok.raw, {
@@ -124,7 +153,12 @@ async function resolveBarcodeImages(
 
 /** Native ZPL command for a barcode/QR token. No `^FO` positioning is
  * emitted — exactly like every other ZPL field, the author positions it with
- * their own preceding `^FO x,y`, so `^FO50,50{{barcode:hn}}` works as written. */
+ * their own preceding `^FO x,y`, so `^FO50,50{{barcode:hn}}` works as written.
+ * NOTE: unlike the HTML/preview image path, this does NOT yet honor the
+ * field's configured barcodeHeightMm/qrSizeMm — ^BC height and ^BQ
+ * magnification are fixed. The preview accurately reflects the configured
+ * mm size; a ZPL label may print at a different (fixed) size until this is
+ * wired up to convert mm -> dots using the paper profile's DPI. */
 function zplBarcodeCommand(kind: 'barcode' | 'qrcode', value: string): string {
   const escaped = value.replace(/\^/g, '\\^').replace(/~/g, '\\~');
   if (kind === 'qrcode') return `^BQN,2,5^FDMM,A${escaped}^FS`;
@@ -134,8 +168,18 @@ function zplBarcodeCommand(kind: 'barcode' | 'qrcode', value: string): string {
   return `^BCN,60,Y,N,N^FD${escaped}^FS`;
 }
 
-function imgTag(dataUri: string, kind: 'barcode' | 'qrcode'): string {
-  return `<img src="${dataUri}" alt="${kind}" style="display:inline-block;vertical-align:middle;max-width:100%" />`;
+/**
+ * Renders the `<img>` tag with an explicit CSS size in real millimeters, so
+ * the barcode/QR prints (and previews) at the physical size the operator
+ * configured on the paper-profile field — not at whatever arbitrary raster
+ * pixel count bwip-js happened to produce. QR is square (width = height);
+ * 1D barcodes only constrain height and let width follow the data's natural
+ * aspect ratio (forcing a width would squash/stretch the bars unreadably).
+ */
+function imgTag(dataUri: string, kind: 'barcode' | 'qrcode', sizeMm?: { heightMm?: number; sizeMm?: number }): string {
+  const heightMm = kind === 'qrcode' ? (sizeMm?.sizeMm ?? 20) : (sizeMm?.heightMm ?? 12);
+  const widthCss = kind === 'qrcode' ? `${heightMm}mm` : 'auto';
+  return `<img src="${dataUri}" alt="${kind}" style="display:inline-block;vertical-align:middle;height:${heightMm}mm;width:${widthCss};max-width:100%" />`;
 }
 
 export class SimpleTemplateRenderer implements TemplateRendererPort {
@@ -198,7 +242,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
           if (img?.warning) warnings.push(img.warning);
           return '';
         }
-        return imgTag(img.dataUri, tok.kind);
+        return imgTag(img.dataUri, tok.kind, { heightMm: tok.heightMm, sizeMm: tok.sizeMm });
       });
     } else if (template.engine === 'ZPL') {
       // Zebra printers decode ^BC/^BQ natively — emit the real command so it
@@ -268,7 +312,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
       if (tokens.size === 0) return renderContent(template.content, payload).rendered;
       return this.substituteRaw(template.content, payload, tokens, (tok) => {
         const img = images.get(tok.raw);
-        return img?.dataUri ? imgTag(img.dataUri, tok.kind) : '';
+        return img?.dataUri ? imgTag(img.dataUri, tok.kind, { heightMm: tok.heightMm, sizeMm: tok.sizeMm }) : '';
       });
     }
 
@@ -284,7 +328,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
         const tok = tokens.get(m[0]);
         if (tok) {
           const img = images.get(tok.raw);
-          body += img?.dataUri ? imgTag(img.dataUri, tok.kind) : `<span class="tpl-preview-missing">[${escapeHtml(tok.kind)}: ${escapeHtml(tok.key)}]</span>`;
+          body += img?.dataUri ? imgTag(img.dataUri, tok.kind, { heightMm: tok.heightMm, sizeMm: tok.sizeMm }) : `<span class="tpl-preview-missing">[${escapeHtml(tok.kind)}: ${escapeHtml(tok.key)}]</span>`;
         } else {
           const plainKey = m[4];
           const value = plainKey ? valueAt(payload, plainKey) : undefined;

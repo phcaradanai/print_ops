@@ -32,4 +32,25 @@ describe('renderBarcodeDataUri', () => {
     await expect(renderBarcodeDataUri('HELLO', 'barcode', 'code39')).resolves.toMatch(/^data:image\/png;base64,/);
     await expect(renderBarcodeDataUri('HELLO', 'barcode', 'datamatrix')).resolves.toMatch(/^data:image\/png;base64,/);
   });
+
+  it('produces a larger QR raster when qrSizeMm is doubled (real-size control actually affects output)', async () => {
+    const small = await renderBarcodeDataUri('HN-0001', 'qrcode', undefined, { qrSizeMm: 10 });
+    const large = await renderBarcodeDataUri('HN-0001', 'qrcode', undefined, { qrSizeMm: 20 });
+    const smallBytes = Buffer.from(small.slice('data:image/png;base64,'.length), 'base64');
+    const largeBytes = Buffer.from(large.slice('data:image/png;base64,'.length), 'base64');
+    const smallWidth = smallBytes.readUInt32BE(16);
+    const largeWidth = largeBytes.readUInt32BE(16);
+    expect(largeWidth).toBeGreaterThan(smallWidth);
+    expect(largeWidth / smallWidth).toBeCloseTo(2, 0);
+  });
+
+  it('produces a taller 1D barcode raster when heightMm is doubled', async () => {
+    const short = await renderBarcodeDataUri('ABC123', 'barcode', 'code128', { heightMm: 6 });
+    const tall = await renderBarcodeDataUri('ABC123', 'barcode', 'code128', { heightMm: 18 });
+    const shortBytes = Buffer.from(short.slice('data:image/png;base64,'.length), 'base64');
+    const tallBytes = Buffer.from(tall.slice('data:image/png;base64,'.length), 'base64');
+    const shortHeight = shortBytes.readUInt32BE(20);
+    const tallHeight = tallBytes.readUInt32BE(20);
+    expect(tallHeight).toBeGreaterThan(shortHeight);
+  });
 });
