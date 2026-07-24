@@ -7,7 +7,7 @@ export default function PrinterDetail() {
   return (
     <div>
       <h1>{t('page.printerDetail.title')}</h1>
-      <p style={{ color: '#888' }}>{t('page.printerDetail.printerId')}: <code>{id}</code></p>
+      <p className="loading-text">{t('page.printerDetail.printerId')}: <code>{id}</code></p>
       <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
         <button style={{ background: '#89b4fa', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer' }}>{t('page.printerDetail.getStatus')}</button>
         <button style={{ background: '#a6e3a1', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer' }}>{t('page.printerDetail.testPrint')}</button>

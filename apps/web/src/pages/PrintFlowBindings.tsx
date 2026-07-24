@@ -14,15 +14,17 @@ interface FlowConfig {
   nats:
     | {
         enabled: true;
+        connected: boolean;
         url: string;
         stream: string;
+        clientId: string;
         subject: string;
         durable: string;
         dlqPrefix: string;
         maxDeliver: number;
         authRequired: false;
       }
-    | { enabled: false; authRequired: false };
+    | { enabled: false; connected: false; authRequired: false };
 }
 interface Binding {
   id: string;
@@ -132,11 +134,13 @@ export default function PrintFlowBindings() {
 
   const natsExample = JSON.stringify(
     {
+      target_client_id: (nats?.enabled && nats.clientId) || 'pharmacy-counter-01',
       request_id: 'REQ-20260723-0001',
       source_system: 'medisync',
       source_reference: 'RX-123456',
       code_template: form.templateCode || 'prescription-sticker',
       code_profile: paperCodeById.get(form.paperProfileId) || 'sticker-profile',
+      printer_code: '',
       payload: { prescription_id: 'RX-123456', patient_name: 'สมชาย ใจดี', hn: 'HN-0001' },
       copies: 1,
     },
@@ -177,7 +181,14 @@ export default function PrintFlowBindings() {
 
       {/* ----- NATS transport ----- */}
       <section className="settings-section" aria-labelledby="print-flow-nats">
-        <h2 id="print-flow-nats">{t('page.printFlow.natsTransport')}</h2>
+        <h2 id="print-flow-nats">
+          {t('page.printFlow.natsTransport')}
+          {natsEnabled && nats.enabled && (
+            <span className={'print-flow-pill' + (nats.connected ? ' print-flow-pill--on' : '')}>
+              {nats.connected ? t('page.printFlow.natsConnected') : t('page.printFlow.natsDisconnected')}
+            </span>
+          )}
+        </h2>
 
         {!natsEnabled && (
           <p className="print-flow-lead">{t('page.printFlow.natsDisabled')}</p>

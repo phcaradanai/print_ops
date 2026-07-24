@@ -10,8 +10,8 @@ interface Runner { id: string; status: string }
 
 function StatCard({ label, value, color }: { label: string; value: string | number; color?: string }) {
   return (
-    <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-      <div style={{ fontSize: '0.75rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+    <div className="stat-card">
+      <div className="stat-card-label">{label}</div>
       <div style={{ fontSize: '2rem', fontWeight: 700, marginTop: '0.5rem', color: color ?? '#1e1e2e' }}>{value}</div>
     </div>
   );
@@ -48,8 +48,8 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 style={{ marginBottom: '1.5rem' }}>{t('page.dashboard.title')}</h1>
-      {loading ? <p style={{ color: '#888' }}>{t('common.loading')}</p> : (
+      <h1 className="page-title">{t('page.dashboard.title')}</h1>
+      {loading ? <p className="loading-text">{t('common.loading')}</p> : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
             <StatCard label={t('page.dashboard.activePrinters')} value={activePrinters} />
@@ -66,9 +66,9 @@ export default function Dashboard() {
           </div>
 
           <h2 style={{ marginTop: '2rem', marginBottom: '0.75rem', fontSize: '1rem' }}>{t('page.dashboard.recentJobs')}</h2>
-          <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '8px', overflow: 'hidden' }}>
+          <table className="data-table">
             <thead>
-              <tr style={{ background: '#f0f0f0' }}>
+              <tr>
                 {[t('page.dashboard.jobId'), t('page.dashboard.status'), t('page.dashboard.totalLatencyMs')].map((h) => (
                   <th key={h} scope="col" style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.8rem' }}>{h}</th>
                 ))}
@@ -76,22 +76,22 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {jobs.slice(0, 10).map((j) => (
-                <tr key={j.id} style={{ borderTop: '1px solid #eee' }}>
-                  <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                <tr key={j.id}>
+                  <td style={{ fontFamily: "monospace" }}>
                     <Link to={`/jobs/${j.id}`} style={{ color: '#1e66f5' }}>{j.id.slice(0, 12)}…</Link>
                   </td>
-                  <td style={{ padding: '0.75rem' }}>
+                  <td>
                     <span style={{ background: getStatusBadgeColors(j.status).bg, color: getStatusBadgeColors(j.status).text, padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
                       {j.status}
                     </span>
                   </td>
-                  <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#666' }}>
+                  <td style={{ color: "var(--neutral-text-muted)" }}>
                     {j.latency?.totalLatencyMs != null ? j.latency.totalLatencyMs : t('common.noData')}
                   </td>
                 </tr>
               ))}
               {jobs.length === 0 && (
-                <tr><td colSpan={3} style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>{t('page.dashboard.emptyJobs')}</td></tr>
+                <tr><td colSpan={3} className="loading-text" style={{ padding: "2rem", textAlign: "center" }}>{t('page.dashboard.emptyJobs')}</td></tr>
               )}
             </tbody>
           </table>

@@ -29,7 +29,7 @@ export default function PrinterBindings() {
       <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr>{[t('page.bindings.printer'), t('page.bindings.template'), t('page.bindings.paper'), t('page.bindings.default'), t('page.bindings.enabled')].map((h) => <th key={h} style={{ padding: 10, textAlign: 'left' }}>{h}</th>)}</tr></thead>
-          <tbody>{bindings.map((b) => <tr key={b.id} style={{ borderTop: '1px solid #eee' }}><td style={{ padding: 10 }}>{b.printerCode}</td><td style={{ padding: 10 }}>{b.templateCode}</td><td style={{ padding: 10 }}>{b.paperProfileId.slice(0, 8)}</td><td style={{ padding: 10 }}>{String(b.isDefault)}</td><td style={{ padding: 10 }}>{String(b.enabled)}</td></tr>)}</tbody>
+          <tbody>{bindings.map((b) => <tr key={b.id}><td style={{ padding: 10 }}>{b.printerCode}</td><td style={{ padding: 10 }}>{b.templateCode}</td><td style={{ padding: 10 }}>{b.paperProfileId.slice(0, 8)}</td><td style={{ padding: 10 }}>{String(b.isDefault)}</td><td style={{ padding: 10 }}>{String(b.enabled)}</td></tr>)}</tbody>
         </table>
       </div>
     </div>

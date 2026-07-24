@@ -535,6 +535,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // NATS publisher for webhook callbacks; assigned if the print-intake
   // consumer (which owns the connection) successfully starts.
   let natsPublisher: NatsPublisher | undefined;
+  // True once startPrintIntakeConsumer actually succeeds — printIntakeCfg
+  // alone only means the env config was valid, not that the consumer is live.
+  let printIntakeConnected = false;
   try {
     printIntakeCfg = printIntakeConfigFromEnv();
   } catch (err) {
@@ -561,7 +564,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   await app.register(async (v1) => {
     await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, acceptExternalJob, cancelJob, executeJob, apiKeyHook });
     await v1PrinterPrintRoutes(v1, { dynamicPrint, apiKeyHook });
-    await v1PrintFlowRoutes(v1, { printIntake: printIntakeCfg });
+    await v1PrintFlowRoutes(v1, { printIntake: printIntakeCfg, printIntakeConnected: () => printIntakeConnected });
     await v1PrinterRoutes(v1, { printers: printerRepo, getPrinterStatus, apiKeyHook });
     await v1ExportRoutes(v1, { exportJobs, audit: auditRepo, exporter, apiKeyHook });
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
@@ -578,6 +581,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         { dynamicPrint, logger: app.log },
         printIntakeCfg,
       );
+      printIntakeConnected = true;
       const natsPublisherLocal: NatsPublisher = (subject, payload) =>
         printIntakeHandle.publishTo(subject, payload);
       // Webhook callbacks can fan out to BOTH HTTP and NATS. The NATS

@@ -4612,3 +4612,117 @@ body {
 /* Active = info blue, Draft = neutral slate — consistent with endpoint status */
 .ds-status-badge--active { background: var(--semantic-info); }
 .ds-status-badge--draft  { background: var(--semantic-neutral); }
+
+
+/* ---- standardized components ---- */
+
+.page-title {
+  font-size: var(--font-heading-size);
+  font-weight: var(--font-heading-weight);
+  line-height: var(--font-heading-line-height);
+  color: var(--neutral-deep);
+  margin: 0 0 1.5rem;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--neutral-surface);
+  border-radius: var(--rounded-lg);
+  overflow: hidden;
+}
+
+.data-table th {
+  background: var(--neutral-subtle);
+  color: var(--neutral-text);
+  padding: var(--spacing-md);
+  text-align: left;
+  font-size: var(--font-mono-size);
+  font-weight: 600;
+}
+
+.data-table td {
+  background: var(--neutral-surface);
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--neutral-border);
+  font-size: var(--font-body-size);
+}
+
+.data-table tr:first-child td {
+  border-top: none;
+}
+
+.stat-card {
+  background: var(--neutral-surface);
+  padding: var(--spacing-2xl);
+  border-radius: var(--rounded-lg);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.stat-card-label {
+  font-size: var(--font-label-size);
+  color: var(--neutral-text-muted);
+  text-transform: var(--font-label-text-transform);
+  letter-spacing: var(--font-label-letter-spacing);
+  font-weight: var(--font-label-weight);
+}
+
+.stat-card-value {
+  font-size: var(--font-stat-size);
+  font-weight: var(--font-stat-weight);
+  line-height: var(--font-stat-line-height);
+  margin-top: var(--spacing-sm);
+  color: var(--neutral-deep);
+}
+
+.card {
+  background: var(--neutral-surface);
+  border-radius: var(--rounded-lg);
+  border: 1px solid var(--neutral-border);
+}
+
+.btn-primary {
+  background: var(--neutral-deep);
+  color: var(--neutral-surface);
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--rounded-md);
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  background: var(--nav-button);
+  color: var(--neutral-surface);
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--rounded-md);
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+}
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.loading-text {
+  color: #888;
+}
+
+.error-text {
+  color: var(--semantic-error);
+}

@@ -32,41 +32,41 @@ export default function Printers() {
 
   return (
     <div>
-      <h1 style={{ marginBottom: '1.5rem' }}>{t('page.printers.title')}</h1>
-      {loading ? <p style={{ color: '#888' }}>{t('common.loading')}</p> : error ? (
-        <div style={{ padding: '2rem', textAlign: 'center' }}>
-          <p style={{ color: '#f38ba8', marginBottom: '0.5rem' }}>{t('page.printers.failedToLoad')}</p>
+      <h1 className="page-title">{t('page.printers.title')}</h1>
+      {loading ? <p className="loading-text">{t('common.loading')}</p> : error ? (
+        <div style={{ padding: "2rem", textAlign: "center" }}>
+          <p className="error-text" style={{ marginBottom: "0.5rem" }}>{t('page.printers.failedToLoad')}</p>
           <p style={{ color: '#888', fontSize: '0.85rem' }}>{error}</p>
         </div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '8px', overflow: 'hidden' }}>
+        <table className="data-table">
           <thead>
-            <tr style={{ background: '#f0f0f0' }}>
+            <tr>
               {[t('page.printers.code'), t('page.printers.name'), t('page.printers.location'), t('page.printers.protocol'), t('page.printers.status'), t('page.printers.maxCopies'), t('page.printers.active')].map((h) => (
-                <th key={h} style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.8rem' }}>{h}</th>
+                <th key={h}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {printers.length === 0 && (
-              <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>{t('page.printers.noPrinters')}</td></tr>
+              <tr><td colSpan={7} className="loading-text" style={{ padding: "2rem", textAlign: "center" }}>{t('page.printers.noPrinters')}</td></tr>
             )}
             {printers.map((p) => (
-              <tr key={p.id} style={{ borderTop: '1px solid #eee' }}>
-                <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontWeight: 600 }}>{p.code}</td>
-                <td style={{ padding: '0.75rem' }}>{p.name}</td>
-                <td style={{ padding: '0.75rem', color: '#666', fontSize: '0.85rem' }}>{p.location ?? t('common.noData')}</td>
-                <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.8rem' }}>{p.protocol}</td>
-                <td style={{ padding: '0.75rem' }}>
+              <tr key={p.id}>
+                <td style={{ fontFamily: "monospace", fontWeight: 600 }}>{p.code}</td>
+                <td>{p.name}</td>
+                <td style={{ color: "var(--neutral-text-muted)" }}>{p.location ?? t('common.noData')}</td>
+                <td style={{ fontFamily: "monospace" }}>{p.protocol}</td>
+                <td>
                   {p.status ? (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }}>
+                    <span className="status-indicator">
                       <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_DOT[p.status.code] ?? '#ccc', display: 'inline-block' }} />
                       {p.status.code}
                     </span>
                   ) : t('common.noData')}
                 </td>
-                <td style={{ padding: '0.75rem', fontSize: '0.85rem' }}>{p.maxCopiesPerJob ?? t('common.noData')}</td>
-                <td style={{ padding: '0.75rem' }}>
+                <td>{p.maxCopiesPerJob ?? t('common.noData')}</td>
+                <td>
                   <span style={{ color: p.isActive ? '#40a02b' : '#f38ba8', fontWeight: 600, fontSize: '0.85rem' }}>
                     {p.isActive ? t('status.active') : t('status.inactive')}
                   </span>

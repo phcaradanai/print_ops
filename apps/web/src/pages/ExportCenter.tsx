@@ -16,7 +16,7 @@ export default function ExportCenter() {
   const { t } = useLocale();
   return (
     <div>
-      <h1 style={{ marginBottom: '1.5rem' }}>{t('page.export.title')}</h1>
+      <h1 className="page-title">{t('page.export.title')}</h1>
       <p style={{ color: '#666', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
         {t('page.export.description')}
       </p>

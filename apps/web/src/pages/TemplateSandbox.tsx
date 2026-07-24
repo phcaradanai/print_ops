@@ -288,7 +288,7 @@ export default function TemplateSandbox() {
       )}
 
       {loading.init ? (
-        <p style={{ color: '#888' }}>{t('page.sandbox.loading')}</p>
+        <p className="loading-text">{t('page.sandbox.loading')}</p>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: '1rem', alignItems: 'start' }}>
           {/* ===================== Config Panel ===================== */}

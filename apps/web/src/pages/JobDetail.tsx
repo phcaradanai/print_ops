@@ -197,7 +197,7 @@ export default function JobDetail() {
   return (
     <div>
       <h1>{t('page.jobDetail.title')}</h1>
-      <p style={{ color: '#888' }}>{t('page.jobDetail.jobId')}: <code>{id}</code></p>
+      <p className="loading-text">{t('page.jobDetail.jobId')}: <code>{id}</code></p>
       {job && (
         <div style={{ background: '#fff', padding: '1rem', borderRadius: 8 }}>
           <h2 style={{ fontSize: '1rem' }}>{t('page.jobDetail.summary')}</h2>

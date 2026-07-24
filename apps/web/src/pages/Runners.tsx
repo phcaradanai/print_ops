@@ -37,33 +37,33 @@ export default function Runners() {
 
   return (
     <div>
-      <h1 style={{ marginBottom: '1.5rem' }}>{t('page.runners.title')}</h1>
-      {loading ? <p style={{ color: '#888' }}>{t('common.loading')}</p> : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '8px', overflow: 'hidden' }}>
+      <h1 className="page-title">{t('page.runners.title')}</h1>
+      {loading ? <p className="loading-text">{t('common.loading')}</p> : (
+        <table className="data-table">
           <thead>
-            <tr style={{ background: '#f0f0f0' }}>
+            <tr>
               {[t('page.runners.name'), t('page.runners.hostname'), t('page.runners.protocols'), t('page.runners.status'), t('page.runners.lastHeartbeat'), t('page.runners.registered')].map((h) => (
-                <th key={h} style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.8rem' }}>{h}</th>
+                <th key={h}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {runners.length === 0 && (
-              <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>{t('page.runners.noRunners')}</td></tr>
+              <tr><td colSpan={6} className="loading-text" style={{ padding: "2rem", textAlign: "center" }}>{t('page.runners.noRunners')}</td></tr>
             )}
             {runners.map((r) => (
-              <tr key={r.id} style={{ borderTop: '1px solid #eee' }}>
+              <tr key={r.id}>
                 <td style={{ padding: '0.75rem', fontWeight: 600 }}>{r.name}</td>
                 <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.85rem' }}>{r.hostname}</td>
-                <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#666' }}>{r.supportedProtocols.join(', ')}</td>
-                <td style={{ padding: '0.75rem' }}>
+                <td style={{ color: "var(--neutral-text-muted)" }}>{r.supportedProtocols.join(', ')}</td>
+                <td>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }}>
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLOR[r.status] ?? '#9399b2', display: 'inline-block' }} />
                     {r.status}
                   </span>
                 </td>
-                <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#666' }}>{heartbeatAge(r.lastHeartbeatAt)}</td>
-                <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#666' }}>{new Date(r.registeredAt).toLocaleString()}</td>
+                <td style={{ color: "var(--neutral-text-muted)" }}>{heartbeatAge(r.lastHeartbeatAt)}</td>
+                <td style={{ color: "var(--neutral-text-muted)" }}>{new Date(r.registeredAt).toLocaleString()}</td>
               </tr>
             ))}
           </tbody>

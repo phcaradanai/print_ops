@@ -100,7 +100,7 @@ export default function LocalDiagnostics() {
     }
   }
 
-  if (loading) return <p style={{ color: '#888' }}>{t('common.loading')}</p>;
+  if (loading) return <p className="loading-text">{t('common.loading')}</p>;
 
   return (
     <div>
@@ -110,7 +110,7 @@ export default function LocalDiagnostics() {
       </p>
 
       {runners.length === 0 && (
-        <p style={{ color: '#888' }}>{t('page.diagnostics.noRunners')}</p>
+        <p className="loading-text">{t('page.diagnostics.noRunners')}</p>
       )}
 
       {runners.map((runner) => {

@@ -12,7 +12,7 @@ import { redactNatsUrl, type PrintIntakeConfig } from '../../infra/nats/print-in
  */
 export async function v1PrintFlowRoutes(
   app: FastifyInstance,
-  deps: { printIntake?: PrintIntakeConfig | undefined },
+  deps: { printIntake?: PrintIntakeConfig | undefined; printIntakeConnected: () => boolean },
 ): Promise<void> {
   app.get(
     '/print-flow/config',
@@ -29,6 +29,7 @@ export async function v1PrintFlowRoutes(
         nats: nats
           ? {
               enabled: true,
+              connected: deps.printIntakeConnected(),
               url: redactNatsUrl(nats.url),
               stream: nats.stream,
               clientId: nats.clientId,
@@ -38,7 +39,7 @@ export async function v1PrintFlowRoutes(
               maxDeliver: nats.maxDeliver,
               authRequired: false,
             }
-          : { enabled: false, authRequired: false },
+          : { enabled: false, connected: false, authRequired: false },
       });
     },
   );
