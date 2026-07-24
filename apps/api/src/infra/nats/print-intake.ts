@@ -165,7 +165,7 @@ export async function startPrintIntakeConsumer(
   // reconnect/close events handled by nats.js.
   void (async () => {
     for await (const msg of messages) {
-      await handleMessage(msg, deps, connection, cfg);
+      await handlePrintIntakeMessage(msg, deps, connection, cfg);
     }
   })();
 
@@ -188,7 +188,12 @@ export async function startPrintIntakeConsumer(
   };
 }
 
-async function handleMessage(
+/**
+ * Exported for unit testing. Processes a single NATS JetStream message by
+ * validating the envelope, resolving the printer via DynamicPrintService,
+ * and acking / naking / dead-lettering the message accordingly.
+ */
+export async function handlePrintIntakeMessage(
   msg: JsMsg,
   deps: { dynamicPrint: DynamicPrintService; logger: PrintIntakeLogger },
   nc: NatsConnection,
