@@ -138,26 +138,30 @@ export default function UsersRoles() {
                   )}
                 </td>
                 <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#111827' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontFamily: 'monospace', minWidth: '80px', color: '#4b5563' }}>
-                      {visiblePasswords[u.id] ? (u.password || '—') : '••••••••'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setVisiblePasswords(prev => ({ ...prev, [u.id]: !prev[u.id] }))}
-                      style={{
-                        background: 'transparent',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '4px',
-                        padding: '0.15rem 0.4rem',
-                        fontSize: '0.7rem',
-                        cursor: 'pointer',
-                        color: '#6b7280',
-                      }}
-                    >
-                      {visiblePasswords[u.id] ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
+                  {canEditPassword(u) ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontFamily: 'monospace', minWidth: '80px', color: '#4b5563' }}>
+                        {visiblePasswords[u.id] ? (u.password || '—') : '••••••••'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setVisiblePasswords(prev => ({ ...prev, [u.id]: !prev[u.id] }))}
+                        style={{
+                          background: 'transparent',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          padding: '0.15rem 0.4rem',
+                          fontSize: '0.7rem',
+                          cursor: 'pointer',
+                          color: '#6b7280',
+                        }}
+                      >
+                        {visiblePasswords[u.id] ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                  ) : (
+                    <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>••••••••</span>
+                  )}
                 </td>
                 <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#111827' }}>
                   {editingUserId === u.id ? (

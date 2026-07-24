@@ -19,6 +19,12 @@ import type {
 } from '../models/template.js';
 import type { ImportedDesign, CreateImportedDesignInput } from '../models/imported-design.js';
 import type { IntakeAttempt, CreateIntakeAttemptInput, IntakeOutcome, IntakeSource } from '../models/intake-attempt.js';
+import type {
+  WebhookCallbackAttempt,
+  CreateWebhookCallbackAttemptInput,
+  CallbackAttemptOutcome,
+  CallbackAttemptTransport,
+} from '../models/webhook-callback-attempt.js';
 
 export interface ListOptions {
   limit?: number;
@@ -154,4 +160,18 @@ export interface ImportedDesignRepositoryPort {
 export interface IntakeAttemptRepositoryPort {
   record(input: CreateIntakeAttemptInput): Promise<IntakeAttempt>;
   findAll(opts?: ListOptions & { outcome?: IntakeOutcome; source?: IntakeSource }): Promise<IntakeAttempt[]>;
+}
+
+/**
+ * Diagnostic ring buffer of webhook callback delivery attempts (HTTP/NATS),
+ * both live and sandbox test fires — so "did the webhook actually succeed?"
+ * has a real, visible answer instead of only showing up in process logs.
+ */
+export interface WebhookCallbackAttemptRepositoryPort {
+  record(input: CreateWebhookCallbackAttemptInput): Promise<WebhookCallbackAttempt>;
+  findAll(opts?: ListOptions & {
+    outcome?: CallbackAttemptOutcome;
+    transport?: CallbackAttemptTransport;
+    endpointId?: string;
+  }): Promise<WebhookCallbackAttempt[]>;
 }

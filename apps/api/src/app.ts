@@ -16,6 +16,7 @@ import { InMemoryPrinterTemplateBindingRepository } from './infra/repos/in-memor
 import { InMemoryWebhookEndpointRepository, InMemoryWebhookRoutePolicyRepository } from './infra/repos/in-memory-webhook.repo.js';
 import { InMemoryImportedDesignRepository } from './infra/repos/in-memory-imported-design.repo.js';
 import { InMemoryIntakeAttemptRepository } from './infra/repos/in-memory-intake-attempt.repo.js';
+import { InMemoryWebhookCallbackAttemptRepository } from './infra/repos/in-memory-webhook-callback-attempt.repo.js';
 
 import { SqlitePrinterRepository } from './infra/repos/sqlite/sqlite-printer.repo.js';
 import { SqliteJobRepository } from './infra/repos/sqlite/sqlite-job.repo.js';
@@ -150,6 +151,11 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // at 500 entries — deliberately in-memory only in both DB modes, since this
   // is an operational log for "what just happened", not durable business data.
   const intakeAttemptRepo = new InMemoryIntakeAttemptRepository();
+  // Diagnostic ring buffer of webhook callback delivery attempts (HTTP/NATS,
+  // live + sandbox test fires), capped at 500 entries — same "in-memory only,
+  // both DB modes" rule as intakeAttemptRepo, since this is an operational
+  // log of "did it actually deliver?", not durable business data.
+  const webhookCallbackAttemptRepo = new InMemoryWebhookCallbackAttemptRepository();
   const eventBus = new InMemoryEventBus();
   const queue = new InMemoryJobQueue();
   const exporter = new InMemoryExportAdapter();
@@ -190,7 +196,13 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     auditRepo,
     eventBus,
     templateRenderer,
-    undefined, // callbacks — assigned after the optional NATS consumer is wired below
+    // Wire an HTTP-capable callback service eagerly: pure-HTTP webhook
+    // endpoints (callbackTransport 'HTTP') must fire regardless of whether
+    // the optional NATS print-intake consumer ever connects. Previously this
+    // was left `undefined` until NATS connected below, which meant HTTP-only
+    // callbacks silently never fired at all when NATS wasn't configured. If
+    // NATS does connect, this is replaced with a NATS-capable instance below.
+    new WebhookCallbackService(app.log, httpCallbackSender, undefined, webhookCallbackAttemptRepo),
     app.log,
   );
 
@@ -580,7 +592,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1RunnerJobRoutes(v1, { jobs: jobRepo, printers: printerRepo, traces: traceRepo, audit: auditRepo, events: eventBus });
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
     await sandboxRoutes(v1, { sandbox: sandboxSvc, connectivity: connectivitySvc, audit: auditRepo });
-    await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob, getPrinterStatus, logger: app.log, callbackSender: httpCallbackSender, callbackNats: natsPublisher });
+    await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob, getPrinterStatus, logger: app.log, callbackSender: httpCallbackSender, callbackNats: natsPublisher, callbackAttemptLog: webhookCallbackAttemptRepo });
     await paperProfileImportRoutes(v1, { importService: importPaperProfile });
     await v1UserRoutes(v1, { users: userRepo });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
@@ -598,7 +610,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       // publisher reuses the print-intake consumer's connection so a
       // caller-supplied reply subject is reachable on the same broker.
       natsPublisher = natsPublisherLocal;
-      const callbackService = new WebhookCallbackService(app.log, httpCallbackSender, natsPublisherLocal);
+      const callbackService = new WebhookCallbackService(app.log, httpCallbackSender, natsPublisherLocal, webhookCallbackAttemptRepo);
       dynamicIntake.setCallbackService(callbackService);
       app.addHook('onClose', async () => {
         await printIntakeHandle.stop();

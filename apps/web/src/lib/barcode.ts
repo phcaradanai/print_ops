@@ -2,7 +2,6 @@
 // conditional branches (browser/node/electron/react-native) with no
 // unconditional fallback, and tsc's bundler resolution doesn't enable the
 // "browser" condition by default — importing the subpath sidesteps that.
-// @ts-expect-error No types for bwip-js/browser
 import bwipjs from 'bwip-js/browser';
 
 /**

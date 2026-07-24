@@ -6,6 +6,9 @@ import type {
   PrintTemplateRepositoryPort,
   WebhookEndpointRepositoryPort,
   WebhookRoutePolicyRepositoryPort,
+  WebhookCallbackAttemptRepositoryPort,
+  CallbackAttemptOutcome,
+  CallbackAttemptTransport,
   JobPriority,
 } from '@printerops/domain';
 import type { DynamicIntakeService } from '../../services/dynamic-intake.service.js';
@@ -35,6 +38,7 @@ export async function webhookRoutes(
     logger: WebhookCallbackLogger;
     callbackSender: HttpClient;
     callbackNats?: NatsPublisher;
+    callbackAttemptLog?: WebhookCallbackAttemptRepositoryPort;
   }
 ): Promise<void> {
   app.get('/webhook-endpoints', { onRequest: [requirePermission('webhook:read')] }, async () => deps.endpoints.findAll());
@@ -62,17 +66,42 @@ export async function webhookRoutes(
   });
 
   // Test-fire the endpoint's callback (HTTP and/or NATS) with a sample payload,
-  // so operators can verify the destination before going live.
+  // so operators can verify the destination before going live. Returns the
+  // REAL per-transport delivery outcome (attempted/success/status/error) —
+  // not just "we called send()" — and records the attempt to the callback
+  // log so it also shows up in GET /webhook-endpoints/callback-log.
   app.post('/webhook-endpoints/:id/callback-test', { onRequest: [requirePermission('webhook:test')] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const endpoint = await deps.endpoints.findById(id);
     if (!endpoint) return reply.status(404).send({ error: 'WebhookEndpoint not found' });
     const sample = (req.body as { samplePayload?: Record<string, unknown> })?.samplePayload ?? {};
     const { WebhookCallbackService } = await import('../../services/webhook-callback.service.js');
-    const service = new WebhookCallbackService(deps.logger, deps.callbackSender, deps.callbackNats);
+    const service = new WebhookCallbackService(deps.logger, deps.callbackSender, deps.callbackNats, deps.callbackAttemptLog);
     const result = { request_id: 'callback-test', print_job_id: 'test', status: 'QUEUED', trace_id: 'test', duplicate: false };
-    await service.send({ endpoint, intakePayload: sample, result });
-    return { ok: true, id, transport: endpoint.callbackTransport };
+    const delivery = await service.send({ endpoint, intakePayload: sample, result }, { trigger: 'test' });
+    const ok = (delivery.http?.success ?? true) && (delivery.nats?.success ?? true);
+    return { ok, id, transport: endpoint.callbackTransport, delivery };
+  });
+
+  // Real delivery history for webhook callbacks (HTTP/NATS, live + test),
+  // so "did it actually respond successfully?" has a visible answer instead
+  // of only showing up in process logs or requiring a unit test to check.
+  app.get('/webhook-endpoints/callback-log', { onRequest: [requirePermission('webhook:read')] }, async (req, reply) => {
+    const { limit, offset, outcome, transport, endpointId } = req.query as {
+      limit?: string;
+      offset?: string;
+      outcome?: CallbackAttemptOutcome;
+      transport?: CallbackAttemptTransport;
+      endpointId?: string;
+    };
+    const attempts = await deps.callbackAttemptLog?.findAll({
+      limit: limit ? Number(limit) : 100,
+      offset: offset ? Number(offset) : undefined,
+      outcome,
+      transport,
+      endpointId,
+    });
+    return reply.send(attempts ?? []);
   });
 
   app.get('/webhook-route-policies', { onRequest: [requirePermission('webhook:read')] }, async () => deps.policies.findAll());

@@ -26,6 +26,36 @@ interface Policy {
   name: string;
 }
 
+interface CallbackTransportResult {
+  attempted: boolean;
+  success: boolean;
+  target?: string;
+  httpStatus?: number;
+  error?: string;
+  durationMs: number;
+}
+
+interface CallbackTestResponse {
+  ok: boolean;
+  id: string;
+  transport: string;
+  delivery: { http?: CallbackTransportResult; nats?: CallbackTransportResult };
+}
+
+interface CallbackAttempt {
+  id: string;
+  endpointId: string;
+  endpointCode: string;
+  transport: 'HTTP' | 'NATS';
+  target: string;
+  outcome: 'success' | 'failed' | 'skipped';
+  httpStatus?: number;
+  errorMessage?: string;
+  durationMs: number;
+  trigger: 'live' | 'test';
+  occurredAt: string;
+}
+
 const DEFAULT_JSON_TEMPLATE = `{
   "event": "\${.event}",
   "printerId": "\${.printerId}",
@@ -86,6 +116,13 @@ export default function Webhooks() {
   const [overwriteExistingOnImport, setOverwriteExistingOnImport] = useState(true);
   const [pendingDeleteEndpoint, setPendingDeleteEndpoint] = useState<Endpoint | null>(null);
 
+  // Callback delivery log — the REAL outcome of every webhook callback
+  // attempt (live traffic + sandbox test fires), so "did it actually
+  // succeed?" has a visible answer instead of just a unit test.
+  const [callbackLog, setCallbackLog] = useState<CallbackAttempt[]>([]);
+  const [callbackLogLoading, setCallbackLogLoading] = useState(false);
+  const [callbackLogFailedOnly, setCallbackLogFailedOnly] = useState(false);
+
   const endpointCodeInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -106,6 +143,20 @@ export default function Webhooks() {
   useEffect(() => {
     loadData();
   }, []);
+
+  const loadCallbackLog = () => {
+    setCallbackLogLoading(true);
+    const qs = callbackLogFailedOnly ? '?limit=100&outcome=failed' : '?limit=100';
+    void apiFetch<CallbackAttempt[]>(`/v1/webhook-endpoints/callback-log${qs}`)
+      .then(setCallbackLog)
+      .catch(() => {})
+      .finally(() => setCallbackLogLoading(false));
+  };
+
+  useEffect(() => {
+    loadCallbackLog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callbackLogFailedOnly]);
 
   // Keyboard shortcut Ctrl+K to focus search box
   useEffect(() => {
@@ -247,6 +298,10 @@ export default function Webhooks() {
     formCardRef.current?.scrollIntoView({ behavior: 'smooth' });
   }
 
+  /** Fires a real callback-test and reports the ACTUAL delivery outcome per
+   * transport — status code / error included — instead of a blind "success"
+   * toast regardless of whether the HTTP POST or NATS publish really landed.
+   * Also refreshes the callback log so the attempt shows up immediately. */
   async function testCallback(e?: Endpoint) {
     const targetId = e?.id || editingId;
     if (!targetId) {
@@ -256,7 +311,7 @@ export default function Webhooks() {
 
     try {
       showToast('กำลังทดสอบส่ง Callback...', 'info');
-      const res = await apiFetch<{ ok: boolean; transport: string }>(
+      const res = await apiFetch<CallbackTestResponse>(
         `/v1/webhook-endpoints/${targetId}/callback-test`,
         {
           method: 'POST',
@@ -271,9 +326,21 @@ export default function Webhooks() {
           }),
         }
       );
-      showToast(`ทดสอบส่ง Callback สำเร็จ! (${res.transport || e?.callbackTransport || form.callbackTransport})`, 'success');
+
+      const describe = (label: string, r?: CallbackTransportResult): string | null => {
+        if (!r) return null;
+        if (!r.attempted) return `${label}: ข้าม (${r.error || 'ไม่ได้ส่ง'})`;
+        if (r.success) return `${label}: สำเร็จ${r.httpStatus ? ` (${r.httpStatus})` : ''}`;
+        return `${label}: ล้มเหลว${r.httpStatus ? ` (${r.httpStatus})` : ''}${r.error ? ` — ${r.error}` : ''}`;
+      };
+      const parts = [describe('HTTP', res.delivery.http), describe('NATS', res.delivery.nats)].filter(Boolean);
+      showToast(
+        parts.length > 0 ? parts.join(' | ') : 'ไม่มีการตั้งค่า Callback (โหมด: ไม่ส่ง)',
+        res.ok ? 'success' : 'error',
+      );
+      loadCallbackLog();
     } catch {
-      showToast('ทดสอบส่ง Callback ล้มเหลว กรุณาตรวจสอบ URL หรือ NATS subject', 'error');
+      showToast('เรียก callback-test ไม่สำเร็จ — ตรวจสอบว่าเอนด์พอยต์ยังมีอยู่', 'error');
     }
   }
 
@@ -1107,6 +1174,83 @@ export default function Webhooks() {
               <option value={50}>50 / หน้า</option>
             </select>
           </div>
+        </div>
+      </div>
+
+      {/* Main Card 3: Callback delivery log — real success/failure history,
+          not just "we called send()". Covers both live traffic and every
+          "ทดสอบ callback" fire above. */}
+      <div className="wh-card">
+        <div className="wh-table-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
+              ประวัติการส่ง Callback จริง
+            </h2>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', color: '#475569' }}>
+              <input
+                type="checkbox"
+                checked={callbackLogFailedOnly}
+                onChange={(e) => setCallbackLogFailedOnly(e.target.checked)}
+              />
+              แสดงเฉพาะที่ล้มเหลว/ข้าม
+            </label>
+          </div>
+          <div className="wh-table-controls">
+            <button className="wh-icon-btn" title="รีเฟรช" onClick={loadCallbackLog} disabled={callbackLogLoading}>
+              🔁
+            </button>
+          </div>
+        </div>
+        <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '0 0 0.5rem' }}>
+          บันทึกผลจริงของทุกครั้งที่ระบบพยายามส่ง callback (HTTP/NATS) ทั้งจากงานพิมพ์จริงและปุ่ม "ทดสอบ callback" ด้านบน — ไม่ใช่แค่ว่าระบบเรียกฟังก์ชันส่งเท่านั้น แต่คือผลตอบกลับจริง (สำเร็จ/ล้มเหลว/สถานะ HTTP)
+        </p>
+        <div className="wh-table-wrapper">
+          <table className="wh-table">
+            <thead>
+              <tr>
+                <th>เวลา</th>
+                <th>เอนด์พอยต์</th>
+                <th>ช่องทาง</th>
+                <th>ที่มา</th>
+                <th>ผลลัพธ์</th>
+                <th>สถานะ HTTP</th>
+                <th>เวลาที่ใช้</th>
+                <th>รายละเอียด</th>
+              </tr>
+            </thead>
+            <tbody>
+              {callbackLog.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                    {callbackLogLoading ? 'กำลังโหลด...' : 'ยังไม่มีประวัติการส่ง Callback'}
+                  </td>
+                </tr>
+              ) : (
+                callbackLog.map((a) => (
+                  <tr key={a.id}>
+                    <td>{formatDate(a.occurredAt)}</td>
+                    <td><code>{a.endpointCode}</code></td>
+                    <td>{a.transport}</td>
+                    <td>{a.trigger === 'test' ? 'ทดสอบ' : 'งานจริง'}</td>
+                    <td>
+                      {a.outcome === 'success' ? (
+                        <span className="ds-status-badge ds-status-badge--success">สำเร็จ</span>
+                      ) : a.outcome === 'failed' ? (
+                        <span className="ds-status-badge ds-status-badge--error">ล้มเหลว</span>
+                      ) : (
+                        <span className="ds-status-badge ds-status-badge--neutral">ข้าม</span>
+                      )}
+                    </td>
+                    <td>{a.httpStatus ?? '—'}</td>
+                    <td>{a.durationMs} ms</td>
+                    <td style={{ maxWidth: 280, whiteSpace: 'normal', wordBreak: 'break-word', fontSize: '0.8rem', color: '#64748b' }}>
+                      {a.errorMessage || a.target || '—'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 

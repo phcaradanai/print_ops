@@ -1,4 +1,4 @@
-import type { WebhookEndpoint } from '@printerops/domain';
+import type { WebhookEndpoint, WebhookCallbackAttemptRepositoryPort, CallbackAttemptTrigger } from '@printerops/domain';
 
 /**
  * WebhookCallbackService notifies the original caller after a print job is
@@ -45,6 +45,24 @@ export interface CallbackContext {
   intakePayload: Record<string, unknown>;
   /** The accept response returned to the caller (or the final job result). */
   result: Record<string, unknown>;
+}
+
+/** Per-transport delivery outcome, returned by `send()` so callers (the
+ * sandbox "test" endpoint in particular) can report what ACTUALLY happened
+ * instead of a blind "ok: true" regardless of real delivery success. */
+export interface CallbackTransportResult {
+  attempted: boolean;
+  success: boolean;
+  target?: string;
+  httpStatus?: number;
+  error?: string;
+  durationMs: number;
+}
+
+export interface CallbackSendResult {
+  transport: WebhookEndpoint['callbackTransport'];
+  http?: CallbackTransportResult;
+  nats?: CallbackTransportResult;
 }
 
 const FIELD_PATH = /^\$\.[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/;
@@ -98,7 +116,42 @@ export class WebhookCallbackService {
     private readonly logger: WebhookCallbackLogger,
     private readonly http: HttpClient,
     private readonly nats?: NatsPublisher,
+    private readonly attemptLog?: WebhookCallbackAttemptRepositoryPort,
   ) {}
+
+  /** Records one delivery attempt. Best-effort — a logging failure must never
+   * affect the (already best-effort) callback path itself. */
+  private async record(
+    endpoint: WebhookEndpoint,
+    transport: 'HTTP' | 'NATS',
+    target: string,
+    outcome: 'success' | 'failed' | 'skipped',
+    durationMs: number,
+    trigger: CallbackAttemptTrigger,
+    requestId?: string,
+    printJobId?: string,
+    httpStatus?: number,
+    errorMessage?: string,
+  ): Promise<void> {
+    if (!this.attemptLog) return;
+    try {
+      await this.attemptLog.record({
+        endpointId: endpoint.id,
+        endpointCode: endpoint.endpointCode,
+        transport,
+        target,
+        outcome,
+        durationMs,
+        trigger,
+        requestId,
+        printJobId,
+        httpStatus,
+        errorMessage,
+      });
+    } catch {
+      // never let attempt-log failures affect the callback path
+    }
+  }
 
   /** Resolve destination(s) and render the payload for a callback request. */
   prepare(ctx: CallbackContext): CallbackRender {
@@ -132,12 +185,21 @@ export class WebhookCallbackService {
     return { target, payload };
   }
 
-  /** Fire the callback(s). Best-effort — never throws. */
-  async send(ctx: CallbackContext): Promise<void> {
+  /** Fire the callback(s). Best-effort — never throws. Returns the REAL
+   * per-transport outcome (attempted/success/status/error/timing) so callers
+   * — the sandbox test-fire endpoint in particular — can report what
+   * actually happened instead of a blind "ok". Every attempt (including
+   * skips, when no target could be resolved) is recorded to the attempt log
+   * if one was provided. */
+  async send(ctx: CallbackContext, opts?: { trigger?: CallbackAttemptTrigger }): Promise<CallbackSendResult> {
     const transport = ctx.endpoint.callbackTransport ?? 'NONE';
-    if (transport === 'NONE') return;
+    const trigger: CallbackAttemptTrigger = opts?.trigger ?? 'live';
+    const out: CallbackSendResult = { transport };
+    if (transport === 'NONE') return out;
 
     const { target, payload } = this.prepare(ctx);
+    const requestId = typeof ctx.result['request_id'] === 'string' ? (ctx.result['request_id'] as string) : undefined;
+    const printJobId = typeof ctx.result['print_job_id'] === 'string' ? (ctx.result['print_job_id'] as string) : undefined;
 
     if (isHttpTransport(transport)) {
       if (!target.httpUrl) {
@@ -145,18 +207,29 @@ export class WebhookCallbackService {
           { endpointId: ctx.endpoint.id, transport },
           'webhook callback skipped: no resolvable HTTP URL',
         );
+        out.http = { attempted: false, success: false, durationMs: 0, error: 'no resolvable HTTP URL' };
+        void this.record(ctx.endpoint, 'HTTP', '', 'skipped', 0, trigger, requestId, printJobId, undefined, 'no resolvable HTTP URL');
       } else {
+        const t0 = Date.now();
         try {
           await this.http(target.httpUrl, payload);
+          const durationMs = Date.now() - t0;
           this.logger.info(
             { endpointId: ctx.endpoint.id, url: target.httpUrl },
             'webhook HTTP callback sent',
           );
+          out.http = { attempted: true, success: true, target: target.httpUrl, durationMs };
+          void this.record(ctx.endpoint, 'HTTP', target.httpUrl, 'success', durationMs, trigger, requestId, printJobId);
         } catch (err) {
+          const durationMs = Date.now() - t0;
+          const message = errMsg(err);
+          const httpStatus = extractHttpStatus(message);
           this.logger.error(
-            { endpointId: ctx.endpoint.id, url: target.httpUrl, error: errMsg(err) },
+            { endpointId: ctx.endpoint.id, url: target.httpUrl, error: message },
             'webhook HTTP callback failed',
           );
+          out.http = { attempted: true, success: false, target: target.httpUrl, durationMs, error: message, httpStatus };
+          void this.record(ctx.endpoint, 'HTTP', target.httpUrl, 'failed', durationMs, trigger, requestId, printJobId, httpStatus, message);
         }
       }
     }
@@ -167,27 +240,50 @@ export class WebhookCallbackService {
           { endpointId: ctx.endpoint.id, transport },
           'webhook callback skipped: no resolvable NATS subject',
         );
+        out.nats = { attempted: false, success: false, durationMs: 0, error: 'no resolvable NATS subject' };
+        void this.record(ctx.endpoint, 'NATS', '', 'skipped', 0, trigger, requestId, printJobId, undefined, 'no resolvable NATS subject');
       } else if (!this.nats) {
         this.logger.warn(
           { endpointId: ctx.endpoint.id, subject: target.natsSubject },
           'webhook NATS callback skipped: NATS transport not connected',
         );
+        out.nats = { attempted: false, success: false, target: target.natsSubject, durationMs: 0, error: 'NATS transport not connected' };
+        void this.record(ctx.endpoint, 'NATS', target.natsSubject, 'skipped', 0, trigger, requestId, printJobId, undefined, 'NATS transport not connected');
       } else {
+        const t0 = Date.now();
         try {
           await this.nats(target.natsSubject, payload);
+          const durationMs = Date.now() - t0;
           this.logger.info(
             { endpointId: ctx.endpoint.id, subject: target.natsSubject },
             'webhook NATS callback sent',
           );
+          out.nats = { attempted: true, success: true, target: target.natsSubject, durationMs };
+          void this.record(ctx.endpoint, 'NATS', target.natsSubject, 'success', durationMs, trigger, requestId, printJobId);
         } catch (err) {
+          const durationMs = Date.now() - t0;
+          const message = errMsg(err);
           this.logger.error(
-            { endpointId: ctx.endpoint.id, subject: target.natsSubject, error: errMsg(err) },
+            { endpointId: ctx.endpoint.id, subject: target.natsSubject, error: message },
             'webhook NATS callback failed',
           );
+          out.nats = { attempted: true, success: false, target: target.natsSubject, durationMs, error: message };
+          void this.record(ctx.endpoint, 'NATS', target.natsSubject, 'failed', durationMs, trigger, requestId, printJobId, undefined, message);
         }
       }
     }
+
+    return out;
   }
+}
+
+/** Best-effort extraction of an HTTP status code from httpCallbackSender's
+ * thrown error message (`webhook callback HTTP 404 to https://...`), so the
+ * status shows up in the attempt log without requiring a stricter HttpClient
+ * contract change (which would ripple through every existing test mock). */
+function extractHttpStatus(message: string): number | undefined {
+  const match = /HTTP (\d{3})/.exec(message);
+  return match ? Number(match[1]) : undefined;
 }
 
 function errMsg(err: unknown): string {
