@@ -9,6 +9,7 @@ function rowToUser(row: Record<string, unknown>): User {
     id: row['id'] as string,
     email: row['email'] as string,
     name: row['name'] as string,
+    passwordHash: row['password_hash'] as string | undefined,
     role: row['role'] as User['role'],
     isActive: row['is_active'] === 1 || row['is_active'] === true,
     createdAt: toDate(row['created_at']),
@@ -63,9 +64,9 @@ export class SqliteUserRepository implements UserRepositoryPort {
     const now = dateStr(new Date());
 
     db.run(
-      `INSERT INTO users (id, email, name, role, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, input.email, input.name, input.role, input.isActive ? 1 : 0, now, now],
+      `INSERT INTO users (id, email, name, password_hash, role, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, input.email, input.name, input.passwordHash ?? null, input.role, input.isActive ? 1 : 0, now, now],
     );
 
     const stmt = db.prepare('SELECT * FROM users WHERE id = ?');
@@ -91,6 +92,7 @@ export class SqliteUserRepository implements UserRepositoryPort {
 
     if ('email' in patch) add('email', patch.email);
     if ('name' in patch) add('name', patch.name);
+    if ('passwordHash' in patch) add('password_hash', patch.passwordHash ?? null);
     if ('role' in patch) add('role', patch.role);
     if ('isActive' in patch) add('is_active', patch.isActive ? 1 : 0);
 
@@ -106,9 +108,9 @@ export class SqliteUserRepository implements UserRepositoryPort {
   seed(user: User): void {
     const db = getDb();
     db.run(
-      `INSERT OR REPLACE INTO users (id, email, name, role, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [user.id, user.email, user.name, user.role, user.isActive ? 1 : 0, dateStr(user.createdAt), dateStr(user.updatedAt)],
+      `INSERT OR REPLACE INTO users (id, email, name, password_hash, role, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [user.id, user.email, user.name, user.passwordHash ?? null, user.role, user.isActive ? 1 : 0, dateStr(user.createdAt), dateStr(user.updatedAt)],
     );
   }
 }

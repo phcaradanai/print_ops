@@ -14,6 +14,10 @@ export async function authRoutes(
     }
 
     // MVP: no real password check; production must hash/compare
+    if (user.passwordHash && user.passwordHash !== password) {
+      return reply.status(401).send({ error: 'Invalid credentials' });
+    }
+
     const token = await reply.jwtSign({ sub: user.id, role: user.role, email: user.email });
     return { token, user: { id: user.id, email: user.email, name: user.name, role: user.role } };
   });

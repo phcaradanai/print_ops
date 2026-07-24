@@ -168,7 +168,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     to: '/users',
     key: 'nav.usersRoles',
-    roles: ['OWNER'],
+    roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
     group: 'admin',
     icon: NAV_ITEM_ICONS['/users'],
   },

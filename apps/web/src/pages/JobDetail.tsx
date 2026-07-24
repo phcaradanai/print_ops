@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
@@ -50,19 +50,45 @@ export interface PrintEvidence {
 interface Job {
   id: string;
   status: string;
-  errorCode?: string;
-  errorMessage?: string;
-  spoolerSentAt?: string;
-  printerAckAt?: string;
-  metadata?: {
-    printEvidence?: PrintEvidence;
-  };
+  copies: number;
+  priorityLabel?: string;
+  printerId: string;
+  printerCode?: string;
+  templateCode?: string;
   resolvedTemplateCode?: string;
   paperProfileId?: string;
   routePolicyId?: string;
+  sourceSystem?: string;
+  sourceReference?: string;
+  requestId?: string;
+  mimeType?: string;
+  duplex?: boolean;
+  colorMode?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  payloadSnapshot?: string;
+  spoolerSentAt?: string;
+  printerAckAt?: string;
+  receivedAt?: string;
+  finishedAt?: string;
+  metadata?: {
+    printEvidence?: PrintEvidence;
+    code_profile?: string;
+    nats?: { clientId?: string; subject?: string; streamSequence?: number };
+    isReprintOf?: string;
+  };
   templateTiming?: {
     routeResolveMs?: number;
     renderMs?: number;
+  };
+  latency?: {
+    totalLatencyMs?: number;
+    validationMs?: number;
+    queueWaitMs?: number;
+    dispatchMs?: number;
+    runnerExecMs?: number;
+    spoolerMs?: number;
+    printerAckMs?: number;
   };
 }
 
@@ -73,12 +99,47 @@ const STEP_COLOR: Record<string, string> = {
   skipped: '#9399b2',
 };
 
+const STATUS_COLORS: Record<string, string> = {
+  QUEUED: '#1e66f5',
+  DISPATCHED: '#8839ef',
+  PRINTING: '#df8e1d',
+  SUCCESS: '#40a02b',
+  FAILED: '#d20f39',
+  TIMEOUT: '#d20f39',
+  UNVERIFIED: '#e3a00f',
+  CANCELLED: '#9399b2',
+};
+
 function formatStateReasons(reasons: IppObservedJobEvidence['stateReasons'], noData: string): string {
   if (Array.isArray(reasons)) {
     const values = reasons.filter((reason) => reason.trim().length > 0);
     return values.length > 0 ? values.join(', ') : noData;
   }
   return typeof reasons === 'string' && reasons.trim().length > 0 ? reasons : noData;
+}
+
+function fmtTime(s?: string): string {
+  if (!s) return '—';
+  return new Date(s).toLocaleString(undefined, {
+    month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+}
+
+/** Card for a single key-value fact. */
+function Fact({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
+  return (
+    <div style={{
+      background: '#fff', borderRadius: '6px', padding: '0.75rem 1rem',
+      border: '1px solid #eee',
+    }}>
+      <div style={{ fontSize: '0.65rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+        {label}
+      </div>
+      <div style={{ fontSize: '0.875rem', fontWeight: 600, fontFamily: mono ? 'monospace' : 'inherit' }}>
+        {value ?? '—'}
+      </div>
+    </div>
+  );
 }
 
 export function PrinterEvidence({
@@ -100,9 +161,7 @@ export function PrinterEvidence({
     <section className="print-evidence" aria-labelledby="print-evidence-heading">
       <div className="print-evidence__header">
         <h2 id="print-evidence-heading">{t('page.jobDetail.printerEvidence')}</h2>
-        <span
-          className={`print-evidence__outcome ${ippConfirmed ? 'print-evidence__outcome--confirmed' : ''}`}
-        >
+        <span className={`print-evidence__outcome ${ippConfirmed ? 'print-evidence__outcome--confirmed' : ''}`}>
           {outcome}
         </span>
       </div>
@@ -194,52 +253,171 @@ export default function JobDetail() {
     };
   }, [id]);
 
+  if (!job) {
+    return (
+      <div>
+        <h1>{t('page.jobDetail.title')}</h1>
+        <p className="loading-text">{t('common.loading')}</p>
+      </div>
+    );
+  }
+
+  const template = job.resolvedTemplateCode ?? job.templateCode;
+  const statusColor = STATUS_COLORS[job.status] ?? '#666';
+  const isReprint = Boolean(job.metadata?.isReprintOf);
+  const natsInfo = job.metadata?.nats;
+
   return (
-    <div>
-      <h1>{t('page.jobDetail.title')}</h1>
-      <p className="loading-text">{t('page.jobDetail.jobId')}: <code>{id}</code></p>
-      {job && (
-        <div style={{ background: '#fff', padding: '1rem', borderRadius: 8 }}>
-          <h2 style={{ fontSize: '1rem' }}>{t('page.jobDetail.summary')}</h2>
-          <p>Status: <strong>{job.status}</strong></p>
-          {job.errorCode && <p style={{ color: '#b91c1c' }}>Error: <code>{job.errorCode}</code> — {job.errorMessage}</p>}
-          {job.metadata?.printEvidence && (
-            <PrinterEvidence evidence={job.metadata.printEvidence} t={t} />
-          )}
-          <h2 style={{ fontSize: '1rem', marginTop: '1rem' }}>{t('page.jobDetail.templateResolution')}</h2>
-          <p>{t('page.jobDetail.template')}: <code>{job.resolvedTemplateCode ?? t('common.noData')}</code></p>
-          <p>{t('page.jobDetail.paperProfile')}: <code>{job.paperProfileId ?? t('common.noData')}</code></p>
-          <p>{t('page.jobDetail.routePolicy')}: <code>{job.routePolicyId ?? t('common.noData')}</code></p>
-          <p>{t('page.jobDetail.route')}: {job.templateTiming?.routeResolveMs ?? t('common.noData')}ms · Render: {job.templateTiming?.renderMs ?? t('common.noData')}ms</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {/* ── Header: title + status + ID ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        <h1 className="page-title" style={{ margin: 0 }}>{t('page.jobDetail.title')}</h1>
+        <span style={{
+          background: statusColor, color: '#fff', padding: '6px 16px',
+          borderRadius: '6px', fontSize: '0.875rem', fontWeight: 700,
+        }}>
+          {job.status}
+        </span>
+        {isReprint && (
+          <span style={{
+            background: '#f0f0f0', color: '#666', padding: '4px 10px',
+            borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600,
+          }}>
+            ↻ REPRINT
+          </span>
+        )}
+        <code style={{ fontSize: '0.7rem', color: '#999' }}>{job.id}</code>
+      </div>
+
+      {/* ── Error banner ── */}
+      {job.errorCode && (
+        <div style={{
+          background: '#fee2e2', border: '1px solid #f38ba8', borderRadius: '8px',
+          padding: '0.75rem 1rem', color: '#991b1b',
+        }}>
+          <strong>⚠ {job.errorCode}</strong>
+          {job.errorMessage && <span style={{ marginLeft: '0.5rem' }}>— {job.errorMessage}</span>}
         </div>
       )}
 
+      {/* ── Document summary card — the "what was printed" panel ── */}
+      <section style={{
+        background: '#fff', borderRadius: '10px', padding: '1.25rem 1.5rem',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+      }}>
+        <h2 style={{ fontSize: '0.75rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 1rem 0' }}>
+          {t('page.jobDetail.documentInfo')}
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem' }}>
+          <Fact label={t('page.jobDetail.template')} value={template ?? '—'} mono />
+          <Fact label={t('page.jobDetail.sourceReference')} value={job.sourceReference ?? '—'} mono />
+          <Fact label={t('page.jobDetail.sourceSystem')} value={job.sourceSystem ?? '—'} />
+          <Fact label={t('page.jobDetail.copies')} value={job.copies} />
+          {job.metadata?.code_profile && (
+            <Fact label={t('page.jobDetail.paperProfile')} value={job.metadata.code_profile} mono />
+          )}
+          <Fact label={t('page.jobDetail.mimeType')} value={job.mimeType ?? '—'} />
+          <Fact
+            label={t('page.jobDetail.printer')}
+            value={
+              <Link to={`/printers/${job.printerId}`} style={{ color: '#1e66f5', textDecoration: 'none' }}>
+                {job.printerCode ?? job.printerId.slice(0, 8)}
+              </Link>
+            }
+          />
+          <Fact label={t('page.jobDetail.priority')} value={job.priorityLabel ?? '—'} />
+          {job.requestId && <Fact label={t('page.jobDetail.requestId')} value={job.requestId} mono />}
+        </div>
+
+        {/* Payload snapshot — shows what data fields were in the print payload */}
+        {job.payloadSnapshot && (
+          <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: '#666' }}>
+            <span style={{ fontWeight: 600 }}>{t('page.jobDetail.payloadFields')}:</span>{' '}
+            <code style={{ background: '#f5f5f5', padding: '2px 6px', borderRadius: '3px' }}>
+              {job.payloadSnapshot}
+            </code>
+          </div>
+        )}
+
+        {/* NATS provenance */}
+        {natsInfo && (
+          <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#8839ef' }}>
+            ↦ NATS: client={natsInfo.clientId ?? '—'} · subject={natsInfo.subject ?? '—'} · seq={natsInfo.streamSequence ?? '—'}
+          </div>
+        )}
+
+        {/* Reprint provenance */}
+        {isReprint && (
+          <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#666' }}>
+            ↻ {t('page.jobDetail.reprintOf')}{' '}
+            <Link to={`/jobs/${job.metadata!.isReprintOf}`} style={{ color: '#1e66f5' }}>
+              {job.metadata!.isReprintOf!.slice(0, 12)}…
+            </Link>
+          </div>
+        )}
+      </section>
+
+      {/* ── Timing & Latency ── */}
+      <section style={{
+        background: '#fff', borderRadius: '10px', padding: '1.25rem 1.5rem',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+      }}>
+        <h2 style={{ fontSize: '0.75rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 1rem 0' }}>
+          {t('page.jobDetail.timing')}
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '0.75rem' }}>
+          <Fact label={t('page.jobDetail.totalLatency')} value={job.latency?.totalLatencyMs != null ? `${job.latency.totalLatencyMs}ms` : '—'} />
+          <Fact label={t('page.jobDetail.queueWait')} value={job.latency?.queueWaitMs != null ? `${job.latency.queueWaitMs}ms` : '—'} />
+          <Fact label={t('page.jobDetail.dispatch')} value={job.latency?.dispatchMs != null ? `${job.latency.dispatchMs}ms` : '—'} />
+          <Fact label={t('page.jobDetail.runnerExec')} value={job.latency?.runnerExecMs != null ? `${job.latency.runnerExecMs}ms` : '—'} />
+          <Fact label={t('page.jobDetail.spoolerMs')} value={job.latency?.spoolerMs != null ? `${job.latency.spoolerMs}ms` : '—'} />
+          <Fact label={t('page.jobDetail.printerAckMs')} value={job.latency?.printerAckMs != null ? `${job.latency.printerAckMs}ms` : '—'} />
+        </div>
+        <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.75rem', fontSize: '0.75rem', color: '#888' }}>
+          <span>{t('page.jobDetail.received')}: {fmtTime(job.receivedAt)}</span>
+          <span>{t('page.jobDetail.spooled')}: {fmtTime(job.spoolerSentAt)}</span>
+          <span>{t('page.jobDetail.printerAck')}: {fmtTime(job.printerAckAt)}</span>
+          <span>{t('page.jobDetail.finished')}: {fmtTime(job.finishedAt)}</span>
+        </div>
+      </section>
+
+      {/* ── Print evidence (if any) ── */}
+      {job.metadata?.printEvidence && (
+        <PrinterEvidence evidence={job.metadata.printEvidence} t={t} />
+      )}
+
+      {/* ── Trace timeline ── */}
       {trace && (
-        <div style={{ marginTop: '1.5rem' }}>
-          <h2 style={{ fontSize: '1rem' }}>{t('page.jobDetail.traceTimeline')}</h2>
-          <div style={{ marginTop: '1rem' }}>
+        <section>
+          <h2 style={{ fontSize: '0.75rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 1rem 0' }}>
+            {t('page.jobDetail.traceTimeline')}
+          </h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {trace.steps.map((step, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
                 <div style={{
-                  width: '12px', height: '12px', borderRadius: '50%',
+                  width: '10px', height: '10px', borderRadius: '50%',
                   background: STEP_COLOR[step.status] ?? '#ccc',
-                  marginTop: '4px', marginRight: '1rem', flexShrink: 0,
+                  marginTop: '6px', flexShrink: 0,
                 }} />
-                <div style={{ background: '#fff', padding: '0.75rem 1rem', borderRadius: '6px', flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{step.stepName}</div>
-                  <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '2px' }}>
-                    {step.durationMs != null ? `${step.durationMs}ms` : ''} · {step.status}
+                <div style={{
+                  background: '#fff', padding: '0.6rem 1rem', borderRadius: '6px',
+                  flex: 1, border: '1px solid #eee',
+                }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.8rem' }}>{step.stepName}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#888', marginTop: '2px' }}>
+                    {step.durationMs != null ? `${step.durationMs}ms` : '—'} · {step.status}
                   </div>
-                  {step.outputSummary && <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>{step.outputSummary}</div>}
-                  {step.error && <div style={{ fontSize: '0.75rem', color: '#f38ba8', marginTop: '4px' }}>{step.error}</div>}
+                  {step.outputSummary && <div style={{ fontSize: '0.7rem', marginTop: '4px', color: '#555' }}>{step.outputSummary}</div>}
+                  {step.error && <div style={{ fontSize: '0.7rem', color: '#f38ba8', marginTop: '4px' }}>{step.error}</div>}
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
-      {!trace && <p style={{ color: '#888', marginTop: '1rem' }}>{t('page.jobDetail.noTrace')}</p>}
+      {!trace && <p style={{ color: '#888' }}>{t('page.jobDetail.noTrace')}</p>}
     </div>
   );
 }

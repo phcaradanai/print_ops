@@ -80,6 +80,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  passwordHash?: string;
   role: Role;
   isActive: boolean;
   createdAt: Date;

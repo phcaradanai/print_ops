@@ -74,6 +74,7 @@ import { v1RunnerPrinterRoutes } from './routes/v1/runner-printers.routes.js';
 import { v1RunnerJobRoutes } from './routes/v1/runner-jobs.routes.js';
 import { templateRoutes } from './routes/v1/template.routes.js';
 import { webhookRoutes } from './routes/v1/webhook.routes.js';
+import { v1UserRoutes } from './routes/v1/users.routes.js';
 import { WebhookCallbackService, type NatsPublisher } from './services/webhook-callback.service.js';
 import { paperProfileImportRoutes } from './routes/v1/paper-profile-imports.routes.js';
 import { sandboxRoutes } from './routes/v1/sandbox.routes.js';
@@ -573,6 +574,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await sandboxRoutes(v1, { sandbox: sandboxSvc, connectivity: connectivitySvc, audit: auditRepo });
     await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob, getPrinterStatus, logger: app.log, callbackSender: httpCallbackSender, callbackNats: natsPublisher });
     await paperProfileImportRoutes(v1, { importService: importPaperProfile });
+    await v1UserRoutes(v1, { users: userRepo });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
   if (printIntakeCfg) {

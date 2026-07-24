@@ -172,12 +172,15 @@ export function runSchemaMigration(db: Database): void {
       id TEXT PRIMARY KEY NOT NULL,
       email TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
+      password_hash TEXT,
       role TEXT NOT NULL DEFAULT 'VIEWER',
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   `);
+
+  ensureColumn(db, 'users', 'password_hash', 'TEXT');
 
   db.run(`
     CREATE TABLE IF NOT EXISTS service_accounts (
