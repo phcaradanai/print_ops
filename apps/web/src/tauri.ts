@@ -48,7 +48,10 @@ export async function getNatsSettings(): Promise<NatsSettings | null> {
 export async function saveNatsSettings(settings: NatsSettings): Promise<void> {
   const invoke = await getInvoke();
   if (!invoke) throw new Error('NATS settings are only available in the desktop app');
-  // This call does not return: the desktop shell restarts itself to apply.
+  // Restarts only the backend API process in-place (not the whole desktop
+  // app) and waits for it to become healthy with the new settings before
+  // resolving. Throws if the server fails to start or doesn't come back
+  // healthy in time, so the caller can show a real success/failure result.
   await invoke('save_nats_settings', { settings });
 }
 

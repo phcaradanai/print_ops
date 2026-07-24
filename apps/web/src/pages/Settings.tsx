@@ -176,10 +176,14 @@ export default function Settings() {
 
   const handleNatsSave = useCallback(() => {
     setNatsSaving(true);
+    // Saving restarts only the backend API process in-place and waits for a
+    // health check before resolving — it does NOT restart the whole desktop
+    // app (a prior version did, which raced with the single-instance guard
+    // and could silently leave the old, unconfigured server running). A
+    // successful resolve here means the new NATS settings are genuinely
+    // active, not just written to disk.
     saveNatsSettings(natsDraft)
       .then(() => {
-        // `saveNats_settings` restarts the desktop shell; this line only runs
-        // if the command somehow returns without a restart.
         setNats(natsDraft);
         setNatsDirty(false);
         setMessage({ text: t('settings.saved'), kind: 'success' });

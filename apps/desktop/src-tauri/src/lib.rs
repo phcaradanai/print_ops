@@ -84,6 +84,70 @@ fn get_nats_settings(app: tauri::AppHandle) -> Result<NatsSettings, String> {
     Ok(load_nats_settings(&data_dir, &log))
 }
 
+/// Everything `save_nats_settings` needs to rebuild the API server's launch
+/// command later, without redoing directory-resolution logic or drifting out
+/// of sync with the equivalent block in `setup()`.
+struct ServerPaths {
+    res_dir: PathBuf,
+    db_path: PathBuf,
+    wasm_path: PathBuf,
+    logs_dir: PathBuf,
+    app_log: PathBuf,
+}
+
+/// Builds the `server.exe` launch command for the given NATS settings. Used
+/// both at initial startup and whenever NATS settings are saved and the
+/// server needs to be restarted with the new environment.
+fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Command {
+    let (out, err) = child_stdio(&paths.logs_dir.join("desktop-server.log"));
+    let mut cmd = Command::new(paths.res_dir.join("server.exe"));
+    // Store settings, paper profiles, and registered printers in the
+    // per-user database above. This survives app restarts and desktop
+    // upgrades because it is outside the install folder.
+    cmd.current_dir(&paths.res_dir)
+        .env("PORT", SERVER_PORT)
+        .env("DB_MODE", "sqlite")
+        .env("PRINTOPS_LOCAL_WORKER", "true")
+        .env("PRINTOPS_DB_PATH", &paths.db_path)
+        .env("SQL_WASM_PATH", &paths.wasm_path)
+        .env(
+            "PRINTOPS_HTML_PRINT_HELPER",
+            paths.res_dir.join("print-helper").join("printops-html-print.exe"),
+        )
+        .stdin(Stdio::null())
+        .stdout(out)
+        .stderr(err);
+    if nats_settings.enabled {
+        cmd.env("PRINTOPS_NATS_URL", &nats_settings.url)
+            .env("PRINTOPS_NATS_CLIENT_ID", &nats_settings.client_id)
+            .env("PRINTOPS_NATS_SUBJECT_PREFIX", &nats_settings.subject_prefix);
+    } else {
+        // Do not inherit accidental machine-level NATS variables.
+        cmd.env_remove("NATS_URL")
+            .env_remove("PRINTOPS_NATS_URL")
+            .env_remove("PRINTOPS_NATS_CLIENT_ID")
+            .env_remove("PRINTOPS_NATS_SUBJECT_PREFIX")
+            .env_remove("PRINTOPS_NATS_DURABLE");
+    }
+    cmd
+}
+
+/// Polls the API's health endpoint until it responds 200 or `timeout` elapses.
+/// Returns whether it became healthy in time.
+fn wait_for_server_health(timeout: Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    let health_url = format!("{SERVER_URL}/health");
+    while std::time::Instant::now() < deadline {
+        if let Ok(resp) = ureq::get(&health_url).timeout(Duration::from_secs(2)).call() {
+            if resp.status() == 200 {
+                return true;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    false
+}
+
 #[tauri::command]
 fn save_nats_settings(app: tauri::AppHandle, settings: NatsSettings) -> Result<(), String> {
     validate_nats_settings(&settings)?;
@@ -94,14 +158,47 @@ fn save_nats_settings(app: tauri::AppHandle, settings: NatsSettings) -> Result<(
     let json = serde_json::to_vec_pretty(&settings).map_err(|err| err.to_string())?;
     fs::write(&temporary, json).map_err(|err| err.to_string())?;
     fs::rename(&temporary, &path).map_err(|err| err.to_string())?;
-    log_line(&log_dir(&data_dir).join("desktop.log"), "NATS settings saved; restarting desktop to apply");
-    app.restart();
+
+    let state = app.state::<AppState>();
+    let app_log = state.paths.app_log.clone();
+    log_line(&app_log, "NATS settings saved; restarting the API server in-process to apply");
+
+    // Deliberately do NOT call `app.restart()` here. Relaunching the whole
+    // Tauri process races with `tauri_plugin_single_instance`: the freshly
+    // spawned process can be detected as a "second instance" of the OLD
+    // process (which may not have released its instance lock yet), forward
+    // its argv to it, and exit immediately — without ever reaching `setup()`
+    // to read the just-saved NATS settings. The result is the OLD,
+    // unconfigured `server.exe` silently surviving forever, which is exactly
+    // the "saved NATS settings but they never take effect" bug. Restarting
+    // only the child server process, inside this same already-running app,
+    // sidesteps that race entirely: there is no second process launch.
+    kill_child(&state.server_child, &app_log, "server (applying new NATS settings)");
+
+    let cmd = build_server_command(&state.paths, &settings);
+    let new_child = spawn_child(cmd, &app_log, "server.exe");
+    let started = new_child.is_some();
+    if let Ok(mut guard) = state.server_child.lock() {
+        *guard = new_child;
+    }
+    if !started {
+        return Err("Failed to restart the API server with the new NATS settings".into());
+    }
+
+    if wait_for_server_health(Duration::from_secs(20)) {
+        log_line(&app_log, "Server restarted and healthy with new NATS settings");
+        Ok(())
+    } else {
+        log_line(&app_log, "ERROR: server restarted but did not become healthy in time");
+        Err("API server restarted but did not become healthy in time".into())
+    }
 }
 
 struct AppState {
     server_child: Mutex<Option<Child>>,
     runner_child: Mutex<Option<Child>>,
     shutdown: ShutdownGuard,
+    paths: ServerPaths,
 }
 
 /// `ExitRequested` and `Exit` can both fire during one close operation. The
@@ -290,38 +387,17 @@ pub fn run() {
                 );
             }
 
+            let server_paths = ServerPaths {
+                res_dir: res_dir.clone(),
+                db_path: db_path.clone(),
+                wasm_path: wasm_path.clone(),
+                logs_dir: logs.clone(),
+                app_log: app_log.clone(),
+            };
+
             // ── Start API server ──
             let server_child = if server_exe.exists() {
-                let (out, err) = child_stdio(&logs.join("desktop-server.log"));
-                let mut cmd = Command::new(&server_exe);
-                // Store settings, paper profiles, and registered printers in
-                // the per-user database above. This survives app restarts and
-                // desktop upgrades because it is outside the install folder.
-                cmd.current_dir(&res_dir)
-                    .env("PORT", SERVER_PORT)
-                    .env("DB_MODE", "sqlite")
-                    .env("PRINTOPS_LOCAL_WORKER", "true")
-                    .env("PRINTOPS_DB_PATH", &db_path)
-                    .env("SQL_WASM_PATH", &wasm_path)
-                    .env(
-                        "PRINTOPS_HTML_PRINT_HELPER",
-                        res_dir.join("print-helper").join("printops-html-print.exe"),
-                    )
-                    .stdin(Stdio::null())
-                    .stdout(out)
-                    .stderr(err);
-                if nats_settings.enabled {
-                    cmd.env("PRINTOPS_NATS_URL", &nats_settings.url)
-                        .env("PRINTOPS_NATS_CLIENT_ID", &nats_settings.client_id)
-                        .env("PRINTOPS_NATS_SUBJECT_PREFIX", &nats_settings.subject_prefix);
-                } else {
-                    // Do not inherit accidental machine-level NATS variables.
-                    cmd.env_remove("NATS_URL")
-                        .env_remove("PRINTOPS_NATS_URL")
-                        .env_remove("PRINTOPS_NATS_CLIENT_ID")
-                        .env_remove("PRINTOPS_NATS_SUBJECT_PREFIX")
-                        .env_remove("PRINTOPS_NATS_DURABLE");
-                }
+                let cmd = build_server_command(&server_paths, &nats_settings);
                 spawn_child(cmd, &app_log, "server.exe")
             } else {
                 log_line(&app_log, "ERROR: server.exe not found — API will not start");
@@ -363,6 +439,7 @@ pub fn run() {
                 server_child: Mutex::new(server_child),
                 runner_child: Mutex::new(runner_child),
                 shutdown: ShutdownGuard::default(),
+                paths: server_paths,
             });
 
             // The config window is created before `setup` runs, so its first load
