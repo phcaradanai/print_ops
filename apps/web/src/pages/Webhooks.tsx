@@ -135,7 +135,7 @@ export default function Webhooks() {
       // Remove selected IDs that no longer exist
       setSelectedIds((prev) => prev.filter((id) => res.some((e) => e.id === id)));
     }).catch(() => {
-      showToast('ไม่สามารถโหลดข้อมูลเอนด์พอยต์ได้', 'error');
+      showToast(t('page.webhooks.toastLoadFailed'), 'error');
     });
     void apiFetch<Policy[]>('/v1/webhook-route-policies').then(setPolicies).catch(() => {});
   };
@@ -224,11 +224,11 @@ export default function Webhooks() {
 
   async function handleSave(isEnabled: boolean) {
     if (!form.endpointCode.trim()) {
-      showToast('กรุณาระบุรหัสเอนด์พอยต์', 'error');
+      showToast(t('page.webhooks.toastCodeRequired'), 'error');
       return;
     }
     if (!form.name.trim()) {
-      showToast('กรุณาระบุชื่อเอนด์พอยต์', 'error');
+      showToast(t('page.webhooks.toastNameRequired'), 'error');
       return;
     }
 
@@ -237,7 +237,7 @@ export default function Webhooks() {
       try {
         parsedPayloadTemplate = JSON.parse(form.callbackPayloadTemplate);
       } catch {
-        showToast('เทมเพลต Payload (JSON) มีรูปแบบไม่ถูกต้อง', 'error');
+        showToast(t('page.webhooks.toastInvalidPayloadJson'), 'error');
         return;
       }
     }
@@ -262,19 +262,19 @@ export default function Webhooks() {
           method: 'PUT',
           body: JSON.stringify(body),
         });
-        showToast(isEnabled ? 'บันทึกการแก้ไขเอนด์พอยต์เรียบร้อย' : 'บันทึกแบบร่างเอนด์พอยต์เรียบร้อย');
+        showToast(isEnabled ? t('page.webhooks.toastUpdated') : t('page.webhooks.toastDraftUpdated'));
       } else {
         await apiFetch('/v1/webhook-endpoints', {
           method: 'POST',
           body: JSON.stringify(body),
         });
-        showToast(isEnabled ? 'สร้างเอนด์พอยต์ใหม่เรียบร้อย' : 'สร้างแบบร่างเอนด์พอยต์เรียบร้อย');
+        showToast(isEnabled ? t('page.webhooks.toastCreated') : t('page.webhooks.toastDraftCreated'));
       }
 
       resetForm();
       loadData();
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการบันทึกข้อมูล';
+      const errMsg = err instanceof Error ? err.message : t('page.webhooks.toastSaveError');
       showToast(errMsg, 'error');
     }
   }
@@ -305,12 +305,12 @@ export default function Webhooks() {
   async function testCallback(e?: Endpoint) {
     const targetId = e?.id || editingId;
     if (!targetId) {
-      showToast('กรุณาสร้างหรือเลือกเอนด์พอยต์ก่อนการทดสอบ Callback', 'info');
+      showToast(t('page.webhooks.toastNeedEndpointForTest'), 'info');
       return;
     }
 
     try {
-      showToast('กำลังทดสอบส่ง Callback...', 'info');
+      showToast(t('page.webhooks.toastTestingCallback'), 'info');
       const res = await apiFetch<CallbackTestResponse>(
         `/v1/webhook-endpoints/${targetId}/callback-test`,
         {
@@ -329,18 +329,18 @@ export default function Webhooks() {
 
       const describe = (label: string, r?: CallbackTransportResult): string | null => {
         if (!r) return null;
-        if (!r.attempted) return `${label}: ข้าม (${r.error || 'ไม่ได้ส่ง'})`;
-        if (r.success) return `${label}: สำเร็จ${r.httpStatus ? ` (${r.httpStatus})` : ''}`;
-        return `${label}: ล้มเหลว${r.httpStatus ? ` (${r.httpStatus})` : ''}${r.error ? ` — ${r.error}` : ''}`;
+        if (!r.attempted) return `${label}: ${t('page.webhooks.outcomeSkipped')} (${r.error || t('page.webhooks.notSent')})`;
+        if (r.success) return `${label}: ${t('page.webhooks.outcomeSuccess')}${r.httpStatus ? ` (${r.httpStatus})` : ''}`;
+        return `${label}: ${t('page.webhooks.outcomeFailed')}${r.httpStatus ? ` (${r.httpStatus})` : ''}${r.error ? ` — ${r.error}` : ''}`;
       };
       const parts = [describe('HTTP', res.delivery.http), describe('NATS', res.delivery.nats)].filter(Boolean);
       showToast(
-        parts.length > 0 ? parts.join(' | ') : 'ไม่มีการตั้งค่า Callback (โหมด: ไม่ส่ง)',
+        parts.length > 0 ? parts.join(' | ') : t('page.webhooks.toastNoCallbackConfigured'),
         res.ok ? 'success' : 'error',
       );
       loadCallbackLog();
     } catch {
-      showToast('เรียก callback-test ไม่สำเร็จ — ตรวจสอบว่าเอนด์พอยต์ยังมีอยู่', 'error');
+      showToast(t('page.webhooks.toastCallbackTestFailed'), 'error');
     }
   }
 
@@ -350,10 +350,11 @@ export default function Webhooks() {
         method: 'PUT',
         body: JSON.stringify({ enabled: !e.enabled }),
       });
-      showToast(`เปลี่ยนสถานะเอนด์พอยต์ "${e.endpointCode}" เป็น ${!e.enabled ? 'เปิดใช้งาน' : 'ร่าง'} เรียบร้อย`);
+      const statusLabel = !e.enabled ? t('page.webhooks.statusEnabled') : t('page.webhooks.statusDraft');
+      showToast(t('page.webhooks.toastStatusChanged').replace('{code}', e.endpointCode).replace('{status}', statusLabel));
       loadData();
     } catch {
-      showToast('ไม่สามารถเปลี่ยนสถานะเอนด์พอยต์ได้', 'error');
+      showToast(t('page.webhooks.toastStatusChangeFailed'), 'error');
     }
   }
 
@@ -367,11 +368,11 @@ export default function Webhooks() {
     setPendingDeleteEndpoint(null);
     try {
       await apiFetch(`/v1/webhook-endpoints/${e.id}`, { method: 'DELETE' });
-      showToast(`ลบเอนด์พอยต์ "${e.endpointCode}" เรียบร้อยแล้ว`);
+      showToast(t('page.webhooks.toastDeleted').replace('{code}', e.endpointCode));
       if (editingId === e.id) resetForm();
       loadData();
     } catch {
-      showToast('ไม่สามารถลบเอนด์พอยต์ได้', 'error');
+      showToast(t('page.webhooks.toastDeleteFailed'), 'error');
     }
   }
 
@@ -382,7 +383,7 @@ export default function Webhooks() {
       : endpoints);
 
     if (listToExport.length === 0) {
-      showToast('ไม่มีข้อมูลเอนด์พอยต์สำหรับส่งออก', 'info');
+      showToast(t('page.webhooks.toastNothingToExport'), 'info');
       return;
     }
 
@@ -410,9 +411,9 @@ export default function Webhooks() {
     if (res.cancelled) return;
 
     if (res.success) {
-      showToast(res.message || `ส่งออกเอนด์พอยต์จำนวน ${listToExport.length} รายการเป็นไฟล์ JSON เรียบร้อยแล้ว`);
+      showToast(res.message || t('page.webhooks.toastExported').replace('{n}', String(listToExport.length)));
     } else {
-      showToast(res.message || 'ไม่สามารถส่งออกไฟล์ได้', 'error');
+      showToast(res.message || t('page.webhooks.toastExportFailed'), 'error');
     }
   };
 
@@ -433,20 +434,20 @@ export default function Webhooks() {
           : [];
 
         if (importedList.length === 0) {
-          showToast('ไม่พบข้อมูลเอนด์พอยต์ในไฟล์ JSON ที่เลือก', 'error');
+          showToast(t('page.webhooks.toastImportEmpty'), 'error');
           return;
         }
 
         // Validate required fields
         const validList = importedList.filter((item) => item.endpointCode && item.name);
         if (validList.length === 0) {
-          showToast('ไฟล์ JSON ไม่มีโครงสร้างเอนด์พอยต์ที่ถูกต้อง (ต้องมี endpointCode และ name)', 'error');
+          showToast(t('page.webhooks.toastImportInvalidStructure'), 'error');
           return;
         }
 
         setImportModalEndpoints(validList);
       } catch {
-        showToast('ไม่สามารถอ่านไฟล์ JSON ได้ กรุณาตรวจสอบรูปแบบไฟล์', 'error');
+        showToast(t('page.webhooks.toastImportReadFailed'), 'error');
       }
     };
     reader.readAsText(file);
@@ -457,7 +458,7 @@ export default function Webhooks() {
     if (!importModalEndpoints || importModalEndpoints.length === 0) return;
 
     let successCount = 0;
-    showToast(`กำลังนำเข้าเอนด์พอยต์ ${importModalEndpoints.length} รายการ...`, 'info');
+    showToast(t('page.webhooks.toastImporting').replace('{n}', String(importModalEndpoints.length)), 'info');
 
     for (const item of importModalEndpoints) {
       if (!item.endpointCode || !item.name) continue;
@@ -497,16 +498,18 @@ export default function Webhooks() {
     }
 
     setImportModalEndpoints(null);
-    showToast(`นำเข้าเอนด์พอยต์สำเร็จ ${successCount} จาก ${importModalEndpoints.length} รายการ`);
+    showToast(
+      t('page.webhooks.toastImported').replace('{success}', String(successCount)).replace('{total}', String(importModalEndpoints.length)),
+    );
     loadData();
   };
 
   // --- Batch Delete Feature ---
   const handleBatchDelete = async () => {
     if (selectedIds.length === 0) return;
-    if (!confirm(`คุณต้องการลบเอนด์พอยต์จำนวน ${selectedIds.length} รายการที่เลือกใช่หรือไม่?`)) return;
+    if (!confirm(t('page.webhooks.confirmBatchDelete').replace('{n}', String(selectedIds.length)))) return;
 
-    showToast(`กำลังลบเอนด์พอยต์ ${selectedIds.length} รายการ...`, 'info');
+    showToast(t('page.webhooks.toastBatchDeleting').replace('{n}', String(selectedIds.length)), 'info');
     let deletedCount = 0;
 
     await Promise.all(
@@ -521,7 +524,7 @@ export default function Webhooks() {
     );
 
     setSelectedIds([]);
-    showToast(`ลบเอนด์พอยต์เรียบร้อยแล้ว ${deletedCount} รายการ`);
+    showToast(t('page.webhooks.toastBatchDeleted').replace('{n}', String(deletedCount)));
     loadData();
   };
 
@@ -629,7 +632,7 @@ export default function Webhooks() {
           <button
             className="ds-toast__close"
             onClick={() => setToast(null)}
-            aria-label="ปิด"
+            aria-label={t('common.close')}
           >
             ✕
           </button>
@@ -642,15 +645,15 @@ export default function Webhooks() {
           <div className="wh-header-icon">🔗</div>
           <div className="wh-header-text">
             <h1>{t('page.webhooks.title')}</h1>
-            <p>จัดการเอนด์พอยต์สำหรับรับเหตุการณ์จากระบบภายนอก และจัดการการตอบกลับ (Callback)</p>
+            <p>{t('page.webhooks.subtitle')}</p>
           </div>
         </div>
 
         <div className="wh-header-actions">
-          <button className="ds-btn ds-btn--ghost" onClick={() => handleExportJSON()} title="ส่งออกเอนด์พอยต์เป็นไฟล์ JSON">
+          <button className="ds-btn ds-btn--ghost" onClick={() => handleExportJSON()} title={t('page.webhooks.exportTitle')}>
             ⤓ {t('page.webhooks.export')}
           </button>
-          <button className="ds-btn ds-btn--ghost" onClick={() => fileInputRef.current?.click()} title="นำเข้าเอนด์พอยต์จากไฟล์ JSON">
+          <button className="ds-btn ds-btn--ghost" onClick={() => fileInputRef.current?.click()} title={t('page.webhooks.importTitle')}>
             ⤒ {t('page.webhooks.import')}
           </button>
 
@@ -660,7 +663,7 @@ export default function Webhooks() {
               ref={searchInputRef}
               type="text"
               className="wh-search-input"
-              placeholder="ค้นหาเอนด์พอยต์..."
+              placeholder={t('page.webhooks.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -677,17 +680,17 @@ export default function Webhooks() {
       {selectedIds.length > 0 && (
         <div className="wh-bulk-bar">
           <div>
-            ✓ เลือกอยู่ <strong>{selectedIds.length}</strong> รายการ
+            ✓ {t('page.webhooks.selectCount').replace('{n}', String(selectedIds.length))}
           </div>
           <div className="wh-bulk-actions">
             <button className="ds-btn ds-btn--ghost" onClick={() => handleExportJSON(endpoints.filter((e) => selectedIds.includes(e.id)))}>
-              ⤓ ส่งออกรายการที่เลือก
+              ⤓ {t('page.webhooks.exportSelected')}
             </button>
             <button className="ds-btn ds-btn--danger" onClick={() => void handleBatchDelete()}>
-              🗑️ ลบรายการที่เลือก ({selectedIds.length})
+              🗑️ {t('page.webhooks.deleteSelected').replace('{n}', String(selectedIds.length))}
             </button>
             <button className="ds-btn ds-btn--ghost" onClick={() => setSelectedIds([])}>
-              ✕ ยกเลิกการเลือก
+              ✕ {t('page.webhooks.clearSelection')}
             </button>
           </div>
         </div>
@@ -696,14 +699,14 @@ export default function Webhooks() {
       {/* Main Card 1: Form Section */}
       <div className="wh-card" ref={formCardRef}>
         <div className="wh-card-title">
-          <span>{editingId ? `แก้ไขเอนด์พอยต์ (${form.endpointCode})` : 'สร้างเอนด์พอยต์ใหม่'}</span>
+          <span>{editingId ? t('page.webhooks.editingTitle').replace('{code}', form.endpointCode) : t('page.webhooks.createCardTitle')}</span>
           {editingId && (
             <button
               className="wh-action-btn"
               onClick={resetForm}
               style={{ fontSize: '0.8rem', fontWeight: 500 }}
             >
-              ✕ ยกเลิกการแก้ไข
+              ✕ {t('page.webhooks.cancelEdit')}
             </button>
           )}
         </div>
@@ -712,7 +715,7 @@ export default function Webhooks() {
           {/* Left Column: Form Fields */}
           <div className="wh-form-main">
             {/* 1. Basic Info */}
-            <div className="wh-form-section-title">ข้อมูลพื้นฐาน</div>
+            <div className="wh-form-section-title">{t('page.webhooks.basicInfo')}</div>
             <div className="wh-grid-4">
               <div className="wh-field">
                 <label className="wh-field-label">
@@ -721,12 +724,12 @@ export default function Webhooks() {
                 <input
                   ref={endpointCodeInputRef}
                   className="wh-input"
-                  placeholder="เช่น dev-intake"
+                  placeholder={t('page.webhooks.endpointCodePlaceholder')}
                   value={form.endpointCode}
                   disabled={!!editingId}
                   onChange={(e) => setForm({ ...form, endpointCode: e.target.value })}
                 />
-                <span className="wh-field-hint">ตัวอักษร a-z, 0-9, และ _ เท่านั้น</span>
+                <span className="wh-field-hint">{t('page.webhooks.endpointCodeHint')}</span>
               </div>
 
               <div className="wh-field">
@@ -735,19 +738,19 @@ export default function Webhooks() {
                 </label>
                 <input
                   className="wh-input"
-                  placeholder="เช่น Dev Intake"
+                  placeholder={t('page.webhooks.namePlaceholder')}
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
-                <span className="wh-field-hint">ชื่อที่ใช้แสดงในระบบ</span>
+                <span className="wh-field-hint">{t('page.webhooks.nameHint')}</span>
               </div>
 
               <div className="wh-field">
-                <label className="wh-field-label">แหล่งที่มา</label>
+                <label className="wh-field-label">{t('page.webhooks.source')}</label>
                 <input
                   className="wh-input"
                   list="source-systems-list"
-                  placeholder="เลือกแหล่งที่มา"
+                  placeholder={t('page.webhooks.sourcePlaceholder')}
                   value={form.sourceSystem}
                   onChange={(e) => setForm({ ...form, sourceSystem: e.target.value })}
                 />
@@ -756,11 +759,11 @@ export default function Webhooks() {
                     <option key={sys} value={sys} />
                   ))}
                 </datalist>
-                <span className="wh-field-hint">บริการหรือระบบต้นทาง</span>
+                <span className="wh-field-hint">{t('page.webhooks.sourceHint')}</span>
               </div>
 
               <div className="wh-field">
-                <label className="wh-field-label">การรับรอง / นโยบาย</label>
+                <label className="wh-field-label">{t('page.webhooks.authPolicyLabel')}</label>
                 <select
                   className="wh-select"
                   value={form.routePolicyId || form.authMode}
@@ -782,17 +785,17 @@ export default function Webhooks() {
                     </option>
                   ))}
                 </select>
-                <span className="wh-field-hint">เลือกวิธีการรับรองหรือกำหนดนโยบาย</span>
+                <span className="wh-field-hint">{t('page.webhooks.authPolicyHint')}</span>
               </div>
             </div>
 
             {/* 2. Callback Section */}
             <div className="wh-form-section-title" style={{ marginTop: '1.25rem' }}>
-              การตอบกลับ (Callback)
+              {t('page.webhooks.callback')}
             </div>
             <div className="wh-grid-3">
               <div className="wh-field">
-                <label className="wh-field-label">โหมด Callback</label>
+                <label className="wh-field-label">{t('page.webhooks.callbackModeLabel')}</label>
                 <select
                   className="wh-select"
                   value={form.callbackTransport}
@@ -800,12 +803,12 @@ export default function Webhooks() {
                     setForm({ ...form, callbackTransport: e.target.value as Endpoint['callbackTransport'] })
                   }
                 >
-                  <option value="NONE">ไม่ส่ง</option>
+                  <option value="NONE">{t('page.webhooks.transport.none')}</option>
                   <option value="HTTP">HTTP</option>
                   <option value="NATS">NATS</option>
                   <option value="BOTH">BOTH (HTTP + NATS)</option>
                 </select>
-                <span className="wh-field-hint">เลือกรูปแบบการตอบกลับเมื่อเกิดเหตุการณ์</span>
+                <span className="wh-field-hint">{t('page.webhooks.callbackModeHint')}</span>
               </div>
 
               <div className="wh-field">
@@ -819,26 +822,26 @@ export default function Webhooks() {
                   disabled={form.callbackTransport === 'NONE' || form.callbackTransport === 'NATS'}
                   onChange={(e) => setForm({ ...form, callbackUrl: e.target.value })}
                 />
-                <span className="wh-field-hint">ปลายทาง HTTP สำหรับรับข้อมูล</span>
+                <span className="wh-field-hint">{t('page.webhooks.callbackUrlHint')}</span>
               </div>
 
               <div className="wh-field">
-                <label className="wh-field-label">NATS reply subject (ถ้าใช้)</label>
+                <label className="wh-field-label">{t('page.webhooks.natsSubjectLabel')}</label>
                 <input
                   className="wh-input"
-                  placeholder="เช่น printer.replies.dev-intake"
+                  placeholder={t('page.webhooks.natsSubjectPlaceholder')}
                   value={form.callbackNatsSubject}
                   disabled={form.callbackTransport === 'NONE' || form.callbackTransport === 'HTTP'}
                   onChange={(e) => setForm({ ...form, callbackNatsSubject: e.target.value })}
                 />
-                <span className="wh-field-hint">ระบุ NATS reply subject (ถ้าใช้)</span>
+                <span className="wh-field-hint">{t('page.webhooks.natsSubjectHint')}</span>
               </div>
             </div>
 
             {/* 3. JSON Payload Template Editor */}
             <div className="wh-field" style={{ marginTop: '1rem' }}>
               <label className="wh-field-label">
-                เทมเพลต Payload (JSON; ใช้ {'${.field}'} เพื่ออ้างอิงค่ากลับ)
+                {t('page.webhooks.payloadTemplate')}
               </label>
 
               <div className="wh-template-grid">
@@ -861,7 +864,7 @@ export default function Webhooks() {
                 {/* Right Switch Toggle Box */}
                 <div className="wh-toggle-box">
                   <div className="wh-toggle-row">
-                    <span className="wh-toggle-label">ส่งเมื่อพิมพ์เสร็จ</span>
+                    <span className="wh-toggle-label">{t('page.webhooks.sendOnPrintDone')}</span>
                     <label className="wh-switch">
                       <input
                         type="checkbox"
@@ -872,7 +875,7 @@ export default function Webhooks() {
                     </label>
                   </div>
                   <span className="wh-field-hint" style={{ marginTop: 0 }}>
-                    ส่ง Callback เมื่อการพิมพ์เสร็จสมบูรณ์
+                    {t('page.webhooks.onPrintResult')}
                   </span>
                 </div>
               </div>
@@ -881,13 +884,13 @@ export default function Webhooks() {
             {/* Form Buttons */}
             <div className="wh-form-actions">
               <button className="ds-btn ds-btn--ghost" onClick={() => void handleSave(false)}>
-                บันทึกแบบร่าง
+                {t('page.webhooks.saveDraft')}
               </button>
               <button className="ds-btn ds-btn--ghost" onClick={() => void testCallback()}>
-                ▷ ทดสอบ
+                ▷ {t('page.webhooks.testShort')}
               </button>
               <button className="ds-btn ds-btn--primary" onClick={() => void handleSave(true)}>
-                {editingId ? 'บันทึกเอนด์พอยต์' : '+ สร้างเอนด์พอยต์'}
+                {editingId ? t('page.webhooks.saveEndpoint') : t('page.webhooks.createEndpoint')}
               </button>
             </div>
           </div>
@@ -897,7 +900,7 @@ export default function Webhooks() {
             {/* Box 1: Sample Payload */}
             <div className="wh-panel">
               <div className="wh-panel-header">
-                <span>ตัวอย่าง Payload</span>
+                <span>{t('page.webhooks.samplePayload')}</span>
               </div>
               <pre className="wh-json-preview">
 {`{
@@ -913,7 +916,7 @@ export default function Webhooks() {
             {/* Box 2: Available Variables Pills */}
             <div className="wh-panel">
               <div className="wh-panel-header">
-                <span>ตัวแปรที่ใช้งานได้</span>
+                <span>{t('page.webhooks.availableVariables')}</span>
               </div>
               <div className="wh-var-pills">
                 {AVAILABLE_VARIABLES.map((v) => (
@@ -921,7 +924,7 @@ export default function Webhooks() {
                     key={v}
                     type="button"
                     className="wh-var-pill"
-                    title={`กดเพื่อเพิ่ม \${.${v.replace('$.', '')}} เข้าในเทมเพลต`}
+                    title={t('page.webhooks.insertVariableTitle').replace('{v}', v.replace('$.', ''))}
                     onClick={() => insertVariableIntoTemplate(v)}
                   >
                     {v}
@@ -933,24 +936,24 @@ export default function Webhooks() {
             {/* Box 3: Usage Instructions */}
             <div className="wh-panel">
               <div className="wh-panel-header">
-                <span>วิธีใช้งาน</span>
+                <span>{t('page.webhooks.howToUse')}</span>
               </div>
               <ul className="wh-guide-list">
                 <li className="wh-guide-item">
                   <span className="wh-guide-icon">🔗</span>
-                  <span>ใช้เทมเพลต JSON และอ้างอิงค่าจากเหตุการณ์ด้วยรูปแบบ {'${.field}'}</span>
+                  <span>{t('page.webhooks.guide1')}</span>
                 </li>
                 <li className="wh-guide-item">
                   <span className="wh-guide-icon">▷</span>
-                  <span>เลือก Callback Mode เป็น "ไม่ส่ง" หากไม่ต้องการส่งผลตอบกลับ</span>
+                  <span>{t('page.webhooks.guide2')}</span>
                 </li>
                 <li className="wh-guide-item">
                   <span className="wh-guide-icon">▷</span>
-                  <span>สามารถทดสอบ Callback ก่อนบันทึกได้</span>
+                  <span>{t('page.webhooks.guide3')}</span>
                 </li>
                 <li className="wh-guide-item">
                   <span className="wh-guide-icon">▷</span>
-                  <span>NATS reply subject ใช้สำหรับการตอบกลับผ่านโปรโตคอล NATS</span>
+                  <span>{t('page.webhooks.guide4')}</span>
                 </li>
               </ul>
             </div>
@@ -963,7 +966,7 @@ export default function Webhooks() {
         <div className="wh-table-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
             <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
-              เอนด์พอยต์ทั้งหมด
+              {t('page.webhooks.allEndpoints')}
             </h2>
 
             {/* Filter Tabs */}
@@ -972,25 +975,25 @@ export default function Webhooks() {
                 className={`wh-tab ${tabFilter === 'all' ? 'wh-tab--active' : ''}`}
                 onClick={() => setTabFilter('all')}
               >
-                ทั้งหมด <span className="wh-tab-badge">{counts.all}</span>
+                {t('page.webhooks.tabAll')} <span className="wh-tab-badge">{counts.all}</span>
               </button>
               <button
                 className={`wh-tab ${tabFilter === 'active' ? 'wh-tab--active' : ''}`}
                 onClick={() => setTabFilter('active')}
               >
-                เปิดใช้งาน <span className="wh-tab-badge">{counts.active}</span>
+                {t('page.webhooks.statusEnabled')} <span className="wh-tab-badge">{counts.active}</span>
               </button>
               <button
                 className={`wh-tab ${tabFilter === 'draft' ? 'wh-tab--active' : ''}`}
                 onClick={() => setTabFilter('draft')}
               >
-                ร่าง <span className="wh-tab-badge">{counts.draft}</span>
+                {t('page.webhooks.statusDraft')} <span className="wh-tab-badge">{counts.draft}</span>
               </button>
               <button
                 className={`wh-tab ${tabFilter === 'none_callback' ? 'wh-tab--active' : ''}`}
                 onClick={() => setTabFilter('none_callback')}
               >
-                ไม่ส่ง <span className="wh-tab-badge">{counts.none_callback}</span>
+                {t('page.webhooks.transport.none')} <span className="wh-tab-badge">{counts.none_callback}</span>
               </button>
             </div>
           </div>
@@ -1002,7 +1005,7 @@ export default function Webhooks() {
                 type="text"
                 className="wh-search-input"
                 style={{ width: 190, paddingRight: '1rem' }}
-                placeholder="ค้นหาเอนด์พอยต์..."
+                placeholder={t('page.webhooks.searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -1014,13 +1017,13 @@ export default function Webhooks() {
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
             >
-              <option value="all">สถานะ: ทั้งหมด</option>
-              <option value="active">เปิดใช้งาน</option>
-              <option value="draft">ร่าง</option>
-              <option value="none_callback">ไม่ส่ง</option>
+              <option value="all">{t('page.webhooks.statusAllOption')}</option>
+              <option value="active">{t('page.webhooks.statusEnabled')}</option>
+              <option value="draft">{t('page.webhooks.statusDraft')}</option>
+              <option value="none_callback">{t('page.webhooks.transport.none')}</option>
             </select>
 
-            <button className="wh-icon-btn" title="รีเฟรชข้อมูล" onClick={loadData}>
+            <button className="wh-icon-btn" title={t('common.refresh')} onClick={loadData}>
               🔁
             </button>
           </div>
@@ -1036,7 +1039,7 @@ export default function Webhooks() {
                     type="checkbox"
                     checked={isAllPaginatedSelected}
                     onChange={toggleSelectAllPaginated}
-                    title="เลือกทั้งหมดในหน้านี้"
+                    title={t('page.webhooks.selectAllOnPage')}
                   />
                 </th>
                 <th>{t('page.webhooks.endpoint')}</th>
@@ -1044,7 +1047,7 @@ export default function Webhooks() {
                 <th>{t('page.webhooks.auth')}</th>
                 <th>{t('page.webhooks.enabled')}</th>
                 <th>{t('page.webhooks.callback')}</th>
-                <th>อัปเดตล่าสุด</th>
+                <th>{t('page.webhooks.updatedAt')}</th>
                 <th style={{ textAlign: 'right' }}>{t('page.webhooks.actions')}</th>
               </tr>
             </thead>
@@ -1052,7 +1055,7 @@ export default function Webhooks() {
               {paginatedEndpoints.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                    ไม่พบเอนด์พอยต์ที่ค้นหา
+                    {t('page.webhooks.noResults')}
                   </td>
                 </tr>
               ) : (
@@ -1069,7 +1072,7 @@ export default function Webhooks() {
                       <button
                         className="wh-endpoint-link"
                         onClick={() => setSelectedEndpointModal(e)}
-                        title="คลิกเพื่อดู URL Intake และตัวอย่าง cURL"
+                        title={t('page.webhooks.viewIntakeUrlTitle')}
                       >
                         {e.endpointCode} <span>🔗</span>
                       </button>
@@ -1079,18 +1082,18 @@ export default function Webhooks() {
                     <td>
                       {e.enabled ? (
                         <span className="ds-status-badge ds-status-badge--active">
-                          เปิดใช้งาน
+                          {t('page.webhooks.statusEnabled')}
                         </span>
                       ) : (
                         <span className="ds-status-badge ds-status-badge--draft">
-                          ร่าง
+                          {t('page.webhooks.statusDraft')}
                         </span>
                       )}
                     </td>
                     <td>
                       <span className="wh-badge-transport">
                         {e.callbackTransport === 'NONE'
-                          ? 'ไม่ส่ง'
+                          ? t('page.webhooks.transport.none')
                           : e.callbackTransport}
                       </span>
                     </td>
@@ -1100,28 +1103,28 @@ export default function Webhooks() {
                         <button
                           className="wh-action-btn"
                           onClick={() => void testCallback(e)}
-                          title="ทดสอบส่ง Callback"
+                          title={t('page.webhooks.testCallbackTitle')}
                         >
-                          ▷ ทดสอบ callback
+                          ▷ {t('page.webhooks.test')}
                         </button>
                         <button
                           className="wh-icon-btn"
                           onClick={() => startEdit(e)}
-                          title="แก้ไข"
+                          title={t('page.webhooks.edit')}
                         >
                           ✏️
                         </button>
                         <button
                           className="wh-icon-btn"
                           onClick={() => void toggleStatus(e)}
-                          title={e.enabled ? 'เปลี่ยนเป็นแบบร่าง' : 'เปิดใช้งาน'}
+                          title={e.enabled ? t('page.webhooks.setDraftTitle') : t('page.webhooks.enableTitle')}
                         >
                           {e.enabled ? '🛑' : '🟢'}
                         </button>
                         <button
                           className="wh-icon-btn"
                           onClick={() => void handleDelete(e)}
-                          title="ลบเอนด์พอยต์"
+                          title={t('page.webhooks.deleteTitle')}
                           style={{ color: '#ef4444' }}
                         >
                           🗑️
@@ -1138,8 +1141,10 @@ export default function Webhooks() {
         {/* Pagination Footer */}
         <div className="wh-pagination">
           <div>
-            แสดง {filteredEndpoints.length === 0 ? 0 : (page - 1) * pageSize + 1} ถึง{' '}
-            {Math.min(page * pageSize, filteredEndpoints.length)} จาก {filteredEndpoints.length} รายการ
+            {t('page.webhooks.paginationSummary')
+              .replace('{from}', String(filteredEndpoints.length === 0 ? 0 : (page - 1) * pageSize + 1))
+              .replace('{to}', String(Math.min(page * pageSize, filteredEndpoints.length)))
+              .replace('{total}', String(filteredEndpoints.length))}
           </div>
 
           <div className="wh-page-controls">
@@ -1168,10 +1173,10 @@ export default function Webhooks() {
                 setPage(1);
               }}
             >
-              <option value={5}>5 / หน้า</option>
-              <option value={10}>10 / หน้า</option>
-              <option value={20}>20 / หน้า</option>
-              <option value={50}>50 / หน้า</option>
+              <option value={5}>{t('page.webhooks.perPage').replace('{n}', '5')}</option>
+              <option value={10}>{t('page.webhooks.perPage').replace('{n}', '10')}</option>
+              <option value={20}>{t('page.webhooks.perPage').replace('{n}', '20')}</option>
+              <option value={50}>{t('page.webhooks.perPage').replace('{n}', '50')}</option>
             </select>
           </div>
         </div>
@@ -1184,7 +1189,7 @@ export default function Webhooks() {
         <div className="wh-table-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
             <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
-              ประวัติการส่ง Callback จริง
+              {t('page.webhooks.callbackLogTitle')}
             </h2>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', color: '#475569' }}>
               <input
@@ -1192,37 +1197,37 @@ export default function Webhooks() {
                 checked={callbackLogFailedOnly}
                 onChange={(e) => setCallbackLogFailedOnly(e.target.checked)}
               />
-              แสดงเฉพาะที่ล้มเหลว/ข้าม
+              {t('page.webhooks.callbackLogFailedOnly')}
             </label>
           </div>
           <div className="wh-table-controls">
-            <button className="wh-icon-btn" title="รีเฟรช" onClick={loadCallbackLog} disabled={callbackLogLoading}>
+            <button className="wh-icon-btn" title={t('common.refresh')} onClick={loadCallbackLog} disabled={callbackLogLoading}>
               🔁
             </button>
           </div>
         </div>
         <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '0 0 0.5rem' }}>
-          บันทึกผลจริงของทุกครั้งที่ระบบพยายามส่ง callback (HTTP/NATS) ทั้งจากงานพิมพ์จริงและปุ่ม "ทดสอบ callback" ด้านบน — ไม่ใช่แค่ว่าระบบเรียกฟังก์ชันส่งเท่านั้น แต่คือผลตอบกลับจริง (สำเร็จ/ล้มเหลว/สถานะ HTTP)
+          {t('page.webhooks.callbackLogDescription')}
         </p>
         <div className="wh-table-wrapper">
           <table className="wh-table">
             <thead>
               <tr>
-                <th>เวลา</th>
-                <th>เอนด์พอยต์</th>
-                <th>ช่องทาง</th>
-                <th>ที่มา</th>
-                <th>ผลลัพธ์</th>
-                <th>สถานะ HTTP</th>
-                <th>เวลาที่ใช้</th>
-                <th>รายละเอียด</th>
+                <th>{t('page.webhooks.colTime')}</th>
+                <th>{t('page.webhooks.endpoint')}</th>
+                <th>{t('page.webhooks.colChannel')}</th>
+                <th>{t('page.webhooks.colTrigger')}</th>
+                <th>{t('page.webhooks.colOutcome')}</th>
+                <th>{t('page.webhooks.colHttpStatus')}</th>
+                <th>{t('page.webhooks.colDuration')}</th>
+                <th>{t('page.webhooks.colDetail')}</th>
               </tr>
             </thead>
             <tbody>
               {callbackLog.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                    {callbackLogLoading ? 'กำลังโหลด...' : 'ยังไม่มีประวัติการส่ง Callback'}
+                    {callbackLogLoading ? t('common.loading') : t('page.webhooks.noCallbackHistory')}
                   </td>
                 </tr>
               ) : (
@@ -1231,14 +1236,14 @@ export default function Webhooks() {
                     <td>{formatDate(a.occurredAt)}</td>
                     <td><code>{a.endpointCode}</code></td>
                     <td>{a.transport}</td>
-                    <td>{a.trigger === 'test' ? 'ทดสอบ' : 'งานจริง'}</td>
+                    <td>{a.trigger === 'test' ? t('page.webhooks.triggerTest') : t('page.webhooks.triggerLive')}</td>
                     <td>
                       {a.outcome === 'success' ? (
-                        <span className="ds-status-badge ds-status-badge--success">สำเร็จ</span>
+                        <span className="ds-status-badge ds-status-badge--success">{t('page.webhooks.outcomeSuccess')}</span>
                       ) : a.outcome === 'failed' ? (
-                        <span className="ds-status-badge ds-status-badge--error">ล้มเหลว</span>
+                        <span className="ds-status-badge ds-status-badge--error">{t('page.webhooks.outcomeFailed')}</span>
                       ) : (
-                        <span className="ds-status-badge ds-status-badge--neutral">ข้าม</span>
+                        <span className="ds-status-badge ds-status-badge--neutral">{t('page.webhooks.outcomeSkipped')}</span>
                       )}
                     </td>
                     <td>{a.httpStatus ?? '—'}</td>
@@ -1265,17 +1270,17 @@ export default function Webhooks() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="ds-modal__header">
-              <h2>⤒ นำเข้าเอนด์พอยต์ ({importModalEndpoints.length} รายการ)</h2>
+              <h2>⤒ {t('page.webhooks.importModalTitle').replace('{n}', String(importModalEndpoints.length))}</h2>
               <button
                 className="ds-btn ds-btn--icon"
                 onClick={() => setImportModalEndpoints(null)}
-                aria-label="ปิด"
+                aria-label={t('common.close')}
               >✕</button>
             </div>
 
             <div className="ds-modal__body" style={{ padding: '1rem' }}>
               <p style={{ fontSize: '0.875rem', color: 'var(--neutral-text-muted)', margin: '0 0 1rem' }}>
-                พบข้อมูลเอนด์พอยต์ในไฟล์ JSON ดังนี้ กรุณาตรวจสอบก่อนยืนยันการนำเข้าเข้าสู่ระบบ:
+                {t('page.webhooks.importPreviewIntro')}
               </p>
 
               <div
@@ -1290,10 +1295,10 @@ export default function Webhooks() {
                 <table className="wh-table" style={{ fontSize: '0.8rem' }}>
                   <thead>
                     <tr>
-                      <th>รหัสเอนด์พอยต์</th>
-                      <th>ชื่อ</th>
-                      <th>แหล่งที่มา</th>
-                      <th>สถานะเดิมในระบบ</th>
+                      <th>{t('page.webhooks.colEndpointCode')}</th>
+                      <th>{t('page.webhooks.name')}</th>
+                      <th>{t('page.webhooks.source')}</th>
+                      <th>{t('page.webhooks.colExistingStatus')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1306,9 +1311,9 @@ export default function Webhooks() {
                           <td>{item.sourceSystem || 'integration-service'}</td>
                           <td>
                             {exists ? (
-                              <span className="ds-status-badge ds-status-badge--warning">⚠️ มีอยู่แล้ว</span>
+                              <span className="ds-status-badge ds-status-badge--warning">{t('page.webhooks.existsAlready')}</span>
                             ) : (
-                              <span className="ds-status-badge ds-status-badge--success">ใหม่</span>
+                              <span className="ds-status-badge ds-status-badge--success">{t('page.webhooks.newItem')}</span>
                             )}
                           </td>
                         </tr>
@@ -1324,16 +1329,16 @@ export default function Webhooks() {
                   checked={overwriteExistingOnImport}
                   onChange={(e) => setOverwriteExistingOnImport(e.target.checked)}
                 />
-                <span>เขียนทับเอนด์พอยต์ที่มีอยู่แล้วในระบบ</span>
+                <span>{t('page.webhooks.overwriteExisting')}</span>
               </label>
             </div>
 
             <div className="ds-modal__actions">
               <button className="ds-btn ds-btn--ghost" onClick={() => setImportModalEndpoints(null)}>
-                ยกเลิก
+                {t('common.cancel')}
               </button>
               <button className="ds-btn ds-btn--primary" onClick={() => void confirmImport()}>
-                ยืนยันการนำเข้า ({importModalEndpoints.length} รายการ)
+                {t('page.webhooks.confirmImport').replace('{n}', String(importModalEndpoints.length))}
               </button>
             </div>
           </div>
@@ -1351,11 +1356,11 @@ export default function Webhooks() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="ds-modal__header">
-              <h2>เอนด์พอยต์: {selectedEndpointModal.endpointCode}</h2>
+              <h2>{t('page.webhooks.endpointDetailTitle').replace('{code}', selectedEndpointModal.endpointCode)}</h2>
               <button
                 className="ds-btn ds-btn--icon"
                 onClick={() => setSelectedEndpointModal(null)}
-                aria-label="ปิด"
+                aria-label={t('common.close')}
               >✕</button>
             </div>
 
@@ -1368,7 +1373,7 @@ export default function Webhooks() {
               </div>
 
               <div>
-                <strong>ตัวอย่าง cURL command:</strong>
+                <strong>{t('page.webhooks.curlExampleLabel')}</strong>
                 <pre className="wh-json-preview" style={{ marginTop: '0.35rem', whiteSpace: 'pre-wrap' }}>
 {`curl -X POST "${window.location.origin}/v1/intake/${selectedEndpointModal.endpointCode}" \\
   -H "Content-Type: application/json" \\
@@ -1381,11 +1386,11 @@ export default function Webhooks() {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                <div><strong>แหล่งที่มา:</strong> {selectedEndpointModal.sourceSystem}</div>
-                <div><strong>การรับรอง:</strong> {selectedEndpointModal.authMode}</div>
-                <div><strong>สถานะ:</strong> {selectedEndpointModal.enabled
-                  ? <span className="ds-status-badge ds-status-badge--active">เปิดใช้งาน</span>
-                  : <span className="ds-status-badge ds-status-badge--draft">ร่าง</span>}</div>
+                <div><strong>{t('page.webhooks.sourceLabelColon')}</strong> {selectedEndpointModal.sourceSystem}</div>
+                <div><strong>{t('page.webhooks.authLabelColon')}</strong> {selectedEndpointModal.authMode}</div>
+                <div><strong>{t('page.webhooks.statusLabelColon')}</strong> {selectedEndpointModal.enabled
+                  ? <span className="ds-status-badge ds-status-badge--active">{t('page.webhooks.statusEnabled')}</span>
+                  : <span className="ds-status-badge ds-status-badge--draft">{t('page.webhooks.statusDraft')}</span>}</div>
                 <div><strong>Callback:</strong> {selectedEndpointModal.callbackTransport}</div>
               </div>
 
@@ -1402,13 +1407,13 @@ export default function Webhooks() {
                 className="ds-btn ds-btn--ghost"
                 onClick={() => void testCallback(selectedEndpointModal)}
               >
-                ▷ ทดสอบส่ง Callback
+                ▷ {t('page.webhooks.testCallbackTitle')}
               </button>
               <button
                 className="ds-btn ds-btn--primary"
                 onClick={() => setSelectedEndpointModal(null)}
               >
-                ตกลง
+                {t('page.webhooks.ok')}
               </button>
             </div>
           </div>
@@ -1420,16 +1425,16 @@ export default function Webhooks() {
         <div className="ds-modal" role="dialog" aria-modal="true" onClick={() => setPendingDeleteEndpoint(null)}>
           <div className="ds-modal__panel ds-modal__panel--sm" onClick={(e) => e.stopPropagation()}>
             <div className="ds-modal__header">
-              <h2>ลบเอนด์พอยต์</h2>
-              <button className="ds-btn ds-btn--icon" onClick={() => setPendingDeleteEndpoint(null)} aria-label="ปิด">✕</button>
+              <h2>{t('page.webhooks.deleteTitle')}</h2>
+              <button className="ds-btn ds-btn--icon" onClick={() => setPendingDeleteEndpoint(null)} aria-label={t('common.close')}>✕</button>
             </div>
             <div className="ds-confirm__body">
-              <p>คุณต้องการลบเอนด์พอยต์นี้ใช่หรือไม่?</p>
+              <p>{t('page.webhooks.confirmDeleteBody')}</p>
               <code>{pendingDeleteEndpoint.endpointCode}</code>
             </div>
             <div className="ds-modal__actions">
-              <button className="ds-btn ds-btn--ghost" onClick={() => setPendingDeleteEndpoint(null)}>ยกเลิก</button>
-              <button className="ds-btn ds-btn--danger" onClick={() => void confirmDeleteEndpoint()}>🗑 ลบเอนด์พอยต์</button>
+              <button className="ds-btn ds-btn--ghost" onClick={() => setPendingDeleteEndpoint(null)}>{t('common.cancel')}</button>
+              <button className="ds-btn ds-btn--danger" onClick={() => void confirmDeleteEndpoint()}>🗑 {t('page.webhooks.deleteTitle')}</button>
             </div>
           </div>
         </div>

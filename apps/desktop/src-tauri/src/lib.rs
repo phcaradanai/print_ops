@@ -15,6 +15,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const SERVER_URL: &str = "http://127.0.0.1:31415";
 const SERVER_PORT: &str = "31415";
 const NATS_SETTINGS_FILE: &str = "nats-settings.json";
+const JWT_SECRET_FILE: &str = "jwt-secret.txt";
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -84,6 +85,75 @@ fn get_nats_settings(app: tauri::AppHandle) -> Result<NatsSettings, String> {
     Ok(load_nats_settings(&data_dir, &log))
 }
 
+fn jwt_secret_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(JWT_SECRET_FILE)
+}
+
+/// Generates a per-installation secret. Not a CSPRNG — it mixes wall-clock
+/// nanoseconds, the process id, and a stack-address ASLR sample through a
+/// splitmix64-style diffusion — but it is generated locally, persisted only
+/// on this machine's disk, and never checked into source control. That is
+/// the property that actually matters here: the API previously fell back to
+/// a literal hardcoded string (`dev-secret-change-in-production`) baked into
+/// the public repository whenever `JWT_SECRET` wasn't set, and the desktop
+/// launcher never set it, so every installed copy of the app signed and
+/// accepted JWTs with the same publicly-known secret. Anyone with that
+/// string could forge an OWNER-role token against any installation.
+fn generate_random_hex_secret() -> String {
+    let mut state: u64 = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0x9E37_79B9_7F4A_7C15);
+    state ^= (std::process::id() as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    let stack_marker = 0u8;
+    state ^= (&stack_marker as *const u8 as u64).wrapping_mul(0x94D0_49BB_1331_11EB);
+
+    fn splitmix64_next(state: &mut u64) -> u64 {
+        *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = *state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    let mut hex = String::with_capacity(64);
+    for _ in 0..4 {
+        let word = splitmix64_next(&mut state);
+        for byte in word.to_le_bytes() {
+            hex.push_str(&format!("{byte:02x}"));
+        }
+    }
+    hex
+}
+
+/// Loads the persisted per-installation JWT secret, generating and saving one
+/// on first run. Reusing the same secret across restarts keeps existing
+/// dashboard login sessions valid; only a corrupted/missing file regenerates
+/// it (which invalidates outstanding sessions, not a security concern for a
+/// single-workstation counter app).
+fn load_or_create_jwt_secret(data_dir: &Path, log: &Path) -> String {
+    let path = jwt_secret_path(data_dir);
+    if let Ok(existing) = fs::read_to_string(&path) {
+        let trimmed = existing.trim();
+        if trimmed.len() >= 32 {
+            return trimmed.to_string();
+        }
+    }
+    let secret = generate_random_hex_secret();
+    let temporary = path.with_extension("txt.tmp");
+    let persisted = fs::write(&temporary, &secret).and_then(|_| fs::rename(&temporary, &path));
+    if persisted.is_err() {
+        log_line(
+            log,
+            "WARNING: could not persist the generated JWT secret to disk; a new one will be \
+             generated next launch, invalidating any open dashboard sessions",
+        );
+    } else {
+        log_line(log, "Generated per-installation JWT signing secret");
+    }
+    secret
+}
+
 /// Everything `save_nats_settings` needs to rebuild the API server's launch
 /// command later, without redoing directory-resolution logic or drifting out
 /// of sync with the equivalent block in `setup()`.
@@ -93,6 +163,7 @@ struct ServerPaths {
     wasm_path: PathBuf,
     logs_dir: PathBuf,
     app_log: PathBuf,
+    jwt_secret: String,
 }
 
 /// Builds the `server.exe` launch command for the given NATS settings. Used
@@ -110,6 +181,7 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
         .env("PRINTOPS_LOCAL_WORKER", "true")
         .env("PRINTOPS_DB_PATH", &paths.db_path)
         .env("SQL_WASM_PATH", &paths.wasm_path)
+        .env("JWT_SECRET", &paths.jwt_secret)
         .env(
             "PRINTOPS_HTML_PRINT_HELPER",
             paths.res_dir.join("print-helper").join("printops-html-print.exe"),
@@ -387,12 +459,19 @@ pub fn run() {
                 );
             }
 
+            // A real per-installation secret, persisted once and reused
+            // across restarts — replaces the API's hardcoded fallback secret
+            // so dashboard/runner JWTs cannot be forged with a value that is
+            // public in source control.
+            let jwt_secret = load_or_create_jwt_secret(&data_dir, &app_log);
+
             let server_paths = ServerPaths {
                 res_dir: res_dir.clone(),
                 db_path: db_path.clone(),
                 wasm_path: wasm_path.clone(),
                 logs_dir: logs.clone(),
                 app_log: app_log.clone(),
+                jwt_secret,
             };
 
             // ── Start API server ──
@@ -517,7 +596,10 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_nats_settings, NatsSettings, ShutdownGuard};
+    use super::{
+        generate_random_hex_secret, load_or_create_jwt_secret, validate_nats_settings,
+        NatsSettings, ShutdownGuard,
+    };
 
     #[test]
     fn shutdown_guard_runs_cleanup_only_once() {
@@ -552,5 +634,39 @@ mod tests {
             subject_prefix: "medisync.print.intake".into(),
         })
         .is_err());
+    }
+
+    #[test]
+    fn generated_jwt_secret_is_a_64_char_hex_string() {
+        let secret = generate_random_hex_secret();
+        assert_eq!(secret.len(), 64);
+        assert!(secret.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn successive_generated_secrets_differ() {
+        // Not a cryptographic guarantee, just confirms the generator isn't
+        // producing a constant (e.g. from an always-zero entropy source).
+        let a = generate_random_hex_secret();
+        let b = generate_random_hex_secret();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn jwt_secret_is_created_once_and_reused_across_calls() {
+        let dir = std::env::temp_dir().join(format!(
+            "printops-jwt-secret-test-{}-{}",
+            std::process::id(),
+            generate_random_hex_secret()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("test.log");
+
+        let first = load_or_create_jwt_secret(&dir, &log);
+        let second = load_or_create_jwt_secret(&dir, &log);
+        assert_eq!(first, second, "secret must persist across restarts, not regenerate every launch");
+        assert_eq!(first.len(), 64);
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

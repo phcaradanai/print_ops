@@ -84,7 +84,8 @@ import { startPrintIntakeConsumer, printIntakeConfigFromEnv, type PrintIntakeCon
 import { v1PrintFlowRoutes } from './routes/v1/print-flow.routes.js';
 import { join, dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { initDatabase } from './infra/db/sqlite.js';
+import { initDatabase, getDb } from './infra/db/sqlite.js';
+import { pruneOldRecords, retentionDaysFromEnv, retentionMaxRowsFromEnv } from './infra/db/retention.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -113,9 +114,38 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     },
   });
 
-  await app.register(cors, { origin: true });
+  // CORS origin is reflect-any by default (`origin: true`) because this is a
+  // LAN-only print gateway authenticated by bearer JWT / X-Api-Key header,
+  // not cookies, so reflecting the origin does not by itself grant a
+  // cross-site attacker anything a same-site request couldn't already do.
+  // Set CORS_ALLOWED_ORIGINS (comma-separated) to lock it down once the
+  // gateway is reachable from anywhere less trusted than a local network.
+  const corsAllowedOriginsEnv = process.env['CORS_ALLOWED_ORIGINS'];
+  const corsOrigin = corsAllowedOriginsEnv
+    ? corsAllowedOriginsEnv.split(',').map((origin) => origin.trim()).filter(Boolean)
+    : true;
+  await app.register(cors, { origin: corsOrigin });
+
+  const jwtSecret = opts.jwtSecret ?? process.env['JWT_SECRET'];
+  if (!jwtSecret) {
+    // The desktop shell (apps/desktop/src-tauri) generates and injects a real
+    // per-installation JWT_SECRET for server.exe, so a properly packaged
+    // desktop build never hits this branch. Any other deployment path
+    // (Docker, bare `node`, CI) that reaches production without setting
+    // JWT_SECRET would otherwise sign every login with a secret that is
+    // public in source control — refuse to start rather than do that quietly.
+    if (process.env['NODE_ENV'] === 'production') {
+      throw new Error(
+        'JWT_SECRET must be set when NODE_ENV=production. Refusing to start with the public dev-only fallback secret.',
+      );
+    }
+    app.log.warn(
+      'JWT_SECRET is not set; using an insecure development-only fallback. ' +
+        'Set JWT_SECRET (or NODE_ENV=production, which will refuse to start without it) before deploying.',
+    );
+  }
   await app.register(jwt, {
-    secret: opts.jwtSecret ?? process.env['JWT_SECRET'] ?? 'dev-secret-change-in-production',
+    secret: jwtSecret ?? 'dev-secret-change-in-production',
   });
 
   app.decorate('authenticate', async function (req: FastifyRequest, reply: FastifyReply) {
@@ -132,6 +162,38 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const dbMode = process.env['DB_MODE'] ?? 'memory';
   const useSqlite = dbMode === 'sqlite';
   if (useSqlite) await initDatabase();
+
+  // Bound the growth of jobs/traces/audit_logs on long-running installs (see
+  // infra/db/retention.ts) — this gateway is not the system of record for
+  // print/job history, so a short window (default 7 days / 1000 rows,
+  // whichever is smaller) is enough. Runs once at boot and then daily;
+  // disable with PRINTOPS_RETENTION_DAYS=0 and PRINTOPS_RETENTION_MAX_ROWS=0.
+  let retentionTimer: ReturnType<typeof setInterval> | undefined;
+  if (useSqlite) {
+    const retentionDays = retentionDaysFromEnv();
+    const retentionMaxRows = retentionMaxRowsFromEnv();
+    const runRetentionSweep = () => {
+      try {
+        const result = pruneOldRecords(getDb(), { retentionDays, maxRows: retentionMaxRows });
+        if (result.jobsDeleted > 0 || result.auditLogsDeleted > 0) {
+          app.log.info(
+            { retentionDays, retentionMaxRows, ...result },
+            'retention sweep: pruned rows past the retention window/row cap',
+          );
+        }
+      } catch (err) {
+        app.log.error({ err }, 'retention sweep failed');
+      }
+    };
+    runRetentionSweep();
+    if (retentionDays > 0 || retentionMaxRows > 0) {
+      retentionTimer = setInterval(runRetentionSweep, 24 * 60 * 60 * 1000);
+      retentionTimer.unref?.();
+      app.addHook('onClose', async () => {
+        if (retentionTimer) clearInterval(retentionTimer);
+      });
+    }
+  }
 
   const printerRepo = useSqlite ? new SqlitePrinterRepository() : new InMemoryPrinterRepository();
   const jobRepo = useSqlite ? new SqliteJobRepository() : new InMemoryJobRepository();
