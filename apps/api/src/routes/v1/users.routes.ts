@@ -21,6 +21,7 @@ export async function v1UserRoutes(
       name: u.name,
       role: u.role,
       isActive: u.isActive,
+      password: u.passwordHash,
       createdAt: u.createdAt,
       updatedAt: u.updatedAt,
     }));
