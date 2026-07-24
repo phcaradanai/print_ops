@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type { IntakeAttemptRepositoryPort } from '@printerops/domain';
 import { requirePermission } from './permission-guard.js';
 import { redactNatsUrl, type PrintIntakeConfig } from '../../infra/nats/print-intake.js';
 
@@ -12,7 +13,11 @@ import { redactNatsUrl, type PrintIntakeConfig } from '../../infra/nats/print-in
  */
 export async function v1PrintFlowRoutes(
   app: FastifyInstance,
-  deps: { printIntake?: PrintIntakeConfig | undefined; printIntakeConnected: () => boolean },
+  deps: {
+    printIntake?: PrintIntakeConfig | undefined;
+    printIntakeConnected: () => boolean;
+    intakeLog?: IntakeAttemptRepositoryPort;
+  },
 ): Promise<void> {
   app.get(
     '/print-flow/config',
@@ -41,6 +46,30 @@ export async function v1PrintFlowRoutes(
             }
           : { enabled: false, connected: false, authRequired: false },
       });
+    },
+  );
+
+  // Read-only log of every dynamic-print-flow intake attempt (NATS or HTTP),
+  // including rejected/dead-lettered ones — so a sysadmin can see that a job
+  // DID arrive and WHY it never became a print job, instead of it silently
+  // vanishing with nothing but a line in the API process log.
+  app.get(
+    '/print-flow/intake-log',
+    { onRequest: [requirePermission('audit:read')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { limit, offset, outcome, source } = req.query as {
+        limit?: string;
+        offset?: string;
+        outcome?: 'accepted' | 'duplicate' | 'rejected';
+        source?: 'nats' | 'api';
+      };
+      const attempts = await deps.intakeLog?.findAll({
+        limit: limit ? Number(limit) : 100,
+        offset: offset ? Number(offset) : undefined,
+        outcome,
+        source,
+      });
+      return reply.send(attempts ?? []);
     },
   );
 }

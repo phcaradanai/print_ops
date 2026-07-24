@@ -8,6 +8,7 @@ export * from './models/service-account.js';
 export * from './models/discovered-printer.js';
 export * from './models/template.js';
 export * from './models/imported-design.js';
+export * from './models/intake-attempt.js';
 export * from './models/sandbox.js';
 export * from './models/connectivity.js';
 

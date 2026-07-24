@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { AcceptExternalJobService } from '../../services/accept-external-job.service.js';
 import type { CancelJobService } from '../../services/cancel-job.service.js';
 import type { ExecuteJobService } from '../../services/execute-job.service.js';
-import type { JobRepositoryPort, TraceRepositoryPort, ServiceAccount } from '@printerops/domain';
+import type { JobRepositoryPort, TraceRepositoryPort, ServiceAccount, IntakeAttemptRepositoryPort } from '@printerops/domain';
 import { redactJob, redactJobs } from '../job-redaction.js';
 
 type ReqWithServiceAccount = { serviceAccount: ServiceAccount };
@@ -16,6 +16,7 @@ export async function v1PrintJobRoutes(
     cancelJob: CancelJobService;
     executeJob: ExecuteJobService;
     apiKeyHook: (req: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<void>;
+    intakeLog?: IntakeAttemptRepositoryPort;
   }
 ): Promise<void> {
   const guard = { onRequest: [deps.apiKeyHook] };
@@ -35,15 +36,36 @@ export async function v1PrintJobRoutes(
       metadata?: Record<string, unknown>;
     };
 
-    if (!body.request_id) return reply.status(400).send({ error: 'request_id is required' });
-    if (!body.printer_code) return reply.status(400).send({ error: 'printer_code is required' });
+    const rejectEarly = (reason: string) => {
+      void deps.intakeLog?.record({
+        source: 'api',
+        outcome: 'rejected',
+        reason,
+        requestId: body.request_id,
+        sourceSystem: body.source_system ?? sa.sourceSystem,
+        sourceReference: body.source_reference,
+        codeTemplate: body.template_code,
+        printerCode: body.printer_code,
+      });
+    };
+
+    if (!body.request_id) {
+      rejectEarly('request_id is required');
+      return reply.status(400).send({ error: 'request_id is required' });
+    }
+    if (!body.printer_code) {
+      rejectEarly('printer_code is required');
+      return reply.status(400).send({ error: 'printer_code is required' });
+    }
 
     // Service account printer allowlist check
     if (
       sa.allowedPrinterCodes.length > 0 &&
       !sa.allowedPrinterCodes.includes(body.printer_code)
     ) {
-      return reply.status(403).send({ error: `printer_code '${body.printer_code}' not allowed for this service account` });
+      const reason = `printer_code '${body.printer_code}' not allowed for this service account`;
+      rejectEarly(reason);
+      return reply.status(403).send({ error: reason });
     }
 
     const result = await deps.acceptExternalJob.execute(

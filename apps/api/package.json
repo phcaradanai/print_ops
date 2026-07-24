@@ -1,6 +1,6 @@
 {
   "name": "@printerops/api",
-  "version": "0.1.0",
+  "version": "0.1.7",
   "private": true,
   "type": "module",
   "main": "dist/server.js",
@@ -21,6 +21,7 @@
     "@printerops/adapters": "*",
     "@printerops/domain": "*",
     "@printerops/shared": "*",
+    "bwip-js": "^4.11.2",
     "fastify": "^4.28.1",
     "nats": "^2.29.3",
     "sql.js": "^1.14.1"

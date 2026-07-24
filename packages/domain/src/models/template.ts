@@ -37,7 +37,11 @@ export type CreatePrintTemplateInput = Omit<
   updatedBy?: string;
 };
 
-export type PaperProfileFieldType = 'text' | 'barcode' | 'date' | 'number';
+export type PaperProfileFieldType = 'text' | 'barcode' | 'qrcode' | 'date' | 'number';
+
+/** 1D symbologies supported for a 'barcode' field. Ignored for 'qrcode' fields
+ * (QR is always its own symbology). Defaults to 'code128' when unset. */
+export type BarcodeSymbology = 'code128' | 'code39' | 'ean13' | 'datamatrix';
 
 /**
  * A named print position on a paper profile — set up visually in the paper
@@ -49,6 +53,8 @@ export interface PaperProfileField {
   label: string;
   defaultValue: string;
   type: PaperProfileFieldType;
+  /** Only meaningful when type === 'barcode'. */
+  barcodeSymbology?: BarcodeSymbology;
   xMm: number;
   yMm: number;
   fontSize: number;

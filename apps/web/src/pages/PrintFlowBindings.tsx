@@ -34,6 +34,22 @@ interface Binding {
   isDefault: boolean;
   enabled: boolean;
 }
+interface IntakeAttempt {
+  id: string;
+  source: 'nats' | 'api';
+  outcome: 'accepted' | 'duplicate' | 'rejected';
+  occurredAt: string;
+  reason?: string;
+  requestId?: string;
+  sourceSystem?: string;
+  sourceReference?: string;
+  codeTemplate?: string;
+  codeProfile?: string;
+  printerCode?: string;
+  clientId?: string;
+  subject?: string;
+  jobId?: string;
+}
 
 export default function PrintFlowBindings() {
   const { t } = useLocale();
@@ -45,6 +61,9 @@ export default function PrintFlowBindings() {
   const [form, setForm] = useState({ templateCode: '', paperProfileId: '', printerCode: '', isDefault: true });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
+  const [intakeLog, setIntakeLog] = useState<IntakeAttempt[]>([]);
+  const [intakeLoading, setIntakeLoading] = useState(false);
+  const [failedOnly, setFailedOnly] = useState(false);
 
   const paperCodeById = useMemo(() => {
     const map = new Map<string, string>();
@@ -57,6 +76,19 @@ export default function PrintFlowBindings() {
     [],
   );
 
+  const loadIntakeLog = useCallback(async () => {
+    setIntakeLoading(true);
+    try {
+      const query = failedOnly ? '?limit=100&outcome=rejected' : '?limit=100';
+      const attempts = await apiFetch<IntakeAttempt[]>(`/v1/print-flow/intake-log${query}`);
+      setIntakeLog(attempts);
+    } catch {
+      // Leave the previous list in place; the page still works without it.
+    } finally {
+      setIntakeLoading(false);
+    }
+  }, [failedOnly]);
+
   const loadAll = useCallback(async () => {
     await Promise.all([
       apiFetch<Template[]>('/v1/templates').then(setTemplates).catch(() => {}),
@@ -68,6 +100,7 @@ export default function PrintFlowBindings() {
   }, [loadBindings]);
 
   useEffect(() => { void loadAll(); }, [loadAll]);
+  useEffect(() => { void loadIntakeLog(); }, [loadIntakeLog]);
 
   useEffect(() => {
     if (!message) return;
@@ -219,6 +252,86 @@ export default function PrintFlowBindings() {
             </div>
           </>
         )}
+      </section>
+
+      {/* ----- Intake log: every attempt, including rejected ones ----- */}
+      <section className="settings-section" aria-labelledby="print-flow-intake-log">
+        <h2 id="print-flow-intake-log">{t('page.printFlow.intakeLog')}</h2>
+        <p className="print-flow-lead">{t('page.printFlow.intakeLogDesc')}</p>
+
+        <div className="settings-actions" style={{ alignItems: 'center', gap: '1rem' }}>
+          <label className="print-flow-checkbox">
+            <input
+              type="checkbox"
+              checked={failedOnly}
+              onChange={(e) => setFailedOnly(e.target.checked)}
+            />
+            {t('page.printFlow.intakeLogFailedOnly')}
+          </label>
+          <button
+            type="button"
+            className="settings-btn-primary"
+            disabled={intakeLoading}
+            onClick={() => void loadIntakeLog()}
+          >
+            {intakeLoading ? t('common.loading') : t('page.printFlow.intakeLogRefresh')}
+          </button>
+        </div>
+
+        <div className="print-flow-table-wrap">
+          <table className="print-flow-table">
+            <thead>
+              <tr>
+                <th>{t('page.printFlow.colTime')}</th>
+                <th>{t('page.printFlow.colSource')}</th>
+                <th>{t('page.printFlow.colRequestId')}</th>
+                <th>{t('page.printFlow.colOutcome')}</th>
+                <th>{t('page.printFlow.colReason')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {intakeLog.length === 0 && (
+                <tr><td colSpan={5} className="print-flow-empty">{t('page.printFlow.intakeLogEmpty')}</td></tr>
+              )}
+              {intakeLog.map((a) => (
+                <tr key={a.id} title={[a.sourceSystem, a.sourceReference, a.codeTemplate, a.codeProfile, a.printerCode, a.clientId, a.subject].filter(Boolean).join(' · ')}>
+                  <td style={{ padding: '0.75rem', fontSize: '0.75rem', color: '#666', whiteSpace: 'nowrap' }}>
+                    {new Date(a.occurredAt).toLocaleString()}
+                  </td>
+                  <td>
+                    <span className={'print-flow-pill' + (a.source === 'nats' ? ' print-flow-pill--on' : '')}>
+                      {a.source === 'nats' ? 'NATS' : 'HTTP API'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                    {a.requestId ?? '—'}
+                  </td>
+                  <td>
+                    <span
+                      className="print-flow-pill"
+                      style={
+                        a.outcome === 'accepted'
+                          ? { background: 'var(--success-bg, #16a34a22)', color: 'var(--success-text, #16a34a)' }
+                          : a.outcome === 'rejected'
+                            ? { background: 'var(--danger-bg, #dc262622)', color: 'var(--danger-text, #dc2626)' }
+                            : undefined
+                      }
+                    >
+                      {a.outcome === 'accepted'
+                        ? t('page.printFlow.outcomeAccepted')
+                        : a.outcome === 'duplicate'
+                          ? t('page.printFlow.outcomeDuplicate')
+                          : t('page.printFlow.outcomeRejected')}
+                    </span>
+                  </td>
+                  <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'var(--neutral-text-muted)' }}>
+                    {a.reason ?? '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="settings-section" aria-labelledby="print-flow-new">

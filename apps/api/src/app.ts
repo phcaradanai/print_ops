@@ -15,6 +15,7 @@ import { InMemoryPaperProfileRepository } from './infra/repos/in-memory-paper-pr
 import { InMemoryPrinterTemplateBindingRepository } from './infra/repos/in-memory-template-binding.repo.js';
 import { InMemoryWebhookEndpointRepository, InMemoryWebhookRoutePolicyRepository } from './infra/repos/in-memory-webhook.repo.js';
 import { InMemoryImportedDesignRepository } from './infra/repos/in-memory-imported-design.repo.js';
+import { InMemoryIntakeAttemptRepository } from './infra/repos/in-memory-intake-attempt.repo.js';
 
 import { SqlitePrinterRepository } from './infra/repos/sqlite/sqlite-printer.repo.js';
 import { SqliteJobRepository } from './infra/repos/sqlite/sqlite-job.repo.js';
@@ -145,6 +146,10 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const webhookEndpointRepo = useSqlite ? new SqliteWebhookEndpointRepository() : new InMemoryWebhookEndpointRepository();
   const webhookPolicyRepo = useSqlite ? new SqliteWebhookRoutePolicyRepository() : new InMemoryWebhookRoutePolicyRepository();
   const importedDesignRepo = useSqlite ? new SqliteImportedDesignRepository() : new InMemoryImportedDesignRepository();
+  // Diagnostic ring buffer of print-flow intake attempts (NATS + HTTP), capped
+  // at 500 entries — deliberately in-memory only in both DB modes, since this
+  // is an operational log for "what just happened", not durable business data.
+  const intakeAttemptRepo = new InMemoryIntakeAttemptRepository();
   const eventBus = new InMemoryEventBus();
   const queue = new InMemoryJobQueue();
   const exporter = new InMemoryExportAdapter();
@@ -160,7 +165,10 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const createPrinter = new CreatePrinterService(printerRepo, eventBus, auditRepo);
   const getPrinterStatus = new GetPrinterStatusService(printerRepo, registry);
   const createJob = new CreatePrintJobService(jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus);
-  const acceptExternalJob = new AcceptExternalJobService(jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus);
+  const acceptExternalJob = new AcceptExternalJobService(
+    jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus,
+    undefined, undefined, undefined, intakeAttemptRepo,
+  );
   const cancelJob = new CancelJobService(jobRepo, traceRepo, auditRepo, eventBus);
   const executeJob = new ExecuteJobService(jobRepo, printerRepo, traceRepo, auditRepo, queue, eventBus, registry);
   const registerRunner = new RegisterRunnerService(runnerRepo, auditRepo, eventBus);
@@ -187,7 +195,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   );
 
   const resolvePrinterBinding = new ResolvePrinterBindingService(paperRepo, bindingRepo, templateRepo);
-  const dynamicPrint = new DynamicPrintService(resolvePrinterBinding, acceptExternalJob);
+  const dynamicPrint = new DynamicPrintService(resolvePrinterBinding, acceptExternalJob, intakeAttemptRepo);
 
   const importPaperProfile = new ImportPaperProfileService(
     paperRepo,
@@ -563,9 +571,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
 
   // Routes — external API v1
   await app.register(async (v1) => {
-    await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, acceptExternalJob, cancelJob, executeJob, apiKeyHook });
-    await v1PrinterPrintRoutes(v1, { dynamicPrint, apiKeyHook });
-    await v1PrintFlowRoutes(v1, { printIntake: printIntakeCfg, printIntakeConnected: () => printIntakeConnected });
+    await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, acceptExternalJob, cancelJob, executeJob, apiKeyHook, intakeLog: intakeAttemptRepo });
+    await v1PrinterPrintRoutes(v1, { dynamicPrint, apiKeyHook, intakeLog: intakeAttemptRepo });
+    await v1PrintFlowRoutes(v1, { printIntake: printIntakeCfg, printIntakeConnected: () => printIntakeConnected, intakeLog: intakeAttemptRepo });
     await v1PrinterRoutes(v1, { printers: printerRepo, getPrinterStatus, apiKeyHook });
     await v1ExportRoutes(v1, { exportJobs, audit: auditRepo, exporter, apiKeyHook });
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
@@ -580,7 +588,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   if (printIntakeCfg) {
     try {
       const printIntakeHandle = await startPrintIntakeConsumer(
-        { dynamicPrint, logger: app.log },
+        { dynamicPrint, logger: app.log, intakeLog: intakeAttemptRepo },
         printIntakeCfg,
       );
       printIntakeConnected = true;

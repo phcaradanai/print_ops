@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { apiFetch, fileToBase64 } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 import { exportJsonFile } from '../tauri.js';
+import { renderBarcodeSvg } from '../lib/barcode.js';
 
 // ── Types ──────────────────────────────────────────────────────────
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -395,13 +396,17 @@ interface UxOptions {
   dynamicFields: DynamicField[];
 }
 
+export type DynamicFieldType = 'text' | 'barcode' | 'qrcode' | 'date' | 'number';
+export type DynamicFieldBarcodeSymbology = 'code128' | 'code39' | 'ean13' | 'datamatrix';
+
 interface DynamicField {
   id: string;
   key: string;
   label: string;
   defaultValue: string;
-  type: 'text' | 'barcode' | 'date' | 'number';
-  // NOTE: Only 'text' type is currently rendered. Other types are reserved for future rendering support.
+  type: DynamicFieldType;
+  /** Only meaningful when type === 'barcode'. Defaults to 'code128' when unset. */
+  barcodeSymbology?: DynamicFieldBarcodeSymbology;
   xMm: number;
   yMm: number;
   fontSize: number;
@@ -770,6 +775,75 @@ function RulerSheet({
   );
 }
 
+/**
+ * Type (+ symbology, when type === 'barcode') selector shared by all three
+ * field-editing panels (desktop compact row, mobile modal, drawer).
+ */
+function FieldTypeControls({
+  field,
+  onUpdate,
+  selectStyle,
+}: {
+  field: DynamicField;
+  onUpdate: (patch: Partial<DynamicField>) => void;
+  selectStyle?: CSSProperties;
+}) {
+  const { t } = useLocale();
+  return (
+    <>
+      <select
+        aria-label={t('page.paperProfiles.fieldType')}
+        value={field.type}
+        onChange={(e) => onUpdate({ type: e.target.value as DynamicFieldType })}
+        style={selectStyle}
+      >
+        <option value="text">{t('page.paperProfiles.fieldTypeText')}</option>
+        <option value="barcode">{t('page.paperProfiles.fieldTypeBarcode')}</option>
+        <option value="qrcode">{t('page.paperProfiles.fieldTypeQrcode')}</option>
+        <option value="date">{t('page.paperProfiles.fieldTypeDate')}</option>
+        <option value="number">{t('page.paperProfiles.fieldTypeNumber')}</option>
+      </select>
+      {field.type === 'barcode' && (
+        <select
+          aria-label={t('page.paperProfiles.barcodeSymbology')}
+          value={field.barcodeSymbology ?? 'code128'}
+          onChange={(e) => onUpdate({ barcodeSymbology: e.target.value as DynamicFieldBarcodeSymbology })}
+          style={selectStyle}
+        >
+          <option value="code128">{t('page.paperProfiles.symbologyCode128')}</option>
+          <option value="code39">{t('page.paperProfiles.symbologyCode39')}</option>
+          <option value="ean13">{t('page.paperProfiles.symbologyEan13')}</option>
+          <option value="datamatrix">{t('page.paperProfiles.symbologyDatamatrix')}</option>
+        </select>
+      )}
+    </>
+  );
+}
+
+/**
+ * Renders a field's content on the design canvas: a real barcode/QR graphic
+ * for 'barcode'/'qrcode' fields (using the sample defaultValue, since that's
+ * the only data available at design time), plain text otherwise.
+ */
+function FieldPreviewContent({ field, scale }: { field: DynamicField; scale: number }) {
+  if (field.type === 'barcode' || field.type === 'qrcode') {
+    const sample = field.defaultValue || field.label || field.key || (field.type === 'qrcode' ? 'QR-SAMPLE' : '123456');
+    const svg = renderBarcodeSvg(sample, field.type, field.barcodeSymbology);
+    if (svg) {
+      const heightPx = Math.max(24, field.type === 'qrcode' ? 18 * scale : 14 * scale);
+      return (
+        <span
+          aria-label={`${field.type} preview for ${sample}`}
+          style={{ display: 'inline-block', height: heightPx, lineHeight: 0 }}
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+      );
+    }
+    return <span>[{field.type}: {sample || '?'}]</span>;
+  }
+  return <>{field.defaultValue || field.label || field.key || 'field'}</>;
+}
+
 function PreviewSheet({
   form,
   ux,
@@ -936,7 +1010,7 @@ function PreviewSheet({
               zIndex: 4,
             }}
           >
-            {f.defaultValue || f.label || f.key || 'field'}
+            <FieldPreviewContent field={f} scale={scale} />
           </button>
             );
           })()
@@ -2020,6 +2094,11 @@ export default function PaperProfiles() {
                   <div className="pp-field-row__secondary" style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
                     <input aria-label={t('page.paperProfiles.fieldDefault')} placeholder={t('page.paperProfiles.fieldDefault')} value={f.defaultValue} onChange={(e) => updField(f.id, { defaultValue: e.target.value })}
                       style={{ ...s.smallInput, width: 80 }} />
+                    <FieldTypeControls
+                      field={f}
+                      onUpdate={(patchFields) => updField(f.id, patchFields)}
+                      selectStyle={{ ...s.sel, width: 88, padding: '0.25rem 0.3rem', fontSize: '0.75rem' }}
+                    />
                     <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>X:</label>
                     <input aria-label="X (mm)" type="number" value={f.xMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { xMm: v }); }}
                       style={{ ...s.smallInput, width: 50 }} />
@@ -2264,6 +2343,7 @@ export default function PaperProfiles() {
                       <div className="paper-preview-modal__field-grid">
                         <label>{t('page.paperProfiles.fieldKey')}<input value={f.key} onChange={(e) => updField(f.id, { key: e.target.value })} /></label>
                         <label>{t('page.paperProfiles.fieldLabel')}<input value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })} /></label>
+                        <label>{t('page.paperProfiles.fieldType')}<FieldTypeControls field={f} onUpdate={(patchFields) => updField(f.id, patchFields)} /></label>
                         <label>{t('page.paperProfiles.positionX')}<input type="number" step="0.1" value={f.xMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { xMm: v }); }} /></label>
                         <label>{t('page.paperProfiles.positionY')}<input type="number" step="0.1" value={f.yMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { yMm: v }); }} /></label>
                         <label>{t('page.paperProfiles.fontSize')}<input type="number" min={6} max={72} value={f.fontSize} onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: clampFontSize(v) }); }} /></label>
@@ -2311,6 +2391,12 @@ export default function PaperProfiles() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem', fontSize: '0.75rem' }}>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fieldLabel')}</label><input value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })} style={s.smallInput} /></div>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fieldDefault')}</label><input value={f.defaultValue} onChange={(e) => updField(f.id, { defaultValue: e.target.value })} style={s.smallInput} /></div>
+                    <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '0.35rem', alignItems: 'flex-end' }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ color: '#6b7280', display: 'block' }}>{t('page.paperProfiles.fieldType')}</label>
+                        <FieldTypeControls field={f} onUpdate={(patchFields) => updField(f.id, patchFields)} selectStyle={{ ...s.smallInput, width: '100%' }} />
+                      </div>
+                    </div>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fontSize')}</label><input type="number" min={6} max={72} value={f.fontSize} onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: clampFontSize(v) }); }} style={s.smallInput} /></div>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.positionX')}</label><input type="number" value={f.xMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { xMm: v }); }} style={s.smallInput} /></div>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.positionY')}</label><input type="number" value={f.yMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { yMm: v }); }} style={s.smallInput} /></div>

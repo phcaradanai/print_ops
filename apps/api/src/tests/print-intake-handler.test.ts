@@ -6,6 +6,7 @@ import {
   type PrintIntakeLogger,
 } from '../infra/nats/print-intake.js';
 import type { DynamicPrintService } from '../services/dynamic-print.service.js';
+import { AppError } from '@printerops/shared';
 
 /**
  * Unit tests for the NATS JetStream print-intake message handler.
@@ -234,6 +235,58 @@ describe('NATS print-intake message handler', () => {
 
     expect(dynamicPrint.submit).toHaveBeenCalledTimes(2);
     // Both messages should ack (duplicate is a success outcome, not an error).
+  });
+
+  it('records a rejected intake attempt when target_client_id does not match (no DynamicPrintService involved)', async () => {
+    const dynamicPrint = makeDynamicPrint();
+    const nc = makeNc();
+    const intakeLog = { record: vi.fn(), findAll: vi.fn(async () => []) };
+    const msg = makeMsg({
+      target_client_id: 'pharmacy-counter-01-typo',
+      request_id: 'REQ-NATS-004',
+      source_system: 'medisync',
+      code_template: 'prescription-sticker',
+      code_profile: 'sticker-profile',
+      payload: {},
+    });
+
+    await handlePrintIntakeMessage(msg, { dynamicPrint, logger, intakeLog }, nc, cfg);
+
+    expect(intakeLog.record).toHaveBeenCalledTimes(1);
+    expect(intakeLog.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'nats',
+        outcome: 'rejected',
+        reason: 'target_client_id does not match this PrintOps client',
+        requestId: 'REQ-NATS-004',
+        clientId: 'pharmacy-counter-01-typo',
+        subject: SUBJECT,
+      }),
+    );
+  });
+
+  it('does not double-record when submit() itself rejects (that is DynamicPrintService/AcceptExternalJobService\'s job)', async () => {
+    const dynamicPrint = makeDynamicPrint(() => {
+      throw new AppError('VALIDATION', '4xx from downstream', 400);
+    });
+    const nc = makeNc();
+    const intakeLog = { record: vi.fn(), findAll: vi.fn(async () => []) };
+    const msg = makeMsg({
+      target_client_id: CLIENT_ID,
+      request_id: 'REQ-NATS-005',
+      source_system: 'medisync',
+      code_template: 'prescription-sticker',
+      code_profile: 'sticker-profile',
+      payload: {},
+    });
+
+    await handlePrintIntakeMessage(msg, { dynamicPrint, logger, intakeLog }, nc, cfg);
+
+    // The transport-level checks all passed, so print-intake.ts itself must not
+    // log anything — recording a submit()-level rejection is
+    // AcceptExternalJobService's responsibility, to avoid a duplicate entry.
+    expect(intakeLog.record).not.toHaveBeenCalled();
+    expect(msg.term).toHaveBeenCalledTimes(1);
   });
 
   it('honours explicit printer_code (skips binding resolution)', async () => {

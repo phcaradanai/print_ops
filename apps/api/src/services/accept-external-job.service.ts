@@ -8,6 +8,8 @@ import type {
   PrintTemplateRepositoryPort,
   PaperProfileRepositoryPort,
   TemplateRendererPort,
+  IntakeAttemptRepositoryPort,
+  IntakeSource,
   Job,
   JobPriority,
 } from '@printerops/domain';
@@ -55,11 +57,49 @@ export class AcceptExternalJobService {
     private templates?: PrintTemplateRepositoryPort,
     private papers?: PaperProfileRepositoryPort,
     private renderer?: TemplateRendererPort,
+    private intakeLog?: IntakeAttemptRepositoryPort,
   ) {
     this.createJob = new CreatePrintJobService(jobs, printers, queue, traces, audit, events);
   }
 
   async execute(
+    req: ExternalPrintJobRequest,
+    actorId: string,
+    source: IntakeSource = 'api',
+  ): Promise<ExternalPrintJobResponse> {
+    try {
+      const result = await this.doExecute(req, actorId);
+      void this.intakeLog?.record({
+        source,
+        outcome: result.duplicate ? 'duplicate' : 'accepted',
+        requestId: req.request_id,
+        sourceSystem: req.source_system,
+        sourceReference: req.source_reference,
+        printerCode: req.printer_code,
+        codeTemplate: req.template_code,
+        clientId: (req.metadata?.['nats'] as { clientId?: string } | undefined)?.clientId,
+        subject: (req.metadata?.['nats'] as { subject?: string } | undefined)?.subject,
+        jobId: result.print_job_id,
+      });
+      return result;
+    } catch (err) {
+      void this.intakeLog?.record({
+        source,
+        outcome: 'rejected',
+        reason: err instanceof Error ? err.message : String(err),
+        requestId: req.request_id,
+        sourceSystem: req.source_system,
+        sourceReference: req.source_reference,
+        printerCode: req.printer_code,
+        codeTemplate: req.template_code,
+        clientId: (req.metadata?.['nats'] as { clientId?: string } | undefined)?.clientId,
+        subject: (req.metadata?.['nats'] as { subject?: string } | undefined)?.subject,
+      });
+      throw err;
+    }
+  }
+
+  private async doExecute(
     req: ExternalPrintJobRequest,
     actorId: string
   ): Promise<ExternalPrintJobResponse> {

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { IntakeAttemptRepositoryPort } from '@printerops/domain';
 
 import { InMemoryPrinterRepository } from '../infra/repos/in-memory-printer.repo.js';
 import { InMemoryJobRepository } from '../infra/repos/in-memory-job.repo.js';
@@ -26,6 +27,7 @@ let bindingRepo: InMemoryPrinterTemplateBindingRepository;
 
 let resolver: ResolvePrinterBindingService;
 let dynamicPrint: DynamicPrintService;
+let intakeLog: { record: ReturnType<typeof vi.fn> } & IntakeAttemptRepositoryPort;
 
 const TEMPLATE = 'LAB_LABEL_DEFAULT';
 const PROFILE = 'LABEL_100X50';
@@ -41,11 +43,13 @@ beforeEach(async () => {
   paperRepo = new InMemoryPaperProfileRepository();
   bindingRepo = new InMemoryPrinterTemplateBindingRepository();
 
+  intakeLog = { record: vi.fn(async (input) => ({ ...input, id: 'attempt-1', occurredAt: new Date() })), findAll: vi.fn(async () => []) } as unknown as typeof intakeLog;
   const acceptExternalJob = new AcceptExternalJobService(
     jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus,
+    undefined, undefined, undefined, intakeLog,
   );
   resolver = new ResolvePrinterBindingService(paperRepo, bindingRepo, templateRepo);
-  dynamicPrint = new DynamicPrintService(resolver, acceptExternalJob);
+  dynamicPrint = new DynamicPrintService(resolver, acceptExternalJob, intakeLog);
 
   await printerRepo.create({
     code: 'LAB_LABEL_01', name: 'Lab Label', protocol: 'fake', connectionUri: 'fake://lab',
@@ -185,5 +189,61 @@ describe('DynamicPrintService', () => {
       { allowedPrinterCodes: ['LAB_LABEL_01'] },
     );
     expect(res.status).toBe('QUEUED');
+  });
+});
+
+describe('intake attempt logging', () => {
+  it('records an accepted attempt on a clean submit', async () => {
+    await dynamicPrint.submit(
+      { request_id: 'REQ-LOG-001', source_system: 'sys', code_template: TEMPLATE, code_profile: PROFILE, payload: {} },
+      'sa-1',
+      { source: 'api' },
+    );
+    expect(intakeLog.record).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'api', outcome: 'accepted', requestId: 'REQ-LOG-001' }),
+    );
+  });
+
+  it('records a duplicate attempt as outcome "duplicate", not "accepted"', async () => {
+    const req = { request_id: 'REQ-LOG-DUP', source_system: 'sys', code_template: TEMPLATE, code_profile: PROFILE, payload: {} };
+    await dynamicPrint.submit(req, 'sa-1');
+    intakeLog.record.mockClear();
+    await dynamicPrint.submit(req, 'sa-1');
+    expect(intakeLog.record).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'duplicate', requestId: 'REQ-LOG-DUP' }),
+    );
+  });
+
+  it('records a rejected attempt with the SA-allowlist reason, before ever reaching AcceptExternalJobService', async () => {
+    await expect(
+      dynamicPrint.submit(
+        { request_id: 'REQ-LOG-403', source_system: 'sys', code_template: TEMPLATE, code_profile: PROFILE, payload: {} },
+        'sa-1',
+        { allowedPrinterCodes: ['SOME_OTHER_PRINTER'], source: 'nats' },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(intakeLog.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'nats',
+        outcome: 'rejected',
+        requestId: 'REQ-LOG-403',
+        reason: expect.stringContaining('not allowed for this service account'),
+      }),
+    );
+  });
+
+  it('records a rejected attempt when the (template + profile) cannot be resolved to a printer', async () => {
+    await expect(
+      dynamicPrint.submit(
+        { request_id: 'REQ-LOG-404', source_system: 'sys', code_template: TEMPLATE, code_profile: 'NOPE', payload: {} },
+        'sa-1',
+      ),
+    ).rejects.toThrow();
+    // Binding resolution fails inside DynamicPrintService itself (before ever
+    // reaching AcceptExternalJobService) — still exactly one record call.
+    expect(intakeLog.record).toHaveBeenCalledTimes(1);
+    expect(intakeLog.record).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'rejected', requestId: 'REQ-LOG-404' }),
+    );
   });
 });

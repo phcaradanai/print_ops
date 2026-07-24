@@ -22,6 +22,7 @@ import {
   nanos,
 } from 'nats';
 import type { DynamicPrintService, DynamicPrintRequest } from '../../services/dynamic-print.service.js';
+import type { IntakeAttemptRepositoryPort } from '@printerops/domain';
 import { AppError } from '@printerops/shared';
 
 export interface PrintIntakeLogger {
@@ -111,7 +112,7 @@ export interface PrintIntakeHandle {
 }
 
 export async function startPrintIntakeConsumer(
-  deps: { dynamicPrint: DynamicPrintService; logger: PrintIntakeLogger },
+  deps: { dynamicPrint: DynamicPrintService; logger: PrintIntakeLogger; intakeLog?: IntakeAttemptRepositoryPort },
   cfg: PrintIntakeConfig,
 ): Promise<PrintIntakeHandle> {
   // The stream is owned by the publisher's environment and may not exist yet on
@@ -195,38 +196,62 @@ export async function startPrintIntakeConsumer(
  */
 export async function handlePrintIntakeMessage(
   msg: JsMsg,
-  deps: { dynamicPrint: DynamicPrintService; logger: PrintIntakeLogger },
+  deps: { dynamicPrint: DynamicPrintService; logger: PrintIntakeLogger; intakeLog?: IntakeAttemptRepositoryPort },
   nc: NatsConnection,
   cfg: PrintIntakeConfig,
 ): Promise<void> {
+  // Records a transport-level rejection — one that happens BEFORE the envelope
+  // ever reaches DynamicPrintService/AcceptExternalJobService (which record
+  // their own outcomes). Keeping this separate avoids double-logging the same
+  // attempt once it's past these checks.
+  const recordRejected = (reason: string, env?: PrintIntakeEnvelope): void => {
+    void deps.intakeLog?.record({
+      source: 'nats',
+      outcome: 'rejected',
+      reason,
+      requestId: env?.request_id,
+      sourceSystem: env?.source_system,
+      sourceReference: env?.source_reference,
+      codeTemplate: env?.code_template,
+      codeProfile: env?.code_profile,
+      printerCode: env?.printer_code,
+      clientId: env?.target_client_id ?? cfg.clientId,
+      subject: msg.subject,
+    });
+  };
+
   let env: PrintIntakeEnvelope;
   try {
     env = msg.json<PrintIntakeEnvelope>();
   } catch (err) {
-    await deadLetter(msg, nc, cfg, deps.logger, `malformed json: ${errMsg(err)}`);
+    const reason = `malformed json: ${errMsg(err)}`;
+    recordRejected(reason);
+    await deadLetter(msg, nc, cfg, deps.logger, reason);
     return;
   }
 
   if (!env.request_id || !env.source_system) {
-    await deadLetter(msg, nc, cfg, deps.logger, 'request_id and source_system are required');
+    const reason = 'request_id and source_system are required';
+    recordRejected(reason, env);
+    await deadLetter(msg, nc, cfg, deps.logger, reason);
     return;
   }
   if (env.target_client_id !== cfg.clientId) {
-    await deadLetter(msg, nc, cfg, deps.logger, 'target_client_id does not match this PrintOps client');
+    const reason = 'target_client_id does not match this PrintOps client';
+    recordRejected(reason, env);
+    await deadLetter(msg, nc, cfg, deps.logger, reason);
     return;
   }
   if (msg.subject !== cfg.subject) {
-    await deadLetter(msg, nc, cfg, deps.logger, 'unexpected intake subject for this PrintOps client');
+    const reason = 'unexpected intake subject for this PrintOps client';
+    recordRejected(reason, env);
+    await deadLetter(msg, nc, cfg, deps.logger, reason);
     return;
   }
   if (!env.printer_code && (!env.code_template || !env.code_profile)) {
-    await deadLetter(
-      msg,
-      nc,
-      cfg,
-      deps.logger,
-      'code_template + code_profile (or printer_code) are required',
-    );
+    const reason = 'code_template + code_profile (or printer_code) are required';
+    recordRejected(reason, env);
+    await deadLetter(msg, nc, cfg, deps.logger, reason);
     return;
   }
 
@@ -252,6 +277,7 @@ export async function handlePrintIntakeMessage(
         },
       },
       `nats:${env.source_system}:client:${cfg.clientId}`,
+      { source: 'nats' },
     );
     deps.logger.info(
       { request_id: env.request_id, print_job_id: result.print_job_id, duplicate: result.duplicate },

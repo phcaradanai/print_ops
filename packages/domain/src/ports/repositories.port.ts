@@ -18,6 +18,7 @@ import type {
   CreateWebhookRoutePolicyInput,
 } from '../models/template.js';
 import type { ImportedDesign, CreateImportedDesignInput } from '../models/imported-design.js';
+import type { IntakeAttempt, CreateIntakeAttemptInput, IntakeOutcome, IntakeSource } from '../models/intake-attempt.js';
 
 export interface ListOptions {
   limit?: number;
@@ -143,4 +144,14 @@ export interface ImportedDesignRepositoryPort {
   findByPaperProfileId(paperProfileId: string): Promise<ImportedDesign | undefined>;
   create(input: CreateImportedDesignInput): Promise<ImportedDesign>;
   delete(id: string): Promise<void>;
+}
+
+/**
+ * Records every dynamic-print-flow intake attempt (NATS or HTTP), including
+ * rejected/dead-lettered ones, so a failure is always visible on the
+ * dashboard instead of only in process logs.
+ */
+export interface IntakeAttemptRepositoryPort {
+  record(input: CreateIntakeAttemptInput): Promise<IntakeAttempt>;
+  findAll(opts?: ListOptions & { outcome?: IntakeOutcome; source?: IntakeSource }): Promise<IntakeAttempt[]>;
 }

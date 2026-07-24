@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 import { exportJsonFile } from '../tauri.js';
+import { renderBarcodeSvg, type BarcodeKind, type BarcodeSymbology } from '../lib/barcode.js';
 
 const WS_PATH_KEY = 'printops-workspace-path';
 
@@ -24,6 +25,8 @@ interface PaperProfileField {
   key: string;
   label?: string;
   defaultValue?: string;
+  type?: 'text' | 'barcode' | 'qrcode' | 'date' | 'number';
+  barcodeSymbology?: BarcodeSymbology;
 }
 
 interface PaperProfileOption {
@@ -90,6 +93,10 @@ const VARIABLES: { token: string; labelKey: string }[] = [
 
 const PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g;
 
+/** Matches either explicit `{{barcode:key}}` / `{{qrcode:key}}`, or a plain
+ * `{{key}}` — mirrors the server's SimpleTemplateRenderer token pattern. */
+const COMBINED_PREVIEW_PATTERN = /\{\{\s*(?:(barcode|qrcode)\s*:\s*([a-zA-Z0-9_.-]+)|([a-zA-Z0-9_.-]+))\s*\}\}/g;
+
 const EMPTY_FORM = {
   templateCode: '',
   name: '',
@@ -154,15 +161,48 @@ function buildSample(
 /**
  * Client-side render of unsaved editor content. The server preview endpoint
  * only accepts a saved template id, so the create/edit form previews locally
- * with the same escape-and-frame treatment SimpleTemplateRenderer applies.
+ * with the same escape-and-frame treatment SimpleTemplateRenderer applies —
+ * including a REAL barcode/QR graphic for `{{barcode:key}}` / `{{qrcode:key}}`
+ * tokens, or a plain `{{key}}` whose bound paper-profile field is typed
+ * 'barcode'/'qrcode', matching the server renderer's inference exactly.
  */
-function localPreview(content: string, engine: string, sample: Record<string, unknown>): string {
-  const rendered = content.replace(PLACEHOLDER_PATTERN, (_raw, key: string) => {
+function localPreview(
+  content: string,
+  engine: string,
+  sample: Record<string, unknown>,
+  profile?: PaperProfileOption,
+): string {
+  function resolveToken(explicitKind: BarcodeKind | undefined, key: string): { html: string; raw: boolean } {
+    const field = profile?.fields.find((f) => f.key === key);
+    const kind = explicitKind ?? (field?.type === 'barcode' || field?.type === 'qrcode' ? field.type : undefined);
     const value = sample[key];
-    return value == null ? '' : String(value);
-  });
-  if (engine === 'HTML') return rendered;
-  return `<pre class="tpl-preview-raw">${escapeHtml(rendered)}</pre>`;
+    if (kind) {
+      if (value == null) return { html: `[${kind}: ${key}]`, raw: false };
+      const svg = renderBarcodeSvg(String(value), kind, field?.barcodeSymbology);
+      if (svg) return { html: `<span class="tpl-preview-barcode">${svg}</span>`, raw: true };
+      return { html: `[${kind}: ${String(value)}]`, raw: false };
+    }
+    return { html: value == null ? '' : String(value), raw: false };
+  }
+
+  if (engine === 'HTML') {
+    return content.replace(COMBINED_PREVIEW_PATTERN, (_raw, kind: BarcodeKind | undefined, explicitKey: string | undefined, plainKey: string | undefined) =>
+      resolveToken(kind, (explicitKey ?? plainKey)!).html,
+    );
+  }
+
+  let out = '';
+  let lastIndex = 0;
+  for (const m of content.matchAll(COMBINED_PREVIEW_PATTERN)) {
+    const idx = m.index ?? 0;
+    out += escapeHtml(content.slice(lastIndex, idx));
+    const key = (m[2] ?? m[3])!;
+    const { html, raw } = resolveToken(m[1] as BarcodeKind | undefined, key);
+    out += raw ? html : escapeHtml(html);
+    lastIndex = idx + m[0].length;
+  }
+  out += escapeHtml(content.slice(lastIndex));
+  return `<pre class="tpl-preview-raw">${out}</pre>`;
 }
 
 function formatDate(value: string | undefined, locale: string): string {
@@ -234,8 +274,7 @@ export default function Templates() {
 
   const contentLines = form.content.split('\n');
 
-  function insertVariable(token: string) {
-    const snippet = `{{${token}}}`;
+  function insertSnippet(snippet: string) {
     const el = contentRef.current;
     if (!el) {
       setForm((prev) => ({ ...prev, content: prev.content + snippet }));
@@ -251,13 +290,25 @@ export default function Templates() {
     });
   }
 
+  function insertVariable(token: string) {
+    insertSnippet(`{{${token}}}`);
+  }
+
+  /** Inserts `{{barcode:key}}` / `{{qrcode:key}}`, preferring a paper-profile
+   * field already typed that way so the token "just works" against real data. */
+  function insertBarcodeToken(kind: BarcodeKind) {
+    const matchingField = formProfile?.fields.find((f) => f.type === kind);
+    const key = matchingField?.key || (kind === 'qrcode' ? 'qrcode' : 'barcode');
+    insertSnippet(`{{${kind}:${key}}}`);
+  }
+
   function showLocalPreview() {
     const sample = buildSample(sampleMode, form.content, formProfile);
     setSelectedId(null);
     setPreview(null);
     setPreviewError('');
     setPreviewNote(t('page.templates.localPreviewNote'));
-    setPreviewHtml(localPreview(form.content, form.engine, sample));
+    setPreviewHtml(localPreview(form.content, form.engine, sample, formProfile));
   }
 
   async function renderServerPreview(tpl: Template, mode: SampleMode = sampleMode) {
@@ -296,7 +347,7 @@ export default function Templates() {
     }
     const sample = buildSample(mode, form.content, formProfile);
     setPreviewNote(t('page.templates.localPreviewNote'));
-    setPreviewHtml(localPreview(form.content, form.engine, sample));
+    setPreviewHtml(localPreview(form.content, form.engine, sample, formProfile));
   }
 
   async function submit() {
@@ -696,6 +747,14 @@ export default function Templates() {
               </div>
               <aside className="tpl-vars">
                 <h3>{t('page.templates.availableKeys')}</h3>
+                <div className="tpl-vars__barcode-actions" style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.6rem' }}>
+                  <button type="button" onClick={() => insertBarcodeToken('barcode')} title={t('page.templates.insertBarcodeHint')}>
+                    ▮▯▮ {t('page.templates.insertBarcode')}
+                  </button>
+                  <button type="button" onClick={() => insertBarcodeToken('qrcode')} title={t('page.templates.insertQrcodeHint')}>
+                    ⬛ {t('page.templates.insertQrcode')}
+                  </button>
+                </div>
                 <ul>
                   {VARIABLES.map((v) => (
                     <li key={v.token}>

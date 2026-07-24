@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import type { ServiceAccount, JobPriority } from '@printerops/domain';
+import type { ServiceAccount, JobPriority, IntakeAttemptRepositoryPort } from '@printerops/domain';
 import { AppError } from '@printerops/shared';
 import type { DynamicPrintService } from '../../services/dynamic-print.service.js';
 
@@ -19,6 +19,7 @@ export async function v1PrinterPrintRoutes(
   deps: {
     dynamicPrint: DynamicPrintService;
     apiKeyHook: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    intakeLog?: IntakeAttemptRepositoryPort;
   },
 ): Promise<void> {
   app.post(
@@ -42,6 +43,16 @@ export async function v1PrinterPrintRoutes(
       };
 
       if (!body.request_id) {
+        void deps.intakeLog?.record({
+          source: 'api',
+          outcome: 'rejected',
+          reason: 'request_id is required',
+          sourceSystem: body.source_system ?? sa.sourceSystem,
+          sourceReference: body.source_reference,
+          codeTemplate: code_template,
+          codeProfile: code_profile,
+          printerCode: body.printer_code,
+        });
         return reply.status(400).send({ error: 'request_id is required' });
       }
 
