@@ -883,15 +883,11 @@ function FieldBarcodePreview({ field }: { field: DynamicField }) {
   const heightMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM);
   const widthMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : undefined;
   return (
-    <div className="pp-barcode-preview" style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem',
-      padding: '0.4rem', marginTop: '0.3rem', background: '#fff',
-      border: '1px solid #e5e7eb', borderRadius: 4, width: 'fit-content',
-    }}>
+    <div className="pp-barcode-preview">
       {svg ? (
         <span
           aria-label={`${field.type} preview for ${sample}`}
-          style={{ display: 'inline-block', height: `${heightMm}mm`, width: widthMm ? `${widthMm}mm` : 'auto', lineHeight: 0 }}
+          style={{ display: 'inline-block', maxWidth: '100%', height: `${heightMm}mm`, width: widthMm ? `${widthMm}mm` : 'auto', lineHeight: 0 }}
           dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', `<svg style="height:100%;width:${widthMm ? '100%' : 'auto'}" `) }}
         />
       ) : (
@@ -918,11 +914,12 @@ function FieldPreviewContent({ field, scale }: { field: DynamicField; scale: num
     if (svg) {
       const realHeightMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM);
       const heightPx = Math.max(10, realHeightMm * scale);
+      const square = field.type === 'qrcode';
       return (
         <span
           aria-label={`${field.type} preview for ${sample}`}
-          style={{ display: 'inline-block', height: heightPx, lineHeight: 0 }}
-          dangerouslySetInnerHTML={{ __html: svg }}
+          style={{ display: 'inline-block', height: heightPx, width: square ? heightPx : 'auto', lineHeight: 0 }}
+          dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', `<svg style="display:block;height:100%;width:${square ? '100%' : 'auto'}" `) }}
         />
       );
     }
@@ -946,6 +943,7 @@ function PreviewSheet({
   gridIntervalMm = 10,
   artworkUrl,
   artworkFitMode,
+  showDimensions = false,
 }: {
   form: PaperForm;
   ux: UxOptions;
@@ -961,6 +959,7 @@ function PreviewSheet({
   gridIntervalMm?: number;
   artworkUrl?: string;
   artworkFitMode?: ImportFitMode;
+  showDimensions?: boolean;
 }) {
   const geometry = getVisualPaperGeometry(form);
   const pvW = geometry.widthMm * scale;
@@ -1098,6 +1097,14 @@ function PreviewSheet({
             }}
           >
             <FieldPreviewContent field={f} scale={scale} />
+            {showDimensions && selectedFieldId === f.id && (
+              <span className="pp-field-measurement" aria-hidden="true">
+                X {f.xMm.toFixed(1)} · Y {f.yMm.toFixed(1)} mm
+                {(f.type === 'qrcode' || f.type === 'barcode')
+                  ? ` · ${f.type === 'qrcode' ? `${(f.qrSizeMm ?? DEFAULT_QR_SIZE_MM).toFixed(1)} × ` : ''}${(f.type === 'qrcode' ? f.qrSizeMm : f.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM)?.toFixed(1)} mm`
+                  : ` · ${f.fontSize} pt`}
+              </span>
+            )}
           </button>
             );
           })()
@@ -1169,6 +1176,7 @@ export default function PaperProfiles() {
   const [showHorizontalGrid, setShowHorizontalGrid] = useState(false);
   const [showRulers, setShowRulers] = useState(false);
   const [showAlignmentGuides, setShowAlignmentGuides] = useState(false);
+  const [showDimensions, setShowDimensions] = useState(true);
   const [gridSpacingMm, setGridSpacingMm] = useState(10); // 1–100 mm, default 10
   const [previewZoom, setPreviewZoom] = useState(1);
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
@@ -1177,6 +1185,9 @@ export default function PaperProfiles() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const previewSheetRef = useRef<HTMLDivElement>(null);
+  const mainPreviewSheetRef = useRef<HTMLDivElement>(null);
+  const activeDragSheetRef = useRef<HTMLDivElement | null>(null);
+  const activeDragScaleRef = useRef(1);
   const dragOffsetRef = useRef({ xMm: 0, yMm: 0 });
   const previewCanvasRef = useRef<HTMLDivElement>(null);
   const modalStageRef = useRef<HTMLDivElement>(null);
@@ -1325,6 +1336,8 @@ export default function PaperProfiles() {
       ...current,
       dynamicFields: current.dynamicFields.map((f) => (f.id === id ? { ...f, ...patchFields } : f)),
     }));
+    setSaveStatus((status) => nextSaveStatus(status, 'dirty'));
+    setSaveError(null);
   }
   function delField(id: string) {
     setUx((current) => {
@@ -1753,11 +1766,13 @@ export default function PaperProfiles() {
   }
 
   // ── Preview calc ───────────────────────────────────────────────────
-  const maxPvSize = 320;
+  // Desktop-first working scale: a 100 × 50 mm label renders at 500 × 250 px,
+  // large enough to inspect and manipulate without opening the expanded view.
+  const maxPvSize = 560;
   const visualGeometry = getVisualPaperGeometry(form);
   const previewWidthMm = visualGeometry.widthMm;
   const previewHeightMm = visualGeometry.heightMm;
-  const scale = Math.min(maxPvSize / previewWidthMm, maxPvSize / previewHeightMm, 2);
+  const scale = Math.min(maxPvSize / previewWidthMm, maxPvSize / previewHeightMm, 5);
 
   // Artwork for the currently editing profile
   const currentArtworkUrl: string | undefined = editingId ? importedArtworkMap[editingId]?.objectUrl : undefined;
@@ -1849,14 +1864,15 @@ export default function PaperProfiles() {
   useEffect(() => {
     if (!draggingFieldId) return;
     const onPointerMove = (event: PointerEvent) => {
-      const sheet = previewSheetRef.current;
+      const sheet = activeDragSheetRef.current;
       if (!sheet) return;
       const rect = sheet.getBoundingClientRect();
       const geometry = getVisualPaperGeometry(form);
       const printableWidth = Math.max(0, form.widthMm - form.marginLeftMm - form.marginRightMm);
       const printableHeight = Math.max(0, form.heightMm - form.marginTopMm - form.marginBottomMm);
-      const pointerX = (event.clientX - rect.left) / modalScale - geometry.marginLeftMm;
-      const pointerY = (event.clientY - rect.top) / modalScale - geometry.marginTopMm;
+      const dragScale = activeDragScaleRef.current;
+      const pointerX = (event.clientX - rect.left) / dragScale - geometry.marginLeftMm;
+      const pointerY = (event.clientY - rect.top) / dragScale - geometry.marginTopMm;
       const visualX = Math.max(0, Math.min(geometry.printableWidthMm, pointerX - dragOffsetRef.current.xMm));
       const visualY = Math.max(0, Math.min(geometry.printableHeightMm, pointerY - dragOffsetRef.current.yMm));
       const originalPoint = mapVisualPointToPrintable(visualX, visualY, geometry);
@@ -1889,19 +1905,20 @@ export default function PaperProfiles() {
     };
   }, [draggingFieldId, form.heightMm, form.marginBottomMm, form.marginLeftMm, form.marginRightMm, form.marginTopMm, form.widthMm, modalScale, ux.dynamicFields]);
 
-  function startDraggingField(event: React.PointerEvent<HTMLButtonElement>, id: string) {
+  function startDraggingField(event: React.PointerEvent<HTMLButtonElement>, id: string, sheet: HTMLDivElement | null = previewSheetRef.current, dragScale = modalScale) {
     event.currentTarget.focus();
     event.preventDefault();
-    const sheet = previewSheetRef.current;
     const field = ux.dynamicFields.find((candidate) => candidate.id === id);
     if (sheet && field) {
       const geometry = getVisualPaperGeometry(form);
       const rect = sheet.getBoundingClientRect();
       const point = mapPrintablePointToVisual(field.xMm, field.yMm, geometry);
-      const pointerX = (event.clientX - rect.left) / modalScale - geometry.marginLeftMm;
-      const pointerY = (event.clientY - rect.top) / modalScale - geometry.marginTopMm;
+      const pointerX = (event.clientX - rect.left) / dragScale - geometry.marginLeftMm;
+      const pointerY = (event.clientY - rect.top) / dragScale - geometry.marginTopMm;
       dragOffsetRef.current = { xMm: pointerX - point.xMm, yMm: pointerY - point.yMm };
     }
+    activeDragSheetRef.current = sheet;
+    activeDragScaleRef.current = dragScale;
     setSelectedFieldId(id);
     setDraggingFieldId(id);
   }
@@ -2170,14 +2187,21 @@ export default function PaperProfiles() {
             <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0.25rem 0 0.5rem', fontStyle: 'italic' }}>{t('page.paperProfiles.previewOnlyHint')}</p>
             <div className="pp-field-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {ux.dynamicFields.map((f) => (
-                <div key={f.id} className="pp-field-row" style={{ padding: '0.5rem', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fafafa', position: 'relative' }}>
+                <div
+                  key={f.id}
+                  id={`paper-field-${f.id}`}
+                  className={'pp-field-row' + (selectedFieldId === f.id ? ' is-selected' : '')}
+                  onClick={() => setSelectedFieldId(f.id)}
+                >
                   <div className="pp-field-row__primary" style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', flexWrap: 'wrap' }}>
+                    <span className="pp-field-type-badge">{f.type === 'qrcode' ? 'QR' : f.type}</span>
                     <input aria-label={t('page.paperProfiles.fieldKey')} placeholder={t('page.paperProfiles.fieldKey')} value={f.key} onChange={(e) => updField(f.id, { key: e.target.value })}
                       style={{ ...s.smallInput, width: 90, fontFamily: 'monospace' }} />
                     <input aria-label={t('page.paperProfiles.fieldLabel')} placeholder={t('page.paperProfiles.fieldLabel')} value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })}
                       style={{ ...s.smallInput, flex: 1 }} />
                     <button type="button" style={s.btnDanger} onClick={(e) => { e.stopPropagation(); delField(f.id); }} title={t('page.paperProfiles.remove')} aria-label={t('page.paperProfiles.remove')}>✕</button>
                   </div>
+                  <div className="pp-field-row__group-label">Content & output</div>
                   <div className="pp-field-row__secondary" style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
                     <input aria-label={t('page.paperProfiles.fieldDefault')} placeholder={t('page.paperProfiles.fieldDefault')} value={f.defaultValue} onChange={(e) => updField(f.id, { defaultValue: e.target.value })}
                       style={{ ...s.smallInput, width: 80 }} />
@@ -2186,10 +2210,13 @@ export default function PaperProfiles() {
                       onUpdate={(patchFields) => updField(f.id, patchFields)}
                       selectStyle={{ ...s.sel, width: 88, padding: '0.25rem 0.3rem', fontSize: '0.75rem' }}
                     />
-                    <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>X:</label>
+                  </div>
+                  <div className="pp-field-row__group-label">Position & style</div>
+                  <div className="pp-field-row__secondary" style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>X mm</label>
                     <input aria-label="X (mm)" type="number" value={f.xMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { xMm: v }); }}
                       style={{ ...s.smallInput, width: 50 }} />
-                    <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>Y:</label>
+                    <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>Y mm</label>
                     <input aria-label="Y (mm)" type="number" value={f.yMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { yMm: v }); }}
                       style={{ ...s.smallInput, width: 50 }} />
                     <input aria-label={t('page.paperProfiles.fieldFontSizePt')} type="number" value={f.fontSize} min={6} max={72}
@@ -2223,25 +2250,43 @@ export default function PaperProfiles() {
         <aside className="pp-preview-panel">
             <div className="pp-preview-panel__body" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <div className="pp-preview-header">
-              <span className="pp-preview-header__title">{t('page.paperProfiles.preview')}</span>
+              <div>
+                <span className="pp-preview-header__title">Label canvas</span>
+                <span className="pp-preview-header__subtitle">Drag fields or use arrow keys for 0.1 mm adjustments</span>
+              </div>
               <div className="pp-preview-header__actions">
                 <span className="pp-preview-header__size">
                   {displayVal(form.widthMm, du, dpi)} × {displayVal(form.heightMm, du, dpi)} {du}
                 </span>
               </div>
             </div>
+            <div className="pp-canvas-toolbar" role="toolbar" aria-label="Canvas controls">
+              <IconButton icon="⊞" label="Toggle grid" onClick={() => { const next = !(showVerticalGrid || showHorizontalGrid); setShowVerticalGrid(next); setShowHorizontalGrid(next); }} active={showVerticalGrid || showHorizontalGrid} />
+              <IconButton icon="📏" label={t('page.paperProfiles.toggleRulers')} onClick={() => setShowRulers(!showRulers)} active={showRulers} />
+              <IconButton icon="↔" label="Show field dimensions" onClick={() => setShowDimensions(!showDimensions)} active={showDimensions} />
+              <button type="button" className="pp-canvas-fit" onClick={() => setPreviewOpen(true)}>Expand canvas</button>
+            </div>
             <div className="pp-preview-stage">
               <div className="pp-preview-stage__meta">
                 <span>{t('page.paperProfiles.previewCanvas')}</span>
                 <span>{form.orientation === 'portrait' ? t('page.paperProfiles.portrait') : t('page.paperProfiles.landscape')}</span>
               </div>
-              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0, textAlign: 'center' }}>{t('page.paperProfiles.previewViewOnly')}</p>
+              {ux.dynamicFields.length === 0 && <p className="pp-canvas-empty">Add a field to start designing this label.</p>}
               <RulerSheet form={form} scale={scale} showRulers={showRulers} unit={du}>
                 <PreviewSheet
                   form={form} ux={ux} scale={scale}
+                  sheetRef={mainPreviewSheetRef}
+                  selectedFieldId={selectedFieldId}
+                  onFieldPointerDown={(event, id) => startDraggingField(event, id, mainPreviewSheetRef.current, scale)}
+                  onFieldSelect={(id) => {
+                    setSelectedFieldId(id);
+                    document.getElementById(`paper-field-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  }}
+                  onFieldNudge={nudgeField}
                   showVerticalGrid={showVerticalGrid}
                   showHorizontalGrid={showHorizontalGrid}
                   showAlignmentGuides={!!selectedFieldId}
+                  showDimensions={showDimensions}
                   gridIntervalMm={gridSpacingMm}
                   artworkUrl={currentArtworkUrl}
                   artworkFitMode={currentArtworkFitMode}
@@ -2257,6 +2302,19 @@ export default function PaperProfiles() {
               <span>{t('page.paperProfiles.quickPixels')}: {Math.round(toPx(form.widthMm, form.dpi))} × {Math.round(toPx(form.heightMm, form.dpi))} px</span>
               <span>{t('page.paperProfiles.quickScale')}: {scale.toFixed(2)}x</span>
               <span>{t('page.paperProfiles.quickFields')}: {ux.dynamicFields.length}</span>
+            </div>
+            <div className="pp-selection-status" aria-live="polite">
+              {selectedFieldId && ux.dynamicFields.find((field) => field.id === selectedFieldId)
+                ? (() => {
+                    const field = ux.dynamicFields.find((candidate) => candidate.id === selectedFieldId)!;
+                    const size = field.type === 'qrcode'
+                      ? `${field.qrSizeMm ?? DEFAULT_QR_SIZE_MM} × ${field.qrSizeMm ?? DEFAULT_QR_SIZE_MM} mm`
+                      : field.type === 'barcode'
+                        ? `${field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM} mm high`
+                        : `${field.fontSize} pt`;
+                    return <><strong>{field.label || field.key || 'Untitled field'}</strong><span>{field.type} · X {field.xMm.toFixed(1)} · Y {field.yMm.toFixed(1)} mm · {size}</span></>;
+                  })()
+                : <><strong>No field selected</strong><span>Select an item on the canvas or in the inspector.</span></>}
             </div>
             </div>
         </aside>
@@ -2348,6 +2406,7 @@ export default function PaperProfiles() {
                       showVerticalGrid={showVerticalGrid}
                       showHorizontalGrid={showHorizontalGrid}
                       showAlignmentGuides={showAlignmentGuides}
+                      showDimensions={showDimensions}
                       gridIntervalMm={gridSpacingMm}
                       artworkUrl={currentArtworkUrl}
                       artworkFitMode={currentArtworkFitMode}
