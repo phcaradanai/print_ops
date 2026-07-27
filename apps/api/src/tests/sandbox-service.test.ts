@@ -11,7 +11,6 @@ import { InMemoryJobQueue } from '../infra/queue/in-memory-queue.js';
 import { AdapterRegistry, FakePrinterAdapter } from '@printerops/adapters';
 import { SimpleTemplateRenderer } from '../infra/template/simple-template-renderer.js';
 import { SandboxService } from '../services/sandbox.service.js';
-import { CreatePrinterService } from '../services/create-printer.service.js';
 import { CreatePrintJobService } from '../services/create-print-job.service.js';
 import { ExecuteJobService } from '../services/execute-job.service.js';
 

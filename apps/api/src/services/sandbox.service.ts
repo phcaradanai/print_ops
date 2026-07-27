@@ -5,7 +5,6 @@ import type {
   SandboxRunResult,
   SandboxRunInput,
   SandboxBatchResult,
-  PrinterRepositoryPort,
   PrintTemplate,
   PaperProfile,
   JobStatus,

@@ -14,7 +14,6 @@ package jobs
 import (
 	"context"
 	"errors"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -65,8 +64,6 @@ type Looper struct {
 	// atomic counters
 	completed atomic.Int64
 	failed    atomic.Int64
-
-	closeOnce sync.Once
 }
 
 // New returns a Looper ready to Run.

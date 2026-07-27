@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 // Unit tests for Webhooks UI state logic (Import, Export, Batch Operations, Template Variables, Filtering)
 

@@ -13,7 +13,6 @@ import type {
   Job,
   JobPriority,
 } from '@printerops/domain';
-import { ConflictError } from '@printerops/shared';
 import { CreatePrintJobService } from './create-print-job.service.js';
 
 export interface ExternalPrintJobRequest {

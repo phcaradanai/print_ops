@@ -1,8 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import type { PrinterRepositoryPort, ServiceAccount } from '@printerops/domain';
+import type { PrinterRepositoryPort } from '@printerops/domain';
 import type { GetPrinterStatusService } from '../../services/get-printer-status.service.js';
-
-type ReqWithServiceAccount = { serviceAccount: ServiceAccount };
 
 export async function v1PrinterRoutes(
   app: FastifyInstance,

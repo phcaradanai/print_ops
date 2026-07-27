@@ -8,7 +8,6 @@ import { InMemoryRunnerRepository } from '../infra/repos/in-memory-runner.repo.j
 import { InMemoryEventBus } from '../infra/eventbus/in-memory-eventbus.js';
 import { InMemoryJobQueue } from '../infra/queue/in-memory-queue.js';
 import { AdapterRegistry, FakePrinterAdapter } from '@printerops/adapters';
-import { generateId } from '@printerops/shared';
 
 import { CreatePrinterService } from '../services/create-printer.service.js';
 import { CreatePrintJobService } from '../services/create-print-job.service.js';
