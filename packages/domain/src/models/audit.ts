@@ -14,6 +14,7 @@ export type AuditAction =
   | 'job.failed'
   | 'job.cancelled'
   | 'job.retried'
+  | 'job.reprint_confirmed'
   | 'runner.registered'
   | 'runner.reconnected'
   | 'runner.heartbeat'

@@ -94,6 +94,7 @@ import { join, dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { initDatabase, getDb } from './infra/db/sqlite.js';
 import { pruneOldRecords, retentionDaysFromEnv, retentionMaxRowsFromEnv } from './infra/db/retention.js';
+import { ReprintJobService } from './services/reprint-job.service.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -283,6 +284,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const createPrinter = new CreatePrinterService(printerRepo, eventBus, auditRepo);
   const getPrinterStatus = new GetPrinterStatusService(printerRepo, registry);
   const createJob = new CreatePrintJobService(jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus);
+  const reprintJob = new ReprintJobService(jobRepo, createJob, auditRepo);
   const acceptExternalJob = new AcceptExternalJobService(
     jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus,
     // Template repo only — NOT the paper repo or the renderer. That combination
@@ -735,7 +737,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   await app.register(async (api) => {
     await authRoutes(api, { users: userRepo });
     await printerRoutes(api, { printers: printerRepo, createPrinter, getPrinterStatus, registry });
-    await jobRoutes(api, { jobs: jobRepo, traces: traceRepo, createJob, executeJob });
+    await jobRoutes(api, { jobs: jobRepo, traces: traceRepo, createJob, executeJob, reprintJob });
     await runnerRoutes(api, { runners: runnerRepo, jobs: jobRepo, registerRunner, runnerHeartbeat });
     await auditRoutes(api, { audit: auditRepo });
     await exportRoutes(api, { exportJobs, audit: auditRepo, printers: printerRepo, exporter });

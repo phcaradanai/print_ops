@@ -21,6 +21,7 @@ function rowToWebhookEndpoint(row: Record<string, unknown>): WebhookEndpoint {
       ? fromJson<Record<string, unknown>>(row['callback_payload_template'], {})
       : undefined,
     callbackOnPrintResult: row['callback_on_print_result'] === 1 || row['callback_on_print_result'] === true,
+    callbackSigningSecretRef: row['callback_signing_secret_ref'] != null ? String(row['callback_signing_secret_ref']) : undefined,
     createdAt: toDate(row['created_at']),
     updatedAt: toDate(row['updated_at']),
   };
@@ -73,8 +74,8 @@ export class SqliteWebhookEndpointRepository implements WebhookEndpointRepositor
     const now = dateStr(new Date());
 
     db.run(
-      `INSERT INTO webhook_endpoints (id, endpoint_code, name, source_system, auth_mode, api_key, enabled, route_policy_id, callback_transport, callback_url, callback_nats_subject, callback_payload_template, callback_on_print_result, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO webhook_endpoints (id, endpoint_code, name, source_system, auth_mode, api_key, enabled, route_policy_id, callback_transport, callback_url, callback_nats_subject, callback_payload_template, callback_on_print_result, callback_signing_secret_ref, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.endpointCode,
@@ -89,6 +90,7 @@ export class SqliteWebhookEndpointRepository implements WebhookEndpointRepositor
         input.callbackNatsSubject ?? null,
         input.callbackPayloadTemplate ? toJson(input.callbackPayloadTemplate) : null,
         input.callbackOnPrintResult ? 1 : 0,
+        input.callbackSigningSecretRef ?? null,
         now,
         now,
       ],
@@ -127,6 +129,7 @@ export class SqliteWebhookEndpointRepository implements WebhookEndpointRepositor
     if ('callbackNatsSubject' in patch) add('callback_nats_subject', patch.callbackNatsSubject ?? null);
     if ('callbackPayloadTemplate' in patch) add('callback_payload_template', patch.callbackPayloadTemplate ? toJson(patch.callbackPayloadTemplate) : null);
     if ('callbackOnPrintResult' in patch) add('callback_on_print_result', patch.callbackOnPrintResult ? 1 : 0);
+    if ('callbackSigningSecretRef' in patch) add('callback_signing_secret_ref', patch.callbackSigningSecretRef ?? null);
 
     add('updated_at', dateStr(new Date()));
 

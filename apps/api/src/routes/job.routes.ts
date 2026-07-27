@@ -4,6 +4,8 @@ import type { ExecuteJobService } from '../services/execute-job.service.js';
 import type { JobRepositoryPort, TraceRepositoryPort } from '@printerops/domain';
 import { redactJob, redactJobs } from './job-redaction.js';
 import { requirePermission } from './v1/permission-guard.js';
+import type { ReprintJobService, ReprintJobInput } from '../services/reprint-job.service.js';
+import { AppError } from '@printerops/shared';
 
 export async function jobRoutes(
   app: FastifyInstance,
@@ -12,6 +14,7 @@ export async function jobRoutes(
     traces: TraceRepositoryPort;
     createJob: CreatePrintJobService;
     executeJob: ExecuteJobService;
+    reprintJob: ReprintJobService;
   }
 ): Promise<void> {
   // These legacy internal-dashboard routes previously only checked
@@ -20,6 +23,7 @@ export async function jobRoutes(
   // same permission model the newer v1 routes already use.
   const read = { onRequest: [requirePermission('job:read')] };
   const create = { onRequest: [requirePermission('job:create')] };
+  const reprint = { onRequest: [requirePermission('job:retry')] };
   const traceRead = { onRequest: [requirePermission('trace:read')] };
 
   app.get('/jobs', read, async (req) => {
@@ -47,6 +51,20 @@ export async function jobRoutes(
     const job = await deps.jobs.findById(id);
     if (!job) return reply.status(404).send({ error: 'Job not found' });
     return redactJob(job);
+  });
+
+  app.post('/jobs/:id/reprint', reprint, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const actor = (req.user as { sub: string }).sub;
+    try {
+      const job = await deps.reprintJob.execute(id, req.body as ReprintJobInput, actor);
+      return reply.status(201).send(job);
+    } catch (err) {
+      if (err instanceof AppError) {
+        return reply.status(err.statusCode).send({ error: err.code, message: err.message });
+      }
+      throw err;
+    }
   });
 
   app.get('/jobs/:id/trace', traceRead, async (req, reply) => {

@@ -54,6 +54,7 @@ export function buildCallbackIntent(
 
   const transports: CallbackTransport[] = [];
   const intent: JobCallbackIntent = { ...base, enabled: false, transports };
+  intent.callbackSigningSecretRef = endpoint.callbackSigningSecretRef;
 
   if (transport === 'HTTP' || transport === 'BOTH') {
     const url = resolveCallbackDestination(endpoint.callbackUrl, intakePayload);

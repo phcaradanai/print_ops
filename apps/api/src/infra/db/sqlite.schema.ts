@@ -284,6 +284,7 @@ export function runSchemaMigration(db: Database): void {
       callback_nats_subject TEXT,
       callback_payload_template TEXT,
       callback_on_print_result INTEGER NOT NULL DEFAULT 0,
+      callback_signing_secret_ref TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
@@ -296,6 +297,7 @@ export function runSchemaMigration(db: Database): void {
     'ALTER TABLE webhook_endpoints ADD COLUMN callback_nats_subject TEXT',
     'ALTER TABLE webhook_endpoints ADD COLUMN callback_payload_template TEXT',
     'ALTER TABLE webhook_endpoints ADD COLUMN callback_on_print_result INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE webhook_endpoints ADD COLUMN callback_signing_secret_ref TEXT',
   ]) {
     try {
       db.run(col);

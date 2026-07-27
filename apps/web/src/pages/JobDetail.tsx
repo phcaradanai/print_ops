@@ -75,7 +75,7 @@ interface CallbackDelivery {
   requestId?: string;
   transport: 'HTTP' | 'NATS';
   target: string;
-  deliveryStatus: 'PENDING' | 'DELIVERING' | 'DELIVERED' | 'RETRY_SCHEDULED' | 'FAILED' | 'SKIPPED';
+  deliveryStatus: 'PENDING' | 'DELIVERING' | 'DELIVERED' | 'RETRY_SCHEDULED' | 'FAILED';
   guarantee?: 'BEST_EFFORT' | 'ACKNOWLEDGED';
   attemptCount: number;
   maxAttempts: number;
@@ -182,7 +182,6 @@ const DELIVERY_PRESENTATION: Record<
   DELIVERED: { color: '#40a02b', symbol: '✓' },
   RETRY_SCHEDULED: { color: '#df8e1d', symbol: '⏱' },
   FAILED: { color: '#d20f39', symbol: '✕' },
-  SKIPPED: { color: '#9399b2', symbol: '–' },
 };
 
 /**

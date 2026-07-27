@@ -17,6 +17,7 @@
     "clean": "find . -name 'dist' -not -path '*/node_modules/*' -exec rm -rf {} + 2>/dev/null; true"
   },
   "devDependencies": {
+    "@playwright/test": "^1.54.1",
     "concurrently": "^8.2.2",
     "typescript": "^5.4.5"
   },

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
@@ -21,6 +21,9 @@ interface Job {
   mimeType?: string;
   latency?: { totalLatencyMs?: number };
   createdAt: string;
+  completedAt?: string;
+  runnerId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 /** Extract a short human hint about what was printed from payloadSnapshot.
@@ -39,6 +42,11 @@ export default function JobQueue() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [reprinting, setReprinting] = useState<string | null>(null);
+  const [reprintJob, setReprintJob] = useState<Job | null>(null);
+  const [reprintReason, setReprintReason] = useState('');
+  const [reprintCopies, setReprintCopies] = useState(1);
+  const [duplicateRisk, setDuplicateRisk] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -62,31 +70,38 @@ export default function JobQueue() {
     return () => clearTimeout(timer);
   }, [message]);
 
-  const handleReprint = async (job: Job) => {
-    setReprinting(job.id);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (reprintJob && dialog && !dialog.open) dialog.showModal();
+    if (!reprintJob && dialog?.open) dialog.close();
+  }, [reprintJob]);
+
+  const openReprint = async (job: Job) => {
     try {
-      const fullJob = await apiFetch<Record<string, unknown>>(`/jobs/${job.id}`);
-      const newJob = await apiFetch<Job>('/jobs', {
+      const fullJob = await apiFetch<Job>(`/jobs/${job.id}`);
+      setReprintCopies(fullJob.copies || 1);
+      setReprintReason('');
+      setDuplicateRisk(false);
+      setReprintJob(fullJob);
+    } catch {
+      setMessage({ tone: 'error', text: 'Unable to load the safety information required for reprint.' });
+    }
+  };
+
+  const confirmReprint = async () => {
+    if (!reprintJob) return;
+    setReprinting(reprintJob.id);
+    try {
+      const newJob = await apiFetch<Job>(`/jobs/${reprintJob.id}/reprint`, {
         method: 'POST',
         body: JSON.stringify({
-          printerId: fullJob['printerId'],
-          printerCode: fullJob['printerCode'],
-          templateCode: fullJob['templateCode'],
-          documentUrl: fullJob['documentUrl'],
-          documentBase64: fullJob['documentBase64'],
-          payloadSnapshot: fullJob['payloadSnapshot'],
-          mimeType: fullJob['mimeType'],
-          copies: fullJob['copies'],
-          duplex: fullJob['duplex'],
-          colorMode: fullJob['colorMode'],
-          mediaType: fullJob['mediaType'],
-          resolution: fullJob['resolution'],
-          priority: fullJob['priority'],
-          sourceSystem: fullJob['sourceSystem'],
-          sourceReference: fullJob['sourceReference'],
-          metadata: { ...(fullJob['metadata'] as Record<string, unknown> ?? {}), isReprintOf: fullJob['id'] },
+          printerId: reprintJob.printerId,
+          copies: reprintCopies,
+          reason: reprintReason,
+          confirmedDuplicateRisk: duplicateRisk,
         }),
       });
+      setReprintJob(null);
       setMessage({ tone: 'ok', text: `Successfully submitted reprint as job: ${newJob.id.slice(0, 8)}` });
     } catch {
       setMessage({ tone: 'error', text: 'Failed to reprint job. Check connection or job data.' });
@@ -201,7 +216,7 @@ export default function JobQueue() {
                   {/* Actions */}
                   <td>
                     <button
-                      onClick={() => void handleReprint(j)}
+                      onClick={() => void openReprint(j)}
                       disabled={reprinting === j.id}
                       className="btn-secondary"
                       style={{ fontSize: '0.7rem', padding: '0.35rem 0.6rem' }}
@@ -215,6 +230,43 @@ export default function JobQueue() {
           </tbody>
         </table>
       )}
+      <dialog ref={dialogRef} aria-labelledby="reprint-title" onCancel={() => setReprintJob(null)}
+        style={{ maxWidth: '620px', width: 'calc(100% - 2rem)', border: 0, borderRadius: '12px', padding: '1.5rem' }}>
+        {reprintJob && (
+          <form method="dialog" onSubmit={(event) => { event.preventDefault(); void confirmReprint(); }}>
+            <h2 id="reprint-title">Confirm additional physical copy</h2>
+            <p role="alert" style={{ color: '#9a3412', fontWeight: 700 }}>
+              This creates a new print job. Output may already have occurred; this is not a callback retry.
+            </p>
+            <dl>
+              <dt>Original request ID</dt><dd><code>{reprintJob.requestId ?? 'Unavailable — reprint blocked'}</code></dd>
+              <dt>Original job ID</dt><dd><code>{reprintJob.id}</code></dd>
+              <dt>Print status</dt><dd>{reprintJob.status}</dd>
+              <dt>Original printer / selected destination</dt><dd>{reprintJob.printerCode ?? reprintJob.printerId}</dd>
+              <dt>Runner</dt><dd>{reprintJob.runnerId ?? 'Unknown — reprint blocked'}</dd>
+              <dt>Print completion time</dt><dd>{reprintJob.completedAt ? new Date(reprintJob.completedAt).toLocaleString() : 'Not recorded'}</dd>
+              <dt>Runner acknowledged completion</dt><dd>{reprintJob.runnerId && reprintJob.completedAt ? 'Yes' : 'No or unknown'}</dd>
+              <dt>Callback delivery</dt><dd>See original job detail; callback delivery is not retried by this action.</dd>
+            </dl>
+            <label htmlFor="reprint-copies">Copies for new attempt</label>
+            <input id="reprint-copies" type="number" min={1} step={1} value={reprintCopies}
+              onChange={(e) => setReprintCopies(Number(e.target.value))} required />
+            <label htmlFor="reprint-reason">Reason for reprint</label>
+            <textarea id="reprint-reason" value={reprintReason}
+              onChange={(e) => setReprintReason(e.target.value)} required />
+            <label style={{ display: 'flex', gap: '.5rem', marginTop: '1rem' }}>
+              <input type="checkbox" checked={duplicateRisk} onChange={(e) => setDuplicateRisk(e.target.checked)} />
+              I understand this action may produce an additional physical copy.
+            </label>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '.75rem', marginTop: '1.25rem' }}>
+              <button type="button" className="btn-secondary" onClick={() => setReprintJob(null)}>Cancel</button>
+              <button type="submit" disabled={!duplicateRisk || !reprintReason.trim() || !reprintJob.runnerId || !reprintJob.requestId || reprinting === reprintJob.id}>
+                {reprinting === reprintJob.id ? 'Submitting…' : 'Confirm reprint'}
+              </button>
+            </div>
+          </form>
+        )}
+      </dialog>
     </div>
   );
 }

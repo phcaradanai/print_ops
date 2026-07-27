@@ -163,7 +163,7 @@ export async function webhookRoutes(
       [
         'deliveryStatus',
         deliveryStatus,
-        ['PENDING', 'DELIVERING', 'DELIVERED', 'RETRY_SCHEDULED', 'FAILED', 'SKIPPED'],
+        ['PENDING', 'DELIVERING', 'DELIVERED', 'RETRY_SCHEDULED', 'FAILED'],
       ],
       ['transport', transport, ['HTTP', 'NATS']],
     ]);

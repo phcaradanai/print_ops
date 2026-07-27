@@ -64,6 +64,7 @@ export interface JobCallbackIntent {
   /** Resolved literal subject — never a `$.field` template. */
   natsSubject?: string;
   natsMode?: NatsDeliveryMode;
+  callbackSigningSecretRef?: string;
   /** Why `enabled` is false, for the UI. */
   disabledReason?: string;
 }
@@ -76,28 +77,20 @@ export interface JobCallbackIntent {
  *                   ├──> RETRY_SCHEDULED ──> DELIVERING ...
  *                   └──> FAILED            (attempts exhausted / permanent 4xx)
  *
- *   SKIPPED                                (reserved)
- *
- * `SKIPPED` is queryable but is not produced by any code path today: a
- * destination that cannot be resolved is recorded on the JOB's callback intent
- * (`enabled: false` + `disabledReason`) rather than as a delivery with nothing
- * to deliver to. It is kept in the union so a future "endpoint deleted between
- * accept and terminal" case has an honest state to land in, instead of being
- * mislabelled FAILED.
+ * Disabled callbacks are represented by `JobCallbackIntent.enabled=false`;
+ * they are not deliveries and therefore do not get a delivery state.
  */
 export type CallbackDeliveryStatus =
   | 'PENDING'
   | 'DELIVERING'
   | 'DELIVERED'
   | 'RETRY_SCHEDULED'
-  | 'FAILED'
-  | 'SKIPPED';
+  | 'FAILED';
 
 /** A delivery is terminal when the retry worker must never touch it again. */
 export const TERMINAL_DELIVERY_STATUSES: readonly CallbackDeliveryStatus[] = [
   'DELIVERED',
   'FAILED',
-  'SKIPPED',
 ];
 
 export function isTerminalDeliveryStatus(status: CallbackDeliveryStatus): boolean {
@@ -187,6 +180,7 @@ export function readCallbackIntent(
     httpUrl: intent.httpUrl,
     natsSubject: intent.natsSubject,
     natsMode: intent.natsMode,
+    callbackSigningSecretRef: intent.callbackSigningSecretRef,
     disabledReason: intent.disabledReason,
   };
 }

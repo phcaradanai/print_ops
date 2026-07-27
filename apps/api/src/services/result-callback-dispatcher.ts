@@ -19,6 +19,7 @@ import {
   type RetryPolicy,
 } from './callback-retry-policy.js';
 import { assertCallbackUrlAllowed, CallbackUrlRejected, callbackUrlPolicyFromEnv, type CallbackUrlPolicy } from '../infra/http/callback-url-guard.js';
+import { callbackSigningSecret, CALLBACK_SIGNATURE_VERSION, signCallback } from './callback-signing.js';
 
 /** Wire-format version of the result-callback contract. Bump on a breaking
  *  change to the payload shape; receivers should switch on it. */
@@ -294,6 +295,16 @@ export class ResultCallbackDispatcher {
     }
 
     try {
+      const rawBody = JSON.stringify(delivery.payload);
+      const intent = readCallbackIntent((await this.deps.jobs.findById(delivery.printJobId))?.metadata);
+      const timestamp = Math.floor(this.now().getTime() / 1000).toString();
+      const signingHeaders: Record<string, string> = {};
+      if (intent?.callbackSigningSecretRef) {
+        const secret = callbackSigningSecret(intent.callbackSigningSecretRef);
+        signingHeaders['X-PrintOps-Timestamp'] = timestamp;
+        signingHeaders['X-PrintOps-Signature'] = signCallback(rawBody, timestamp, secret);
+        signingHeaders['X-PrintOps-Signature-Version'] = CALLBACK_SIGNATURE_VERSION;
+      }
       const res = await this.deps.http(delivery.target, delivery.payload, {
         timeoutMs: this.policy.requestTimeoutMs,
         headers: {
@@ -303,6 +314,7 @@ export class ResultCallbackDispatcher {
           'X-PrintOps-Event-Id': delivery.eventId,
           'X-PrintOps-Delivery-Id': delivery.id,
           'X-PrintOps-Event-Type': RESULT_EVENT_TYPE,
+          ...signingHeaders,
         },
       });
       if (res.status >= 200 && res.status < 300) {

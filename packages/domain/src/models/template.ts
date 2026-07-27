@@ -153,6 +153,8 @@ export interface WebhookEndpoint {
   callbackPayloadTemplate?: Record<string, unknown>;
   /** Send the callback only after the print result (success/failure) is known, instead of immediately after job creation. Defaults to false. */
   callbackOnPrintResult?: boolean;
+  /** Environment-backed secret reference. The secret itself is never stored. */
+  callbackSigningSecretRef?: string;
   createdAt: Date;
   updatedAt: Date;
 }

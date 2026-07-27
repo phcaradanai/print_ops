@@ -16,6 +16,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { connect, type NatsConnection } from 'nats';
 
 const NATS_URL = process.env['PRINTOPS_E2E_NATS_URL'] ?? 'nats://127.0.0.1:14222';
@@ -28,9 +29,11 @@ const ARTIFACTS = resolve(process.cwd(), 'artifacts/e2e');
 
 // buildApp reads all of these at import/boot time.
 process.env['NODE_ENV'] = 'test';
-process.env['DB_MODE'] = 'memory';
+process.env['DB_MODE'] = 'sqlite';
+process.env['PRINTOPS_DB_PATH'] = resolve(ARTIFACTS, 'production-path.sqlite');
+process.env['SQL_WASM_PATH'] = resolve(process.cwd(), 'node_modules/sql.js/dist/sql-wasm.wasm');
 process.env['JWT_SECRET'] = 'e2e-harness-secret-not-a-real-credential';
-process.env['PRINTOPS_LOCAL_WORKER'] = 'true';
+process.env['PRINTOPS_LOCAL_WORKER'] = 'false';
 process.env['PRINTOPS_NATS_URL'] = NATS_URL;
 process.env['PRINTOPS_NATS_CLIENT_ID'] = CLIENT_ID;
 process.env['PRINTOPS_NATS_SUBJECT_PREFIX'] = SUBJECT_PREFIX;
@@ -151,6 +154,23 @@ async function main(): Promise<void> {
   const addr = app.server.address() as { port: number };
   const BASE = `http://127.0.0.1:${addr.port}`;
   console.log(`[setup] API on ${BASE}`);
+  const runnerBinary = resolve(process.cwd(), 'apps/runner-go/printops-runner.exe');
+  const runner: ChildProcess = spawn(runnerBinary, ['run'], {
+    env: {
+      ...process.env,
+      PRINTOPS_API_BASE_URL: BASE,
+      PRINTOPS_RUNNER_NAME: 'e2e-production-go-runner',
+      PRINTOPS_DISCOVERY_MODE: 'fake',
+      PRINTOPS_EXECUTOR_MODE: 'fake',
+      PRINTOPS_POLL_INTERVAL_MS: '100',
+      PRINTOPS_HEARTBEAT_INTERVAL_MS: '500',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  runner.stdout?.on('data', (chunk) => process.stdout.write(`[go-runner] ${String(chunk)}`));
+  runner.stderr?.on('data', (chunk) => process.stderr.write(`[go-runner] ${String(chunk)}`));
+  await sleep(1500);
+  if (runner.exitCode !== null) throw new Error(`Go runner exited early with ${runner.exitCode}`);
   // give the print-intake consumer time to attach to the stream
   await sleep(2500);
 
@@ -633,6 +653,7 @@ async function main(): Promise<void> {
   console.log(`[done] webhook captures=${webhookCaptures.length} nats captures=${natsCaptures.length} dlq=${dlqCaptures.length}`);
 
   await app.close();
+  runner.kill();
   receiver.close();
   await nc.drain().catch(() => {});
   process.exit(0);
