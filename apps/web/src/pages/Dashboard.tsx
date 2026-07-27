@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 import { getStatusBadgeColors } from '../statusColors.js';
+import { EmptyState, ErrorBanner, LoadingState } from '../components/PageState.js';
 
 interface Job { id: string; status: string; latency?: { totalLatencyMs?: number } }
 interface Printer { id: string; isActive: boolean }
@@ -23,14 +24,34 @@ export default function Dashboard() {
   const [printers, setPrinters] = useState<Printer[]>([]);
   const [runners, setRunners] = useState<Runner[]>([]);
   const [loading, setLoading] = useState(true);
+  // A failed endpoint used to degrade to an empty array and log to the console.
+  // On screen that is indistinguishable from a genuinely idle site: zero queued
+  // jobs, zero failures, zero runners — the most dangerous lie this page can
+  // tell. Partial failures are now named on the page itself.
+  const [failures, setFailures] = useState<unknown[]>([]);
 
-  useEffect(() => {
-    Promise.all([
-      apiFetch<Job[]>('/jobs?limit=500').catch((e) => { console.error('[Dashboard] /jobs failed', e); return [] as Job[]; }),
-      apiFetch<Printer[]>('/printers').catch((e) => { console.error('[Dashboard] /printers failed', e); return [] as Printer[]; }),
-      apiFetch<Runner[]>('/runners').catch((e) => { console.error('[Dashboard] /runners failed', e); return [] as Runner[]; }),
-    ]).then(([j, p, r]) => { setJobs(j); setPrinters(p); setRunners(r); setLoading(false); });
+  const load = useCallback(() => {
+    setLoading(true);
+    const collected: unknown[] = [];
+    const tolerate = <T,>(fallback: T) => (err: unknown): T => {
+      collected.push(err);
+      return fallback;
+    };
+
+    void Promise.all([
+      apiFetch<Job[]>('/jobs?limit=500').catch(tolerate<Job[]>([])),
+      apiFetch<Printer[]>('/printers').catch(tolerate<Printer[]>([])),
+      apiFetch<Runner[]>('/runners').catch(tolerate<Runner[]>([])),
+    ]).then(([j, p, r]) => {
+      setJobs(j);
+      setPrinters(p);
+      setRunners(r);
+      setFailures(collected);
+      setLoading(false);
+    });
   }, []);
+
+  useEffect(load, [load]);
 
   const failed = jobs.filter((j) => j.status === 'FAILED').length;
   // UNVERIFIED is a terminal status an operator must act on (paper may have
@@ -49,7 +70,16 @@ export default function Dashboard() {
   return (
     <div>
       <h1 className="page-title">{t('page.dashboard.title')}</h1>
-      {loading ? <p className="loading-text">{t('common.loading')}</p> : (
+
+      {failures.length > 0 && (
+        <ErrorBanner
+          error={failures[0]}
+          title={t('state.partial.title')}
+          onRetry={load}
+        />
+      )}
+
+      {loading ? <LoadingState /> : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
             <StatCard label={t('page.dashboard.activePrinters')} value={activePrinters} />
@@ -91,7 +121,7 @@ export default function Dashboard() {
                 </tr>
               ))}
               {jobs.length === 0 && (
-                <tr><td colSpan={3} className="loading-text" style={{ padding: "2rem", textAlign: "center" }}>{t('page.dashboard.emptyJobs')}</td></tr>
+                <tr><td colSpan={3}><EmptyState title={t('page.dashboard.emptyJobs')} /></td></tr>
               )}
             </tbody>
           </table>

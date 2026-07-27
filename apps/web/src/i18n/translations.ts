@@ -875,6 +875,18 @@ const en: TranslationDict = {
   'error.standalone.message': 'An unexpected error occurred while rendering the page. Please try restarting the application.',
   'error.standalone.restart': 'Restart App',
 
+  // Shared page states (LoadingState / EmptyState / ErrorState / ErrorBanner)
+  'error.load.title': 'Could not load this data',
+  'error.network.title': 'Cannot reach the PrintOps service',
+  'error.auth.title': 'Not allowed',
+  'error.server.title': 'The PrintOps service reported an error',
+  'error.refresh.title': 'Live updates stopped',
+  'error.retry': 'Try again',
+  'error.details': 'Technical details',
+  'error.dismiss': 'Dismiss',
+  'state.empty.title': 'Nothing to show yet',
+  'state.partial.title': 'Some data could not be loaded',
+
   'settings.nats.title': 'NATS Print Intake',
   'settings.nats.description':
     'Connect this workstation to a NATS JetStream broker to receive print jobs for its local printers. Each site must use a unique Client ID so jobs are never delivered to the wrong printer.',
@@ -1758,6 +1770,18 @@ const th: TranslationDict = {
   'error.standalone.title': 'เกิดข้อผิดพลาด',
   'error.standalone.message': 'เกิดข้อผิดพลาดที่ไม่คาดคิดขณะแสดงผลหน้า กรุณาลองเริ่มแอปพลิเคชันใหม่',
   'error.standalone.restart': 'เริ่มแอปใหม่',
+
+  // Shared page states (LoadingState / EmptyState / ErrorState / ErrorBanner)
+  'error.load.title': 'โหลดข้อมูลไม่สำเร็จ',
+  'error.network.title': 'เชื่อมต่อบริการ PrintOps ไม่ได้',
+  'error.auth.title': 'ไม่มีสิทธิ์ใช้งาน',
+  'error.server.title': 'บริการ PrintOps แจ้งข้อผิดพลาด',
+  'error.refresh.title': 'หยุดอัปเดตข้อมูลอัตโนมัติ',
+  'error.retry': 'ลองใหม่',
+  'error.details': 'รายละเอียดทางเทคนิค',
+  'error.dismiss': 'ปิด',
+  'state.empty.title': 'ยังไม่มีข้อมูลให้แสดง',
+  'state.partial.title': 'มีข้อมูลบางส่วนที่โหลดไม่สำเร็จ',
 
   'settings.nats.title': 'รับงานพิมพ์ผ่าน NATS',
   'settings.nats.description':

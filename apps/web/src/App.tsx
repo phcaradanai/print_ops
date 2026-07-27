@@ -4,7 +4,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  Component,
   type ReactNode,
   type FormEvent,
 } from 'react';
@@ -29,6 +28,8 @@ import PrinterBindings from './pages/PrinterBindings.js';
 import PrintFlowBindings from './pages/PrintFlowBindings.js';
 import { getCurrentUser, login, logout, healthUrl, type SessionUser } from './api/client.js';
 import { LocaleProvider, useLocale } from './i18n/index.js';
+import { RouteErrorBoundary } from './components/RouteErrorBoundary.js';
+import { errorMessage } from './api/errors.js';
 
 // ----- navigation definition -----
 
@@ -251,7 +252,7 @@ function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void }) {
     try {
       onLogin(await login(email, password));
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('login.error'));
+      setError(errorMessage(err, t('login.error')));
     } finally {
       setSubmitting(false);
     }
@@ -294,38 +295,6 @@ function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void }) {
       </form>
     </div>
   );
-}
-
-// ----- error boundary -----
-
-function ErrorFallback({ error }: { error: Error }) {
-  const { t } = useLocale();
-  return (
-    <div className="error-fallback">
-      <h2>{t('error.title')}</h2>
-      <p>{error.message}</p>
-      <button
-        onClick={() => window.location.reload()}
-        className="error-reload-btn"
-      >
-        {t('error.reload')}
-      </button>
-    </div>
-  );
-}
-
-class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { error: null };
-  }
-  static getDerivedStateFromError(error: Error) {
-    return { error };
-  }
-  render() {
-    if (this.state.error) return <ErrorFallback error={this.state.error} />;
-    return this.props.children;
-  }
 }
 
 // ----- navigation -----
@@ -612,18 +581,18 @@ export default function App() {
   if (!user) {
     return (
       <LocaleProvider>
-        <ErrorBoundary>
+        <RouteErrorBoundary>
           <LoginView onLogin={setUser} />
-        </ErrorBoundary>
+        </RouteErrorBoundary>
       </LocaleProvider>
     );
   }
 
   return (
     <LocaleProvider>
-      <ErrorBoundary>
+      <RouteErrorBoundary>
         <AppShell user={user} onLogout={handleLogout} />
-      </ErrorBoundary>
+      </RouteErrorBoundary>
     </LocaleProvider>
   );
 }

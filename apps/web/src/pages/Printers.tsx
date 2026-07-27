@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
+import { EmptyState, ErrorState, LoadingState } from '../components/PageState.js';
 
 interface Printer {
   id: string; code: string; name: string; location?: string;
@@ -18,26 +19,25 @@ export default function Printers() {
   const { t } = useLocale();
   const [printers, setPrinters] = useState<Printer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Keep the thrown value, not a flattened string: ErrorState reads status,
+  // code and trace id off it (apiFetch already logged it).
+  const [error, setError] = useState<unknown>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
     apiFetch<Printer[]>('/printers')
       .then((data) => { setPrinters(data); setLoading(false); })
-      .catch((err) => {
-        console.error('[Printers] API failed', err);
-        setError(err instanceof Error ? err.message : t('page.printers.failedToLoad'));
-        setLoading(false);
-      });
-  }, [t]);
+      .catch((err: unknown) => { setError(err); setLoading(false); });
+  }, []);
+
+  useEffect(load, [load]);
 
   return (
     <div>
       <h1 className="page-title">{t('page.printers.title')}</h1>
-      {loading ? <p className="loading-text">{t('common.loading')}</p> : error ? (
-        <div style={{ padding: "2rem", textAlign: "center" }}>
-          <p className="error-text" style={{ marginBottom: "0.5rem" }}>{t('page.printers.failedToLoad')}</p>
-          <p style={{ color: '#888', fontSize: '0.85rem' }}>{error}</p>
-        </div>
+      {loading ? <LoadingState /> : error ? (
+        <ErrorState error={error} title={t('page.printers.failedToLoad')} onRetry={load} />
       ) : (
         <table className="data-table">
           <thead>
@@ -49,7 +49,7 @@ export default function Printers() {
           </thead>
           <tbody>
             {printers.length === 0 && (
-              <tr><td colSpan={7} className="loading-text" style={{ padding: "2rem", textAlign: "center" }}>{t('page.printers.noPrinters')}</td></tr>
+              <tr><td colSpan={7}><EmptyState title={t('page.printers.noPrinters')} /></td></tr>
             )}
             {printers.map((p) => (
               <tr key={p.id}>

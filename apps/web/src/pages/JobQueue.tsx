@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client.js';
+import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { getStatusBadgeColors } from '../statusColors.js';
+import { EmptyState, ErrorBanner, LoadingState } from '../components/PageState.js';
 
 interface Job {
   id: string;
@@ -40,6 +42,9 @@ export default function JobQueue() {
   const { t } = useLocale();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  // The 1.5s poll used to `.catch(() => {})`: when the API went down the table
+  // silently froze on stale rows and the operator kept reading them as live.
+  const [pollError, setPollError] = useState<unknown>(null);
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [reprinting, setReprinting] = useState<string | null>(null);
   const [reprintJob, setReprintJob] = useState<Job | null>(null);
@@ -52,8 +57,12 @@ export default function JobQueue() {
     let active = true;
     const load = () => {
       void apiFetch<Job[]>('/jobs?limit=100')
-        .then((data) => { if (active) setJobs(data); })
-        .catch(() => {})
+        .then((data) => {
+          if (!active) return;
+          setJobs(data);
+          setPollError(null);
+        })
+        .catch((err: unknown) => { if (active) setPollError(err); })
         .finally(() => { if (active) setLoading(false); });
     };
     load();
@@ -83,8 +92,13 @@ export default function JobQueue() {
       setReprintReason('');
       setDuplicateRisk(false);
       setReprintJob(fullJob);
-    } catch {
-      setMessage({ tone: 'error', text: 'Unable to load the safety information required for reprint.' });
+    } catch (err: unknown) {
+      // The server's reason matters here (job gone, permission denied): a
+      // generic sentence made every one of them look like the same problem.
+      setMessage({
+        tone: 'error',
+        text: `Unable to load the safety information required for reprint. ${errorMessage(err)}`,
+      });
     }
   };
 
@@ -103,8 +117,8 @@ export default function JobQueue() {
       });
       setReprintJob(null);
       setMessage({ tone: 'ok', text: `Successfully submitted reprint as job: ${newJob.id.slice(0, 8)}` });
-    } catch {
-      setMessage({ tone: 'error', text: 'Failed to reprint job. Check connection or job data.' });
+    } catch (err: unknown) {
+      setMessage({ tone: 'error', text: `Failed to reprint job. ${errorMessage(err)}` });
     } finally {
       setReprinting(null);
     }
@@ -131,7 +145,11 @@ export default function JobQueue() {
         </div>
       )}
 
-      {loading ? <p className="loading-text">{t('common.loading')}</p> : (
+      {pollError != null && (
+        <ErrorBanner error={pollError} title={t('error.refresh.title')} />
+      )}
+
+      {loading ? <LoadingState /> : (
         <table className="data-table">
           <thead>
             <tr>
@@ -151,7 +169,7 @@ export default function JobQueue() {
           </thead>
           <tbody>
             {jobs.length === 0 && (
-              <tr><td colSpan={8} className="loading-text" style={{ padding: '2rem', textAlign: 'center' }}>{t('page.jobQueue.noJobs')}</td></tr>
+              <tr><td colSpan={8}><EmptyState title={t('page.jobQueue.noJobs')} /></td></tr>
             )}
             {jobs.map((j) => {
               const statusColors = getStatusBadgeColors(j.status);
