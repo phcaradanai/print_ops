@@ -183,20 +183,88 @@ Wired into `client.ts` (`apiFetch`, `login`, `apiDownload` all throw
 `ApiError`), `App.tsx`, and three representative pages: `Dashboard`, `JobQueue`,
 `Printers`. New i18n keys added to **both** locales.
 
+## 5b. What FE-01.1 added (closure gate)
+
+FE-01 typed the transport and built the error surfaces; FE-01.1 closed the
+behavioural gaps a static review found in the pages themselves.
+
+| File | Purpose |
+|---|---|
+| `src/lib/pollController.ts` | Framework-free polling core: overlap suppression, visibility pause/resume, `lastSuccessAt` / `stale` / `refreshing` bookkeeping. Owns no React state, so it is testable in the node environment |
+| `src/hooks/useApiResource.ts` | React binding for the controller — one-shot (`refresh()` only) or polled (`intervalMs`) |
+| `src/hooks/useApiAction.ts` | Mutations: `run`, `pending`, `error`, `result`, `reset`; keeps the thrown `ApiError` intact |
+| `src/lib/relativeTime.ts` | `formatRelativeTime`, extracted from the byte-identical copies in `Runners` and `LocalDiagnostics` |
+| `src/components/Button.tsx` | `type="button"` by default, busy state that blocks double-submit, `aria-busy` |
+| `src/components/Alert.tsx` | One inline-message implementation; assertive for error/warning, polite for success/info |
+| `src/components/Dialog.tsx` | Native `<dialog>` + `showModal()` (platform focus trap), `onCancel` wired so Escape cannot desync React state |
+| `src/components/FormField.tsx` | Generates ids and wires `htmlFor` / `aria-describedby` / `aria-invalid` |
+| `src/components/StatusBadge.tsx` | The only place a job status is painted |
+| `src/__tests__/pollController.test.ts` | 10 fake-timer tests: overlap, hidden-pause, resume-refetch, retain-on-failure, stop |
+| `src/__tests__/primitives.test.tsx` | 13 tests over the primitives + relative time |
+
+Behavioural fixes, per gate:
+
+* **Dashboard** — three independent resources instead of `Promise.all` +
+  `catch(() => [])`. A failed endpoint no longer renders as zeroes, a retry no
+  longer wipes the panels that still work, the banner says how many endpoints
+  failed, and the header carries the oldest last-success timestamp.
+* **JobQueue** — polling moved onto the controller (no overlapping requests, no
+  polling while hidden), manual retry on the failure banner, `Freshness` header,
+  first-load failure gets an `ErrorState` instead of an empty table.
+* **JobDetail** — the three `.catch(() => {})` are gone. A failed first load
+  renders an error with retry instead of spinning forever; a failed *trace* and
+  a job with *no* trace are now different messages (a 404 from
+  `/jobs/:id/trace` resolves to "no trace", not an error); a failed deliveries
+  fetch no longer renders as "no delivery", which read as "the callback never
+  fired".
+* **Session expiry** — `apiFetch` notifies subscribers on **401** only (403 is a
+  permission decision on a valid session and must not sign anyone out); `App`
+  returns to Login with "Your session expired". A rejected sign-in does not go
+  through this path.
+* **Status rendering** — `JobDetail`'s page-local `STATUS_COLORS` (saturated
+  backgrounds + white text) is deleted. It contradicted the WCAG contrast audit
+  at the top of `statusColors.ts` — which measured that white text fails on
+  every one of those backgrounds — and painted the same status differently than
+  the queue. `Dashboard`, `JobQueue`, `JobDetail` and `PrinterDetail` now share
+  `<StatusBadge />`. `DELIVERY_PRESENTATION` in `JobDetail` is deliberately NOT
+  absorbed: callback delivery is a different axis from print status.
+* **Reprint dialog** — moved to `Dialog` + `FormField` + `Button` and fully
+  translated (it was English-only in a Thai-default app). Safety semantics are
+  untouched: submission still requires the duplicate-risk acknowledgement, a
+  reason, a runner id and the original request id, and the request body is
+  unchanged (`printerId`, `copies`, `reason`, `confirmedDuplicateRisk`).
+
+**Adoption status, stated precisely:** the primitives exist and are consumed by
+`Dashboard`, `JobQueue`, `JobDetail` and `PrinterDetail`. `Settings`,
+`Webhooks`, `PrintFlowBindings`, `Templates` and `PrinterDetail`'s own
+`actionMessage` strip still carry hand-rolled buttons and coloured message divs;
+converting them is FE-02 work, not part of this gate.
+
+Retention rule adopted with these changes: **wherever data is retained through a
+failure, its age must be on screen.** Keeping the last rows visible during a
+blip is right; letting them look live is the defect this milestone closes, so
+`Freshness` (updated / not current / refreshing / paused) is mandatory next to
+retained data, not optional polish.
+
 ## 6. FE-02 migration list (not started)
 
 Pages still on ad-hoc error handling, roughly by operator impact:
 
-1. `JobDetail.tsx` — job-level failures matter most after the queue
-2. `Templates.tsx`, `Webhooks.tsx` — 4 generic `actionFailed` strings each
-3. `PrintFlowBindings.tsx` — one fully silent catch on load
-4. `Runners.tsx`, `AuditLogs.tsx`, `UsersRoles.tsx`, `PrinterDetail.tsx`,
+Closed in FE-01.1: `Dashboard`, `JobQueue`, `JobDetail` (plus `Printers` from
+FE-01). Remaining, roughly by operator impact:
+
+1. `Templates.tsx`, `Webhooks.tsx` — 4 generic `actionFailed` strings each;
+   both should move onto `useApiAction` + `Alert`
+2. `PrintFlowBindings.tsx` — one fully silent catch on load
+3. `Runners.tsx`, `AuditLogs.tsx`, `UsersRoles.tsx`, `PrinterDetail.tsx`,
    `DiscoveredPrinters.tsx`, `LocalDiagnostics.tsx`, `RoutePolicies.tsx`,
    `PrinterBindings.tsx`, `ExportCenter.tsx`, `TemplateSandbox.tsx`
-5. `Settings.tsx` — keep the `localStorage` guards, convert the save paths
-6. `PaperProfiles.tsx` — explicitly deferred; it is being restructured separately
+4. `Settings.tsx` — keep the `localStorage` guards, convert the save paths
+5. `PaperProfiles.tsx` — explicitly deferred; it is being restructured separately
 
-Also queued: a shared toast/notification primitive (mutation feedback is
-currently three different hand-rolled implementations — `JobQueue`'s `message`,
-`Webhooks`' `showToast`, `Settings`' `message`), i18n for `tauri.ts` and the
-reprint dialog, and jsdom-based interaction tests.
+Also queued: a shared toast/notification primitive (`Webhooks`' `showToast` and
+`Settings`' `message` are still separate implementations — `JobQueue`'s is now
+`Alert`), i18n for the hardcoded Thai in `tauri.ts`, route-level code splitting,
+and jsdom-based interaction tests. Until jsdom exists, behaviour that must be
+tested belongs in a framework-free module like `lib/pollController.ts` rather
+than inside a component.

@@ -2,7 +2,7 @@ import { useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
-import { getStatusBadgeColors } from '../statusColors.js';
+import { StatusBadge } from '../components/StatusBadge.js';
 
 interface Printer {
   id: string;
@@ -66,8 +66,6 @@ export default function PrinterDetail() {
     return <div><h1 className="page-title">{t('page.printerDetail.title')}</h1><p className="error-text">Printer not found.</p></div>;
   }
 
-  const badgeColors = getStatusBadgeColors(printer.status?.code ?? 'UNKNOWN');
-
   return (
     <div>
       <h1 className="page-title">{t('page.printerDetail.title')}: {printer.name}</h1>
@@ -107,16 +105,7 @@ export default function PrinterDetail() {
         <div className="card" style={{ padding: '1.5rem' }}>
           <h2 style={{ fontSize: '1rem', marginTop: 0, marginBottom: '1rem' }}>Live Status</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-            <span style={{ 
-              background: badgeColors.bg, 
-              color: badgeColors.text, 
-              padding: '4px 12px', 
-              borderRadius: '6px', 
-              fontSize: '0.875rem', 
-              fontWeight: 600 
-            }}>
-              {printer.status?.code ?? 'UNKNOWN'}
-            </span>
+            <StatusBadge status={printer.status?.code ?? 'UNKNOWN'} size="md" />
             <span style={{ fontSize: '0.875rem', color: 'var(--neutral-text-muted)' }}>
               Last seen: {printer.status?.lastSeenAt ? new Date(printer.status.lastSeenAt).toLocaleString() : 'Never'}
             </span>

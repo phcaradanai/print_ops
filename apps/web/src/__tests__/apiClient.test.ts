@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/errors.js';
-import { apiFetch, login } from '../api/client.js';
+import { apiFetch, login, onUnauthorized } from '../api/client.js';
 import { clearRecentErrors, logError, recentErrors } from '../lib/logError.js';
 
 const realFetch = globalThis.fetch;
@@ -84,6 +84,51 @@ describe('login', () => {
     const err = await login('a@b.c', 'pw').catch((e: unknown) => e);
     expect((err as ApiError).message).toBe('Auth service unavailable');
     expect((err as ApiError).status).toBe(503);
+  });
+});
+
+describe('session expiry', () => {
+  it('notifies subscribers on 401 so the app can return to Login', async () => {
+    const listener = vi.fn();
+    const unsubscribe = onUnauthorized(listener);
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse(401, { error: 'UNAUTHORIZED' })) as typeof fetch;
+
+    await apiFetch('/jobs').catch(() => undefined);
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it('does NOT end the session on 403 — that is a permission decision, not an expired token', async () => {
+    const listener = vi.fn();
+    const unsubscribe = onUnauthorized(listener);
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(403, { error: 'Missing permission: printer:control' })) as typeof fetch;
+
+    await apiFetch('/printers/p1/control').catch(() => undefined);
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it('stops notifying once unsubscribed', async () => {
+    const listener = vi.fn();
+    onUnauthorized(listener)();
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse(401, {})) as typeof fetch;
+
+    await apiFetch('/jobs').catch(() => undefined);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('does not route a rejected login through the session-expiry path', async () => {
+    const listener = vi.fn();
+    const unsubscribe = onUnauthorized(listener);
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse(401, { error: 'UNAUTHORIZED' })) as typeof fetch;
+
+    await login('a@b.c', 'wrong').catch(() => undefined);
+    // Otherwise a failed sign-in would fire "your session expired" at someone
+    // who was never signed in.
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
   });
 });
 

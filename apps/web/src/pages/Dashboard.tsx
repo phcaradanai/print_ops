@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
-import { getStatusBadgeColors } from '../statusColors.js';
-import { EmptyState, ErrorBanner, LoadingState } from '../components/PageState.js';
+import { useApiResource } from '../hooks/useApiResource.js';
+import { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
+import { StatusBadge } from '../components/StatusBadge.js';
 
 interface Job { id: string; status: string; latency?: { totalLatencyMs?: number } }
 interface Printer { id: string; isActive: boolean }
@@ -20,40 +21,46 @@ function StatCard({ label, value, color }: { label: string; value: string | numb
 
 export default function Dashboard() {
   const { t } = useLocale();
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [printers, setPrinters] = useState<Printer[]>([]);
-  const [runners, setRunners] = useState<Runner[]>([]);
-  const [loading, setLoading] = useState(true);
-  // A failed endpoint used to degrade to an empty array and log to the console.
-  // On screen that is indistinguishable from a genuinely idle site: zero queued
-  // jobs, zero failures, zero runners — the most dangerous lie this page can
-  // tell. Partial failures are now named on the page itself.
-  const [failures, setFailures] = useState<unknown[]>([]);
+  // Each endpoint is its own resource. A failure no longer degrades to `[]` —
+  // that rendered an outage as a healthy idle site (0 queued, 0 failed, 0
+  // runners), the most dangerous lie this page can tell — and a retry no longer
+  // wipes the panels that are still good.
+  const fetchJobs = useCallback(() => apiFetch<Job[]>('/jobs?limit=500'), []);
+  const fetchPrinters = useCallback(() => apiFetch<Printer[]>('/printers'), []);
+  const fetchRunners = useCallback(() => apiFetch<Runner[]>('/runners'), []);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    const collected: unknown[] = [];
-    const tolerate = <T,>(fallback: T) => (err: unknown): T => {
-      collected.push(err);
-      return fallback;
-    };
+  const jobsResource = useApiResource(fetchJobs);
+  const printersResource = useApiResource(fetchPrinters);
+  const runnersResource = useApiResource(fetchRunners);
 
-    void Promise.all([
-      apiFetch<Job[]>('/jobs?limit=500').catch(tolerate<Job[]>([])),
-      apiFetch<Printer[]>('/printers').catch(tolerate<Printer[]>([])),
-      apiFetch<Runner[]>('/runners').catch(tolerate<Runner[]>([])),
-    ]).then(([j, p, r]) => {
-      setJobs(j);
-      setPrinters(p);
-      setRunners(r);
-      setFailures(collected);
-      setLoading(false);
-    });
-  }, []);
+  const jobs = jobsResource.data ?? [];
+  const printers = printersResource.data ?? [];
+  const runners = runnersResource.data ?? [];
 
-  useEffect(load, [load]);
+  const resources = [jobsResource, printersResource, runnersResource];
+  const failed = resources.filter((resource) => resource.error != null);
+  // Blocks until EVERY resource has settled once (data or error). `every(loading)`
+  // would clear as soon as the first endpoint answered, and a total outage
+  // resolves them one by one — leaving a render where the tiles show zeroes for
+  // the endpoints that had already failed. Zeroes are the exact lie this page
+  // must not tell, even for one frame.
+  const firstLoad = resources.some(
+    (resource) => resource.data === undefined && resource.error == null,
+  );
+  const lastSuccessAt = resources
+    .map((resource) => resource.lastSuccessAt)
+    .filter((value): value is number => value !== null)
+    .reduce<number | null>((oldest, value) => (oldest === null || value < oldest ? value : oldest), null);
 
-  const failed = jobs.filter((j) => j.status === 'FAILED').length;
+  // Depends on the `refresh` functions, not the resource objects: those are new
+  // on every snapshot, so an effect keyed on them would re-run continuously.
+  const refreshAll = useCallback(() => {
+    jobsResource.refresh();
+    printersResource.refresh();
+    runnersResource.refresh();
+  }, [jobsResource.refresh, printersResource.refresh, runnersResource.refresh]);
+
+  const failedJobs = jobs.filter((j) => j.status === 'FAILED').length;
   // UNVERIFIED is a terminal status an operator must act on (paper may have
   // come out — do NOT blind-retry). Without a tile it appeared in no counter,
   // so the status that most needs eyes was invisible on the dashboard (LOW-3).
@@ -69,24 +76,37 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 className="page-title">{t('page.dashboard.title')}</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        <h1 className="page-title" style={{ margin: 0 }}>{t('page.dashboard.title')}</h1>
+        <Freshness
+          lastSuccessAt={lastSuccessAt}
+          stale={failed.length > 0}
+          refreshing={resources.some((resource) => resource.refreshing)}
+          onRefresh={refreshAll}
+        />
+      </div>
 
-      {failures.length > 0 && (
+      {/* Names WHICH endpoint is down. Tiles fed by a failed endpoint are still
+          the last known values, not zeroes, and the timestamp above says how
+          old they are. */}
+      {failed.length > 0 && (
         <ErrorBanner
-          error={failures[0]}
-          title={t('state.partial.title')}
-          onRetry={load}
+          error={failed[0]!.error}
+          title={`${t('state.partial.title')} (${failed.length}/${resources.length})`}
+          onRetry={refreshAll}
         />
       )}
 
-      {loading ? <LoadingState /> : (
+      {firstLoad ? <LoadingState /> : failed.length === resources.length && jobs.length === 0 ? (
+        <ErrorState error={failed[0]!.error} title={t('page.dashboard.loadFailed')} onRetry={refreshAll} />
+      ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
             <StatCard label={t('page.dashboard.activePrinters')} value={activePrinters} />
             <StatCard label={t('page.dashboard.runnersOnline')} value={onlineRunners} color="#40a02b" />
             <StatCard label={t('page.dashboard.jobsQueued')} value={queued} color="#1e66f5" />
             <StatCard label={t('page.dashboard.unverifiedJobs')} value={unverified} color={unverified > 0 ? '#f5c97b' : undefined} />
-            <StatCard label={t('page.dashboard.failedJobs')} value={failed} color={failed > 0 ? '#f38ba8' : undefined} />
+            <StatCard label={t('page.dashboard.failedJobs')} value={failedJobs} color={failedJobs > 0 ? '#f38ba8' : undefined} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginTop: '1rem' }}>
             <StatCard label={t('page.dashboard.totalJobs')} value={jobs.length} />
@@ -111,9 +131,7 @@ export default function Dashboard() {
                     <Link to={`/jobs/${j.id}`} style={{ color: '#1e66f5' }}>{j.id.slice(0, 12)}…</Link>
                   </td>
                   <td>
-                    <span style={{ background: getStatusBadgeColors(j.status).bg, color: getStatusBadgeColors(j.status).text, padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
-                      {j.status}
-                    </span>
+                    <StatusBadge status={j.status} size="sm" />
                   </td>
                   <td style={{ color: "var(--neutral-text-muted)" }}>
                     {j.latency?.totalLatencyMs != null ? j.latency.totalLatencyMs : t('common.noData')}

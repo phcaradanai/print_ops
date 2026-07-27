@@ -1,10 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
-import { getStatusBadgeColors } from '../statusColors.js';
-import { EmptyState, ErrorBanner, LoadingState } from '../components/PageState.js';
+import { useApiResource } from '../hooks/useApiResource.js';
+import { useApiAction } from '../hooks/useApiAction.js';
+import { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
+import { Alert } from '../components/Alert.js';
+import { Button } from '../components/Button.js';
+import { Dialog } from '../components/Dialog.js';
+import { FormField } from '../components/FormField.js';
+import { StatusBadge } from '../components/StatusBadge.js';
 
 interface Job {
   id: string;
@@ -38,40 +44,23 @@ function payloadHint(snapshot?: string): string | null {
   return null;
 }
 
+/** Queue cadence. Suspended while the window is hidden and never overlapping —
+ *  see `lib/pollController.ts`. */
+const QUEUE_POLL_MS = 1_500;
+
 export default function JobQueue() {
   const { t } = useLocale();
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
-  // The 1.5s poll used to `.catch(() => {})`: when the API went down the table
-  // silently froze on stale rows and the operator kept reading them as live.
-  const [pollError, setPollError] = useState<unknown>(null);
+
+  const fetchJobs = useCallback(() => apiFetch<Job[]>('/jobs?limit=100'), []);
+  const queue = useApiResource(fetchJobs, { intervalMs: QUEUE_POLL_MS });
+  const jobs = queue.data ?? [];
+
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
-  const [reprinting, setReprinting] = useState<string | null>(null);
   const [reprintJob, setReprintJob] = useState<Job | null>(null);
+  const [openingJobId, setOpeningJobId] = useState<string | null>(null);
   const [reprintReason, setReprintReason] = useState('');
   const [reprintCopies, setReprintCopies] = useState(1);
   const [duplicateRisk, setDuplicateRisk] = useState(false);
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    let active = true;
-    const load = () => {
-      void apiFetch<Job[]>('/jobs?limit=100')
-        .then((data) => {
-          if (!active) return;
-          setJobs(data);
-          setPollError(null);
-        })
-        .catch((err: unknown) => { if (active) setPollError(err); })
-        .finally(() => { if (active) setLoading(false); });
-    };
-    load();
-    const interval = window.setInterval(load, 1_500);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
-  }, []);
 
   useEffect(() => {
     if (!message) return;
@@ -79,77 +68,96 @@ export default function JobQueue() {
     return () => clearTimeout(timer);
   }, [message]);
 
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (reprintJob && dialog && !dialog.open) dialog.showModal();
-    if (!reprintJob && dialog?.open) dialog.close();
-  }, [reprintJob]);
+  // Loading the FULL job is a safety step, not a convenience: the dialog
+  // refuses to submit without requestId and runnerId, which the list payload
+  // does not carry.
+  const loadReprintTarget = useApiAction(async (job: Job) => {
+    const fullJob = await apiFetch<Job>(`/jobs/${job.id}`);
+    setReprintCopies(fullJob.copies || 1);
+    setReprintReason('');
+    setDuplicateRisk(false);
+    setReprintJob(fullJob);
+    return fullJob;
+  });
+
+  // Request body unchanged: printerId, copies, reason, confirmedDuplicateRisk.
+  const submitReprint = useApiAction(async (job: Job, copies: number, reason: string, confirmed: boolean) => {
+    const newJob = await apiFetch<Job>(`/jobs/${job.id}/reprint`, {
+      method: 'POST',
+      body: JSON.stringify({
+        printerId: job.printerId,
+        copies,
+        reason,
+        confirmedDuplicateRisk: confirmed,
+      }),
+    });
+    setReprintJob(null);
+    return newJob;
+  });
 
   const openReprint = async (job: Job) => {
-    try {
-      const fullJob = await apiFetch<Job>(`/jobs/${job.id}`);
-      setReprintCopies(fullJob.copies || 1);
-      setReprintReason('');
-      setDuplicateRisk(false);
-      setReprintJob(fullJob);
-    } catch (err: unknown) {
-      // The server's reason matters here (job gone, permission denied): a
-      // generic sentence made every one of them look like the same problem.
+    setOpeningJobId(job.id);
+    const loaded = await loadReprintTarget.run(job);
+    setOpeningJobId(null);
+    if (!loaded) {
       setMessage({
         tone: 'error',
-        text: `Unable to load the safety information required for reprint. ${errorMessage(err)}`,
+        text: `${t('page.jobQueue.reprintLoadFailed')} ${errorMessage(loadReprintTarget.error)}`,
       });
     }
   };
 
   const confirmReprint = async () => {
     if (!reprintJob) return;
-    setReprinting(reprintJob.id);
-    try {
-      const newJob = await apiFetch<Job>(`/jobs/${reprintJob.id}/reprint`, {
-        method: 'POST',
-        body: JSON.stringify({
-          printerId: reprintJob.printerId,
-          copies: reprintCopies,
-          reason: reprintReason,
-          confirmedDuplicateRisk: duplicateRisk,
-        }),
+    const newJob = await submitReprint.run(reprintJob, reprintCopies, reprintReason, duplicateRisk);
+    if (newJob) {
+      setMessage({
+        tone: 'ok',
+        text: t('page.jobQueue.reprintSubmitted').replace('{id}', newJob.id.slice(0, 8)),
       });
-      setReprintJob(null);
-      setMessage({ tone: 'ok', text: `Successfully submitted reprint as job: ${newJob.id.slice(0, 8)}` });
-    } catch (err: unknown) {
-      setMessage({ tone: 'error', text: `Failed to reprint job. ${errorMessage(err)}` });
-    } finally {
-      setReprinting(null);
+    } else {
+      setMessage({
+        tone: 'error',
+        text: `${t('page.jobQueue.reprintFailed')} ${errorMessage(submitReprint.error)}`,
+      });
     }
   };
 
+  const reprintingId = submitReprint.pending ? reprintJob?.id ?? null : null;
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
         <h1 className="page-title" style={{ margin: 0 }}>{t('page.jobQueue.title')}</h1>
+        {/* Queue rows are only trustworthy with their age attached. */}
+        <Freshness
+          lastSuccessAt={queue.lastSuccessAt}
+          stale={queue.stale}
+          refreshing={queue.refreshing}
+          paused={queue.paused}
+          onRefresh={queue.refresh}
+        />
       </div>
 
       {message && (
-        <div style={{
-          padding: '1rem',
-          marginBottom: '1rem',
-          borderRadius: '8px',
-          background: message.tone === 'ok' ? '#dcfce7' : '#fee2e2',
-          color: message.tone === 'ok' ? '#166534' : '#991b1b',
-          display: 'flex',
-          justifyContent: 'space-between',
-        }}>
-          <span>{message.text}</span>
-          <button type="button" onClick={() => setMessage(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'inherit' }}>✕</button>
-        </div>
+        <Alert
+          tone={message.tone === 'ok' ? 'success' : 'error'}
+          onDismiss={() => setMessage(null)}
+          dismissLabel={t('error.dismiss')}
+        >
+          {message.text}
+        </Alert>
       )}
 
-      {pollError != null && (
-        <ErrorBanner error={pollError} title={t('error.refresh.title')} />
+      {/* Refresh failed but rows are still on screen: they are a snapshot.
+          Manual retry, because the loop may be backing off behind a dead API. */}
+      {queue.stale && queue.error != null && (
+        <ErrorBanner error={queue.error} title={t('error.refresh.title')} onRetry={queue.refresh} />
       )}
 
-      {loading ? <LoadingState /> : (
+      {queue.loading && !queue.data ? <LoadingState /> : queue.error != null && !queue.data ? (
+        <ErrorState error={queue.error} title={t('page.jobQueue.loadFailed')} onRetry={queue.refresh} />
+      ) : (
         <table className="data-table">
           <thead>
             <tr>
@@ -172,20 +180,13 @@ export default function JobQueue() {
               <tr><td colSpan={8}><EmptyState title={t('page.jobQueue.noJobs')} /></td></tr>
             )}
             {jobs.map((j) => {
-              const statusColors = getStatusBadgeColors(j.status);
               const template = j.resolvedTemplateCode ?? j.templateCode;
               const hint = payloadHint(j.payloadSnapshot);
               return (
                 <tr key={j.id}>
                   {/* Status badge */}
                   <td>
-                    <span style={{
-                      background: statusColors.bg, color: statusColors.text,
-                      padding: '3px 10px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700,
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {j.status}
-                    </span>
+                    <StatusBadge status={j.status} size="sm" />
                   </td>
 
                   {/* Document summary — the key column that was missing */}
@@ -195,7 +196,9 @@ export default function JobQueue() {
                         {template ?? t('common.noData')}
                       </Link>
                       {j.sourceReference && (
-                        <span style={{ fontSize: '0.7rem', color: '#666' }}>เลขที่เอกสาร: {j.sourceReference}</span>
+                        <span style={{ fontSize: '0.7rem', color: '#666' }}>
+                          {t('page.jobQueue.documentNumber')}: {j.sourceReference}
+                        </span>
                       )}
                       {hint && (
                         <span style={{ fontSize: '0.65rem', color: '#999', fontFamily: 'monospace' }}>{hint}</span>
@@ -233,14 +236,15 @@ export default function JobQueue() {
 
                   {/* Actions */}
                   <td>
-                    <button
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       onClick={() => void openReprint(j)}
-                      disabled={reprinting === j.id}
-                      className="btn-secondary"
-                      style={{ fontSize: '0.7rem', padding: '0.35rem 0.6rem' }}
+                      busy={openingJobId === j.id || reprintingId === j.id}
+                      busyLabel={'…'}
                     >
-                      {reprinting === j.id ? '…' : t('page.jobQueue.reprint')}
-                    </button>
+                      {t('page.jobQueue.reprint')}
+                    </Button>
                   </td>
                 </tr>
               );
@@ -248,43 +252,97 @@ export default function JobQueue() {
           </tbody>
         </table>
       )}
-      <dialog ref={dialogRef} aria-labelledby="reprint-title" onCancel={() => setReprintJob(null)}
-        style={{ maxWidth: '620px', width: 'calc(100% - 2rem)', border: 0, borderRadius: '12px', padding: '1.5rem' }}>
+      {/* Reprint confirmation. Safety semantics are unchanged: the submit stays
+          blocked without an explicit duplicate-risk acknowledgement, a reason,
+          a runner id and the original request id. Only the wording moved into
+          i18n — a Thai-default hospital app was showing this English-only. */}
+      <Dialog
+        open={reprintJob !== null}
+        onClose={() => setReprintJob(null)}
+        title={t('page.jobQueue.reprintTitle')}
+        warning={t('page.jobQueue.reprintWarning')}
+        footer={
+          reprintJob && (
+            <>
+              <Button variant="secondary" onClick={() => setReprintJob(null)}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                variant="danger"
+                form="reprint-form"
+                type="submit"
+                busy={reprintingId === reprintJob.id}
+                busyLabel={t('page.jobQueue.reprintSubmitting')}
+                disabled={
+                  !duplicateRisk ||
+                  !reprintReason.trim() ||
+                  !reprintJob.runnerId ||
+                  !reprintJob.requestId
+                }
+              >
+                {t('page.jobQueue.reprintConfirm')}
+              </Button>
+            </>
+          )
+        }
+      >
         {reprintJob && (
-          <form method="dialog" onSubmit={(event) => { event.preventDefault(); void confirmReprint(); }}>
-            <h2 id="reprint-title">Confirm additional physical copy</h2>
-            <p role="alert" style={{ color: '#9a3412', fontWeight: 700 }}>
-              This creates a new print job. Output may already have occurred; this is not a callback retry.
-            </p>
-            <dl>
-              <dt>Original request ID</dt><dd><code>{reprintJob.requestId ?? 'Unavailable — reprint blocked'}</code></dd>
-              <dt>Original job ID</dt><dd><code>{reprintJob.id}</code></dd>
-              <dt>Print status</dt><dd>{reprintJob.status}</dd>
-              <dt>Original printer / selected destination</dt><dd>{reprintJob.printerCode ?? reprintJob.printerId}</dd>
-              <dt>Runner</dt><dd>{reprintJob.runnerId ?? 'Unknown — reprint blocked'}</dd>
-              <dt>Print completion time</dt><dd>{reprintJob.completedAt ? new Date(reprintJob.completedAt).toLocaleString() : 'Not recorded'}</dd>
-              <dt>Runner acknowledged completion</dt><dd>{reprintJob.runnerId && reprintJob.completedAt ? 'Yes' : 'No or unknown'}</dd>
-              <dt>Callback delivery</dt><dd>See original job detail; callback delivery is not retried by this action.</dd>
+          <form id="reprint-form" onSubmit={(event) => { event.preventDefault(); void confirmReprint(); }}>
+            <dl className="reprint-facts">
+              <dt>{t('page.jobQueue.reprintOriginalRequestId')}</dt>
+              <dd><code>{reprintJob.requestId ?? t('page.jobQueue.reprintBlockedMissing')}</code></dd>
+              <dt>{t('page.jobQueue.reprintOriginalJobId')}</dt>
+              <dd><code>{reprintJob.id}</code></dd>
+              <dt>{t('page.jobQueue.reprintPrintStatus')}</dt>
+              <dd><StatusBadge status={reprintJob.status} size="sm" /></dd>
+              <dt>{t('page.jobQueue.reprintDestination')}</dt>
+              <dd>{reprintJob.printerCode ?? reprintJob.printerId}</dd>
+              <dt>{t('page.jobQueue.reprintRunner')}</dt>
+              <dd>{reprintJob.runnerId ?? t('page.jobQueue.reprintBlockedUnknown')}</dd>
+              <dt>{t('page.jobQueue.reprintCompletedAt')}</dt>
+              <dd>{reprintJob.completedAt ? new Date(reprintJob.completedAt).toLocaleString() : t('page.jobQueue.reprintNotRecorded')}</dd>
+              <dt>{t('page.jobQueue.reprintRunnerAck')}</dt>
+              <dd>{reprintJob.runnerId && reprintJob.completedAt ? t('common.yes') : t('page.jobQueue.reprintAckUnknown')}</dd>
+              <dt>{t('page.jobQueue.reprintCallbackDelivery')}</dt>
+              <dd>{t('page.jobQueue.reprintCallbackNote')}</dd>
             </dl>
-            <label htmlFor="reprint-copies">Copies for new attempt</label>
-            <input id="reprint-copies" type="number" min={1} step={1} value={reprintCopies}
-              onChange={(e) => setReprintCopies(Number(e.target.value))} required />
-            <label htmlFor="reprint-reason">Reason for reprint</label>
-            <textarea id="reprint-reason" value={reprintReason}
-              onChange={(e) => setReprintReason(e.target.value)} required />
-            <label style={{ display: 'flex', gap: '.5rem', marginTop: '1rem' }}>
-              <input type="checkbox" checked={duplicateRisk} onChange={(e) => setDuplicateRisk(e.target.checked)} />
-              I understand this action may produce an additional physical copy.
+
+            <FormField label={t('page.jobQueue.reprintCopies')} required requiredLabel={t('common.required')}>
+              {(control) => (
+                <input
+                  {...control}
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={reprintCopies}
+                  onChange={(e) => setReprintCopies(Number(e.target.value))}
+                  required
+                />
+              )}
+            </FormField>
+
+            <FormField label={t('page.jobQueue.reprintReason')} required requiredLabel={t('common.required')}>
+              {(control) => (
+                <textarea
+                  {...control}
+                  value={reprintReason}
+                  onChange={(e) => setReprintReason(e.target.value)}
+                  required
+                />
+              )}
+            </FormField>
+
+            <label className="reprint-ack">
+              <input
+                type="checkbox"
+                checked={duplicateRisk}
+                onChange={(e) => setDuplicateRisk(e.target.checked)}
+              />
+              {t('page.jobQueue.reprintAcknowledge')}
             </label>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '.75rem', marginTop: '1.25rem' }}>
-              <button type="button" className="btn-secondary" onClick={() => setReprintJob(null)}>Cancel</button>
-              <button type="submit" disabled={!duplicateRisk || !reprintReason.trim() || !reprintJob.runnerId || !reprintJob.requestId || reprinting === reprintJob.id}>
-                {reprinting === reprintJob.id ? 'Submitting…' : 'Confirm reprint'}
-              </button>
-            </div>
           </form>
         )}
-      </dialog>
+      </Dialog>
     </div>
   );
 }

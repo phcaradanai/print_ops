@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
+import { formatRelativeTime } from '../lib/relativeTime.js';
 
 interface Runner {
   id: string; name: string; hostname: string; ipAddress?: string;
@@ -17,13 +18,7 @@ export default function Runners() {
   const [runners, setRunners] = useState<Runner[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const heartbeatAge = (ts?: string): string => {
-    if (!ts) return t('status.never');
-    const ms = Date.now() - new Date(ts).getTime();
-    if (ms < 60000) return t('status.secondsAgo').replace('{n}', String(Math.round(ms / 1000)));
-    if (ms < 3600000) return t('status.minutesAgo').replace('{n}', String(Math.round(ms / 60000)));
-    return t('status.hoursAgo').replace('{n}', String(Math.round(ms / 3600000)));
-  };
+  const heartbeatAge = (ts?: string): string => formatRelativeTime(t, ts);
 
   useEffect(() => {
     apiFetch<Runner[]>('/runners')

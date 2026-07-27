@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
+import { formatRelativeTime } from '../lib/relativeTime.js';
 
 interface Runner {
   id: string;
@@ -62,12 +63,7 @@ export default function LocalDiagnostics() {
   const [refreshing, setRefreshing] = useState<Record<string, boolean>>({});
   const [refreshResult, setRefreshResult] = useState<Record<string, string>>({});
 
-  const relativeTime = (ts: string): string => {
-    const ms = Date.now() - new Date(ts).getTime();
-    if (ms < 60000) return t('status.secondsAgo').replace('{n}', String(Math.round(ms / 1000)));
-    if (ms < 3600000) return t('status.minutesAgo').replace('{n}', String(Math.round(ms / 60000)));
-    return t('status.hoursAgo').replace('{n}', String(Math.round(ms / 3600000)));
-  };
+  const relativeTime = (ts: string): string => formatRelativeTime(t, ts);
 
   const load = useCallback(() => {
     Promise.all([

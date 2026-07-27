@@ -10,9 +10,12 @@
  * support.
  */
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ApiError, errorMessage, errorTechnicalSummary } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
+import { formatRelativeTime } from '../lib/relativeTime.js';
+import { Alert } from './Alert.js';
+import { Button } from './Button.js';
 
 /** Busy placeholder. `label` overrides the generic "Loading…". */
 export function LoadingState({ label }: { label?: string }) {
@@ -104,9 +107,9 @@ export function ErrorState({ error, title, onRetry }: ErrorViewProps) {
       <ErrorDetails error={error} />
       {onRetry && (
         <div className="state-panel-actions">
-          <button type="button" className="btn-secondary" onClick={onRetry}>
+          <Button variant="secondary" size="sm" onClick={onRetry}>
             {t('error.retry')}
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -124,29 +127,67 @@ export function ErrorBanner({ error, title, onRetry, onDismiss }: ErrorViewProps
   const detail = errorMessage(error, t('common.error'));
 
   return (
-    <div className="state-banner state-banner--error" role="alert">
-      <div className="state-banner-body">
-        <span className="state-banner-title">{headline}</span>
-        {detail !== headline && <span className="state-banner-message">{detail}</span>}
-        <ErrorDetails error={error} />
-      </div>
-      <div className="state-banner-actions">
-        {onRetry && (
-          <button type="button" className="btn-secondary" onClick={onRetry}>
-            {t('error.retry')}
-          </button>
-        )}
-        {onDismiss && (
-          <button
-            type="button"
-            className="state-banner-dismiss"
-            aria-label={t('error.dismiss')}
-            onClick={onDismiss}
-          >
-            {'✕'}
-          </button>
-        )}
-      </div>
+    <Alert
+      tone="error"
+      title={headline}
+      footer={<ErrorDetails error={error} />}
+      onRetry={onRetry}
+      retryLabel={t('error.retry')}
+      onDismiss={onDismiss}
+      dismissLabel={t('error.dismiss')}
+    >
+      {detail !== headline ? detail : undefined}
+    </Alert>
+  );
+}
+
+/**
+ * Freshness line for retained data.
+ *
+ * Keeping the previous rows on screen when a refresh fails is the right call —
+ * a blank table during a two-second blip is worse than a slightly old one. But
+ * retained data that still *looks* live is the exact failure this milestone is
+ * closing, so wherever data is retained this line must state when it was last
+ * true, and say plainly when it is no longer current.
+ *
+ * Re-renders on a timer so "12 seconds ago" does not sit frozen at the moment
+ * of the last successful fetch.
+ */
+export function Freshness({
+  lastSuccessAt,
+  stale = false,
+  refreshing = false,
+  paused = false,
+  onRefresh,
+}: {
+  lastSuccessAt: number | null;
+  stale?: boolean;
+  refreshing?: boolean;
+  paused?: boolean;
+  onRefresh?: () => void;
+}) {
+  const { t } = useLocale();
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((n) => n + 1), 10_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const relative = formatRelativeTime(t, lastSuccessAt);
+
+  return (
+    <div className={'freshness' + (stale ? ' freshness--stale' : '')}>
+      <span aria-live="polite">
+        {stale ? t('state.stale') : t('state.updated')}: {relative}
+      </span>
+      {refreshing && <span className="freshness-refreshing">{t('state.refreshing')}</span>}
+      {paused && !refreshing && <span className="freshness-paused">{t('state.paused')}</span>}
+      {onRefresh && (
+        <Button variant="ghost" size="sm" onClick={onRefresh} busy={refreshing}>
+          {t('common.refresh')}
+        </Button>
+      )}
     </div>
   );
 }

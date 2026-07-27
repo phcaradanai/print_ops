@@ -26,7 +26,7 @@ import Webhooks from './pages/Webhooks.js';
 import RoutePolicies from './pages/RoutePolicies.js';
 import PrinterBindings from './pages/PrinterBindings.js';
 import PrintFlowBindings from './pages/PrintFlowBindings.js';
-import { getCurrentUser, login, logout, healthUrl, type SessionUser } from './api/client.js';
+import { getCurrentUser, login, logout, healthUrl, onUnauthorized, type SessionUser } from './api/client.js';
 import { LocaleProvider, useLocale } from './i18n/index.js';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary.js';
 import { errorMessage } from './api/errors.js';
@@ -238,7 +238,14 @@ function SplashScreen() {
 
 // ----- login -----
 
-function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void }) {
+function LoginView({
+  onLogin,
+  sessionExpired = false,
+}: {
+  onLogin: (user: SessionUser) => void;
+  /** True when the app returned here because a 401 ended the session. */
+  sessionExpired?: boolean;
+}) {
   const { t } = useLocale();
   const [email, setEmail] = useState(import.meta.env.DEV ? 'sysadmin@printerops.local' : '');
   const [password, setPassword] = useState(import.meta.env.DEV ? 'dev-password' : '');
@@ -284,6 +291,10 @@ function LoginView({ onLogin }: { onLogin: (user: SessionUser) => void }) {
             autoComplete="current-password"
           />
         </label>
+
+        {sessionExpired && !error && (
+          <div className="login-notice" role="status">{t('auth.sessionExpired')}</div>
+        )}
 
         {error && <div className="login-error">{error}</div>}
 
@@ -530,6 +541,18 @@ export default function App() {
   const [apiReady, setApiReady] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  // Subscribed BEFORE the session check below, so a 401 from that very first
+  // `getCurrentUser()` is handled by the same path as one that happens an hour
+  // later. Both are idempotent: the token is already cleared by the notifier.
+  useEffect(() => {
+    return onUnauthorized(() => {
+      setUser(null);
+      setSessionExpired(true);
+      setCheckingSession(false);
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -582,7 +605,13 @@ export default function App() {
     return (
       <LocaleProvider>
         <RouteErrorBoundary>
-          <LoginView onLogin={setUser} />
+          <LoginView
+            onLogin={(next) => {
+              setSessionExpired(false);
+              setUser(next);
+            }}
+            sessionExpired={sessionExpired}
+          />
         </RouteErrorBoundary>
       </LocaleProvider>
     );

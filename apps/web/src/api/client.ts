@@ -66,6 +66,39 @@ function token(): string {
   return storageGet('token') ?? '';
 }
 
+/**
+ * Session-expiry notification (FE-01.1).
+ *
+ * A token that expired mid-session used to produce a 401 on every subsequent
+ * call, which each page rendered as its own "could not load" error. The
+ * operator was left on a shell that could not load anything, with no hint that
+ * signing in again was the fix.
+ *
+ * Only **401** unwinds the session. A **403** is a permission decision about a
+ * valid session — logging the user out on 403 would kick a VIEWER out of the
+ * app for clicking an admin action.
+ */
+type UnauthorizedListener = () => void;
+const unauthorizedListeners = new Set<UnauthorizedListener>();
+
+export function onUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener);
+  return () => {
+    unauthorizedListeners.delete(listener);
+  };
+}
+
+function notifyUnauthorized(): void {
+  storageRemove('token');
+  for (const listener of [...unauthorizedListeners]) {
+    try {
+      listener();
+    } catch {
+      // a broken listener must not swallow the session reset for the others
+    }
+  }
+}
+
 function authHeaders(): HeadersInit {
   const authToken = token();
   const apiKey = getApiKey();
@@ -122,6 +155,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   if (!res.ok) {
     const error = await apiErrorFromResponse(res, path);
     logError('apiFetch', error);
+    if (res.status === 401) notifyUnauthorized();
     throw error;
   }
 

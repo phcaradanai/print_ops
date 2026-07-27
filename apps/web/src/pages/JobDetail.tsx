@@ -1,7 +1,11 @@
 import { useParams, Link } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { apiFetch } from '../api/client.js';
+import { ApiError } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
+import { useApiResource } from '../hooks/useApiResource.js';
+import { ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
+import { StatusBadge } from '../components/StatusBadge.js';
 
 interface TraceStep {
   stepName: string;
@@ -142,16 +146,10 @@ const STEP_COLOR: Record<string, string> = {
   skipped: '#9399b2',
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  QUEUED: '#1e66f5',
-  DISPATCHED: '#8839ef',
-  PRINTING: '#df8e1d',
-  SUCCESS: '#40a02b',
-  FAILED: '#d20f39',
-  TIMEOUT: '#d20f39',
-  UNVERIFIED: '#e3a00f',
-  CANCELLED: '#9399b2',
-};
+// The page-local STATUS_COLORS map that used to live here (saturated
+// backgrounds + white text) was removed in FE-01.1: it contradicted the WCAG
+// contrast audit documented in `statusColors.ts`, and rendered the same status
+// in different colours than the queue. Use <StatusBadge /> instead.
 
 function formatStateReasons(reasons: IppObservedJobEvidence['stateReasons'], noData: string): string {
   if (Array.isArray(reasons)) {
@@ -423,44 +421,79 @@ export function PrinterEvidence({
   );
 }
 
+/** Live view of one job. 1s cadence, but only while the window is visible and
+ *  never with two requests of the same kind open at once — see
+ *  `lib/pollController.ts`. */
+const JOB_POLL_MS = 1_000;
+
 export default function JobDetail() {
   const { t } = useLocale();
   const { id } = useParams<{ id: string }>();
-  const [trace, setTrace] = useState<Trace | null>(null);
-  const [job, setJob] = useState<Job | null>(null);
-  const [deliveries, setDeliveries] = useState<CallbackDelivery[]>([]);
 
-  useEffect(() => {
-    if (!id) return;
-    let active = true;
-    const load = () => {
-      void apiFetch<Job>(`/jobs/${id}`).then((data) => { if (active) setJob(data); }).catch(() => {});
-      void apiFetch<Trace>(`/jobs/${id}/trace`).then((data) => { if (active) setTrace(data); }).catch(() => {});
-      // Server-side filter, so this stays one job's deliveries rather than
-      // downloading the whole callback log to find them.
-      void apiFetch<CallbackDelivery[]>(`/v1/callback-deliveries?printJobId=${encodeURIComponent(id)}`)
-        .then((data) => { if (active) setDeliveries(data); })
-        .catch(() => {});
-    };
-    load();
-    const interval = window.setInterval(load, 1_000);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
-  }, [id]);
+  const fetchJob = useCallback(() => apiFetch<Job>(`/jobs/${id}`), [id]);
+  // A job with no trace yet answers 404. That is a fact about the job, not a
+  // transport failure, so it resolves to `null` instead of becoming an error —
+  // otherwise every young job would show "could not load the trace".
+  const fetchTrace = useCallback(
+    async (): Promise<Trace | null> => {
+      try {
+        return await apiFetch<Trace>(`/jobs/${id}/trace`);
+      } catch (err: unknown) {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }
+    },
+    [id],
+  );
+  // Server-side filter, so this stays one job's deliveries rather than
+  // downloading the whole callback log to find them.
+  const fetchDeliveries = useCallback(
+    () => apiFetch<CallbackDelivery[]>(`/v1/callback-deliveries?printJobId=${encodeURIComponent(id ?? '')}`),
+    [id],
+  );
 
+  const jobResource = useApiResource(fetchJob, { intervalMs: JOB_POLL_MS, enabled: Boolean(id) });
+  const traceResource = useApiResource(fetchTrace, { intervalMs: JOB_POLL_MS, enabled: Boolean(id) });
+  const deliveriesResource = useApiResource(fetchDeliveries, { intervalMs: JOB_POLL_MS, enabled: Boolean(id) });
+
+  const job = jobResource.data ?? null;
+  const trace = traceResource.data ?? null;
+  const deliveries = deliveriesResource.data ?? [];
+
+  // Depends on the `refresh` functions, not the resource objects: those are new
+  // on every 1s snapshot, so an effect keyed on them would re-run continuously.
+  const refreshAll = useCallback(() => {
+    jobResource.refresh();
+    traceResource.refresh();
+    deliveriesResource.refresh();
+  }, [jobResource.refresh, traceResource.refresh, deliveriesResource.refresh]);
+
+  // First load still running: a spinner is honest here.
+  if (!job && jobResource.loading) {
+    return (
+      <div>
+        <h1 className="page-title">{t('page.jobDetail.title')}</h1>
+        <LoadingState />
+      </div>
+    );
+  }
+
+  // First load FAILED: previously this fell through to the same spinner and the
+  // page span forever, with the reason discarded by `catch(() => {})`.
   if (!job) {
     return (
       <div>
-        <h1>{t('page.jobDetail.title')}</h1>
-        <p className="loading-text">{t('common.loading')}</p>
+        <h1 className="page-title">{t('page.jobDetail.title')}</h1>
+        <ErrorState
+          error={jobResource.error ?? new Error(t('page.jobDetail.notFound'))}
+          title={t('page.jobDetail.loadFailed')}
+          onRetry={refreshAll}
+        />
       </div>
     );
   }
 
   const template = job.resolvedTemplateCode ?? job.templateCode;
-  const statusColor = STATUS_COLORS[job.status] ?? '#666';
   const isReprint = Boolean(job.metadata?.isReprintOf);
   const natsInfo = job.metadata?.nats;
 
@@ -469,12 +502,7 @@ export default function JobDetail() {
       {/* ── Header: title + status + ID ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
         <h1 className="page-title" style={{ margin: 0 }}>{t('page.jobDetail.title')}</h1>
-        <span style={{
-          background: statusColor, color: '#fff', padding: '6px 16px',
-          borderRadius: '6px', fontSize: '0.875rem', fontWeight: 700,
-        }}>
-          {job.status}
-        </span>
+        <StatusBadge status={job.status} size="lg" />
         {isReprint && (
           <span style={{
             background: '#f0f0f0', color: '#666', padding: '4px 10px',
@@ -484,7 +512,25 @@ export default function JobDetail() {
           </span>
         )}
         <code style={{ fontSize: '0.7rem', color: '#999' }}>{job.id}</code>
+        <Freshness
+          lastSuccessAt={jobResource.lastSuccessAt}
+          stale={jobResource.stale}
+          refreshing={jobResource.refreshing}
+          paused={jobResource.paused}
+          onRefresh={refreshAll}
+        />
       </div>
+
+      {/* Refresh failed while the job is already on screen: the panels below
+          are a snapshot, not the live state. Say so instead of letting the
+          page look current. */}
+      {jobResource.stale && jobResource.error != null && (
+        <ErrorBanner
+          error={jobResource.error}
+          title={t('error.refresh.title')}
+          onRetry={refreshAll}
+        />
+      )}
 
       {/* ── Error banner ── */}
       {job.errorCode && (
@@ -578,6 +624,16 @@ export default function JobDetail() {
         </div>
       </section>
 
+      {/* Never let a failed deliveries fetch render as "no delivery": an
+          operator reading that would conclude the callback never fired. */}
+      {deliveriesResource.error != null && deliveriesResource.data === undefined && (
+        <ErrorBanner
+          error={deliveriesResource.error}
+          title={t('page.jobDetail.deliveryLoadFailed')}
+          onRetry={deliveriesResource.refresh}
+        />
+      )}
+
       {/* ── Result delivery — the callback side, kept apart from print status ── */}
       <ResultDelivery
         intent={job.metadata?.callbackIntent}
@@ -622,7 +678,19 @@ export default function JobDetail() {
         </section>
       )}
 
-      {!trace && <p style={{ color: '#888' }}>{t('page.jobDetail.noTrace')}</p>}
+      {/* "No trace recorded" and "the trace could not be loaded" are different
+          facts — the first is evidence about the job, the second is evidence
+          about the network. They used to render identically. */}
+      {!trace && traceResource.error == null && (
+        <p style={{ color: '#888' }}>{t('page.jobDetail.noTrace')}</p>
+      )}
+      {!trace && traceResource.error != null && (
+        <ErrorBanner
+          error={traceResource.error}
+          title={t('page.jobDetail.traceLoadFailed')}
+          onRetry={traceResource.refresh}
+        />
+      )}
     </div>
   );
 }

@@ -77,8 +77,10 @@ describe('ErrorBanner', () => {
     const html = render(
       <ErrorBanner error={networkApiError('/jobs', new Error('Failed to fetch'))} onDismiss={() => {}} />,
     );
+    // ErrorBanner is a thin wrapper over the shared Alert primitive, so there
+    // is one implementation of "something needs your attention", not two.
     expect(html).toContain('role="alert"');
-    expect(html).toContain('state-banner--error');
+    expect(html).toContain('ui-alert--error');
     expect(html).toContain(`aria-label="${t('th', 'error.dismiss')}"`);
   });
 });
