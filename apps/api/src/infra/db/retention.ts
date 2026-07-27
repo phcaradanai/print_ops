@@ -34,6 +34,7 @@ export interface RetentionResult {
   jobsDeleted: number;
   tracesDeleted: number;
   auditLogsDeleted: number;
+  callbackDeliveriesDeleted: number;
 }
 
 function isoDaysAgo(days: number): string {
@@ -78,7 +79,7 @@ export function pruneOldRecords(db: Database, options: RetentionOptions): Retent
   const ageEnabled = Number.isFinite(retentionDays) && retentionDays > 0;
   const countEnabled = Number.isFinite(maxRows) && maxRows > 0;
   if (!ageEnabled && !countEnabled) {
-    return { jobsDeleted: 0, tracesDeleted: 0, auditLogsDeleted: 0 };
+    return { jobsDeleted: 0, tracesDeleted: 0, auditLogsDeleted: 0, callbackDeliveriesDeleted: 0 };
   }
 
   const cutoff = ageEnabled ? isoDaysAgo(retentionDays) : undefined;
@@ -110,6 +111,7 @@ export function pruneOldRecords(db: Database, options: RetentionOptions): Retent
   const staleJobIds = Array.from(new Set([...staleByAge, ...staleByCount]));
 
   let tracesDeleted = 0;
+  let callbackDeliveriesDeleted = 0;
   if (staleJobIds.length > 0) {
     const jobPlaceholders = staleJobIds.map(() => '?').join(',');
     tracesDeleted = countRows(
@@ -118,6 +120,15 @@ export function pruneOldRecords(db: Database, options: RetentionOptions): Retent
       staleJobIds,
     );
     db.run(`DELETE FROM traces WHERE job_id IN (${jobPlaceholders})`, staleJobIds);
+    // Result-callback deliveries belong to the job they report on: keeping them
+    // after the job is gone leaves rows nothing can ever be correlated back to,
+    // and (for a RETRY_SCHEDULED row) a retry worker chasing a vanished job.
+    callbackDeliveriesDeleted = countRows(
+      db,
+      `SELECT COUNT(*) as c FROM callback_deliveries WHERE print_job_id IN (${jobPlaceholders})`,
+      staleJobIds,
+    );
+    db.run(`DELETE FROM callback_deliveries WHERE print_job_id IN (${jobPlaceholders})`, staleJobIds);
     db.run(`DELETE FROM jobs WHERE id IN (${jobPlaceholders})`, staleJobIds);
   }
 
@@ -135,7 +146,12 @@ export function pruneOldRecords(db: Database, options: RetentionOptions): Retent
     db.run(`DELETE FROM audit_logs WHERE id IN (${auditPlaceholders})`, staleAuditIds);
   }
 
-  return { jobsDeleted: staleJobIds.length, tracesDeleted, auditLogsDeleted: staleAuditIds.length };
+  return {
+    jobsDeleted: staleJobIds.length,
+    tracesDeleted,
+    auditLogsDeleted: staleAuditIds.length,
+    callbackDeliveriesDeleted,
+  };
 }
 
 /**

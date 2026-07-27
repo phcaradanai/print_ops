@@ -173,6 +173,68 @@ describe('External Print Job API', () => {
     ).rejects.toThrow(/copies.*limit/i);
   });
 
+  // Regression: the copies check used to be upper-bound only, so the external
+  // API accepted -5 / 0 / 2.7 copies, persisted the value verbatim and let the
+  // job run to SUCCESS. `copies` decides how many physical pages come out, so
+  // a non-positive or fractional value must never reach an adapter.
+  it.each([
+    ['negative', -5, /at least 1/i],
+    ['zero', 0, /at least 1/i],
+    ['fractional', 2.7, /whole number/i],
+  ])('rejects %s copies', async (label, copies, expected) => {
+    await createPrinter.execute(
+      {
+        code: 'LAB_LABEL_01',
+        name: 'Lab Label',
+        protocol: 'fake',
+        connectionUri: 'fake://lab',
+        maxCopiesPerJob: 5,
+        metadata: {},
+      },
+      'setup'
+    );
+
+    await expect(
+      acceptExternalJob.execute(
+        {
+          request_id: `REQ-COPIES-${label}`,
+          source_system: 'sys',
+          printer_code: 'LAB_LABEL_01',
+          payload: {},
+          copies,
+        },
+        'sa-001'
+      )
+    ).rejects.toThrow(expected);
+  });
+
+  it('still accepts a valid copies value', async () => {
+    await createPrinter.execute(
+      {
+        code: 'LAB_LABEL_01',
+        name: 'Lab Label',
+        protocol: 'fake',
+        connectionUri: 'fake://lab',
+        maxCopiesPerJob: 5,
+        metadata: {},
+      },
+      'setup'
+    );
+
+    const result = await acceptExternalJob.execute(
+      {
+        request_id: 'REQ-COPIES-ok',
+        source_system: 'sys',
+        printer_code: 'LAB_LABEL_01',
+        payload: {},
+        copies: 3,
+      },
+      'sa-001'
+    );
+    expect(result.duplicate).toBe(false);
+    expect(result.print_job_id).toBeTruthy();
+  });
+
   it('rejects invalid template_code', async () => {
     await createPrinter.execute(
       {

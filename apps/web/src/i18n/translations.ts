@@ -51,6 +51,8 @@ const en: TranslationDict = {
   'common.copy': 'Copy',
   'common.noData': '—',
   'common.close': 'Close',
+  'common.yes': 'Enabled',
+  'common.no': 'Disabled',
 
   // Status
   'status.never': 'never',
@@ -213,6 +215,30 @@ const en: TranslationDict = {
   'page.jobDetail.printerAck': 'Printer Ack',
   'page.jobDetail.finished': 'Finished',
   'page.jobDetail.reprintOf': 'Reprint of',
+
+  // Result delivery — the CALLBACK side. Deliberately worded so it can never be
+  // mistaken for the print status shown above it.
+  'page.jobDetail.resultDelivery': 'Result Delivery',
+  'page.jobDetail.printResult': 'Print result',
+  'page.jobDetail.deliveryState': 'Result delivery',
+  'page.jobDetail.callbackEnabled': 'Callback',
+  'page.jobDetail.callbackTrigger': 'Trigger',
+  'page.jobDetail.callbackTransport': 'Transport',
+  'page.jobDetail.callbackEndpoint': 'Endpoint',
+  'page.jobDetail.callbackDisabled': 'Disabled — nothing delivered',
+  'page.jobDetail.callbackNotConfigured': 'Not configured',
+  'page.jobDetail.callbackDisabledReason': 'Reason',
+  'page.jobDetail.noDelivery': 'No delivery recorded yet',
+  'page.jobDetail.attempts': 'Attempts',
+  'page.jobDetail.destination': 'Destination',
+  'page.jobDetail.lastAttempt': 'Last attempt',
+  'page.jobDetail.nextRetry': 'Next retry',
+  'page.jobDetail.deliveredAt': 'Delivered',
+  'page.jobDetail.eventId': 'Event ID',
+  'page.jobDetail.bestEffort': 'BEST EFFORT',
+  'page.jobDetail.bestEffortHelp':
+    'Core NATS: the message left PrintOps, but no subscriber acknowledged it.',
+  'page.jobDetail.viewCallbackLog': 'View callback log',
 
   // Runners
   'page.runners.title': 'Runners',
@@ -611,7 +637,17 @@ const en: TranslationDict = {
   'page.webhooks.callbackUrl': 'Callback URL (or $.field in payload)',
   'page.webhooks.callbackNats': 'NATS reply subject (or $.field)',
   'page.webhooks.payloadTemplate': 'Response payload template (JSON; use $.field to echo intake values)',
+  'page.webhooks.payloadTemplateIgnoredOnResult':
+    'This template applies to the acceptance callback only. Terminal result callbacks always use the fixed, versioned print.job.completed envelope.',
   'page.webhooks.onPrintResult': 'Send only after print result is known',
+  'page.webhooks.onPrintResultOnHelp':
+    'ON: one callback per job, sent after the print reaches a terminal outcome (SUCCESS, FAILED, UNVERIFIED, TIMEOUT or CANCELLED), as event print.job.completed. No acceptance notification is sent.',
+  'page.webhooks.onPrintResultOffHelp':
+    'OFF: one callback at acceptance only, as event print.job.accepted with status QUEUED. The print outcome is never reported.',
+  'page.webhooks.natsBestEffortWarning':
+    'NATS result callbacks are best-effort (Core NATS): a successful publish does not prove a subscriber received it.',
+  'page.webhooks.callbackTestIsNotReal':
+    'Test fires a sample callback now. It is not a real print result and is logged with trigger "test".',
   'page.webhooks.export': 'Export JSON',
   'page.webhooks.import': 'Import JSON',
   'page.webhooks.batchDelete': 'Delete Selected',
@@ -901,6 +937,8 @@ const th: TranslationDict = {
   'common.copy': 'คัดลอก',
   'common.noData': '—',
   'common.close': 'ปิด',
+  'common.yes': 'เปิดใช้งาน',
+  'common.no': 'ปิดใช้งาน',
 
   // Status
   'status.never': 'ไม่เคย',
@@ -1063,6 +1101,28 @@ const th: TranslationDict = {
   'page.jobDetail.printerAck': 'เครื่องตอบรับ',
   'page.jobDetail.finished': 'เสร็จสิ้น',
   'page.jobDetail.reprintOf': 'พิมพ์ใหม่จาก',
+
+  'page.jobDetail.resultDelivery': 'การส่งผลลัพธ์กลับ',
+  'page.jobDetail.printResult': 'ผลการพิมพ์',
+  'page.jobDetail.deliveryState': 'สถานะการส่งผลลัพธ์',
+  'page.jobDetail.callbackEnabled': 'Callback',
+  'page.jobDetail.callbackTrigger': 'ทริกเกอร์',
+  'page.jobDetail.callbackTransport': 'ช่องทาง',
+  'page.jobDetail.callbackEndpoint': 'ปลายทาง',
+  'page.jobDetail.callbackDisabled': 'ปิดใช้งาน — ไม่มีการส่ง',
+  'page.jobDetail.callbackNotConfigured': 'ไม่ได้ตั้งค่า',
+  'page.jobDetail.callbackDisabledReason': 'เหตุผล',
+  'page.jobDetail.noDelivery': 'ยังไม่มีบันทึกการส่ง',
+  'page.jobDetail.attempts': 'จำนวนครั้งที่พยายาม',
+  'page.jobDetail.destination': 'ปลายทาง',
+  'page.jobDetail.lastAttempt': 'ครั้งล่าสุด',
+  'page.jobDetail.nextRetry': 'ครั้งถัดไป',
+  'page.jobDetail.deliveredAt': 'ส่งสำเร็จเมื่อ',
+  'page.jobDetail.eventId': 'Event ID',
+  'page.jobDetail.bestEffort': 'BEST EFFORT',
+  'page.jobDetail.bestEffortHelp':
+    'Core NATS: ข้อความออกจาก PrintOps แล้ว แต่ไม่มีผู้รับยืนยันว่าได้รับ',
+  'page.jobDetail.viewCallbackLog': 'ดูบันทึก callback',
 
   // Runners
   'page.runners.title': 'ตัวรับงาน',
@@ -1461,7 +1521,17 @@ const th: TranslationDict = {
   'page.webhooks.callbackUrl': 'Callback URL (หรือ $.field ใน payload)',
   'page.webhooks.callbackNats': 'NATS reply subject (หรือ $.field)',
   'page.webhooks.payloadTemplate': 'เทมเพลต payload ตอบกลับ (JSON; ใช้ $.field เพื่อส่งค่ากลับ)',
+  'page.webhooks.payloadTemplateIgnoredOnResult':
+    'เทมเพลตนี้ใช้กับ callback ตอนรับงานเท่านั้น callback ผลลัพธ์สุดท้ายจะใช้โครงสร้าง print.job.completed แบบตายตัวที่มีเวอร์ชันกำกับเสมอ',
   'page.webhooks.onPrintResult': 'ส่งต่อเมื่อทราบผลการพิมพ์แล้ว',
+  'page.webhooks.onPrintResultOnHelp':
+    'เปิด: ส่ง callback หนึ่งครั้งต่องาน หลังการพิมพ์ถึงสถานะสุดท้าย (SUCCESS, FAILED, UNVERIFIED, TIMEOUT หรือ CANCELLED) เป็นอีเวนต์ print.job.completed และจะไม่ส่งแจ้งตอนรับงาน',
+  'page.webhooks.onPrintResultOffHelp':
+    'ปิด: ส่ง callback เฉพาะตอนรับงาน เป็นอีเวนต์ print.job.accepted สถานะ QUEUED เท่านั้น จะไม่มีการแจ้งผลการพิมพ์',
+  'page.webhooks.natsBestEffortWarning':
+    'Callback ผลลัพธ์ผ่าน NATS เป็นแบบ best-effort (Core NATS): การ publish สำเร็จไม่ได้พิสูจน์ว่าผู้รับได้รับข้อความ',
+  'page.webhooks.callbackTestIsNotReal':
+    'ปุ่มทดสอบจะยิง callback ตัวอย่างทันที ไม่ใช่ผลการพิมพ์จริง และถูกบันทึกเป็น trigger "test"',
   'page.webhooks.export': 'ส่งออก JSON',
   'page.webhooks.import': 'นำเข้า JSON',
   'page.webhooks.batchDelete': 'ลบรายการที่เลือก',

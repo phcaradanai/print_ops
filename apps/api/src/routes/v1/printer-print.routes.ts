@@ -40,6 +40,10 @@ export async function v1PrinterPrintRoutes(
         copies?: number;
         priority?: JobPriority;
         metadata?: Record<string, unknown>;
+        /** Optional webhook endpoint whose callback config receives this job's
+         *  terminal print result. Omitting it keeps the previous behaviour
+         *  (no result callback) exactly. */
+        endpoint_code?: string;
       };
 
       if (!body.request_id) {
@@ -72,6 +76,7 @@ export async function v1PrinterPrintRoutes(
             copies: body.copies,
             priority: body.priority,
             metadata: body.metadata,
+            endpoint_code: body.endpoint_code,
           },
           sa.id,
           { allowedPrinterCodes: sa.allowedPrinterCodes },

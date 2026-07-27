@@ -9,6 +9,9 @@ import type {
   WebhookCallbackAttemptRepositoryPort,
   CallbackAttemptOutcome,
   CallbackAttemptTransport,
+  CallbackDeliveryRepositoryPort,
+  CallbackDeliveryStatus,
+  CallbackTransport,
   JobPriority,
 } from '@printerops/domain';
 import type { DynamicIntakeService } from '../../services/dynamic-intake.service.js';
@@ -21,6 +24,22 @@ import { actor, requirePermission } from './permission-guard.js';
 const PRIORITY_MAP: Record<string, JobPriority> = {
   low: 'low', normal: 'normal', high: 'high', urgent: 'urgent',
 };
+
+/**
+ * Reject an unknown enum filter value instead of silently returning everything.
+ * A typo'd `?deliveryStatus=DELIVRED` that quietly answers "here is the whole
+ * table" reads to an operator as "nothing failed".
+ */
+function validateFilters(
+  checks: Array<[name: string, value: string | undefined, allowed: readonly string[]]>,
+): string | undefined {
+  for (const [name, value, allowed] of checks) {
+    if (value !== undefined && !allowed.includes(value)) {
+      return `${name} must be one of: ${allowed.join(', ')}`;
+    }
+  }
+  return undefined;
+}
 
 export async function webhookRoutes(
   app: FastifyInstance,
@@ -39,6 +58,7 @@ export async function webhookRoutes(
     callbackSender: HttpClient;
     callbackNats?: NatsPublisher;
     callbackAttemptLog?: WebhookCallbackAttemptRepositoryPort;
+    callbackDeliveries?: CallbackDeliveryRepositoryPort;
   }
 ): Promise<void> {
   app.get('/webhook-endpoints', { onRequest: [requirePermission('webhook:read')] }, async () => deps.endpoints.findAll());
@@ -87,21 +107,79 @@ export async function webhookRoutes(
   // so "did it actually respond successfully?" has a visible answer instead
   // of only showing up in process logs or requiring a unit test to check.
   app.get('/webhook-endpoints/callback-log', { onRequest: [requirePermission('webhook:read')] }, async (req, reply) => {
-    const { limit, offset, outcome, transport, endpointId } = req.query as {
+    const { limit, offset, outcome, transport, endpointId, printJobId, requestId } = req.query as {
       limit?: string;
       offset?: string;
       outcome?: CallbackAttemptOutcome;
       transport?: CallbackAttemptTransport;
       endpointId?: string;
+      printJobId?: string;
+      requestId?: string;
     };
+    const invalid = validateFilters([
+      ['outcome', outcome, ['success', 'failed', 'skipped']],
+      ['transport', transport, ['HTTP', 'NATS']],
+    ]);
+    if (invalid) return reply.status(400).send({ error: 'INVALID_FILTER', message: invalid });
+
     const attempts = await deps.callbackAttemptLog?.findAll({
       limit: limit ? Number(limit) : 100,
       offset: offset ? Number(offset) : undefined,
       outcome,
       transport,
       endpointId,
+      // printJobId / requestId were already stored on every attempt but could
+      // not be filtered on, so the Job Detail page had to pull the entire log
+      // to show one job's callbacks.
+      printJobId,
+      requestId,
     });
     return reply.send(attempts ?? []);
+  });
+
+  /**
+   * Terminal result-callback deliveries.
+   *
+   * Distinct from `/callback-log` above: that lists individual ATTEMPTS
+   * (including sandbox test fires and acceptance notifications); this lists the
+   * durable DELIVERY records, one per (job, transport, destination), with the
+   * retry state a caller actually needs — attempts used, next retry, final
+   * verdict. The Job Detail page reads this with `?printJobId=`.
+   */
+  app.get('/callback-deliveries', { onRequest: [requirePermission('webhook:read')] }, async (req, reply) => {
+    if (!deps.callbackDeliveries) return reply.send([]);
+    const { limit, offset, printJobId, requestId, eventId, deliveryStatus, transport, endpointId } =
+      req.query as {
+        limit?: string;
+        offset?: string;
+        printJobId?: string;
+        requestId?: string;
+        eventId?: string;
+        deliveryStatus?: CallbackDeliveryStatus;
+        transport?: CallbackTransport;
+        endpointId?: string;
+      };
+    const invalid = validateFilters([
+      [
+        'deliveryStatus',
+        deliveryStatus,
+        ['PENDING', 'DELIVERING', 'DELIVERED', 'RETRY_SCHEDULED', 'FAILED', 'SKIPPED'],
+      ],
+      ['transport', transport, ['HTTP', 'NATS']],
+    ]);
+    if (invalid) return reply.status(400).send({ error: 'INVALID_FILTER', message: invalid });
+
+    const deliveries = await deps.callbackDeliveries.findAll({
+      limit: limit ? Number(limit) : 100,
+      offset: offset ? Number(offset) : undefined,
+      printJobId,
+      requestId,
+      eventId,
+      deliveryStatus,
+      transport,
+      endpointId,
+    });
+    return reply.send(deliveries);
   });
 
   app.get('/webhook-route-policies', { onRequest: [requirePermission('webhook:read')] }, async () => deps.policies.findAll());

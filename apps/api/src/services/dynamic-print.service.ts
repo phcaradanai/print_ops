@@ -1,7 +1,16 @@
-import type { JobPriority, IntakeAttemptRepositoryPort, IntakeSource } from '@printerops/domain';
+import type {
+  JobPriority,
+  IntakeAttemptRepositoryPort,
+  IntakeSource,
+  JobCallbackIntent,
+  PrintTemplateRepositoryPort,
+  WebhookEndpointRepositoryPort,
+} from '@printerops/domain';
+import { CALLBACK_INTENT_METADATA_KEY } from '@printerops/domain';
 import { AppError, ValidationError } from '@printerops/shared';
 import type { AcceptExternalJobService, ExternalPrintJobResponse } from './accept-external-job.service.js';
 import type { ResolvePrinterBindingService } from './resolve-printer-binding.service.js';
+import { resolveEndpointCallbackIntent } from './callback-intent.service.js';
 
 /**
  * DynamicPrintRequest is the transport-neutral input for the dynamic print
@@ -19,6 +28,17 @@ export interface DynamicPrintRequest {
   copies?: number;
   priority?: JobPriority;
   metadata?: Record<string, unknown>;
+  /**
+   * Optional reference to a WebhookEndpoint whose callback configuration should
+   * receive this job's terminal print result.
+   *
+   * OPTIONAL on purpose — this is the backward-compatible extension point for
+   * the NATS envelope and the dynamic HTTP body. Existing senders that do not
+   * want callbacks omit it and are completely unaffected. Before this field the
+   * NATS intake path carried no callback reference at all, so NATS-originated
+   * prints could never report a result anywhere.
+   */
+  endpoint_code?: string;
 }
 
 /**
@@ -32,6 +52,8 @@ export class DynamicPrintService {
     private readonly resolver: ResolvePrinterBindingService,
     private readonly acceptExternalJob: AcceptExternalJobService,
     private readonly intakeLog?: IntakeAttemptRepositoryPort,
+    private readonly endpoints?: WebhookEndpointRepositoryPort,
+    private readonly templates?: PrintTemplateRepositoryPort,
   ) {}
 
   /**
@@ -98,6 +120,24 @@ export class DynamicPrintService {
       reject(reason, new AppError('FORBIDDEN', reason, 403));
     }
 
+    // An explicitly supplied `printer_code` skips binding resolution, and with
+    // it the only place `code_template` was ever checked — so a request naming
+    // a template that does not exist printed anyway, unrendered. An explicitly
+    // provided template that cannot be found is a client error, not something
+    // to silently ignore: the caller asked for a specific document.
+    if (req.code_template && this.templates) {
+      const template = await this.templates.findByCode(req.code_template);
+      if (!template || template.status !== 'PUBLISHED') {
+        const reason = `template_code '${req.code_template}' does not exist or is not published`;
+        reject(
+          reason,
+          new AppError('TEMPLATE_NOT_FOUND', 'The requested print template does not exist.', 422),
+        );
+      }
+    }
+
+    const callbackIntent = await this.resolveCallbackIntent(req, reject);
+
     return this.acceptExternalJob.execute(
       {
         request_id: req.request_id,
@@ -111,10 +151,33 @@ export class DynamicPrintService {
         metadata: {
           ...(req.metadata ?? {}),
           code_profile: req.code_profile,
+          ...(callbackIntent ? { [CALLBACK_INTENT_METADATA_KEY]: callbackIntent } : {}),
         },
       },
       actorId,
       source,
     );
+  }
+
+  /**
+   * Resolve `endpoint_code` into the immutable callback intent stored with the
+   * job, logging the rejection to the intake log so an operator can see WHY a
+   * NATS message was dead-lettered rather than printed.
+   */
+  private async resolveCallbackIntent(
+    req: DynamicPrintRequest,
+    reject: (reason: string, error: AppError) => never,
+  ): Promise<JobCallbackIntent | undefined> {
+    try {
+      return await resolveEndpointCallbackIntent(
+        this.endpoints,
+        req.endpoint_code,
+        req.source_system,
+        req.payload ?? {},
+      );
+    } catch (err) {
+      if (err instanceof AppError) reject(err.message, err);
+      throw err;
+    }
   }
 }

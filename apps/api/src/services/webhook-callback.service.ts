@@ -69,6 +69,25 @@ const FIELD_PATH = /^\$\.[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/;
 /** Matches `$.field` / `$.a.b` tokens embedded anywhere in a template string. */
 const EMBEDDED_FIELD = /\$\.[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*/g;
 
+/**
+ * Resolve a destination template (`$.reply_to`, `results/$.tenant`, or a plain
+ * literal) against an intake payload, returning a literal destination.
+ *
+ * Exported because the TERMINAL result-callback path has to do this resolution
+ * at ACCEPT time and persist the literal with the job: by the time the print
+ * finishes, the intake payload the `$.field` refers to is long gone.
+ */
+export function resolveCallbackDestination(
+  template: string | undefined,
+  intakePayload: Record<string, unknown>,
+): string | undefined {
+  if (!template) return undefined;
+  const resolved = FIELD_PATH.test(template)
+    ? String(fieldValue(intakePayload, template) ?? '')
+    : renderFieldTokens(template, intakePayload);
+  return resolved.length > 0 ? resolved : undefined;
+}
+
 function fieldValue(payload: Record<string, unknown>, path: string): unknown {
   const clean = path.startsWith('$.') ? path.slice(2) : path;
   return clean.split('.').reduce<unknown>((current, part) => {
@@ -175,6 +194,12 @@ export class WebhookCallbackService {
       Object.keys(userTemplate).length > 0
         ? userTemplate
         : {
+            // `event_type` names this for what it is: an ACCEPTANCE
+            // notification. It carries `status: "QUEUED"` because the job has
+            // only been queued — it is not, and must never be described as, a
+            // print result. The terminal result arrives separately as
+            // `print.job.completed` (see ResultCallbackDispatcher).
+            event_type: 'print.job.accepted',
             request_id: result['request_id'],
             print_job_id: result['print_job_id'],
             status: result['status'],

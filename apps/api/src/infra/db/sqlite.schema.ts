@@ -320,6 +320,51 @@ export function runSchemaMigration(db: Database): void {
     )
   `);
 
+  // Terminal result-callback deliveries. Durable (unlike the 500-entry
+  // in-memory WebhookCallbackAttempt ring buffer) because the retry worker has
+  // to find RETRY_SCHEDULED rows again after a process restart — a ring buffer
+  // would silently drop a callback still owed to a caller.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS callback_deliveries (
+      id TEXT PRIMARY KEY NOT NULL,
+      event_id TEXT NOT NULL,
+      print_job_id TEXT NOT NULL,
+      request_id TEXT,
+      source_system TEXT,
+      transport TEXT NOT NULL,
+      target TEXT NOT NULL,
+      trigger_kind TEXT NOT NULL DEFAULT 'PRINT_RESULT',
+      delivery_status TEXT NOT NULL DEFAULT 'PENDING',
+      guarantee TEXT,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 5,
+      last_attempt_at TEXT,
+      next_attempt_at TEXT,
+      delivered_at TEXT,
+      last_http_status INTEGER,
+      last_error_code TEXT,
+      last_error_message TEXT,
+      print_status TEXT NOT NULL,
+      payload TEXT NOT NULL DEFAULT '{}',
+      endpoint_id TEXT,
+      endpoint_code TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  // The UNIQUE index IS the callback idempotency guarantee: a redelivered or
+  // replayed terminal event cannot insert a second delivery for the same
+  // (job, transport, destination).
+  db.run(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_callback_deliveries_key ON callback_deliveries(print_job_id, transport, target)',
+  );
+  db.run('CREATE INDEX IF NOT EXISTS idx_callback_deliveries_job ON callback_deliveries(print_job_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_callback_deliveries_request ON callback_deliveries(request_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_callback_deliveries_event ON callback_deliveries(event_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_callback_deliveries_status ON callback_deliveries(delivery_status)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_callback_deliveries_next ON callback_deliveries(next_attempt_at)');
+
   db.run(`
     CREATE TABLE IF NOT EXISTS imported_designs (
       id TEXT PRIMARY KEY NOT NULL,

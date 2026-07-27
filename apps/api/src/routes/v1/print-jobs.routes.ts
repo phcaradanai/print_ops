@@ -3,6 +3,7 @@ import type { AcceptExternalJobService } from '../../services/accept-external-jo
 import type { CancelJobService } from '../../services/cancel-job.service.js';
 import type { ExecuteJobService } from '../../services/execute-job.service.js';
 import type { JobRepositoryPort, TraceRepositoryPort, ServiceAccount, IntakeAttemptRepositoryPort } from '@printerops/domain';
+import { AppError } from '@printerops/shared';
 import { redactJob, redactJobs } from '../job-redaction.js';
 
 type ReqWithServiceAccount = { serviceAccount: ServiceAccount };
@@ -34,6 +35,9 @@ export async function v1PrintJobRoutes(
       copies?: number;
       priority?: import('@printerops/domain').JobPriority;
       metadata?: Record<string, unknown>;
+      /** Optional webhook endpoint that receives this job's terminal print
+       *  result. Omitting it preserves the existing contract exactly. */
+      endpoint_code?: string;
     };
 
     const rejectEarly = (reason: string) => {
@@ -68,23 +72,34 @@ export async function v1PrintJobRoutes(
       return reply.status(403).send({ error: reason });
     }
 
-    const result = await deps.acceptExternalJob.execute(
-      {
-        request_id: body.request_id,
-        source_system: body.source_system ?? sa.sourceSystem,
-        source_reference: body.source_reference,
-        printer_code: body.printer_code,
-        template_code: body.template_code,
-        payload: body.payload ?? {},
-        copies: body.copies,
-        priority: body.priority,
-        metadata: body.metadata,
-      },
-      sa.id
-    );
+    try {
+      const result = await deps.acceptExternalJob.execute(
+        {
+          request_id: body.request_id,
+          source_system: body.source_system ?? sa.sourceSystem,
+          source_reference: body.source_reference,
+          printer_code: body.printer_code,
+          template_code: body.template_code,
+          payload: body.payload ?? {},
+          copies: body.copies,
+          priority: body.priority,
+          metadata: body.metadata,
+          endpoint_code: body.endpoint_code,
+        },
+        sa.id
+      );
 
-    const status = result.duplicate ? 200 : 201;
-    return reply.status(status).send(result);
+      const status = result.duplicate ? 200 : 201;
+      return reply.status(status).send(result);
+    } catch (err: unknown) {
+      // Structured client errors (an unknown template_code, an endpoint_code the
+      // caller may not use, a callback URL the SSRF guard refused) must come
+      // back as the 4xx they are, with their code, rather than a bare 500.
+      if (err instanceof AppError) {
+        return reply.status(err.statusCode).send({ error: err.code, message: err.message });
+      }
+      throw err;
+    }
   });
 
   // GET /api/v1/print-jobs — list with optional ?status=&limit=&offset=

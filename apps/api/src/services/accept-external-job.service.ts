@@ -12,8 +12,12 @@ import type {
   IntakeSource,
   Job,
   JobPriority,
+  WebhookEndpointRepositoryPort,
 } from '@printerops/domain';
+import { CALLBACK_INTENT_METADATA_KEY } from '@printerops/domain';
+import { AppError } from '@printerops/shared';
 import { CreatePrintJobService } from './create-print-job.service.js';
+import { resolveEndpointCallbackIntent } from './callback-intent.service.js';
 
 export interface ExternalPrintJobRequest {
   request_id: string;
@@ -25,6 +29,10 @@ export interface ExternalPrintJobRequest {
   copies?: number;
   priority?: JobPriority;
   metadata?: Record<string, unknown>;
+  /** Optional webhook endpoint whose callback configuration receives this
+   *  job's terminal print result. Omitted = no result callback (previous
+   *  behaviour, unchanged for every existing caller). */
+  endpoint_code?: string;
 }
 
 export interface ExternalPrintJobResponse {
@@ -57,6 +65,7 @@ export class AcceptExternalJobService {
     private papers?: PaperProfileRepositoryPort,
     private renderer?: TemplateRendererPort,
     private intakeLog?: IntakeAttemptRepositoryPort,
+    private endpoints?: WebhookEndpointRepositoryPort,
   ) {
     this.createJob = new CreatePrintJobService(jobs, printers, queue, traces, audit, events);
   }
@@ -116,6 +125,28 @@ export class AcceptExternalJobService {
       };
     }
 
+    // An explicitly provided template that does not exist is a client error.
+    //
+    // Without this, POST /api/v1/print-jobs with template_code=NO_SUCH_TEMPLATE
+    // returned 201 and printed the job unrendered: the rendering block below is
+    // guarded on the template being FOUND, so a miss silently fell through to
+    // "print the raw payload". The caller asked for a specific document; giving
+    // them a different one and calling it success is worse than refusing.
+    //
+    // Only enforced when a template repository is available — callers that
+    // construct this service without one (unit tests, embedded uses) keep their
+    // previous behaviour.
+    if (req.template_code && this.templates) {
+      const declared = await this.templates.findByCode(req.template_code);
+      if (!declared || declared.status !== 'PUBLISHED') {
+        throw new AppError(
+          'TEMPLATE_NOT_FOUND',
+          'The requested print template does not exist.',
+          422,
+        );
+      }
+    }
+
     // Render template if a template_code is provided and renderer is available.
     // The rendered bytes are stored in metadata._renderedPayload and passed to
     // the job as renderedPrintPayload so the runner can send them to the printer.
@@ -155,6 +186,17 @@ export class AcceptExternalJobService {
       }
     }
 
+    // Snapshotted at accept time and stored WITH the job: `$.field` callback
+    // destinations point into `req.payload`, which no longer exists once the
+    // print reaches a terminal state. Throws (422/403) on a bad reference, so
+    // the caller learns about it instead of getting a silent page and no result.
+    const callbackIntent = await resolveEndpointCallbackIntent(
+      this.endpoints,
+      req.endpoint_code,
+      req.source_system,
+      req.payload,
+    );
+
     const job = await this.createJob.execute(
       {
         printerId: '',
@@ -176,6 +218,7 @@ export class AcceptExternalJobService {
           payload: req.payload,
           ...(paperProfileMetadata ? { paperProfile: paperProfileMetadata } : {}),
           ...(renderWarnings.length > 0 ? { renderWarnings } : {}),
+          ...(callbackIntent ? { [CALLBACK_INTENT_METADATA_KEY]: callbackIntent } : {}),
         },
       },
       actorId

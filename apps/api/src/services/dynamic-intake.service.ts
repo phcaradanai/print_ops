@@ -13,7 +13,9 @@ import type {
   WebhookEndpoint,
   EventBusPort,
 } from '@printerops/domain';
+import { CALLBACK_INTENT_METADATA_KEY } from '@printerops/domain';
 import { NotFoundError, ValidationError } from '@printerops/shared';
+import { buildCallbackIntentSafe } from './callback-intent.service.js';
 import { CreatePrintJobService } from './create-print-job.service.js';
 import { RoutePolicyResolverService } from './route-policy-resolver.service.js';
 import type { WebhookCallbackService, WebhookCallbackLogger } from './webhook-callback.service.js';
@@ -152,7 +154,11 @@ export class DynamicIntakeService {
           routeResolveMs,
           renderMs: rendered.renderTimeMs,
         },
+        // Callback intent is snapshotted HERE, at accept time, and travels with
+        // the job. `$.field` destinations resolve against req.body, which does
+        // not exist any more by the time the print reaches a terminal state.
         metadata: {
+          [CALLBACK_INTENT_METADATA_KEY]: buildCallbackIntentSafe(endpoint, req.body),
           routePolicyCode: policy.policyCode,
           warnings: rendered.warnings,
           mappedPayload: route.mappedPayload,
@@ -233,6 +239,10 @@ export class DynamicIntakeService {
     });
   }
 
+  /**
+   * Fires the ACCEPTANCE notification (`print.job.accepted`). Not a print
+   * result — the job has only been queued at this point.
+   */
   private fireCallback(
     endpoint: WebhookEndpoint,
     intakePayload: Record<string, unknown>,
@@ -240,6 +250,13 @@ export class DynamicIntakeService {
   ): void {
     if (!this.callbacks) return;
     if ((endpoint.callbackTransport ?? 'NONE') === 'NONE') return;
+    // `callbackOnPrintResult` means "notify me when the print RESULT is known,
+    // INSTEAD of at acceptance" — so suppress the acceptance notification here
+    // and let ResultCallbackDispatcher send the terminal one. A duplicate is
+    // exempt: it never creates a new print, so it would otherwise produce no
+    // callback at all and leave the caller waiting on a result that can never
+    // come.
+    if (endpoint.callbackOnPrintResult && result.duplicate !== true) return;
     void this.callbacks
       .send({ endpoint, intakePayload, result: result as unknown as Record<string, unknown> })
       .catch((err: unknown) => {

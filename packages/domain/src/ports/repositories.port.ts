@@ -26,6 +26,13 @@ import type {
   CallbackAttemptTransport,
 } from '../models/webhook-callback-attempt.js';
 
+import type {
+  CallbackDelivery,
+  CreateCallbackDeliveryInput,
+  CallbackDeliveryStatus,
+  CallbackTransport,
+} from '../models/callback-delivery.js';
+
 export interface ListOptions {
   limit?: number;
   offset?: number;
@@ -173,5 +180,53 @@ export interface WebhookCallbackAttemptRepositoryPort {
     outcome?: CallbackAttemptOutcome;
     transport?: CallbackAttemptTransport;
     endpointId?: string;
+    printJobId?: string;
+    requestId?: string;
   }): Promise<WebhookCallbackAttempt[]>;
+}
+
+/**
+ * Durable record of terminal result-callback deliveries.
+ *
+ * Separate from WebhookCallbackAttemptRepositoryPort on purpose: that one is a
+ * capped in-memory ring buffer of individual attempts (a diagnostic view), and
+ * a retry worker cannot use a ring buffer as its source of truth — "restart with
+ * a pending delivery" would silently lose work. This repository is persisted in
+ * SQLite mode.
+ */
+export interface CallbackDeliveryRepositoryPort {
+  findById(id: string): Promise<CallbackDelivery | undefined>;
+  /** Look up by the idempotency key `(printJobId, transport, target)`. */
+  findByKey(
+    printJobId: string,
+    transport: CallbackTransport,
+    target: string,
+  ): Promise<CallbackDelivery | undefined>;
+  findAll(opts?: ListOptions & {
+    printJobId?: string;
+    requestId?: string;
+    eventId?: string;
+    deliveryStatus?: CallbackDeliveryStatus;
+    transport?: CallbackTransport;
+    endpointId?: string;
+  }): Promise<CallbackDelivery[]>;
+  /** Deliveries whose `nextAttemptAt` has come due, oldest first. */
+  findDue(now: Date, limit?: number): Promise<CallbackDelivery[]>;
+  /**
+   * Insert, or return the existing row for the same idempotency key WITHOUT
+   * modifying it. This is what makes a redelivered terminal event a no-op
+   * instead of a second callback.
+   */
+  createIfAbsent(input: CreateCallbackDeliveryInput): Promise<{ delivery: CallbackDelivery; created: boolean }>;
+  update(id: string, patch: Partial<CallbackDelivery>): Promise<CallbackDelivery>;
+  /**
+   * Conditional status transition: apply `patch` only while the delivery is in
+   * one of `fromStatuses`. Two workers (the subscriber firing immediately and
+   * the retry sweep) can otherwise both send the same attempt.
+   */
+  claim(
+    id: string,
+    fromStatuses: CallbackDeliveryStatus[],
+    patch: Partial<CallbackDelivery>,
+  ): Promise<CallbackDelivery | undefined>;
 }

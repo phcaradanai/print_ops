@@ -45,7 +45,22 @@ export class CreatePrintJobService {
       throw new NotFoundError('Printer', input.printerCode ?? input.printerId ?? 'unknown');
     }
 
-    // Validate copies
+    // Validate copies.
+    //
+    // The lower bound matters as much as the upper one: `copies` is what
+    // decides how many physical pages leave the device. Only the upper bound
+    // used to be checked here, so POST /api/v1/print-jobs accepted copies of
+    // -5, 0 and 2.7 and persisted them verbatim (the job still reached
+    // SUCCESS). DynamicIntakeService clamps with Math.max(1, ...) before it
+    // ever gets here, so the external API was the only way in — but this is
+    // the one chokepoint every transport passes through, so the check belongs
+    // here rather than in each intake path.
+    if (!Number.isInteger(input.copies)) {
+      throw new ValidationError(`copies must be a whole number, received ${input.copies}`);
+    }
+    if (input.copies < 1) {
+      throw new ValidationError(`copies must be at least 1, received ${input.copies}`);
+    }
     if (printer.maxCopiesPerJob && input.copies > printer.maxCopiesPerJob) {
       throw new ValidationError(
         `copies ${input.copies} exceeds printer limit ${printer.maxCopiesPerJob}`

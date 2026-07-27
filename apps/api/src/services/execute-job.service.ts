@@ -12,6 +12,7 @@ import type {
 } from '@printerops/domain';
 import type { AdapterRegistry } from '@printerops/adapters';
 import { generateId, ConflictError, NotFoundError } from '@printerops/shared';
+import { emitPrintJobTerminal } from './emit-terminal-event.js';
 
 /**
  * Statuses that mean the job is already claimed, already on the wire, or
@@ -297,6 +298,15 @@ export class ExecuteJobService {
           durationMs: runnerExecMs,
         });
 
+        // Terminal state is persisted (the `completed` update above), so the
+        // result-callback subscriber can safely read the job back.
+        emitPrintJobTerminal(this.events, completed, {
+          status: 'SUCCESS',
+          runnerId,
+          printerCode: printer.code,
+          finishedAt,
+        });
+
         await this.queue.ack(jobId);
         return completed;
       } else {
@@ -430,6 +440,17 @@ export class ExecuteJobService {
       jobId: job.id,
       errorCode,
       errorMessage,
+    });
+
+    // `terminalStatus`, not a flattened 'FAILED'. UNVERIFIED means a page may
+    // physically exist; telling the caller's system it failed would invite a
+    // duplicate reprint of a label that is already in the tray.
+    emitPrintJobTerminal(this.events, failed, {
+      status: terminalStatus,
+      runnerId,
+      errorCode,
+      errorMessage,
+      finishedAt,
     });
 
     // Terminal failures (FAILED/UNVERIFIED) are done — ack, not nack. Nothing

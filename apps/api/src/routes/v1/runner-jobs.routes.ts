@@ -12,6 +12,7 @@ import type {
   JobFailed,
 } from '@printerops/domain';
 import { generateId } from '@printerops/shared';
+import { emitPrintJobTerminal } from '../../services/emit-terminal-event.js';
 
 /**
  * Runner-scoped job endpoints (Go runner / future runners).
@@ -298,6 +299,19 @@ export async function v1RunnerJobRoutes(
       };
       deps.events.publish(evt);
     }
+
+    // The Go runner's terminal path. Without this the result-callback
+    // subscriber only ever fired under PRINTOPS_LOCAL_WORKER (the in-process
+    // executor), i.e. never in the deployment that actually ships.
+    emitPrintJobTerminal(deps.events, updated, {
+      status,
+      runnerId,
+      printerCode: printer?.code,
+      errorCode: patch.errorCode,
+      errorMessage: patch.errorMessage,
+      finishedAt,
+      traceId: body.trace_id ?? job.traceId,
+    });
 
     return reply.status(200).send({ ok: true, status });
   });

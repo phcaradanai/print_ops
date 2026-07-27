@@ -843,6 +843,16 @@ export default function Webhooks() {
               <label className="wh-field-label">
                 {t('page.webhooks.payloadTemplate')}
               </label>
+              {/* The template shapes the ACCEPTANCE callback only. Terminal
+                  result callbacks use a fixed, versioned envelope so every
+                  receiver can rely on the same schema — say so here rather than
+                  letting an operator configure a template that is then silently
+                  ignored the moment they enable result callbacks. */}
+              {form.callbackOnPrintResult && (
+                <span className="wh-field-hint" style={{ color: '#8a5a00' }}>
+                  ⚠ {t('page.webhooks.payloadTemplateIgnoredOnResult')}
+                </span>
+              )}
 
               <div className="wh-template-grid">
                 {/* Code Editor Container */}
@@ -877,6 +887,21 @@ export default function Webhooks() {
                   <span className="wh-field-hint" style={{ marginTop: 0 }}>
                     {t('page.webhooks.onPrintResult')}
                   </span>
+                  {/* This toggle used to be wired to nothing: it persisted, and
+                      no dispatch code read it. Spell out what each position now
+                      actually does so the difference is testable by an
+                      operator, not just by a developer. */}
+                  <span className="wh-field-hint">
+                    {form.callbackOnPrintResult
+                      ? t('page.webhooks.onPrintResultOnHelp')
+                      : t('page.webhooks.onPrintResultOffHelp')}
+                  </span>
+                  {form.callbackOnPrintResult &&
+                    (form.callbackTransport === 'NATS' || form.callbackTransport === 'BOTH') && (
+                      <span className="wh-field-hint" style={{ color: '#8a5a00' }}>
+                        ⚠ {t('page.webhooks.natsBestEffortWarning')}
+                      </span>
+                    )}
                 </div>
               </div>
             </div>

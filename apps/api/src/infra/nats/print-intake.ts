@@ -97,6 +97,20 @@ interface PrintIntakeEnvelope {
   copies?: number;
   priority?: DynamicPrintRequest['priority'];
   metadata?: Record<string, unknown>;
+  /**
+   * OPTIONAL reference to a configured WebhookEndpoint that should receive this
+   * job's terminal print result (HTTP and/or NATS, per that endpoint's config).
+   *
+   * Backward compatible by construction: existing publishers that never send it
+   * behave exactly as before and get no result callback. This is the field that
+   * makes NATS-originated prints reportable at all — the envelope previously
+   * carried no callback reference of any kind, so `NATS -> print -> callback`
+   * was structurally impossible regardless of endpoint configuration.
+   *
+   * The endpoint must exist, be enabled, and belong to `source_system`; a bad
+   * reference is rejected BEFORE anything prints (see DynamicPrintService).
+   */
+  endpoint_code?: string;
 }
 
 /**
@@ -267,6 +281,7 @@ export async function handlePrintIntakeMessage(
         payload: env.payload ?? {},
         copies: env.copies,
         priority: env.priority,
+        endpoint_code: env.endpoint_code,
         metadata: {
           ...(env.metadata ?? {}),
           nats: {

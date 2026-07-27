@@ -78,6 +78,14 @@ import { templateRoutes } from './routes/v1/template.routes.js';
 import { webhookRoutes } from './routes/v1/webhook.routes.js';
 import { v1UserRoutes } from './routes/v1/users.routes.js';
 import { WebhookCallbackService, type NatsPublisher } from './services/webhook-callback.service.js';
+import { InMemoryCallbackDeliveryRepository } from './infra/repos/in-memory-callback-delivery.repo.js';
+import { SqliteCallbackDeliveryRepository } from './infra/repos/sqlite/sqlite-callback-delivery.repo.js';
+import {
+  ResultCallbackDispatcher,
+  type CallbackHttpSender,
+  type CallbackNatsSender,
+} from './services/result-callback-dispatcher.js';
+import { retryPolicyFromEnv } from './services/callback-retry-policy.js';
 import { paperProfileImportRoutes } from './routes/v1/paper-profile-imports.routes.js';
 import { sandboxRoutes } from './routes/v1/sandbox.routes.js';
 import { startPrintIntakeConsumer, printIntakeConfigFromEnv, type PrintIntakeConfig } from './infra/nats/print-intake.js';
@@ -103,6 +111,40 @@ async function httpCallbackSender(url: string, body: unknown): Promise<void> {
     throw new Error(`webhook callback HTTP ${res.status} to ${url}`);
   }
 }
+
+/**
+ * HTTP sender for TERMINAL result callbacks.
+ *
+ * Deliberately different from `httpCallbackSender` above: it resolves for any
+ * response, including 5xx, and hands back the status code. The retry policy has
+ * to distinguish "receiver is down, try again" (5xx/408/429) from "receiver
+ * rejected this request, stop" (most 4xx), and a sender that throws a string on
+ * every non-2xx cannot carry that distinction. It also enforces a request
+ * timeout, so one hung receiver cannot pin a delivery slot forever.
+ */
+const resultCallbackHttpSender: CallbackHttpSender = async (url, body, opts) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: opts.headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    let bodyExcerpt: string | undefined;
+    try {
+      // Bounded: a receiver returning a megabyte of HTML must not end up in the
+      // delivery record an operator reads.
+      bodyExcerpt = (await res.text()).slice(0, 500) || undefined;
+    } catch {
+      bodyExcerpt = undefined;
+    }
+    return { status: res.status, bodyExcerpt };
+  } finally {
+    clearTimeout(timer);
+  }
+};
 
 // __dirname is available in the CJS bundle produced by esbuild/pkg
 declare var __dirname: string;
@@ -218,7 +260,15 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // both DB modes" rule as intakeAttemptRepo, since this is an operational
   // log of "did it actually deliver?", not durable business data.
   const webhookCallbackAttemptRepo = new InMemoryWebhookCallbackAttemptRepository();
-  const eventBus = new InMemoryEventBus();
+  // Terminal result-callback deliveries. Durable in SQLite mode — unlike the
+  // attempt ring buffer above, a pending delivery is work still owed to a
+  // caller, and the retry worker has to find it again after a restart.
+  const callbackDeliveryRepo = useSqlite
+    ? new SqliteCallbackDeliveryRepository()
+    : new InMemoryCallbackDeliveryRepository();
+  const eventBus = new InMemoryEventBus({
+    onHandlerError: (event, err) => app.log.error({ err, eventType: event.eventType }, 'event subscriber failed'),
+  });
   const queue = new InMemoryJobQueue();
   const exporter = new InMemoryExportAdapter();
   const permissionPolicy = new RbacPermissionPolicy();
@@ -235,7 +285,15 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const createJob = new CreatePrintJobService(jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus);
   const acceptExternalJob = new AcceptExternalJobService(
     jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus,
-    undefined, undefined, undefined, intakeAttemptRepo,
+    // Template repo only — NOT the paper repo or the renderer. That combination
+    // turns on template VALIDATION (an explicitly named template that does not
+    // exist is now a 422 instead of a silently unrendered print) without
+    // switching on server-side rendering for this route, which has never done
+    // it and whose callers do not expect it.
+    templateRepo, undefined, undefined, intakeAttemptRepo,
+    // Lets POST /api/v1/print-jobs accept an optional `endpoint_code` and
+    // snapshot that endpoint's callback configuration onto the job.
+    webhookEndpointRepo,
   );
   const cancelJob = new CancelJobService(jobRepo, traceRepo, auditRepo, eventBus);
   const executeJob = new ExecuteJobService(jobRepo, printerRepo, traceRepo, auditRepo, queue, eventBus, registry);
@@ -269,7 +327,47 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   );
 
   const resolvePrinterBinding = new ResolvePrinterBindingService(paperRepo, bindingRepo, templateRepo);
-  const dynamicPrint = new DynamicPrintService(resolvePrinterBinding, acceptExternalJob, intakeAttemptRepo);
+  const dynamicPrint = new DynamicPrintService(
+    resolvePrinterBinding,
+    acceptExternalJob,
+    intakeAttemptRepo,
+    // `endpoint_code` on the dynamic HTTP body and the NATS envelope resolves
+    // through here; the template repo closes the hole where an explicit
+    // printer_code skipped binding resolution and left code_template unchecked.
+    webhookEndpointRepo,
+    templateRepo,
+  );
+
+  // --- Terminal result callbacks -----------------------------------------
+  // The production subscriber. Before this, InMemoryEventBus.subscribe() had no
+  // non-test caller: every domain event went nowhere, and the only callback
+  // that ever fired did so at acceptance time carrying status "QUEUED".
+  //
+  // The NATS publisher is resolved lazily through a closure because the
+  // connection is owned by the optional print-intake consumer, which starts
+  // AFTER the routes are registered.
+  let resultCallbackNats: CallbackNatsSender | undefined;
+  const resultCallbackDispatcher = new ResultCallbackDispatcher({
+    jobs: jobRepo,
+    deliveries: callbackDeliveryRepo,
+    http: resultCallbackHttpSender,
+    nats: (subject, body) => {
+      if (!resultCallbackNats) throw new Error('NATS transport is not connected');
+      return resultCallbackNats(subject, body);
+    },
+    attemptLog: webhookCallbackAttemptRepo,
+    logger: app.log,
+    policy: retryPolicyFromEnv(),
+  });
+  resultCallbackDispatcher.register(eventBus);
+  // Re-arm anything a previous process left mid-flight before the sweep starts,
+  // otherwise a DELIVERING row is invisible to both the subscriber and the
+  // retry query and would never be delivered at all.
+  await resultCallbackDispatcher.recoverInFlight();
+  resultCallbackDispatcher.startRetryWorker();
+  app.addHook('onClose', async () => {
+    resultCallbackDispatcher.stopRetryWorker();
+  });
 
   const importPaperProfile = new ImportPaperProfileService(
     paperRepo,
@@ -654,7 +752,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1RunnerJobRoutes(v1, { jobs: jobRepo, printers: printerRepo, traces: traceRepo, audit: auditRepo, events: eventBus });
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
     await sandboxRoutes(v1, { sandbox: sandboxSvc, connectivity: connectivitySvc, audit: auditRepo });
-    await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob, getPrinterStatus, logger: app.log, callbackSender: httpCallbackSender, callbackNats: natsPublisher, callbackAttemptLog: webhookCallbackAttemptRepo });
+    await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob, getPrinterStatus, logger: app.log, callbackSender: httpCallbackSender, callbackNats: natsPublisher, callbackAttemptLog: webhookCallbackAttemptRepo, callbackDeliveries: callbackDeliveryRepo });
     await paperProfileImportRoutes(v1, { importService: importPaperProfile });
     await v1UserRoutes(v1, { users: userRepo });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
@@ -674,6 +772,11 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       natsPublisher = natsPublisherLocal;
       const callbackService = new WebhookCallbackService(app.log, httpCallbackSender, natsPublisherLocal, webhookCallbackAttemptRepo);
       dynamicIntake.setCallbackService(callbackService);
+      // Terminal result callbacks over NATS reuse the same connection, so a
+      // caller-supplied reply subject is reachable on the same broker. Core
+      // publish only — see docs/architecture/result-callbacks.md for why
+      // JetStream is not promised here.
+      resultCallbackNats = natsPublisherLocal;
       app.addHook('onClose', async () => {
         await printIntakeHandle.stop();
       });
@@ -734,7 +837,18 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     return reply.status(404).send({ error: 'Not found' });
   });
 
-  return { app, executeJob, queue, jobRepo, printerRepo, serviceAccountRepo, DEV_API_KEY: devKey };
+  return {
+    app,
+    executeJob,
+    queue,
+    jobRepo,
+    printerRepo,
+    serviceAccountRepo,
+    eventBus,
+    callbackDeliveryRepo,
+    resultCallbackDispatcher,
+    DEV_API_KEY: devKey,
+  };
 }
 
 declare module 'fastify' {

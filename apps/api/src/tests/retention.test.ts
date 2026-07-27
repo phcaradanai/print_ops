@@ -101,7 +101,12 @@ describe('pruneOldRecords — age-based cutoff', () => {
 
     const result = pruneOldRecords(getDb(), { retentionDays: 0, maxRows: 0 });
 
-    expect(result).toEqual({ jobsDeleted: 0, tracesDeleted: 0, auditLogsDeleted: 0 });
+    expect(result).toEqual({
+      jobsDeleted: 0,
+      tracesDeleted: 0,
+      auditLogsDeleted: 0,
+      callbackDeliveriesDeleted: 0,
+    });
     const db = getDb();
     const stmt = db.prepare('SELECT COUNT(*) as c FROM jobs');
     stmt.step();

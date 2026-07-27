@@ -92,6 +92,58 @@ export interface JobDuplicateReturned extends DomainEvent {
   sourceSystem: string;
 }
 
+/**
+ * Terminal print statuses — the ones from which a job never moves again, and
+ * therefore the only ones that can carry a print RESULT.
+ *
+ * `UNVERIFIED` and `TIMEOUT` are in this list deliberately. This codebase is
+ * built around "could not confirm ≠ did not print": collapsing UNVERIFIED into
+ * FAILED would tell an integrator a label did not come out when a page may well
+ * be sitting in the tray. `DUPLICATE_RETURNED` is NOT terminal-print — it is an
+ * acceptance outcome for a request that never created a new print.
+ */
+export const TERMINAL_PRINT_STATUSES = [
+  'SUCCESS',
+  'FAILED',
+  'UNVERIFIED',
+  'TIMEOUT',
+  'CANCELLED',
+] as const;
+
+export type TerminalPrintStatus = (typeof TERMINAL_PRINT_STATUSES)[number];
+
+export function isTerminalPrintStatus(status: string): status is TerminalPrintStatus {
+  return (TERMINAL_PRINT_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * The one canonical "the print is over, here is how it ended" event.
+ *
+ * Emitted exactly once per job, only after the terminal job state is durably
+ * persisted, from every site that can move a job to a terminal status:
+ * ExecuteJobService (in-process/desktop worker), POST /runners/:id/jobs/:id/result
+ * (Go runner), and CancelJobService. `JobSucceeded` / `JobFailed` remain as-is
+ * for existing subscribers; this event is what result callbacks key off, because
+ * it is status-preserving (UNVERIFIED stays UNVERIFIED) and carries the
+ * identifiers a callback receiver needs to correlate.
+ *
+ * It deliberately carries no print payload: a callback is a notification, not a
+ * copy of the document.
+ */
+export interface PrintJobTerminal extends DomainEvent {
+  eventType: 'PrintJobTerminal';
+  jobId: string;
+  status: TerminalPrintStatus;
+  requestId?: string;
+  sourceSystem?: string;
+  printerCode?: string;
+  printerId?: string;
+  runnerId?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  finishedAt?: Date;
+}
+
 export interface RunnerRegistered extends DomainEvent {
   eventType: 'RunnerRegistered';
   runnerId: string;
@@ -136,6 +188,7 @@ export type AnyDomainEvent =
   | JobTimedOut
   | JobCancelled
   | JobDuplicateReturned
+  | PrintJobTerminal
   | RunnerRegistered
   | RunnerHeartbeatReceived
   | PermissionDenied
