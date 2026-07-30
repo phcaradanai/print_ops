@@ -142,6 +142,6 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'SAVE_FAILED':
       return { ...state, saveStatus: 'error', saveError: action.error };
     case 'DISMISS_SAVE_ERROR':
-      return { ...state, saveError: null };
+      return { ...state, saveStatus: 'idle', saveError: null };
   }
 }
