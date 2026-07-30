@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/errors.js';
-import { apiFetch, login, onUnauthorized } from '../api/client.js';
+import { apiFetch, apiFetchVoid, login, onUnauthorized } from '../api/client.js';
 import { clearRecentErrors, logError, recentErrors } from '../lib/logError.js';
 
 const realFetch = globalThis.fetch;
@@ -52,6 +52,11 @@ describe('apiFetch', () => {
     await expect(apiFetch<{ id: string }[]>('/jobs')).resolves.toEqual([{ id: 'j1' }]);
   });
 
+  it('keeps an empty JSON-contract response invalid', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 })) as typeof fetch;
+    await expect(apiFetch('/jobs')).rejects.toMatchObject({ code: 'INVALID_JSON', status: 200 });
+  });
+
   it('logs every rejection through the single [PrintOps] channel', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse(500, { error: 'INTERNAL_ERROR' })) as typeof fetch;
     await apiFetch('/jobs').catch(() => undefined);
@@ -60,6 +65,29 @@ describe('apiFetch', () => {
     expect(logged).toHaveLength(1);
     expect(logged[0]?.scope).toBe('apiFetch');
     expect(logged[0]?.technical).toContain('INTERNAL_ERROR');
+  });
+});
+
+describe('apiFetchVoid', () => {
+  it('accepts HTTP 204 with no body', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 })) as typeof fetch;
+    await expect(apiFetchVoid('/printers/p1/test-print', { method: 'POST' })).resolves.toBeUndefined();
+  });
+
+  it('accepts an explicitly ignored empty HTTP 200 body', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response('', { status: 200 })) as typeof fetch;
+    await expect(apiFetchVoid('/commands/refresh', { method: 'POST' })).resolves.toBeUndefined();
+  });
+
+  it('still preserves structured failures', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      jsonResponse(409, { error: 'PRINTER_BUSY', message: 'Printer is busy' }),
+    ) as typeof fetch;
+    await expect(apiFetchVoid('/printers/p1/test-print', { method: 'POST' })).rejects.toMatchObject({
+      status: 409,
+      code: 'PRINTER_BUSY',
+      message: 'Printer is busy',
+    });
   });
 });
 
@@ -125,8 +153,6 @@ describe('session expiry', () => {
     globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse(401, { error: 'UNAUTHORIZED' })) as typeof fetch;
 
     await login('a@b.c', 'wrong').catch(() => undefined);
-    // Otherwise a failed sign-in would fire "your session expired" at someone
-    // who was never signed in.
     expect(listener).not.toHaveBeenCalled();
     unsubscribe();
   });
@@ -140,7 +166,6 @@ describe('logError buffering', () => {
     const logged = recentErrors();
     expect(logged).toHaveLength(1);
     expect(logged[0]?.repeats).toBe(50);
-    // Only the first occurrence reaches the console.
     expect(console.error).toHaveBeenCalledTimes(1);
   });
 
