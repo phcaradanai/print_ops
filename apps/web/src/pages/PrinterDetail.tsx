@@ -1,11 +1,11 @@
 import { useParams } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch } from '../api/client.js';
+import { apiFetch, apiFetchVoid } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
-import { ErrorState, Freshness, LoadingState } from '../components/PageState.js';
+import { ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 import { Alert } from '../components/Alert.js';
 import { Button } from '../components/Button.js';
 import { StatusBadge } from '../components/StatusBadge.js';
@@ -43,10 +43,10 @@ export default function PrinterDetail() {
     return () => clearTimeout(timer);
   }, [message]);
 
-  // A test print puts paper through a real device: `busy` must block a second
-  // click, and a failure must say why instead of "Failed to send test print."
+  // A test print puts paper through a real device. The endpoint's response body
+  // is intentionally not a frontend contract, so use the explicit void helper.
   const testPrint = useApiAction(async () => {
-    await apiFetch(`/printers/${id}/test-print`, { method: 'POST' });
+    await apiFetchVoid(`/printers/${id}/test-print`, { method: 'POST' });
     return true;
   });
 
@@ -86,8 +86,6 @@ export default function PrinterDetail() {
   }
 
   if (!printer) {
-    // Previously `.catch(() => {})` then a bare "Printer not found." — a
-    // permission denial and an unreachable API both read as "no such printer".
     return (
       <div>
         <h1 className="page-title">{t('page.printerDetail.title')}</h1>
@@ -110,9 +108,18 @@ export default function PrinterDetail() {
           lastSuccessAt={printerResource.lastSuccessAt}
           stale={printerResource.stale}
           refreshing={printerResource.refreshing}
+          paused={printerResource.paused}
           onRefresh={printerResource.refresh}
         />
       </div>
+
+      {printerResource.stale && printerResource.error != null && (
+        <ErrorBanner
+          error={printerResource.error}
+          title={t('error.refresh.title')}
+          onRetry={printerResource.refresh}
+        />
+      )}
 
       {message && (
         <Alert
