@@ -1826,11 +1826,50 @@ body {
 /* ---- paper profiles: rebuilt workspace ---- */
 
 .paper-profiles-page {
+  /* Editor canvas/panel sizing. Named so the numbers are not scattered through
+     the component (FE-02A Phase 6). */
+  /* Vertical space above the editor row: page header + gaps + shell padding.
+     Named because it is exactly the kind of assumption that produced D-1 — if
+     the header height changes, this is the one place to change with it. */
+  --pp-editor-offset: 200px;
+  --pp-panel-min-h: min(620px, calc(100vh - 220px));
+  /* Local layering scale. Nothing in this page may invent a z-index outside it:
+     the FE-02A clipping defects were caused by overflow ancestors, not by
+     insufficient z-index, and raising numbers hides that. */
+  --pp-z-canvas-guide: 3;
+  --pp-z-canvas-field: 4;
+  --pp-z-sticky-bar: 12;
+  --pp-z-menu: 20;
+  --pp-z-note: 50;
+  --pp-z-drawer-backdrop: 99;
+  --pp-z-drawer: 100;
   --pp-space-1: 0.25rem;
   --pp-space-2: 0.5rem;
   --pp-space-3: 0.75rem;
   --pp-space-4: 1rem;
   --pp-control-size: 36px;
+
+  /* ── Scroll ownership (FE-02A Phase 2) ───────────────────────────────
+     The app shell (`.app-main`) owns application scrolling. This page FILLS the
+     available height but is allowed to exceed it, which is the difference that
+     matters: with a fixed `height: 100%` the editor grid — whose own minimum
+     height was larger than the space flex gave it — overflowed *visibly* over
+     the saved-profile table below and made its row actions unclickable, while
+     the shell never grew a scrollbar. `min-height` lets the shell scroll
+     instead of letting siblings overlap.                                     */
+  min-height: 100%;
+}
+
+/* The left editor body owns vertical form scrolling; the preview stage owns
+   canvas overflow; neither may scroll sideways. */
+.pp-form-scroll {
+  overflow-x: hidden;
+  /* Keeps a trackpad flick inside the form instead of chaining to the shell. */
+  overscroll-behavior: contain;
+  /* The panel no longer clips (see .pp-form-panel), so the inner scroll area
+     carries the bottom corners itself. */
+  border-bottom-left-radius: var(--rounded-lg, 8px);
+  border-bottom-right-radius: var(--rounded-lg, 8px);
 }
 
 .pp-page-header {
@@ -1888,11 +1927,23 @@ body {
   grid-template-columns: minmax(430px, 1fr) minmax(380px, 430px);
   gap: var(--pp-space-3) !important;
   align-items: stretch;
+  /* Bounded on purpose. The editor row is sized to the window so the form body
+     and the canvas stage own their own scrolling; content BELOW the row (the
+     saved-profile table) is reached by scrolling the app shell. Without a bound
+     the panel grew to its full content height — ~3,850px — and the whole shell
+     scrolled the form, which destroys the two-pane workflow. Without the page
+     being allowed to grow, the row overlapped the table instead (audit D-1). */
+  height: calc(100vh - var(--pp-editor-offset));
+  min-height: var(--pp-panel-min-h);
 }
 
 .pp-form-panel {
   grid-column: 2;
   min-height: 0;
+  /* Was `overflow: hidden`, which clipped the panel's own preset menu (audit
+     D-2). Clipping belongs to `.pp-form-scroll`, which is the element that
+     actually scrolls; the panel only draws the frame. */
+  overflow: visible;
   border: 1px solid var(--neutral-border, #e5e7eb);
   border-radius: var(--rounded-lg, 8px) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
@@ -2002,6 +2053,24 @@ body {
   z-index: 30;
 }
 
+/* Controls sitting at the top of the page have nothing above them to grow into:
+   the header-toolbar tooltip was drawn at y = -4, i.e. off-screen (audit D-3).
+   Those rows flip below the trigger instead. */
+.pp-page-header .pp-icon-btn-wrapper .pp-icon-btn-tooltip,
+.pp-command-bar .pp-icon-btn-wrapper .pp-icon-btn-tooltip,
+.pp-canvas-toolbar .pp-icon-btn-wrapper .pp-icon-btn-tooltip {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+
+/* The last control in a right-aligned toolbar would otherwise centre its
+   tooltip over the viewport edge. */
+.pp-page-header .pp-toolbar .pp-icon-btn-wrapper:last-child .pp-icon-btn-tooltip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
 .pp-icon-btn-wrapper:hover .pp-icon-btn-tooltip,
 .pp-icon-btn-wrapper:focus-within .pp-icon-btn-tooltip {
   opacity: 1;
@@ -2084,7 +2153,10 @@ body {
   grid-column: 1;
   grid-row: 1;
   display: flex;
-  min-height: 620px;
+  /* Named, viewport-aware minimum. A flat 620px was taller than the space the
+     page gave the grid at every supported size, which is what pushed the editor
+     panels over the saved-profile table (audit D-1). */
+  min-height: var(--pp-panel-min-h);
   width: auto !important;
   min-width: 0;
   border: 1px solid var(--neutral-border, #e5e7eb);
@@ -2294,6 +2366,9 @@ body {
   .pp-main-layout {
     display: flex !important;
     flex-direction: column;
+    /* Stacked panels are taller than the window by definition, so the bounded
+       editor height does not apply — the shell scrolls the whole column. */
+    height: auto;
   }
 
   .pp-preview-panel {
@@ -5312,4 +5387,259 @@ body {
 .state-banner-dismiss:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Paper Profile form controls (FE-02A Phase 3 + 4)
+
+   Replaces the page-local inline `s` style objects. Inline styles cannot express
+   hover / focus-visible / invalid / disabled, so most controls had no states at
+   all, and their hardcoded pixel widths inside wrapping flex rows are what
+   clipped realistic values (audit D-4).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.pp-label {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: #374151;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.pp-input,
+.pp-select,
+.pp-number {
+  /* Both required by the brief: border-box so padding never widens a grid
+     column, min-width 0 so a control can shrink instead of forcing its row
+     wider than the panel. */
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--neutral-border-strong, #d1d5db);
+  border-radius: var(--rounded-md, 6px);
+  background: #fff;
+  color: var(--neutral-deep, #1e1e2e);
+  font: inherit;
+  font-size: 0.85rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pp-input {
+  max-width: 420px;
+}
+
+.pp-input:hover:not(:disabled),
+.pp-select:hover:not(:disabled),
+.pp-number:hover:not(:disabled) {
+  /* Colour only — never padding, border-width or size, so hovering cannot move
+     anything around it. */
+  border-color: var(--neutral-inverse, #111827);
+}
+
+.pp-input:focus-visible,
+.pp-select:focus-visible,
+.pp-number:focus-visible {
+  outline: 2px solid var(--primary, #1e66f5);
+  outline-offset: 1px;
+  border-color: var(--primary, #1e66f5);
+}
+
+/* Not colour-only: the inset ring survives on a hovered control too. */
+.pp-input[aria-invalid='true'],
+.pp-select[aria-invalid='true'],
+.pp-number[aria-invalid='true'] {
+  border-color: var(--semantic-error, #f38ba8);
+  box-shadow: inset 0 0 0 1px var(--semantic-error, #f38ba8);
+}
+
+.pp-input:disabled,
+.pp-select:disabled,
+.pp-number:disabled {
+  /* Readable, not ghosted: a disabled DPI still has to be legible. */
+  border-color: var(--neutral-border, #e5e7eb);
+  background: var(--neutral-subtle, #f3f4f6);
+  color: #4b5563;
+  cursor: not-allowed;
+}
+
+.pp-input[readonly] {
+  background: var(--neutral-subtle, #f9fafb);
+}
+
+.pp-select {
+  /* Native <select> kept — only the closed control is styled. A visible arrow is
+     drawn here because `appearance: none` removes the platform one. */
+  appearance: none;
+  max-width: 420px;
+  padding-right: 1.75rem;
+  background-image: linear-gradient(45deg, transparent 50%, #4b5563 50%),
+    linear-gradient(135deg, #4b5563 50%, transparent 50%);
+  background-position: calc(100% - 15px) calc(50% + 1px), calc(100% - 10px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  /* A long selected value truncates instead of overflowing its box. */
+  text-overflow: ellipsis;
+}
+
+/* The option list is painted by the platform, so an inherited dark system theme
+   in the Desktop WebView can render dark-on-dark. Stating both explicitly is the
+   available defence (audit D-6 — mitigated, not verified on WebView2). */
+.pp-select option {
+  background-color: #fff;
+  color: var(--neutral-deep, #1e1e2e);
+}
+
+.pp-number {
+  /* Wide enough for "-999.9" plus the spinner, which used to sit on top of the
+     value in a 50px box. */
+  min-width: 5.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-input--sm,
+.pp-select--sm {
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--rounded-sm, 4px);
+  font-size: 0.8rem;
+}
+
+.pp-select--sm {
+  padding-right: 1.6rem;
+}
+
+.pp-input--mono {
+  font-family: var(--font-mono-family, ui-monospace, monospace);
+}
+
+.pp-color {
+  box-sizing: border-box;
+  width: 36px;
+  height: var(--pp-control-size);
+  padding: 0;
+  border: 1px solid var(--neutral-border-strong, #d1d5db);
+  border-radius: var(--rounded-sm, 4px);
+  background: #fff;
+  cursor: pointer;
+}
+
+.pp-color:focus-visible {
+  outline: 2px solid var(--primary, #1e66f5);
+  outline-offset: 1px;
+}
+
+.pp-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+/* ── Field card (Phase 4) ────────────────────────────────────────────────
+   Grid, not wrapping flex. The label gets a full-width row of its own: the
+   panel is at most 430px, and sharing a row with the key and the delete action
+   left the label ~173px, far too narrow for a realistic Thai or English label.
+   Fixed tracks also mean switching text → barcode → QR cannot reshuffle the
+   position row.                                                             */
+
+.pp-field-row__header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'badge key delete'
+    'label label label';
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.pp-field-row__header > .pp-field-type-badge {
+  grid-area: badge;
+}
+
+.pp-field-row__key {
+  grid-area: key;
+}
+
+.pp-field-row__label-input {
+  grid-area: label;
+  /* The card, not 420px: this input is the widest thing in the panel. */
+  max-width: none;
+}
+
+.pp-field-row__header > .pp-field-delete {
+  grid-area: delete;
+}
+
+.pp-field-row__content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pp-field-row__content .pp-input {
+  max-width: none;
+}
+
+.pp-field-row__type-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.pp-field-row__position {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+  align-items: end;
+  gap: 0.4rem 0.5rem;
+}
+
+.pp-field-row__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.pp-field-row__cell > label {
+  color: var(--neutral-text-muted, #6b7280);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.pp-field-row__cell--tight {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pp-field-delete {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--pp-control-size);
+  height: var(--pp-control-size);
+  padding: 0;
+  border: 1px solid var(--semantic-error, #f38ba8);
+  border-radius: var(--rounded-sm, 4px);
+  background: #fff;
+  color: #9f1239;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+/* Destructive stays destructive on hover — it must not read as a neutral. */
+.pp-field-delete:hover {
+  background: #fee2e2;
+  border-color: #9f1239;
+}
+
+.pp-field-delete:focus-visible {
+  outline: 2px solid #9f1239;
+  outline-offset: 1px;
 }

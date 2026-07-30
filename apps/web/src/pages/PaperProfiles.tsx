@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { apiFetch, fileToBase64 } from '../api/client.js';
+import { ApiError, errorMessage } from '../api/errors.js';
+import { useApiResource } from '../hooks/useApiResource.js';
+import { Alert } from '../components/Alert.js';
+import { EmptyState, ErrorBanner, ErrorState, LoadingState } from '../components/PageState.js';
 import { useLocale } from '../i18n/index.js';
 import { exportJsonFile } from '../tauri.js';
 import { renderBarcodeSvg } from '../lib/barcode.js';
@@ -369,13 +373,18 @@ export function clampFontSize(value: number): number {
   return Math.max(6, Math.min(72, Math.round(value)));
 }
 
+/** Canvas zoom limits. Named rather than repeated at each call site. */
+export const CANVAS_SCALE_MIN = 0.5;
+export const CANVAS_SCALE_MAX = 4;
+export const CANVAS_SCALE_STEP = 0.25;
+
 export function clampPreviewZoom(value: number): number {
   if (!Number.isFinite(value)) return 1;
-  return Math.max(0.5, Math.min(4, Math.round(value * 100) / 100));
+  return Math.max(CANVAS_SCALE_MIN, Math.min(CANVAS_SCALE_MAX, Math.round(value * 100) / 100));
 }
 
 export function stepPreviewZoom(value: number, direction: -1 | 1): number {
-  return clampPreviewZoom(value + direction * 0.25);
+  return clampPreviewZoom(value + direction * CANVAS_SCALE_STEP);
 }
 
 export function fontPointSizeToPreviewPixels(fontSizePt: number, pixelsPerMm: number): number {
@@ -625,11 +634,9 @@ function IconButton({
 function ColorInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-      <label style={{ ...s.label, marginBottom: 0, whiteSpace: 'nowrap', minWidth: 60 }}>{label}</label>
-      <input type="color" value={value} onChange={(e) => onChange(e.target.value)}
-        style={{ width: 36, height: 30, padding: 0, border: '1px solid #d1d5db', borderRadius: 4, cursor: 'pointer' }} />
-      <input value={value} onChange={(e) => onChange(e.target.value)}
-        style={{ ...s.smallInput, width: 80, fontFamily: 'monospace' }} />
+      <label className="pp-label" style={{ marginBottom: 0, whiteSpace: 'nowrap', minWidth: 60 }}>{label}</label>
+      <input className="pp-color" type="color" value={value} onChange={(e) => onChange(e.target.value)} />
+      <input className="pp-input pp-input--sm pp-input--mono" style={{ width: 88 }} value={value} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
 }
@@ -789,14 +796,16 @@ function RulerSheet({
 function FieldTypeControls({
   field,
   onUpdate,
-  selectStyle,
+  selectClassName = 'pp-select',
+  numberClassName = 'pp-number',
 }: {
   field: DynamicField;
   onUpdate: (patch: Partial<DynamicField>) => void;
-  selectStyle?: CSSProperties;
+  /** Control classes, so every panel gets the same states without duplicating them. */
+  selectClassName?: string;
+  numberClassName?: string;
 }) {
   const { t } = useLocale();
-  const numberInputStyle: CSSProperties = { ...selectStyle, width: selectStyle?.width ?? 70 };
   return (
     <>
       <select
@@ -811,7 +820,7 @@ function FieldTypeControls({
           if (nextType === 'qrcode' && field.qrSizeMm == null) patch.qrSizeMm = DEFAULT_QR_SIZE_MM;
           onUpdate(patch);
         }}
-        style={selectStyle}
+        className={selectClassName}
       >
         <option value="text">{t('page.paperProfiles.fieldTypeText')}</option>
         <option value="barcode">{t('page.paperProfiles.fieldTypeBarcode')}</option>
@@ -825,7 +834,7 @@ function FieldTypeControls({
             aria-label={t('page.paperProfiles.barcodeSymbology')}
             value={field.barcodeSymbology ?? 'code128'}
             onChange={(e) => onUpdate({ barcodeSymbology: e.target.value as DynamicFieldBarcodeSymbology })}
-            style={selectStyle}
+            className={selectClassName}
           >
             <option value="code128">{t('page.paperProfiles.symbologyCode128')}</option>
             <option value="code39">{t('page.paperProfiles.symbologyCode39')}</option>
@@ -844,7 +853,7 @@ function FieldTypeControls({
               const v = parseFloat(e.target.value);
               if (!isNaN(v)) onUpdate({ barcodeHeightMm: Math.max(4, Math.min(60, v)) });
             }}
-            style={numberInputStyle}
+            className={numberClassName}
           />
         </>
       )}
@@ -861,7 +870,7 @@ function FieldTypeControls({
             const v = parseFloat(e.target.value);
             if (!isNaN(v)) onUpdate({ qrSizeMm: Math.max(4, Math.min(100, v)) });
           }}
-          style={numberInputStyle}
+          className={numberClassName}
         />
       )}
     </>
@@ -961,6 +970,7 @@ function PreviewSheet({
   artworkFitMode?: ImportFitMode;
   showDimensions?: boolean;
 }) {
+  const { t } = useLocale();
   const geometry = getVisualPaperGeometry(form);
   const pvW = geometry.widthMm * scale;
   const pvH = geometry.heightMm * scale;
@@ -1116,7 +1126,7 @@ function PreviewSheet({
         <>
           <img
             src={artworkUrl}
-            alt="Reference artwork"
+            alt={t('page.paperProfiles.referenceArtwork')}
             style={{
               position: 'absolute',
               left: pvML,
@@ -1141,7 +1151,7 @@ function PreviewSheet({
             zIndex: 1,
             borderBottomRightRadius: 2,
           }}>
-            Reference artwork / background only
+            {t('page.paperProfiles.referenceArtworkOnly')}
           </div>
         </>
       )}
@@ -1164,11 +1174,14 @@ function PreviewSheet({
 // ── Main Page ──────────────────────────────────────────────────────
 export default function PaperProfiles() {
   const { t } = useLocale();
-  const [profiles, setProfiles] = useState<PaperProfile[]>([]);
+  /** One-line result strip for import/export, replacing four native alert()s. */
+  const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
   const [form, setForm] = useState<PaperForm>(DEFAULT_FORM);
   const [ux, setUx] = useState<UxOptions>(DEFAULT_UX);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [presetsOpen, setPresetsOpen] = useState(false);
+  const presetsTriggerRef = useRef<HTMLButtonElement>(null);
+  const presetsContainerRef = useRef<HTMLDivElement>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [draggingFieldId, setDraggingFieldId] = useState<string | null>(null);
@@ -1295,7 +1308,7 @@ export default function PaperProfiles() {
     const raw = dimRawInputs[key];
     return (
       <div>
-        <label style={s.label}>{t(labelKey) + ' (' + du + ')'}</label>
+        <label className="pp-label">{t(labelKey) + ' (' + du + ')'}</label>
         <input type="number" value={raw !== undefined ? raw : convertDim(mmVal)}
           onChange={(e) => {
             const text = e.target.value;
@@ -1311,7 +1324,7 @@ export default function PaperProfiles() {
               return next;
             });
           }}
-          style={s.input} step="any" />
+          className="pp-input" step="any" />
       </div>
     );
   }
@@ -1397,8 +1410,14 @@ export default function PaperProfiles() {
   }
 
   // ── API ────────────────────────────────────────────────────────────
-  const load = () => apiFetch<PaperProfile[]>('/v1/paper-profiles').then(setProfiles).catch(() => {});
-  useEffect(() => { void load(); }, []);
+  // Was `.then(setProfiles).catch(() => {})`, which rendered a failed request as
+  // "no paper profiles" — an operator reading that recreates profiles that
+  // already exist. The shared resource keeps the previous list on screen through
+  // a refresh failure and states the reason (FE-02A D-5).
+  const fetchProfiles = useCallback(() => apiFetch<PaperProfile[]>('/v1/paper-profiles'), []);
+  const profilesResource = useApiResource(fetchProfiles);
+  const profiles = profilesResource.data ?? [];
+  const load = profilesResource.refresh;
 
   async function save() {
     // Prevent duplicate submission
@@ -1429,9 +1448,10 @@ export default function PaperProfiles() {
       setEditingId(null);
       setForm(DEFAULT_FORM);
       load();
-    } catch (_err) {
+    } catch (err: unknown) {
       setSaveStatus('error');
-      setSaveError(t('page.paperProfiles.saveFailed'));
+      // A 409 "code already exists" is actionable; the old constant was not.
+      setSaveError(errorMessage(err, t('page.paperProfiles.saveFailed')));
     } finally {
       saveInFlightRef.current = false;
     }
@@ -1443,6 +1463,44 @@ export default function PaperProfiles() {
   }
 
   const jsonInputRef = useRef<HTMLInputElement>(null);
+
+  /** Closes the preset menu and returns focus to the control that opened it. */
+  const closePresets = useCallback(() => {
+    setPresetsOpen(false);
+    presetsTriggerRef.current?.focus();
+  }, []);
+
+  // Escape and outside-click. Previously only a second click on the trigger
+  // closed the menu, so it could sit open over a drawer or after the panel
+  // scrolled away from it (Phase 7).
+  useEffect(() => {
+    if (!presetsOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        closePresets();
+      }
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const container = presetsContainerRef.current;
+      if (container && event.target instanceof Node && !container.contains(event.target)) {
+        // No focus return here: the operator is already elsewhere on the page.
+        setPresetsOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+    };
+  }, [presetsOpen, closePresets]);
+
+  // Only one popup layer at a time: opening a drawer or the full preview closes
+  // the menu rather than leaving it floating above the backdrop.
+  useEffect(() => {
+    if (showDrawer !== null || previewOpen) setPresetsOpen(false);
+  }, [showDrawer, previewOpen]);
 
   async function deleteProfile(profile: PaperProfile) {
     setPendingDeleteProfile(profile);
@@ -1462,9 +1520,8 @@ export default function PaperProfiles() {
         setSelectedFieldId(null);
       }
       load();
-    } catch (err: any) {
-      const msg = err?.message || t('page.paperProfiles.deleteFailed');
-      setSaveError(msg);
+    } catch (err: unknown) {
+      setSaveError(errorMessage(err, t('page.paperProfiles.deleteFailed')));
       setSaveStatus('error');
     }
   }
@@ -1494,8 +1551,9 @@ export default function PaperProfiles() {
     const jsonStr = JSON.stringify(exportData, null, 2);
     const workspacePath = localStorage.getItem('printops-workspace-path') ?? '';
     const res = await exportJsonFile(`paper-profile-${profile.code}.json`, jsonStr, workspacePath || undefined);
+    // Cancelling the native save dialog is not a failure.
     if (res.cancelled) return;
-    if (!res.success) alert(res.message || t('page.paperProfiles.importJsonFailed'));
+    if (!res.success) setFeedback({ tone: 'error', text: res.message || t('page.paperProfiles.exportFailed') });
   }
 
   async function exportAllProfilesJson() {
@@ -1522,8 +1580,9 @@ export default function PaperProfiles() {
     const jsonStr = JSON.stringify(exportData, null, 2);
     const workspacePath = localStorage.getItem('printops-workspace-path') ?? '';
     const res = await exportJsonFile('paper-profiles-export.json', jsonStr, workspacePath || undefined);
+    // A user pressing Cancel in the save dialog is not an error.
     if (res.cancelled) return;
-    if (!res.success) alert(res.message || t('page.paperProfiles.importJsonFailed'));
+    if (!res.success) setFeedback({ tone: 'error', text: res.message || t('page.paperProfiles.exportFailed') });
   }
 
   async function importProfilesJsonFile(file: File) {
@@ -1535,9 +1594,11 @@ export default function PaperProfiles() {
         body: JSON.stringify(json),
       });
       load();
-      alert(t('page.paperProfiles.importJsonSuccess').replace('{n}', String(res.count)));
-    } catch (err: any) {
-      alert(err?.message || t('page.paperProfiles.importJsonFailed'));
+      setFeedback({ tone: 'success', text: t('page.paperProfiles.importedCount').replace('{n}', String(res.count)) });
+    } catch (err: unknown) {
+      // The server's own reason, not a constant: "code already exists" and
+      // "malformed JSON" need different actions from the operator.
+      setFeedback({ tone: 'error', text: errorMessage(err, t('page.paperProfiles.importJsonFailed')) });
     }
   }
 
@@ -1720,9 +1781,15 @@ export default function PaperProfiles() {
           [editingId]: { objectUrl, fitMode: data.fitMode },
         }));
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (cancelled) return;
+        // 404 is a fact about the profile: it has no reference artwork. Any other
+        // failure is a transport problem, and silently drawing the canvas without
+        // the imported artwork would look like the import was lost (D-9).
         setImportedArtworkMap((prev) => ({ ...prev, [editingId]: null }));
+        if (!(err instanceof ApiError && err.status === 404)) {
+          setFeedback({ tone: 'error', text: errorMessage(err, t('page.paperProfiles.artworkLoadFailed')) });
+        }
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1978,11 +2045,11 @@ export default function PaperProfiles() {
   }, [showDrawer, closeDrawer]);
 
   return (
-    <div className="paper-profiles-page" style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: '0.75rem', minHeight: 0 }}>
+    <div className="paper-profiles-page" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
       {/* ─── Sticky Note ─── */}
       {stickyNote && (
         <div style={{
-          position: 'sticky', top: 0, zIndex: 50,
+          position: 'sticky', top: 0, zIndex: 'var(--pp-z-note)' as unknown as number,
           padding: '0.55rem 0.85rem', borderRadius: 8,
           background: '#f9e2af', color: '#374151',
           fontSize: '0.85rem', fontWeight: 500,
@@ -2018,7 +2085,7 @@ export default function PaperProfiles() {
       {/* ─── Main layout ─── */}
       <div className="pp-main-layout" style={{ flex: 1, display: 'flex', gap: '0.75rem', minHeight: 0, position: 'relative' }}>
         {/* ===== LEFT: Form ===== */}
-        <div className="pp-form-panel" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+        <div className="pp-form-panel" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
           {/* ── Unified toolbar ── */}
           <div className="pp-command-bar">
             <nav className="pp-index" role="navigation" aria-label={t('page.paperProfiles.sectionIndex')}>
@@ -2064,15 +2131,15 @@ export default function PaperProfiles() {
                   >✕</button>
                 )}
               </div>
-              <div className="pp-presets">
-                <button type="button" className="pp-icon-btn" onClick={() => setPresetsOpen(!presetsOpen)}
-                  title={t('page.paperProfiles.presets')} aria-label={t('page.paperProfiles.presets')} aria-expanded={presetsOpen}>
+              <div className="pp-presets" ref={presetsContainerRef}>
+                <button type="button" className="pp-icon-btn" ref={presetsTriggerRef} onClick={() => setPresetsOpen(!presetsOpen)}
+                  title={t('page.paperProfiles.presets')} aria-label={t('page.paperProfiles.presets')} aria-expanded={presetsOpen} aria-haspopup="menu">
                   <span aria-hidden="true">📋</span>
                 </button>
                 {presetsOpen && (
                   <div className="pp-presets-menu" role="menu">
                     {PAPER_PRESETS.map((p) => (
-                      <button type="button" key={p.label} className="pp-preset-option" role="menuitem" onClick={() => { applyPreset(p); setPresetsOpen(false); }}>
+                      <button type="button" key={p.label} className="pp-preset-option" role="menuitem" onClick={() => { applyPreset(p); closePresets(); }}>
                         <span aria-hidden="true">▸</span>{p.label}
                       </button>
                     ))}
@@ -2101,12 +2168,12 @@ export default function PaperProfiles() {
           <Section title={t('page.paperProfiles.basicInfo')} icon="📄" open={sectionsOpen.basicInfo} onToggle={() => toggleSection('basicInfo')}>
             <div className="pp-form-grid pp-form-grid--two">
               <div>
-                <label style={s.label}>{t('page.paperProfiles.codeLabel')}</label>
-                <input value={form.code} onChange={(e) => patch('code', e.target.value)} placeholder={t('page.paperProfiles.codePlaceholder')} style={s.input} />
+                <label className="pp-label">{t('page.paperProfiles.codeLabel')}</label>
+                <input value={form.code} onChange={(e) => patch('code', e.target.value)} placeholder={t('page.paperProfiles.codePlaceholder')} className="pp-input" />
               </div>
               <div>
-                <label style={s.label}>{t('page.paperProfiles.nameLabel')} *</label>
-                <input value={form.name} onChange={(e) => patch('name', e.target.value)} placeholder={t('page.paperProfiles.namePlaceholder')} style={s.input} />
+                <label className="pp-label">{t('page.paperProfiles.nameLabel')} *</label>
+                <input value={form.name} onChange={(e) => patch('name', e.target.value)} placeholder={t('page.paperProfiles.namePlaceholder')} className="pp-input" />
               </div>
             </div>
           </Section>
@@ -2116,15 +2183,15 @@ export default function PaperProfiles() {
           <Section title={t('page.paperProfiles.dimensions')} icon="📐" open={sectionsOpen.dimensions} onToggle={() => toggleSection('dimensions')}>
             <div className="pp-form-grid pp-form-grid--three">
               <div>
-                <label style={s.label}>{t('page.paperProfiles.displayUnitLabel')}</label>
-                <select value={du} onChange={(e) => uxPatch('displayUnit', e.target.value as 'mm' | 'cm' | 'px')} style={s.sel}>
+                <label className="pp-label">{t('page.paperProfiles.displayUnitLabel')}</label>
+                <select value={du} onChange={(e) => uxPatch('displayUnit', e.target.value as 'mm' | 'cm' | 'px')} className="pp-select">
                   {DISPLAY_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
               {dimInput('widthMm', 'page.paperProfiles.width')}
               {dimInput('heightMm', 'page.paperProfiles.height')}
               <div>
-                <label style={s.label}>{t('page.paperProfiles.orientation')}</label>
+                <label className="pp-label">{t('page.paperProfiles.orientation')}</label>
                 <select value={form.orientation} onChange={(e) => {
                   const next = e.target.value as 'portrait' | 'landscape';
                   if (next === form.orientation) return;
@@ -2135,20 +2202,20 @@ export default function PaperProfiles() {
                   } else {
                     patch('orientation', next);
                   }
-                }} style={s.sel}>
+                }} className="pp-select">
                   <option value="portrait">{t('page.paperProfiles.portrait')}</option>
                   <option value="landscape">{t('page.paperProfiles.landscape')}</option>
                 </select>
               </div>
               <div>
-                <label style={s.label}>{t('page.paperProfiles.dpi')}</label>
-                <select value={form.dpi} onChange={(e) => numeric('dpi', e.target.value)} style={s.sel}>
+                <label className="pp-label">{t('page.paperProfiles.dpi')}</label>
+                <select value={form.dpi} onChange={(e) => numeric('dpi', e.target.value)} className="pp-select">
                   {DPI_OPTIONS.map((d) => <option key={d} value={d}>{d} dpi</option>)}
                 </select>
               </div>
               <div>
-                <label style={s.label}>{t('page.paperProfiles.unitStorageLabel')}</label>
-                <select value={form.unit} onChange={(e) => patch('unit', e.target.value as 'mm' | 'inch')} style={s.sel}>
+                <label className="pp-label">{t('page.paperProfiles.unitStorageLabel')}</label>
+                <select value={form.unit} onChange={(e) => patch('unit', e.target.value as 'mm' | 'inch')} className="pp-select">
                   <option value="mm">mm</option>
                   <option value="inch">inch</option>
                 </select>
@@ -2193,44 +2260,61 @@ export default function PaperProfiles() {
                   className={'pp-field-row' + (selectedFieldId === f.id ? ' is-selected' : '')}
                   onClick={() => setSelectedFieldId(f.id)}
                 >
-                  <div className="pp-field-row__primary" style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', flexWrap: 'wrap' }}>
+                  {/* Header: type, key, label, delete. Grid tracks, so a long
+                      label consumes the flexible column instead of wrapping the
+                      delete action onto another line or off the card. */}
+                  <div className="pp-field-row__header">
                     <span className="pp-field-type-badge">{f.type === 'qrcode' ? 'QR' : f.type}</span>
-                    <input aria-label={t('page.paperProfiles.fieldKey')} placeholder={t('page.paperProfiles.fieldKey')} value={f.key} onChange={(e) => updField(f.id, { key: e.target.value })}
-                      style={{ ...s.smallInput, width: 90, fontFamily: 'monospace' }} />
-                    <input aria-label={t('page.paperProfiles.fieldLabel')} placeholder={t('page.paperProfiles.fieldLabel')} value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })}
-                      style={{ ...s.smallInput, flex: 1 }} />
-                    <button type="button" style={s.btnDanger} onClick={(e) => { e.stopPropagation(); delField(f.id); }} title={t('page.paperProfiles.remove')} aria-label={t('page.paperProfiles.remove')}>✕</button>
+                    <input className="pp-input pp-input--sm pp-input--mono pp-field-row__key" aria-label={t('page.paperProfiles.fieldKey')} placeholder={t('page.paperProfiles.fieldKey')} value={f.key} onChange={(e) => updField(f.id, { key: e.target.value })} />
+                    <input className="pp-input pp-input--sm pp-field-row__label-input" aria-label={t('page.paperProfiles.fieldLabel')} placeholder={t('page.paperProfiles.fieldLabel')} value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })} />
+                    <button type="button" className="pp-field-delete" onClick={(e) => { e.stopPropagation(); delField(f.id); }} title={t('page.paperProfiles.remove')} aria-label={t('page.paperProfiles.remove')}>✕</button>
                   </div>
-                  <div className="pp-field-row__group-label">Content & output</div>
-                  <div className="pp-field-row__secondary" style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <input aria-label={t('page.paperProfiles.fieldDefault')} placeholder={t('page.paperProfiles.fieldDefault')} value={f.defaultValue} onChange={(e) => updField(f.id, { defaultValue: e.target.value })}
-                      style={{ ...s.smallInput, width: 80 }} />
-                    <FieldTypeControls
-                      field={f}
-                      onUpdate={(patchFields) => updField(f.id, patchFields)}
-                      selectStyle={{ ...s.sel, width: 88, padding: '0.25rem 0.3rem', fontSize: '0.75rem' }}
-                    />
+                  <div className="pp-field-row__group-label">{t('page.paperProfiles.groupContentOutput')}</div>
+                  <div className="pp-field-row__content">
+                    <input className="pp-input pp-input--sm" aria-label={t('page.paperProfiles.fieldDefault')} placeholder={t('page.paperProfiles.fieldDefault')} value={f.defaultValue} onChange={(e) => updField(f.id, { defaultValue: e.target.value })} />
+                    <div className="pp-field-row__type-controls">
+                      <FieldTypeControls
+                        field={f}
+                        onUpdate={(patchFields) => updField(f.id, patchFields)}
+                        selectClassName="pp-select pp-select--sm"
+                        numberClassName="pp-number pp-input--sm"
+                      />
+                    </div>
                   </div>
-                  <div className="pp-field-row__group-label">Position & style</div>
-                  <div className="pp-field-row__secondary" style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>X mm</label>
-                    <input aria-label="X (mm)" type="number" value={f.xMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { xMm: v }); }}
-                      style={{ ...s.smallInput, width: 50 }} />
-                    <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>Y mm</label>
-                    <input aria-label="Y (mm)" type="number" value={f.yMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { yMm: v }); }}
-                      style={{ ...s.smallInput, width: 50 }} />
-                    <input aria-label={t('page.paperProfiles.fieldFontSizePt')} type="number" value={f.fontSize} min={6} max={72}
-                      onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: clampFontSize(v) }); }}
-                      style={{ ...s.smallInput, width: 50 }} title={t('page.paperProfiles.fieldFontSizePt')} />
-                    <input aria-label={t('page.paperProfiles.fieldColor')} type="color" value={f.color} onChange={(e) => updField(f.id, { color: e.target.value })}
-                      style={{ width: 28, height: 24, padding: 0, border: '1px solid #d1d5db', borderRadius: 3, cursor: 'pointer' }} />
-                    <select aria-label={t('page.paperProfiles.align')} value={f.align} onChange={(e) => updField(f.id, { align: e.target.value as DynamicField['align'] })}
-                      style={{ ...s.sel, width: 60, padding: '0.25rem 0.3rem', fontSize: '0.75rem' }}>
-                      <option value="left">⬅</option><option value="center">⬡</option><option value="right">➡</option>
-                    </select>
-                    <label style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.15rem' }}>
-                      <input aria-label={t('page.paperProfiles.bold')} type="checkbox" checked={f.bold} onChange={(e) => updField(f.id, { bold: e.target.checked })} /> {t('page.paperProfiles.fieldBoldLabel')}
-                    </label>
+                  <div className="pp-field-row__group-label">{t('page.paperProfiles.groupPositionStyle')}</div>
+                  <div className="pp-field-row__position">
+                    <div className="pp-field-row__cell">
+                      <label htmlFor={`pp-x-${f.id}`}>{t('page.paperProfiles.fieldXmm')}</label>
+                      <input id={`pp-x-${f.id}`} className="pp-number pp-input--sm" aria-label={t('page.paperProfiles.fieldXmm')} type="number" step="0.1" value={f.xMm}
+                        onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { xMm: v }); }} />
+                    </div>
+                    <div className="pp-field-row__cell">
+                      <label htmlFor={`pp-y-${f.id}`}>{t('page.paperProfiles.fieldYmm')}</label>
+                      <input id={`pp-y-${f.id}`} className="pp-number pp-input--sm" aria-label={t('page.paperProfiles.fieldYmm')} type="number" step="0.1" value={f.yMm}
+                        onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { yMm: v }); }} />
+                    </div>
+                    <div className="pp-field-row__cell">
+                      <label htmlFor={`pp-size-${f.id}`}>{t('page.paperProfiles.fieldFontSizePt')}</label>
+                      <input id={`pp-size-${f.id}`} className="pp-number pp-input--sm" aria-label={t('page.paperProfiles.fieldFontSizePt')} type="number" value={f.fontSize} min={6} max={72}
+                        onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: clampFontSize(v) }); }} />
+                    </div>
+                    <div className="pp-field-row__cell">
+                      <label htmlFor={`pp-align-${f.id}`}>{t('page.paperProfiles.align')}</label>
+                      <select id={`pp-align-${f.id}`} className="pp-select pp-select--sm" aria-label={t('page.paperProfiles.align')} value={f.align} onChange={(e) => updField(f.id, { align: e.target.value as DynamicField['align'] })}>
+                        <option value="left">{t('page.paperProfiles.alignLeft')}</option>
+                        <option value="center">{t('page.paperProfiles.alignCenter')}</option>
+                        <option value="right">{t('page.paperProfiles.alignRight')}</option>
+                      </select>
+                    </div>
+                    <div className="pp-field-row__cell">
+                      <label htmlFor={`pp-color-${f.id}`}>{t('page.paperProfiles.fieldColor')}</label>
+                      <input id={`pp-color-${f.id}`} className="pp-color" aria-label={t('page.paperProfiles.fieldColor')} type="color" value={f.color} onChange={(e) => updField(f.id, { color: e.target.value })} />
+                    </div>
+                    <div className="pp-field-row__cell pp-field-row__cell--tight">
+                      <label className="pp-checkbox-label">
+                        <input aria-label={t('page.paperProfiles.bold')} type="checkbox" checked={f.bold} onChange={(e) => updField(f.id, { bold: e.target.checked })} /> {t('page.paperProfiles.fieldBoldLabel')}
+                      </label>
+                    </div>
                   </div>
                   <FieldBarcodePreview field={f} />
                 </div>
@@ -2251,8 +2335,8 @@ export default function PaperProfiles() {
             <div className="pp-preview-panel__body" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <div className="pp-preview-header">
               <div>
-                <span className="pp-preview-header__title">Label canvas</span>
-                <span className="pp-preview-header__subtitle">Drag fields or use arrow keys for 0.1 mm adjustments</span>
+                <span className="pp-preview-header__title">{t('page.paperProfiles.labelCanvas')}</span>
+                <span className="pp-preview-header__subtitle">{t('page.paperProfiles.canvasDragHint')}</span>
               </div>
               <div className="pp-preview-header__actions">
                 <span className="pp-preview-header__size">
@@ -2260,18 +2344,18 @@ export default function PaperProfiles() {
                 </span>
               </div>
             </div>
-            <div className="pp-canvas-toolbar" role="toolbar" aria-label="Canvas controls">
-              <IconButton icon="⊞" label="Toggle grid" onClick={() => { const next = !(showVerticalGrid || showHorizontalGrid); setShowVerticalGrid(next); setShowHorizontalGrid(next); }} active={showVerticalGrid || showHorizontalGrid} />
+            <div className="pp-canvas-toolbar" role="toolbar" aria-label={t('page.paperProfiles.canvasControls')}>
+              <IconButton icon="⊞" label={t('page.paperProfiles.toggleGrid')} onClick={() => { const next = !(showVerticalGrid || showHorizontalGrid); setShowVerticalGrid(next); setShowHorizontalGrid(next); }} active={showVerticalGrid || showHorizontalGrid} />
               <IconButton icon="📏" label={t('page.paperProfiles.toggleRulers')} onClick={() => setShowRulers(!showRulers)} active={showRulers} />
-              <IconButton icon="↔" label="Show field dimensions" onClick={() => setShowDimensions(!showDimensions)} active={showDimensions} />
-              <button type="button" className="pp-canvas-fit" onClick={() => setPreviewOpen(true)}>Expand canvas</button>
+              <IconButton icon="↔" label={t('page.paperProfiles.showFieldDimensions')} onClick={() => setShowDimensions(!showDimensions)} active={showDimensions} />
+              <button type="button" className="pp-canvas-fit" onClick={() => setPreviewOpen(true)}>{t('page.paperProfiles.expandCanvas')}</button>
             </div>
             <div className="pp-preview-stage">
               <div className="pp-preview-stage__meta">
                 <span>{t('page.paperProfiles.previewCanvas')}</span>
                 <span>{form.orientation === 'portrait' ? t('page.paperProfiles.portrait') : t('page.paperProfiles.landscape')}</span>
               </div>
-              {ux.dynamicFields.length === 0 && <p className="pp-canvas-empty">Add a field to start designing this label.</p>}
+              {ux.dynamicFields.length === 0 && <p className="pp-canvas-empty">{t('page.paperProfiles.canvasEmptyHint')}</p>}
               <RulerSheet form={form} scale={scale} showRulers={showRulers} unit={du}>
                 <PreviewSheet
                   form={form} ux={ux} scale={scale}
@@ -2312,9 +2396,9 @@ export default function PaperProfiles() {
                       : field.type === 'barcode'
                         ? `${field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM} mm high`
                         : `${field.fontSize} pt`;
-                    return <><strong>{field.label || field.key || 'Untitled field'}</strong><span>{field.type} · X {field.xMm.toFixed(1)} · Y {field.yMm.toFixed(1)} mm · {size}</span></>;
+                    return <><strong>{field.label || field.key || t('page.paperProfiles.untitledField')}</strong><span>{field.type} · X {field.xMm.toFixed(1)} · Y {field.yMm.toFixed(1)} mm · {size}</span></>;
                   })()
-                : <><strong>No field selected</strong><span>Select an item on the canvas or in the inspector.</span></>}
+                : <><strong>{t('page.paperProfiles.noFieldSelected')}</strong><span>{t('page.paperProfiles.selectAnItemHint')}</span></>}
             </div>
             </div>
         </aside>
@@ -2483,7 +2567,7 @@ export default function PaperProfiles() {
                     >
                       <div className="paper-preview-modal__field-heading">
                         <code>{f.key || t('page.paperProfiles.noKey')}</code>
-                        <button type="button" style={s.btnDanger} onClick={(e) => { e.stopPropagation(); delField(f.id); }}>
+                        <button type="button" className="pp-field-delete" onClick={(e) => { e.stopPropagation(); delField(f.id); }}>
                           {t('page.paperProfiles.remove')}
                         </button>
                       </div>
@@ -2534,22 +2618,22 @@ export default function PaperProfiles() {
                 <div key={f.id} style={{ padding: '0.65rem', border: '1px solid #e5e7eb', borderRadius: 6, background: '#f9fafb' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                     <code style={{ fontSize: '0.8rem', fontWeight: 600 }}>{f.key || t('page.paperProfiles.noKey')}</code>
-                    <button style={s.btnDanger} onClick={(e) => { e.stopPropagation(); delField(f.id); }}>{t('page.paperProfiles.remove')}</button>
+                    <button type="button" className="pp-field-delete" onClick={(e) => { e.stopPropagation(); delField(f.id); }}>{t('page.paperProfiles.remove')}</button>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem', fontSize: '0.75rem' }}>
-                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fieldLabel')}</label><input value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })} style={s.smallInput} /></div>
-                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fieldDefault')}</label><input value={f.defaultValue} onChange={(e) => updField(f.id, { defaultValue: e.target.value })} style={s.smallInput} /></div>
+                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fieldLabel')}</label><input value={f.label} onChange={(e) => updField(f.id, { label: e.target.value })} className="pp-input pp-input--sm" /></div>
+                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fieldDefault')}</label><input value={f.defaultValue} onChange={(e) => updField(f.id, { defaultValue: e.target.value })} className="pp-input pp-input--sm" /></div>
                     <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '0.35rem', alignItems: 'flex-end' }}>
                       <div style={{ flex: 1 }}>
                         <label style={{ color: '#6b7280', display: 'block' }}>{t('page.paperProfiles.fieldType')}</label>
-                        <FieldTypeControls field={f} onUpdate={(patchFields) => updField(f.id, patchFields)} selectStyle={{ ...s.smallInput, width: '100%' }} />
+                        <FieldTypeControls field={f} onUpdate={(patchFields) => updField(f.id, patchFields)} selectClassName="pp-select pp-select--sm" numberClassName="pp-number pp-input--sm" />
                       </div>
                     </div>
-                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fontSize')}</label><input type="number" min={6} max={72} value={f.fontSize} onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: clampFontSize(v) }); }} style={s.smallInput} /></div>
-                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.positionX')}</label><input type="number" value={f.xMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { xMm: v }); }} style={s.smallInput} /></div>
-                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.positionY')}</label><input type="number" value={f.yMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { yMm: v }); }} style={s.smallInput} /></div>
+                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fontSize')}</label><input type="number" min={6} max={72} value={f.fontSize} onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) updField(f.id, { fontSize: clampFontSize(v) }); }} className="pp-input pp-input--sm" /></div>
+                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.positionX')}</label><input type="number" value={f.xMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { xMm: v }); }} className="pp-input pp-input--sm" /></div>
+                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.positionY')}</label><input type="number" value={f.yMm} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updField(f.id, { yMm: v }); }} className="pp-input pp-input--sm" /></div>
                     <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.fieldColor')}</label><input type="color" value={f.color} onChange={(e) => updField(f.id, { color: e.target.value })} style={{ width: '100%', height: 28, padding: 0, border: '1px solid #d1d5db', borderRadius: 4 }} /></div>
-                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.align')}</label><select value={f.align} onChange={(e) => updField(f.id, { align: e.target.value as DynamicField['align'] })} style={{ ...s.sel, padding: '0.25rem 0.4rem', fontSize: '0.75rem' }}><option value="left">{t('page.paperProfiles.alignLeft')}</option><option value="center">{t('page.paperProfiles.alignCenter')}</option><option value="right">{t('page.paperProfiles.alignRight')}</option></select></div>
+                    <div><label style={{ color: '#6b7280' }}>{t('page.paperProfiles.align')}</label><select value={f.align} onChange={(e) => updField(f.id, { align: e.target.value as DynamicField['align'] })} className="pp-select pp-select--sm"><option value="left">{t('page.paperProfiles.alignLeft')}</option><option value="center">{t('page.paperProfiles.alignCenter')}</option><option value="right">{t('page.paperProfiles.alignRight')}</option></select></div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', gridColumn: '1 / -1' }}>
                       <input type="checkbox" id={'bold-'+f.id} checked={f.bold} onChange={(e) => updField(f.id, { bold: e.target.checked })} />
                       <label htmlFor={'bold-'+f.id} style={{ fontSize: '0.75rem' }}>{t('page.paperProfiles.bold')}</label>
@@ -2581,8 +2665,8 @@ export default function PaperProfiles() {
           <div className="pp-drawer__body">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <div>
-                <label style={s.label}>{t('page.paperProfiles.fontFamily')}</label>
-                <select value={ux.fontFamily} onChange={(e) => uxPatch('fontFamily', e.target.value)} style={s.sel}>
+                <label className="pp-label">{t('page.paperProfiles.fontFamily')}</label>
+                <select value={ux.fontFamily} onChange={(e) => uxPatch('fontFamily', e.target.value)} className="pp-select">
                   {FONT_LIST.map((f) => <option key={f} value={f}>{f.replace(/['"]/g, '')}</option>)}
                 </select>
               </div>
@@ -2592,14 +2676,14 @@ export default function PaperProfiles() {
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                   <div>
-                    <label style={s.label}>{t('page.paperProfiles.fontSize')}</label>
+                    <label className="pp-label">{t('page.paperProfiles.fontSize')}</label>
                     <input type="number" value={ux.fontSize} min={6} max={72}
                       onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) uxPatch('fontSize', clampFontSize(v)); }}
-                      style={s.input} />
+                      className="pp-input" />
                   </div>
                   <div>
-                    <label style={s.label}>{t('page.paperProfiles.fontWeight')}</label>
-                    <select value={ux.fontWeight} onChange={(e) => uxPatch('fontWeight', e.target.value as 'normal' | 'bold')} style={s.sel}>
+                    <label className="pp-label">{t('page.paperProfiles.fontWeight')}</label>
+                    <select value={ux.fontWeight} onChange={(e) => uxPatch('fontWeight', e.target.value as 'normal' | 'bold')} className="pp-select">
                       <option value="normal">{t('page.paperProfiles.normal')}</option>
                       <option value="bold">{t('page.paperProfiles.bold')}</option>
                     </select>
@@ -2609,12 +2693,12 @@ export default function PaperProfiles() {
               </div>
               <ColorInput label={t('page.paperProfiles.background')} value={ux.bgColor} onChange={(v) => uxPatch('bgColor', v)} />
               <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '0.5rem' }}>
-                <label style={s.label}>{t('page.paperProfiles.watermarkText')}</label>
+                <label className="pp-label">{t('page.paperProfiles.watermarkText')}</label>
                 <input value={ux.watermarkText} onChange={(e) => uxPatch('watermarkText', e.target.value)}
-                  placeholder={t('page.paperProfiles.watermarkPlaceholder')} style={s.input} />
+                  placeholder={t('page.paperProfiles.watermarkPlaceholder')} className="pp-input" />
               </div>
               <div>
-                <label style={s.label}>{t('page.paperProfiles.watermarkOpacity')}: {ux.watermarkOpacity}%</label>
+                <label className="pp-label">{t('page.paperProfiles.watermarkOpacity')}: {ux.watermarkOpacity}%</label>
                 <input type="range" min={0} max={50} value={ux.watermarkOpacity}
                   onChange={(e) => uxPatch('watermarkOpacity', parseInt(e.target.value))}
                   style={{ width: '100%' }} />
@@ -2748,53 +2832,53 @@ export default function PaperProfiles() {
                   {/* Editable fields */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
                     <div>
-                      <label style={s.label}>{t('page.paperProfiles.nameLabel')} *</label>
+                      <label className="pp-label">{t('page.paperProfiles.nameLabel')} *</label>
                       <input
                         value={importDraft.name}
                         onChange={(e) => setImportDraft((d) => ({ ...d, name: e.target.value }))}
-                        style={{ ...s.input, borderColor: importDraftErrors.some((err) => err.field === 'name') ? '#f38ba8' : undefined }}
+                        className="pp-input" aria-invalid={importDraftErrors.some((err) => err.field === 'name') || undefined}
                       />
                     </div>
                     <div>
-                      <label style={s.label}>{t('page.paperProfiles.codeLabel')} *</label>
+                      <label className="pp-label">{t('page.paperProfiles.codeLabel')} *</label>
                       <input
                         value={importDraft.code}
                         onChange={(e) => setImportDraft((d) => ({ ...d, code: e.target.value }))}
-                        style={{ ...s.input, borderColor: importDraftErrors.some((err) => err.field === 'code') ? '#f38ba8' : undefined }}
+                        className="pp-input" aria-invalid={importDraftErrors.some((err) => err.field === 'code') || undefined}
                         placeholder={t('page.paperProfiles.codePlaceholder')}
                       />
                     </div>
                     <div className="pp-form-grid pp-form-grid--two">
                       <div>
-                        <label style={s.label}>{t('page.paperProfiles.width')} (mm)</label>
+                        <label className="pp-label">{t('page.paperProfiles.width')} (mm)</label>
                         <input
                           type="number"
                           value={importDraft.widthMm}
                           onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setImportDraft((d) => ({ ...d, widthMm: v })); }}
-                          style={{ ...s.input, borderColor: importDraftErrors.some((err) => err.field === 'widthMm') ? '#f38ba8' : undefined }}
+                          className="pp-input" aria-invalid={importDraftErrors.some((err) => err.field === 'widthMm') || undefined}
                         />
                       </div>
                       <div>
-                        <label style={s.label}>{t('page.paperProfiles.height')} (mm)</label>
+                        <label className="pp-label">{t('page.paperProfiles.height')} (mm)</label>
                         <input
                           type="number"
                           value={importDraft.heightMm}
                           onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setImportDraft((d) => ({ ...d, heightMm: v })); }}
-                          style={{ ...s.input, borderColor: importDraftErrors.some((err) => err.field === 'heightMm') ? '#f38ba8' : undefined }}
+                          className="pp-input" aria-invalid={importDraftErrors.some((err) => err.field === 'heightMm') || undefined}
                         />
                       </div>
                     </div>
                     <div>
-                      <label style={s.label}>{t('page.paperProfiles.dpi')}</label>
+                      <label className="pp-label">{t('page.paperProfiles.dpi')}</label>
                       <input
                         type="number"
                         value={importDraft.dpi}
                         onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) setImportDraft((d) => ({ ...d, dpi: v })); }}
-                        style={{ ...s.input, borderColor: importDraftErrors.some((err) => err.field === 'dpi') ? '#f38ba8' : undefined }}
+                        className="pp-input" aria-invalid={importDraftErrors.some((err) => err.field === 'dpi') || undefined}
                       />
                     </div>
                     <div>
-                      <label style={s.label}>{t('page.paperProfiles.orientation')}</label>
+                      <label className="pp-label">{t('page.paperProfiles.orientation')}</label>
                       <select
                         value={importDraft.orientation}
                         onChange={(e) => {
@@ -2807,7 +2891,7 @@ export default function PaperProfiles() {
                             setImportDraft((d) => ({ ...d, orientation: next }));
                           }
                         }}
-                        style={s.sel}
+                        className="pp-select"
                       >
                         <option value="portrait">{t('page.paperProfiles.portrait')}</option>
                         <option value="landscape">{t('page.paperProfiles.landscape')}</option>
@@ -2819,12 +2903,12 @@ export default function PaperProfiles() {
                   <div className="pp-form-grid pp-form-grid--four" style={{ marginBottom: '0.75rem' }}>
                     {(['marginTopMm', 'marginRightMm', 'marginBottomMm', 'marginLeftMm'] as const).map((mk) => (
                       <div key={mk}>
-                        <label style={s.label}>{t('page.paperProfiles.' + (mk === 'marginTopMm' ? 'top' : mk === 'marginRightMm' ? 'right' : mk === 'marginBottomMm' ? 'bottom' : 'left'))} (mm)</label>
+                        <label className="pp-label">{t('page.paperProfiles.' + (mk === 'marginTopMm' ? 'top' : mk === 'marginRightMm' ? 'right' : mk === 'marginBottomMm' ? 'bottom' : 'left'))} (mm)</label>
                         <input
                           type="number"
                           value={importDraft[mk]}
                           onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setImportDraft((d) => ({ ...d, [mk]: v })); }}
-                          style={{ ...s.input, borderColor: (importDraftErrors.some((err) => err.field === mk || err.field === 'margins')) ? '#f38ba8' : undefined }}
+                          className="pp-input" aria-invalid={importDraftErrors.some((err) => err.field === mk || err.field === 'margins') || undefined}
                         />
                       </div>
                     ))}
@@ -2839,8 +2923,8 @@ export default function PaperProfiles() {
 
                   {/* Fit mode */}
                   <div style={{ marginBottom: '1rem' }}>
-                    <label style={s.label}>{t('page.paperProfiles.importFitMode')}</label>
-                    <select value={importFitMode} onChange={(e) => setImportFitMode(e.target.value as ImportFitMode)} style={s.sel}>
+                    <label className="pp-label">{t('page.paperProfiles.importFitMode')}</label>
+                    <select value={importFitMode} onChange={(e) => setImportFitMode(e.target.value as ImportFitMode)} className="pp-select">
                       <option value="contain">{t('page.paperProfiles.importFitContain')}</option>
                       <option value="cover">{t('page.paperProfiles.importFitCover')}</option>
                       <option value="stretch">{t('page.paperProfiles.importFitStretch')}</option>
@@ -2922,6 +3006,48 @@ export default function PaperProfiles() {
             </button>
           </div>
         </div>
+        {/* Import/export result, in place of the four native alert() dialogs.
+            A blocked WebView modal is worse than an inline strip, and this one is
+            localized and dismissible. */}
+        {feedback && (
+          <div style={{ padding: '0.65rem 0.85rem 0' }}>
+            <Alert
+              tone={feedback.tone}
+              onDismiss={() => setFeedback(null)}
+              dismissLabel={t('error.dismiss')}
+            >
+              {feedback.text}
+            </Alert>
+          </div>
+        )}
+
+        {/* A failed list is never rendered as an empty one. */}
+        {profilesResource.error != null && profilesResource.data === undefined && (
+          <div style={{ padding: '0.85rem' }}>
+            <ErrorState
+              error={profilesResource.error}
+              title={t('page.paperProfiles.loadFailed')}
+              onRetry={profilesResource.refresh}
+            />
+          </div>
+        )}
+        {profilesResource.error != null && profilesResource.data !== undefined && (
+          <div style={{ padding: '0.65rem 0.85rem 0' }}>
+            <ErrorBanner
+              error={profilesResource.error}
+              title={t('page.paperProfiles.loadFailed')}
+              onRetry={profilesResource.refresh}
+            />
+          </div>
+        )}
+        {profilesResource.loading && profilesResource.data === undefined && profilesResource.error == null && (
+          <div style={{ padding: '0.85rem' }}><LoadingState /></div>
+        )}
+        {profilesResource.data !== undefined && profilesResource.data.length === 0 && (
+          <div style={{ padding: '0.85rem' }}>
+            <EmptyState title={t('page.paperProfiles.noProfiles')} />
+          </div>
+        )}
         <div style={{ overflowX: 'auto', maxHeight: 200, overflowY: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
             <thead>
@@ -2934,13 +3060,6 @@ export default function PaperProfiles() {
               </tr>
             </thead>
             <tbody>
-              {profiles.length === 0 && (
-                <tr>
-                  <td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280', fontSize: '0.8rem' }}>
-                    {t('page.paperProfiles.noProfiles')}
-                  </td>
-                </tr>
-              )}
               {profiles.map((p) => (
                 <tr key={p.id} style={{ borderTop: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '0.5rem 0.6rem', fontFamily: 'monospace', fontSize: '0.75rem' }}>{p.code}</td>

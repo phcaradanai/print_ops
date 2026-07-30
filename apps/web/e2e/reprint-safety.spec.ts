@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { installHarness } from './support.js';
 
 const job = {
   id: 'synthetic-job-0001',
@@ -14,19 +15,35 @@ const job = {
   completedAt: '2026-07-27T07:00:01.000Z',
 };
 
+// The API mocks live in the shared harness now. Answering by pathname alone used
+// to swallow the page navigation as well, so `goto('/jobs')` rendered the job
+// JSON as the document and no button ever existed to click.
 async function mockApi(page: import('@playwright/test').Page) {
-  await page.addInitScript(() => localStorage.setItem('token', 'synthetic-browser-token'));
-  await page.route('**/*', async (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname === '/me') {
-      return route.fulfill({ json: { id: 'synthetic-admin', email: 'test@example.invalid', name: 'Synthetic Admin', role: 'ADMIN' } });
-    }
-    if (url.pathname === '/jobs' && route.request().method() === 'GET') return route.fulfill({ json: [job] });
-    if (url.pathname === `/jobs/${job.id}`) return route.fulfill({ json: job });
-    if (url.pathname === `/jobs/${job.id}/reprint`) {
-      return route.fulfill({ status: 201, json: { ...job, id: 'synthetic-reprint-0002', requestId: 'reprint-synthetic-0002' } });
-    }
-    return route.continue();
+  await installHarness(page, {
+    locale: 'en',
+    api: (url, route, method) => {
+      if (url.pathname === '/jobs' && method === 'GET') {
+        route.fulfill({ json: [job] });
+        return true;
+      }
+      if (url.pathname === `/jobs/${job.id}`) {
+        route.fulfill({ json: job });
+        return true;
+      }
+      if (url.pathname === `/jobs/${job.id}/reprint`) {
+        route.fulfill({ status: 201, json: { ...job, id: 'synthetic-reprint-0002', requestId: 'reprint-synthetic-0002' } });
+        return true;
+      }
+      if (url.pathname === '/printers' && method === 'GET') {
+        route.fulfill({ json: [{ id: job.printerId, code: job.printerCode, name: job.printerCode, status: 'ONLINE' }] });
+        return true;
+      }
+      if (url.pathname === '/runners' && method === 'GET') {
+        route.fulfill({ json: [{ id: job.runnerId, name: 'synthetic-runner', hostname: 'synthetic', status: 'ONLINE' }] });
+        return true;
+      }
+      return false;
+    },
   });
 }
 
