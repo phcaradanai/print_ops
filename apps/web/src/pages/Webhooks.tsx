@@ -5,6 +5,7 @@ import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { ErrorBanner, Freshness } from '../components/PageState.js';
 import { saveOrDownloadJsonFile } from '../utils/fileExport.js';
+import { parseWebhookImportJson } from '../features/webhooks/parseImportJson.js';
 
 interface Endpoint {
   id: string;
@@ -436,40 +437,36 @@ export default function Webhooks() {
   };
 
   // --- Import Feature ---
-  const handleFileChange = (ev: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (ev: React.ChangeEvent<HTMLInputElement>) => {
     const file = ev.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result as string;
-        const parsed = JSON.parse(text);
-        const importedList: Partial<Endpoint>[] = Array.isArray(parsed)
-          ? parsed
-          : Array.isArray(parsed?.endpoints)
-          ? parsed.endpoints
-          : [];
-
-        if (importedList.length === 0) {
-          showToast(t('page.webhooks.toastImportEmpty'), 'error');
-          return;
-        }
-
-        // Validate required fields
-        const validList = importedList.filter((item) => item.endpointCode && item.name);
-        if (validList.length === 0) {
-          showToast(t('page.webhooks.toastImportInvalidStructure'), 'error');
-          return;
-        }
-
-        setImportModalEndpoints(validList);
-      } catch (err: unknown) {
-        showToast(`${t('page.webhooks.toastImportReadFailed')} ${errorMessage(err)}`, 'error');
-      }
-    };
-    reader.readAsText(file);
+    // Clear immediately so choosing the same file again still triggers change.
     ev.target.value = '';
+    try {
+      const parsed = parseWebhookImportJson(await file.arrayBuffer());
+      const importedList: Partial<Endpoint>[] = Array.isArray(parsed)
+        ? parsed
+        : parsed && typeof parsed === 'object' && Array.isArray((parsed as { endpoints?: unknown }).endpoints)
+        ? (parsed as { endpoints: Partial<Endpoint>[] }).endpoints
+        : [];
+
+      if (importedList.length === 0) {
+        showToast(t('page.webhooks.toastImportEmpty'), 'error');
+        return;
+      }
+
+      // Validate required fields
+      const validList = importedList.filter((item) => item.endpointCode && item.name);
+      if (validList.length === 0) {
+        showToast(t('page.webhooks.toastImportInvalidStructure'), 'error');
+        return;
+      }
+
+      setImportModalEndpoints(validList);
+    } catch (err: unknown) {
+      showToast(`${t('page.webhooks.toastImportReadFailed')} ${errorMessage(err)}`, 'error');
+    }
   };
 
   const confirmImport = async () => {

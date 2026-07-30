@@ -729,6 +729,15 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     // the authenticated HTTP API must remain available for recovery.
     app.log.error({ err }, 'print-intake disabled: invalid client-scoped NATS configuration');
   }
+  // Routes are registered before the optional NATS consumer starts. This must
+  // be created AFTER printIntakeCfg is loaded; otherwise the conditional
+  // snapshots `undefined` even though NATS connects later during startup.
+  const routeNatsPublisher: NatsPublisher | undefined = printIntakeCfg
+    ? (subject, payload) => {
+        if (!natsPublisher) throw new Error('NATS transport is not connected');
+        return natsPublisher(subject, payload);
+      }
+    : undefined;
 
   // Health check (no auth)
   app.get('/health', async () => ({ status: 'ok', uptime: process.uptime() }));
@@ -754,7 +763,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1RunnerJobRoutes(v1, { jobs: jobRepo, printers: printerRepo, traces: traceRepo, audit: auditRepo, events: eventBus });
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
     await sandboxRoutes(v1, { sandbox: sandboxSvc, connectivity: connectivitySvc, audit: auditRepo });
-    await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob, getPrinterStatus, logger: app.log, callbackSender: httpCallbackSender, callbackNats: natsPublisher, callbackAttemptLog: webhookCallbackAttemptRepo, callbackDeliveries: callbackDeliveryRepo });
+    await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob, getPrinterStatus, logger: app.log, callbackSender: httpCallbackSender, callbackNats: routeNatsPublisher, callbackAttemptLog: webhookCallbackAttemptRepo, callbackDeliveries: callbackDeliveryRepo });
     await paperProfileImportRoutes(v1, { importService: importPaperProfile });
     await v1UserRoutes(v1, { users: userRepo });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });

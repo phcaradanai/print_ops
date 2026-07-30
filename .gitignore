@@ -19,6 +19,7 @@ coverage/
 .DS_Store
 *.tsbuildinfo
 .turbo/
+/artifacts/
 
 # Go runner artifacts
 apps/runner-go/printops-runner
