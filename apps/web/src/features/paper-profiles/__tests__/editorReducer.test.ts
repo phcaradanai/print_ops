@@ -18,6 +18,15 @@ const field = (id: string): DynamicField => ({
 });
 
 describe('editorReducer', () => {
+  it('uses the same section keys as the runtime workspace', () => {
+    expect(createEditorState().sectionsOpen).toEqual({
+      basicInfo: true,
+      dimensions: true,
+      margins: false,
+      fields: true,
+    });
+  });
+
   it('marks form changes dirty without mutating the previous state', () => {
     const initial = createEditorState();
     const next = editorReducer(initial, { type: 'PATCH_FORM', patch: { name: 'Shipping' } });
@@ -73,10 +82,13 @@ describe('editorReducer', () => {
     expect(reset.selectedFieldId).toBeNull();
   });
 
-  it('keeps backend save failures actionable until dismissed', () => {
+  it('returns to idle after a backend save error is dismissed', () => {
     const failed = editorReducer(createEditorState(), { type: 'SAVE_FAILED', error: 'Profile is in use' });
     expect(failed.saveStatus).toBe('error');
     expect(failed.saveError).toBe('Profile is in use');
-    expect(editorReducer(failed, { type: 'DISMISS_SAVE_ERROR' }).saveError).toBeNull();
+
+    const dismissed = editorReducer(failed, { type: 'DISMISS_SAVE_ERROR' });
+    expect(dismissed.saveStatus).toBe('idle');
+    expect(dismissed.saveError).toBeNull();
   });
 });
