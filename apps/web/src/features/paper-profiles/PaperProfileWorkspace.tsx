@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocale } from '../../i18n/index.js';
 import { CanvasToolbar, type CanvasOptions } from './components/CanvasToolbar.js';
 import { DeleteProfileDialog } from './components/DeleteProfileDialog.js';
@@ -35,7 +35,13 @@ export default function PaperProfileWorkspace() {
   const showNotice = useCallback((message: string) => {
     if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
     setNotice(message);
-    noticeTimerRef.current = window.setTimeout(() => setNotice(null), 3000);
+    noticeTimerRef.current = window.setTimeout(() => {
+      noticeTimerRef.current = null;
+      setNotice(null);
+    }, 3000);
+  }, []);
+  useEffect(() => () => {
+    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
   }, []);
   const setCanvasOptions = useCallback((patch: Partial<CanvasOptions>) => {
     setCanvasOptionsState((current) => ({ ...current, ...patch }));
