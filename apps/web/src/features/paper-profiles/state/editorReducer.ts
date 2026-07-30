@@ -76,7 +76,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'PATCH_FORM':
       return { ...state, form: { ...state.form, ...action.patch }, saveStatus: nextSaveStatus(state.saveStatus, 'dirty') };
     case 'PATCH_UX':
-      return { ...state, ux: { ...state.ux, ...action.patch }, saveStatus: nextSaveStatus(state.saveStatus, 'dirty') };
+      return { ...state, ux: { ...state.ux, ...action.patch } };
     case 'ADD_FIELD':
       return {
         ...state,
@@ -142,6 +142,6 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'SAVE_FAILED':
       return { ...state, saveStatus: 'error', saveError: action.error };
     case 'DISMISS_SAVE_ERROR':
-      return { ...state, saveError: null };
+      return { ...state, saveStatus: 'idle', saveError: null };
   }
 }

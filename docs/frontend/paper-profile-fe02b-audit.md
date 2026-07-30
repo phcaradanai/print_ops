@@ -261,3 +261,122 @@ materially improved, but FE-02B acceptance is not complete because the
 1,989-line workspace exceeds the mandatory file-size gate, several requested
 hooks/components are not yet extracted, and Tauri evidence is absent. It is not
 ready for FE-02C.
+
+---
+
+# FE-02B.1 Closure Evidence — 2026-07-30
+
+This section appends closure evidence without replacing the original FE-02B
+baseline and FAIL verdict above.
+
+## Structural Matrix
+
+| Area | Before | After | Result |
+|---|---|---|---|
+| Runtime state ownership | Independent `useState` values in workspace | `useReducer(editorReducer)` exposed through `usePaperProfileEditor` | PASS |
+| Persistence hook | List/save/delete/import/export effects in workspace | `usePaperProfilePersistence`; shared resource/action hooks and typed API | PASS |
+| Canvas interaction hook | Document pointer listeners and drag refs in workspace | `useCanvasInteraction`; move/up/cancel and cleanup isolated | PASS |
+| Popup lifecycle | Preset/drawer/modal effects in workspace | `usePaperProfilePopups`; one-layer policy, Escape, focus and body lock | PASS |
+| Import lifecycle | File, request generation and object URLs in workspace | `useImportDesign`; stale-generation guards and URL ownership | PASS |
+| Form components | Large inline form tree | Basic, dimensions, margins, dynamic-fields and field-card components | PASS |
+| Dialog/drawer components | Large inline overlay trees | Full preview, import/editor drawers and delete dialog | PASS |
+| Workspace composition | 1,989-line controller/view | 102-line hook composition and layout mapping | PASS |
+
+### Runtime ownership decision
+
+`form`, dynamic fields, selected field, editing profile ID, section expansion,
+save status and save error are reducer-owned. Dynamic fields are the only
+`PaperProfileUx` member included in the save payload. `displayUnit`, font
+defaults, colors, watermark and related appearance controls are local
+editor/preview preferences; `PATCH_UX` therefore does not mark the profile
+dirty. New fields copy the current font/color defaults and then become persisted
+field data, so subsequent field mutations do mark the editor dirty.
+
+Open popup type, drag state, DOM refs, viewport/stage measurements, raw numeric
+input text, feedback strips, object URLs, import request generation and
+single-flight refs remain ephemeral hook/component state.
+
+## File Size Matrix
+
+| File | Lines | Limit | Result |
+|---|---:|---:|---|
+| `pages/PaperProfiles.tsx` | 69 | 150 | PASS |
+| `PaperProfileWorkspace.tsx` | 102 | 600 | PASS |
+| `components/PaperCanvas.tsx` | 546 | 600 | PASS |
+| `hooks/useImportDesign.ts` | 208 | 400 practical | PASS |
+| `hooks/usePaperProfilePopups.ts` | 146 | 400 practical | PASS |
+| `hooks/usePaperProfilePersistence.ts` | 129 | 400 practical | PASS |
+| `hooks/usePaperProfileEditor.ts` | 120 | 400 practical | PASS |
+| `hooks/useCanvasInteraction.ts` | 103 | 400 practical | PASS |
+| Largest new component (`FullPreviewDialog.tsx`) | 139 | 400 practical | PASS |
+
+No feature source file exceeds 600 lines.
+
+## Compatibility Matrix
+
+| Contract | Result | Evidence |
+|---|---|---|
+| API paths | PASS | Existing typed `paperProfilesApi` retained unchanged |
+| Persisted schema | PASS | Save payload remains `PaperForm + fields`; 210 compatibility tests |
+| JSON import/export | PASS | Existing serializer/import API and serialization tests |
+| Barcode output | PASS | Shared `PaperCanvas`/barcode renderer unchanged; unit/browser suites |
+| QR output | PASS | Shared renderer and 20 mm default unchanged; unit/browser suites |
+| Geometry | PASS | Existing pure geometry module and 210 compatibility tests |
+| Drag/snap/nudge | PASS | Same mapping functions, 2 mm snap and 0.1 mm rounding; cancellation tests |
+| DELETE 204 | PASS | `delete-flows.spec.ts` and API empty-response compatibility tests |
+| Responsive layout | PASS | 39 UX tests and two layout regression tests |
+
+## Lifecycle and Regression Coverage
+
+| Behavior | Evidence | Result |
+|---|---|---|
+| Runtime reducer transitions | Eight `editorReducer.test.ts` cases | PASS |
+| Persisted vs preview-only dirty behavior | Reducer tests for `PATCH_UX` vs field mutation | PASS |
+| Mutation duplicate protection | Shared `useApiAction` / `singleFlight` seven-test matrix | PASS |
+| Save failure reason | Paper Profile UX browser test | PASS |
+| DELETE 204 / empty 200 / structured failure | Delete E2E + five API DELETE compatibility tests | PASS |
+| Pointer up/cancel/unmount cleanup | `canvasInteraction.test.ts` listener lifecycle tests | PASS |
+| Inline/full scale and renderer sharing | Both components use `PaperCanvas`; full browser suite | PASS |
+| Popup Escape/body lock/focus reachability | Paper Profile popup browser tests | PASS |
+| Import stale response and URL lifecycle | Generation checks and centralized hook cleanup; build/typecheck | PASS |
+
+## Verification Matrix
+
+| Command | Result | Notes |
+|---|---|---|
+| `git fetch origin` | PASS | Branch `mvp_nippon`; pull skipped for user-owned untracked files |
+| `npm test` | PASS | All workspaces and Go packages; web 441/441 |
+| `npm run typecheck` | PASS | All TypeScript workspaces and Go packages |
+| `npm run build -w @printerops/web` | PASS | Production bundle; pre-existing chunk-size warning only |
+| `npx playwright test apps/web/e2e/paper-profile-ux.spec.ts` | PASS | 39/39 |
+| `npx playwright test apps/web/e2e/paper-profile-layout-regression.spec.ts` | PASS | 2/2 |
+| `npx playwright test apps/web/e2e/delete-flows.spec.ts` | PASS | 2/2 |
+| `npx playwright test` | PASS | 47/47 Chromium tests |
+| `npm run tauri:build -w @printerops/desktop` | PASS | Release EXE, MSI and NSIS bundles produced |
+| Packaged Tauri/WebView2 launch | PASS | Release EXE opened a `PrinterOps` window, then closed normally |
+| `git diff --check` | PASS | Line-ending conversion warnings only |
+
+## Desktop Evidence
+
+The packaged release executable
+`apps/desktop/src-tauri/target/release/printerops-desktop.exe` launched on
+Windows with a non-zero native window handle and title `PrinterOps`.
+`CloseMainWindow()` then closed it normally. This proves packaged
+Tauri/WebView2 startup compatibility; the detailed interaction matrix remains
+covered in Chromium rather than manually repeated inside WebView2.
+
+## Deferred Work
+
+The following remain untouched: FE-02C visual redesign, application navigation
+redesign, route lazy loading, backend changes, new persisted fields, and any new
+renderer/template language. The FE-02A CSS files and browser regression files
+were not weakened or redesigned.
+
+## Final Verdict
+
+PASS
+
+Every structural and file-size gate passes, current browser regressions are
+green, the desktop bundles build, and the packaged WebView2 application
+launches successfully. FE-02B is structurally closed and ready for a separately
+scoped FE-02C.

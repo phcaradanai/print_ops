@@ -77,6 +77,32 @@ describe('editorReducer', () => {
     const failed = editorReducer(createEditorState(), { type: 'SAVE_FAILED', error: 'Profile is in use' });
     expect(failed.saveStatus).toBe('error');
     expect(failed.saveError).toBe('Profile is in use');
-    expect(editorReducer(failed, { type: 'DISMISS_SAVE_ERROR' }).saveError).toBeNull();
+    const dismissed = editorReducer(failed, { type: 'DISMISS_SAVE_ERROR' });
+    expect(dismissed.saveError).toBeNull();
+    expect(dismissed.saveStatus).toBe('idle');
+  });
+
+  it('uses the runtime basicInfo section key', () => {
+    const collapsed = editorReducer(createEditorState(), {
+      type: 'SET_SECTION',
+      section: 'basicInfo',
+      open: false,
+    });
+    expect(collapsed.sectionsOpen.basicInfo).toBe(false);
+  });
+
+  it('does not mark preview-only preferences dirty', () => {
+    const initial = createEditorState();
+    const next = editorReducer(initial, { type: 'PATCH_UX', patch: { displayUnit: 'cm' } });
+    expect(next.ux.displayUnit).toBe('cm');
+    expect(next.saveStatus).toBe('idle');
+  });
+
+  it('marks persisted dynamic-field updates dirty', () => {
+    const withField = editorReducer(createEditorState(), { type: 'ADD_FIELD', field: field('a') });
+    const saved = { ...withField, saveStatus: 'saved' as const };
+    const updated = editorReducer(saved, { type: 'UPDATE_FIELD', id: 'a', patch: { xMm: 1.2 } });
+    expect(updated.ux.dynamicFields[0].xMm).toBe(1.2);
+    expect(updated.saveStatus).toBe('dirty');
   });
 });

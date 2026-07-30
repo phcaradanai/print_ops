@@ -1,7 +1,7 @@
 import { DEFAULT_FORM, DEFAULT_UX } from '../model/defaults.js';
 import type { PaperForm, PaperProfileUx, SaveStatus } from '../model/types.js';
 
-export type SectionKey = 'basic' | 'dimensions' | 'margins' | 'fields';
+export type SectionKey = 'basicInfo' | 'dimensions' | 'margins' | 'fields';
 
 export interface EditorState {
   form: PaperForm;
@@ -19,7 +19,7 @@ export function createEditorState(): EditorState {
     ux: { ...DEFAULT_UX, dynamicFields: [] },
     selectedFieldId: null,
     editingProfileId: null,
-    sectionsOpen: { basic: true, dimensions: true, margins: false, fields: true },
+    sectionsOpen: { basicInfo: true, dimensions: true, margins: false, fields: true },
     saveStatus: 'idle',
     saveError: null,
   };
