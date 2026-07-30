@@ -138,12 +138,34 @@ async function authenticatedResponse(path: string, init: RequestInit, scope: str
   return res;
 }
 
+/** A DELETE command has no response-body contract, even when called via apiFetch. */
+type DeleteRequestInit = RequestInit & { method: 'DELETE' | 'delete' | 'Delete' };
+
+function isDeleteRequest(init: RequestInit): boolean {
+  return init.method?.toUpperCase() === 'DELETE';
+}
+
 /**
- * Performs an authenticated JSON API call. A successful endpoint is required
- * to return valid JSON; empty bodies remain an error instead of being cast to T.
+ * Performs an authenticated API call.
+ *
+ * JSON remains mandatory for normal data requests. DELETE is deliberately
+ * treated as an explicit command response: APIs commonly return 204 or an empty
+ * 200 after a successful deletion, and attempting `res.json()` made the UI show
+ * `INVALID_JSON` after the record had already been deleted. The overload keeps
+ * DELETE call sites typed as Promise<void> while preserving strict JSON handling
+ * for GET/POST/PUT requests.
  */
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+export function apiFetch(path: string, init: DeleteRequestInit): Promise<void>;
+export function apiFetch<T>(path: string, init?: RequestInit): Promise<T>;
+export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T | void> {
   const res = await authenticatedResponse(path, init, 'apiFetch');
+
+  if (isDeleteRequest(init)) {
+    // Drain any compatibility body without making it part of the frontend
+    // contract. This accepts both 204 and empty/non-empty 200 responses.
+    await res.text();
+    return;
+  }
 
   try {
     return (await res.json()) as T;
@@ -161,9 +183,10 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 }
 
 /**
- * Explicit success-without-data variant for commands whose response body is not
- * part of the frontend contract. It accepts 204 and empty 200 responses, and
- * also drains a body when a server returns one for backward compatibility.
+ * Explicit success-without-data variant for non-DELETE commands whose response
+ * body is not part of the frontend contract. It accepts 204 and empty 200
+ * responses, and also drains a body when a server returns one for backward
+ * compatibility.
  */
 export async function apiFetchVoid(path: string, init: RequestInit = {}): Promise<void> {
   const res = await authenticatedResponse(path, init, 'apiFetchVoid');
@@ -258,7 +281,7 @@ export function fileToBase64(file: File): Promise<string> {
         reject(new Error('FileReader did not return a string'));
       }
     };
-    reader.onerror = () => reject(reader.error ?? new Error('FileReader error'));
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read file'));
     reader.readAsDataURL(file);
   });
 }
