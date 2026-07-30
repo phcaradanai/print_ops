@@ -61,7 +61,12 @@ export function useImportDesign(
   const [fitMode, setFitMode] = useState<ImportFitMode>('contain');
   const [draft, setDraft] = useState<PaperForm>(DEFAULT_FORM);
   const [artwork, setArtwork] = useState<Record<string, ArtworkEntry | null>>({});
-  const generationRef = useRef(0);
+  // Import analysis and persisted-artwork loading are independent request
+  // domains. Sharing one generation counter meant closing/resetting the import
+  // drawer could invalidate an in-flight artwork load for the profile being
+  // edited, leaving that artwork absent without any dependency change to retry.
+  const analysisGenerationRef = useRef(0);
+  const artworkGenerationRef = useRef(0);
   const submitInFlightRef = useRef(false);
   const objectUrlRef = useRef<string | null>(null);
   const artworkRef = useRef(artwork);
@@ -76,7 +81,7 @@ export function useImportDesign(
     });
   }, []);
   const reset = useCallback(() => {
-    generationRef.current += 1;
+    analysisGenerationRef.current += 1;
     replaceObjectUrl(null);
     setPhase('select');
     setFile(null);
@@ -87,17 +92,17 @@ export function useImportDesign(
     submitInFlightRef.current = false;
   }, [replaceObjectUrl]);
   const invalidate = useCallback(() => {
-    generationRef.current += 1;
+    analysisGenerationRef.current += 1;
   }, []);
 
-  const analyze = useCallback(async (selected: File, url: string, generation: number) => {
+  const analyze = useCallback(async (selected: File, generation: number) => {
     try {
       const result = await analyzePaperArtwork({
         fileName: selected.name,
         declaredMimeType: inferMimeFromExtension(selected.name) || selected.type || 'image/png',
         dataBase64: toBase64Payload(await fileToBase64(selected)),
       });
-      if (generation !== generationRef.current) return;
+      if (generation !== analysisGenerationRef.current) return;
       const basename = selected.name.replace(/\.[^.]+$/, '');
       setAnalysis(result);
       setDraft({
@@ -115,12 +120,11 @@ export function useImportDesign(
       });
       setPhase('review');
     } catch (err: unknown) {
-      if (generation !== generationRef.current) return;
+      if (generation !== analysisGenerationRef.current) return;
       replaceObjectUrl(null);
       setError(errorMessage(err, messages.analyzeFailed));
       setPhase('error');
     }
-    void url;
   }, [messages.analyzeFailed, replaceObjectUrl]);
 
   const selectFile = useCallback((selected: File) => {
@@ -137,8 +141,8 @@ export function useImportDesign(
     const url = URL.createObjectURL(selected);
     replaceObjectUrl(url);
     setPhase('analyzing');
-    const generation = ++generationRef.current;
-    void analyze(selected, url, generation);
+    const generation = ++analysisGenerationRef.current;
+    void analyze(selected, generation);
   }, [analyze, messages.invalidType, messages.tooLarge, replaceObjectUrl]);
 
   const submit = useCallback(async () => {
@@ -174,24 +178,25 @@ export function useImportDesign(
   }, [analysis, draft, draftErrors.length, file, fitMode, messages.importFailed, onImported, reset]);
 
   useEffect(() => {
+    const generation = ++artworkGenerationRef.current;
     if (!editingProfileId || editingProfileId in artwork) return;
-    const generation = ++generationRef.current;
     getPaperProfileArtwork(editingProfileId).then((data) => {
-      if (generation !== generationRef.current) return;
+      if (generation !== artworkGenerationRef.current) return;
       const url = URL.createObjectURL(base64ToBlob(data.dataBase64, data.mimeType));
       setArtwork((current) => ({
         ...current,
         [editingProfileId]: { objectUrl: url, fitMode: data.fitMode },
       }));
     }).catch((err: unknown) => {
-      if (generation !== generationRef.current) return;
+      if (generation !== artworkGenerationRef.current) return;
       setArtwork((current) => ({ ...current, [editingProfileId]: null }));
       if (!(err instanceof ApiError && err.status === 404)) onFeedback(errorMessage(err, messages.artworkLoadFailed));
     });
   }, [artwork, editingProfileId, messages.artworkLoadFailed, onFeedback]);
 
   useEffect(() => () => {
-    generationRef.current += 1;
+    analysisGenerationRef.current += 1;
+    artworkGenerationRef.current += 1;
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     for (const entry of Object.values(artworkRef.current)) {
       if (entry?.objectUrl) URL.revokeObjectURL(entry.objectUrl);
