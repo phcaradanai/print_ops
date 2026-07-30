@@ -1,32 +1,18 @@
 /**
- * Framework-free polling core (FE-01.1).
+ * Framework-free polling core.
  *
- * The dashboard polls three surfaces (`JobQueue` every 1.5s, `JobDetail` every
- * 1s ×3 endpoints, `Dashboard` on demand). Each one hand-rolled its own
- * `setInterval` + `let active = true`, and all of them shared the same three
- * defects: a slow response let the next tick start a second overlapping
- * request, polling continued at full rate while the window was hidden, and a
- * failed refresh left the previous data on screen with nothing saying when it
- * was last true.
- *
- * This controller owns exactly that: scheduling, overlap suppression,
- * visibility, and the success/failure bookkeeping. It owns **no React state**
- * and touches the DOM only through injected seams, so the behaviour is testable
- * in the repo's node test environment with `vi.useFakeTimers()`.
+ * Owns scheduling, overlap suppression, visibility handling and stale-data
+ * bookkeeping. Automatic polling can be suspended independently from the
+ * resource itself, so terminal Job Detail views keep their data and manual
+ * refresh capability without continuing three requests per second forever.
  */
 
 export interface PollSnapshot<T> {
-  /** Last successfully loaded value. Retained across failures on purpose. */
   data: T | undefined;
-  /** Failure of the most recent attempt; cleared by the next success. */
   error: unknown;
-  /** First load, nothing to show yet. */
   loading: boolean;
-  /** A request is in flight while previous data is already on screen. */
   refreshing: boolean;
-  /** `Date.now()` of the last success, or null if never succeeded. */
   lastSuccessAt: number | null;
-  /** True when `data` is older than the last attempt, i.e. visibly stale. */
   stale: boolean;
   /** Polling is suspended because the document is hidden. */
   paused: boolean;
@@ -34,24 +20,25 @@ export interface PollSnapshot<T> {
 
 export interface PollControllerOptions<T> {
   fetcher: (signal?: AbortSignal) => Promise<T>;
-  /** Milliseconds between attempts. `0` disables polling (one-shot + manual refresh). */
+  /** Milliseconds between attempts. `0` disables automatic polling. */
   intervalMs?: number;
+  /** Initial automatic-polling state. The first load still runs on start. */
+  pollingEnabled?: boolean;
   onSnapshot: (snapshot: PollSnapshot<T>) => void;
-  /** Seam: defaults to `document.visibilityState !== 'hidden'`. */
   isVisible?: () => boolean;
-  /** Seam: defaults to a `visibilitychange` listener. Returns an unsubscribe. */
   subscribeVisibility?: (onChange: () => void) => () => void;
-  /** Seam: defaults to `Date.now`. */
   now?: () => number;
 }
 
 export interface PollController {
-  /** Runs an immediate attempt and, when `intervalMs > 0`, starts the loop. */
+  /** Runs an immediate first attempt and then schedules polling when enabled. */
   start: () => void;
-  /** Stops the loop; late responses from in-flight attempts are ignored. */
+  /** Stops the controller; late responses are ignored. */
   stop: () => void;
-  /** Manual attempt (retry button). Ignored while one is already in flight. */
+  /** Manual attempt. Works even when automatic polling is disabled. */
   refresh: () => void;
+  /** Toggle automatic polling without discarding retained data. */
+  setPollingEnabled: (enabled: boolean) => void;
 }
 
 function defaultIsVisible(): boolean {
@@ -69,6 +56,7 @@ export function createPollController<T>(options: PollControllerOptions<T>): Poll
   const {
     fetcher,
     intervalMs = 0,
+    pollingEnabled: initialPollingEnabled = true,
     onSnapshot,
     isVisible = defaultIsVisible,
     subscribeVisibility = defaultSubscribeVisibility,
@@ -87,9 +75,9 @@ export function createPollController<T>(options: PollControllerOptions<T>): Poll
 
   let stopped = false;
   let inFlight = false;
+  let pollingEnabled = initialPollingEnabled;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let unsubscribeVisibility: (() => void) | null = null;
-  /** Bumped by `stop()` so a response that lands afterwards is discarded. */
   let generation = 0;
 
   function emit(patch: Partial<PollSnapshot<T>>): void {
@@ -106,12 +94,10 @@ export function createPollController<T>(options: PollControllerOptions<T>): Poll
 
   function schedule(): void {
     clearTimer();
-    if (stopped || intervalMs <= 0) return;
+    if (stopped || !pollingEnabled || intervalMs <= 0) return;
     timer = setTimeout(() => {
       timer = null;
       if (!isVisible()) {
-        // Hidden: do not spend a request, but keep the loop alive so the tab
-        // resumes on its own even if `visibilitychange` never fires.
         emit({ paused: true });
         schedule();
         return;
@@ -121,9 +107,6 @@ export function createPollController<T>(options: PollControllerOptions<T>): Poll
   }
 
   async function attempt(): Promise<void> {
-    // Overlap suppression: a tick that arrives while the previous request is
-    // still open is dropped, never queued. Queuing would turn a slow API into
-    // an ever-growing pile of identical in-flight requests.
     if (stopped || inFlight) return;
     inFlight = true;
     const runGeneration = generation;
@@ -147,8 +130,6 @@ export function createPollController<T>(options: PollControllerOptions<T>): Poll
       });
     } catch (error: unknown) {
       if (stopped || runGeneration !== generation) return;
-      // Data is deliberately retained: a frozen table beats a blank screen
-      // during a blip. `stale` is what stops it from reading as live.
       emit({
         error,
         loading: false,
@@ -170,12 +151,13 @@ export function createPollController<T>(options: PollControllerOptions<T>): Poll
           if (!stopped) emit({ paused: true });
           return;
         }
-        // Becoming visible again: refresh immediately instead of waiting out
-        // the remainder of an interval the operator cannot see ticking.
+
         emit({ paused: false });
+        if (!pollingEnabled) return;
         clearTimer();
         void attempt();
       });
+      // Initial load is independent from the recurring-polling switch.
       void attempt();
     },
 
@@ -191,6 +173,18 @@ export function createPollController<T>(options: PollControllerOptions<T>): Poll
     refresh(): void {
       if (stopped) return;
       clearTimer();
+      void attempt();
+    },
+
+    setPollingEnabled(enabled: boolean): void {
+      if (pollingEnabled === enabled) return;
+      pollingEnabled = enabled;
+      clearTimer();
+      if (stopped || !enabled) return;
+      if (!isVisible()) {
+        emit({ paused: true });
+        return;
+      }
       void attempt();
     },
   };
