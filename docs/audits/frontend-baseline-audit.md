@@ -312,6 +312,79 @@ Not in scope and untouched: `PaperProfiles`, navigation, route lazy loading,
 visual redesign, and `Webhooks`' own `showToast` layer (a shared toast primitive
 remains FE-02 work — `Webhooks` and `Templates` still have their own).
 
+## 5d. What FE-01.2 final runtime closure added
+
+**Job Detail polling now ends with the job.** The terminal-aware policy
+(`lib/jobDetailPolling.ts`) existed but was never wired in, so three endpoints
+kept firing every second on a job that could no longer change — roughly 180
+requests per minute for as long as the tab stayed open, which on a shared
+gateway is indistinguishable from a client bug. `JobDetail` now computes
+`shouldPollJobDetail(...)` from the loaded job and its deliveries and applies it
+to all three resources through `setPollingEnabled`.
+
+Stopping is not resetting: the retained job, trace and delivery data stay on
+screen and `refresh()` still works, because `pollController.setPollingEnabled`
+only clears the timer.
+
+The mapping from page state to policy input is exported as
+`jobDetailPollingInput(job, deliveries)` and tested. It is the part most likely
+to be got wrong later: `callbackIntent.transports` is what the job *intended* to
+notify, `deliveries` is what actually happened, and reading the second as the
+first would stop polling before a callback resolved.
+
+**Known consequence, accepted:** a terminal job with callbacks enabled whose
+`/v1/callback-deliveries` request fails permanently (e.g. 403) reports zero
+delivery statuses, which the policy reads as "no delivery row yet" and keeps
+polling. That is the same signal as a genuinely pending first delivery, and the
+required behaviour for it is "continue polling", so the two cannot be separated
+without a new fact from the API.
+
+**Diagnostics no longer states an outage as a finding.** `LocalDiagnostics`
+rendered "No runners connected. Start the runner app…" whenever the runner list
+was empty — including when `/runners` had failed and never once succeeded. An
+operator acts on that sentence by walking to a machine. Both claims are now
+gated on a successful response (`data !== undefined`), per runner as well as
+per page, with `page.diagnostics.runnersUnavailable` /
+`page.diagnostics.printersUnavailable` for the unknown case. The partial-failure
+banner is unchanged.
+
+**Duplicate-mutation guard is now covered.** `useApiAction`'s single-flight
+logic was untestable while it lived inside the hook (no jsdom). The dedupe and
+release moved to `lib/singleFlight.ts` — 44 lines, framework-free — and the hook
+delegates to it while keeping every React state write in place; the public
+`ApiAction` contract is unchanged. Seven tests cover shared in-flight promise,
+exactly-one invocation for a burst, release on success, release on failure (a
+failed mutation must stay retryable), a later action with its own arguments, a
+presentation-only `reset()` being unable to release the slot, and a late settle
+being unable to free a newer run's slot.
+
+Not covered: unmount not writing React state. `react-dom/server` runs no
+effects, so `mounted.current` never flips and there is no unmount to trigger;
+proving it needs jsdom, which this milestone was told not to add.
+
+**Typecheck fix.** `__tests__/pollingControl.test.ts` did not compile on the
+pulled branch — `vi.fn().mockResolvedValue` widened the fetcher's result to
+`any`, inferring `PollSnapshot<unknown>` against a `PollSnapshot<string[]>[]`
+sink. Two explicit `createPollController<string[]>` annotations; no behaviour
+change.
+
+**Desktop serving path, verified against the production bundle.** The packaged
+shell loads `http://127.0.0.1:31415` from `server.exe`, which serves
+`apps/web/dist` through the static/not-found handler in `apps/api/src/app.ts`.
+Injecting requests against a real app instance over the built `dist`: `/` returns
+the built `index.html`; the hashed JS and CSS are served with the correct
+content types; the built asset extensions (`.js`, `.css`) are all inside that
+handler's hardcoded MIME map; `index.html` references no external origin (the
+WebView is offline).
+
+**Defect found there, backend-scope, NOT fixed:** six dashboard deep links are
+shadowed by legacy unprefixed API routes and return `401` JSON instead of the
+SPA shell — `/printers`, `/printers/:id`, `/jobs`, `/jobs/:id`, `/runners`,
+`/audit-logs`. The remaining twelve fall back to `index.html` correctly. The
+Fastify route wins over `setNotFoundHandler`, so a hard reload or a pasted link
+on Job Detail — this milestone's own page — shows raw JSON in the WebView.
+Fixing it means moving or prefixing backend routes, which this task forbids.
+
 ## 6. FE-02 migration list (not started)
 
 Pages still on ad-hoc error handling, roughly by operator impact:
@@ -333,6 +406,10 @@ The page migration is **complete** as of FE-01.2 — every page except
    belongs in a framework-free module (as `pollController` is), because
    `renderToStaticMarkup` cannot run effects or clicks.
 6. **The API does not emit `traceId` on error responses.** The frontend reads it
-   already; the backend half is a separate change. Until jsdom exists, behaviour that must be
-tested belongs in a framework-free module like `lib/pollController.ts` rather
-than inside a component.
+   already; the backend half is a separate change.
+7. **Six SPA deep links are shadowed by legacy unprefixed API routes** — see
+   §5d. Backend-scope, so untouched here.
+8. **`Freshness` keeps counting up after polling intentionally stops.** On a
+   finished job it reads "14 minutes ago" with nothing saying that updates
+   stopped on purpose rather than broke. Needs a state and two i18n keys, not a
+   mechanism.

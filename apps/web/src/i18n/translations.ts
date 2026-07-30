@@ -313,6 +313,8 @@ const en: TranslationDict = {
   'page.diagnostics.lastSeen': 'Last Seen',
   'page.diagnostics.registered': 'Registered',
   'page.diagnostics.noPrinters': 'No printers discovered yet. Waits up to 60s for next discovery cycle.',
+  'page.diagnostics.printersUnavailable': 'Discovered printers could not be loaded — this is not a statement about what this runner sees.',
+  'page.diagnostics.runnersUnavailable': 'The runner list could not be loaded — connected runners may still be running.',
   'page.diagnostics.queuedKnown': 'Queued — {n} known printers',
   'page.diagnostics.requestFailed': 'Request failed',
 
@@ -1284,6 +1286,8 @@ const th: TranslationDict = {
   'page.diagnostics.lastSeen': 'พบล่าสุด',
   'page.diagnostics.registered': 'ลงทะเบียนแล้ว',
   'page.diagnostics.noPrinters': 'ยังไม่พบเครื่องพิมพ์ รอสูงสุด 60 วินาทีสำหรับรอบการค้นหาถัดไป',
+  'page.diagnostics.printersUnavailable': 'โหลดรายการเครื่องพิมพ์ที่ค้นพบไม่สำเร็จ — ไม่ได้หมายความว่าตัวรับงานนี้ไม่พบเครื่องพิมพ์',
+  'page.diagnostics.runnersUnavailable': 'โหลดรายการตัวรับงานไม่สำเร็จ — ตัวรับงานที่เชื่อมต่ออยู่อาจยังทำงานปกติ',
   'page.diagnostics.queuedKnown': 'เข้าคิวแล้ว — {n} เครื่องพิมพ์ที่รู้จัก',
   'page.diagnostics.requestFailed': 'คำขอไม่สำเร็จ',
 

@@ -1,9 +1,10 @@
 import { useParams, Link } from 'react-router-dom';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { apiFetch } from '../api/client.js';
 import { ApiError } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
+import { shouldPollJobDetail, type JobDetailPollingInput } from '../lib/jobDetailPolling.js';
 import { ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 
@@ -421,10 +422,34 @@ export function PrinterEvidence({
   );
 }
 
-/** Live view of one job. 1s cadence, but only while the window is visible and
- *  never with two requests of the same kind open at once — see
- *  `lib/pollController.ts`. */
+/** Live view of one job. 1s cadence, but only while the window is visible,
+ *  never with two requests of the same kind open at once, and only while the
+ *  job can still change — see `lib/pollController.ts` and
+ *  `lib/jobDetailPolling.ts`. */
 const JOB_POLL_MS = 1_000;
+
+/**
+ * Maps what this page has on screen onto the polling policy's input.
+ *
+ * Exported so the mapping itself is covered: the policy is only correct if it is
+ * fed the right facts, and `transports` (what the job intended to notify) is a
+ * different thing from `deliveries` (what actually happened).
+ *
+ * A `job` that has not loaded yields no print status, which the policy reads as
+ * "still live" — an unknown job is never treated as finished.
+ */
+export function jobDetailPollingInput(
+  job: Pick<Job, 'status' | 'metadata'> | null,
+  deliveries: Pick<CallbackDelivery, 'deliveryStatus'>[],
+): JobDetailPollingInput {
+  const callbackIntent = job?.metadata?.callbackIntent;
+  return {
+    printStatus: job?.status,
+    callbackEnabled: callbackIntent?.enabled,
+    expectedDeliveryCount: callbackIntent?.transports?.length ?? 0,
+    deliveryStatuses: deliveries.map((delivery) => delivery.deliveryStatus),
+  };
+}
 
 export default function JobDetail() {
   const { t } = useLocale();
@@ -459,6 +484,32 @@ export default function JobDetail() {
   const job = jobResource.data ?? null;
   const trace = traceResource.data ?? null;
   const deliveries = deliveriesResource.data ?? [];
+
+  // Three endpoints at 1s each ran forever on a job that could no longer
+  // change — a finished job left open on a screen was ~180 requests/minute of
+  // pure noise. Polling now follows the job's own lifecycle: it continues while
+  // the print is live, and while a callback is still pending, delivering or
+  // retry-scheduled, and stops once every expected delivery is terminal (or
+  // callbacks were disabled for this job).
+  //
+  // Stopping is not resetting: `setPollingEnabled(false)` leaves the retained
+  // job, trace and delivery data on screen and keeps manual refresh working.
+  const automaticPollingNeeded = shouldPollJobDetail(jobDetailPollingInput(job, deliveries));
+
+  // Deps are the boolean and the three stable setters — never the resource
+  // objects, which are new on every snapshot. A route change to another job id
+  // rebuilds the resources with a fresh generation, and the new controller's
+  // first snapshot has no data yet, so this re-evaluates from scratch.
+  useEffect(() => {
+    jobResource.setPollingEnabled(automaticPollingNeeded);
+    traceResource.setPollingEnabled(automaticPollingNeeded);
+    deliveriesResource.setPollingEnabled(automaticPollingNeeded);
+  }, [
+    automaticPollingNeeded,
+    jobResource.setPollingEnabled,
+    traceResource.setPollingEnabled,
+    deliveriesResource.setPollingEnabled,
+  ]);
 
   // Depends on the `refresh` functions, not the resource objects: those are new
   // on every 1s snapshot, so an effect keyed on them would re-run continuously.

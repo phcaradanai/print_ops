@@ -15,7 +15,9 @@ afterEach(() => {
 describe('polling suspension', () => {
   it('stops recurring requests without discarding the retained snapshot', async () => {
     const fetcher = vi.fn().mockResolvedValue(['job-1']);
-    const controller = createPollController({
+    // Explicit T: `vi.fn().mockResolvedValue` widens the fetcher's result to
+    // `any`, which inferred `PollSnapshot<unknown>` and failed `npm run typecheck`.
+    const controller = createPollController<string[]>({
       fetcher,
       intervalMs: 100,
       onSnapshot: (snapshot) => snapshots.push(snapshot),
@@ -43,7 +45,9 @@ describe('polling suspension', () => {
 
   it('resumes immediately when automatic polling is re-enabled', async () => {
     const fetcher = vi.fn().mockResolvedValue(['job-1']);
-    const controller = createPollController({
+    // Explicit T: `vi.fn().mockResolvedValue` widens the fetcher's result to
+    // `any`, which inferred `PollSnapshot<unknown>` and failed `npm run typecheck`.
+    const controller = createPollController<string[]>({
       fetcher,
       intervalMs: 1000,
       pollingEnabled: false,

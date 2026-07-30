@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createSingleFlight, type SingleFlight } from '../lib/singleFlight.js';
 
 export interface ApiAction<Args extends unknown[], Result> {
   /** Runs the action. Concurrent calls share the current in-flight Promise. */
@@ -46,14 +47,15 @@ export function useApiAction<Args extends unknown[], Result>(
   actionRef.current = action;
 
   const errorRef = useRef<unknown>(null);
-  const inFlightRef = useRef<Promise<Result | undefined> | null>(null);
 
-  const run = useCallback((...args: Args): Promise<Result | undefined> => {
-    const existing = inFlightRef.current;
-    if (existing) return existing;
-
-    let current!: Promise<Result | undefined>;
-    current = (async () => {
+  // Dedupe/release live in `lib/singleFlight.ts`; only the React state writes
+  // stay here. Held in a ref, not useMemo: a discarded memo would hand out a new
+  // `run` identity AND a fresh empty in-flight slot, which is precisely the
+  // duplicate-request window this guards. The body touches nothing but refs and
+  // the stable setters from useState, so building it once is safe.
+  const flightRef = useRef<SingleFlight<Args, Result | undefined> | null>(null);
+  if (flightRef.current === null) {
+    flightRef.current = createSingleFlight(async (...args: Args): Promise<Result | undefined> => {
       if (mounted.current) {
         setPending(true);
         setError(null);
@@ -73,14 +75,13 @@ export function useApiAction<Args extends unknown[], Result>(
         if (mounted.current) setError(err);
         return undefined;
       } finally {
-        if (inFlightRef.current === current) inFlightRef.current = null;
         if (mounted.current) setPending(false);
       }
-    })();
+    });
+  }
+  const flight = flightRef.current;
 
-    inFlightRef.current = current;
-    return current;
-  }, []);
+  const run = flight.run;
 
   const getError = useCallback(() => errorRef.current, []);
 
@@ -88,9 +89,11 @@ export function useApiAction<Args extends unknown[], Result>(
     setError(null);
     errorRef.current = null;
     setResult(undefined);
-    // Reset is a presentation action, not cancellation. Keep the busy state
-    // truthful until the existing mutation actually settles.
-    setPending(inFlightRef.current !== null);
+    // Reset is a presentation action, not cancellation: it never releases the
+    // single-flight slot, so dismissing an error mid-mutation cannot open a
+    // second request. Keep the busy state truthful until the existing mutation
+    // actually settles.
+    setPending(flightRef.current?.isInFlight() ?? false);
   }, []);
 
   return { run, pending, error, getError, result, reset };

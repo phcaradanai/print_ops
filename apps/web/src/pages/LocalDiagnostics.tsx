@@ -181,7 +181,16 @@ export default function LocalDiagnostics() {
         />
       )}
 
-      {runners.length === 0 && <EmptyState title={t('page.diagnostics.noRunners')} />}
+      {/* "No runners connected" is a claim about the fleet, and an operator acts
+          on it by going to look at a machine. It may only be made from a
+          successful response: a failed /runners request means the answer is
+          unknown, and the banner above already carries the reason. */}
+      {runnersResource.data !== undefined && runnersResource.data.length === 0 && (
+        <EmptyState title={t('page.diagnostics.noRunners')} />
+      )}
+      {runnersResource.data === undefined && (
+        <p style={{ color: '#888', fontSize: '0.85rem' }}>{t('page.diagnostics.runnersUnavailable')}</p>
+      )}
 
       {runners.map((runner) => {
         const runnerPrinters = printers.filter((printer) => printer.runnerId === runner.id);
@@ -229,7 +238,14 @@ export default function LocalDiagnostics() {
             )}
 
             {runnerPrinters.length === 0 ? (
-              <p style={{ color: '#aaa', fontSize: '0.85rem' }}>{t('page.diagnostics.noPrinters')}</p>
+              /* Same rule per runner: with no successful discovered-printer
+                 response, an empty filter result says nothing about this
+                 runner's printers, so it must not be reported as "none found". */
+              <p style={{ color: '#aaa', fontSize: '0.85rem' }}>
+                {printersResource.data === undefined
+                  ? t('page.diagnostics.printersUnavailable')
+                  : t('page.diagnostics.noPrinters')}
+              </p>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <colgroup>
