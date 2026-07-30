@@ -15,6 +15,13 @@ import {
   isAcceptedImportMime,
   isValidImportFileSize,
 } from '../model/importDesign.js';
+import {
+  createPaperProfileRequestGenerations,
+  isCurrentAnalysisGeneration,
+  isCurrentArtworkGeneration,
+  nextAnalysisGeneration,
+  nextArtworkGeneration,
+} from '../model/requestGenerations.js';
 import type {
   ImportAnalyzeResult,
   ImportFitMode,
@@ -62,11 +69,9 @@ export function useImportDesign(
   const [draft, setDraft] = useState<PaperForm>(DEFAULT_FORM);
   const [artwork, setArtwork] = useState<Record<string, ArtworkEntry | null>>({});
   // Import analysis and persisted-artwork loading are independent request
-  // domains. Sharing one generation counter meant closing/resetting the import
-  // drawer could invalidate an in-flight artwork load for the profile being
-  // edited, leaving that artwork absent without any dependency change to retry.
-  const analysisGenerationRef = useRef(0);
-  const artworkGenerationRef = useRef(0);
+  // domains. Closing/resetting the import drawer must never invalidate an
+  // in-flight artwork load for the profile currently being edited.
+  const requestGenerationsRef = useRef(createPaperProfileRequestGenerations());
   const submitInFlightRef = useRef(false);
   const objectUrlRef = useRef<string | null>(null);
   const artworkRef = useRef(artwork);
@@ -81,7 +86,7 @@ export function useImportDesign(
     });
   }, []);
   const reset = useCallback(() => {
-    analysisGenerationRef.current += 1;
+    nextAnalysisGeneration(requestGenerationsRef.current);
     replaceObjectUrl(null);
     setPhase('select');
     setFile(null);
@@ -92,7 +97,7 @@ export function useImportDesign(
     submitInFlightRef.current = false;
   }, [replaceObjectUrl]);
   const invalidate = useCallback(() => {
-    analysisGenerationRef.current += 1;
+    nextAnalysisGeneration(requestGenerationsRef.current);
   }, []);
 
   const analyze = useCallback(async (selected: File, generation: number) => {
@@ -102,7 +107,7 @@ export function useImportDesign(
         declaredMimeType: inferMimeFromExtension(selected.name) || selected.type || 'image/png',
         dataBase64: toBase64Payload(await fileToBase64(selected)),
       });
-      if (generation !== analysisGenerationRef.current) return;
+      if (!isCurrentAnalysisGeneration(requestGenerationsRef.current, generation)) return;
       const basename = selected.name.replace(/\.[^.]+$/, '');
       setAnalysis(result);
       setDraft({
@@ -120,7 +125,7 @@ export function useImportDesign(
       });
       setPhase('review');
     } catch (err: unknown) {
-      if (generation !== analysisGenerationRef.current) return;
+      if (!isCurrentAnalysisGeneration(requestGenerationsRef.current, generation)) return;
       replaceObjectUrl(null);
       setError(errorMessage(err, messages.analyzeFailed));
       setPhase('error');
@@ -141,7 +146,7 @@ export function useImportDesign(
     const url = URL.createObjectURL(selected);
     replaceObjectUrl(url);
     setPhase('analyzing');
-    const generation = ++analysisGenerationRef.current;
+    const generation = nextAnalysisGeneration(requestGenerationsRef.current);
     void analyze(selected, generation);
   }, [analyze, messages.invalidType, messages.tooLarge, replaceObjectUrl]);
 
@@ -178,25 +183,25 @@ export function useImportDesign(
   }, [analysis, draft, draftErrors.length, file, fitMode, messages.importFailed, onImported, reset]);
 
   useEffect(() => {
-    const generation = ++artworkGenerationRef.current;
+    const generation = nextArtworkGeneration(requestGenerationsRef.current);
     if (!editingProfileId || editingProfileId in artwork) return;
     getPaperProfileArtwork(editingProfileId).then((data) => {
-      if (generation !== artworkGenerationRef.current) return;
+      if (!isCurrentArtworkGeneration(requestGenerationsRef.current, generation)) return;
       const url = URL.createObjectURL(base64ToBlob(data.dataBase64, data.mimeType));
       setArtwork((current) => ({
         ...current,
         [editingProfileId]: { objectUrl: url, fitMode: data.fitMode },
       }));
     }).catch((err: unknown) => {
-      if (generation !== artworkGenerationRef.current) return;
+      if (!isCurrentArtworkGeneration(requestGenerationsRef.current, generation)) return;
       setArtwork((current) => ({ ...current, [editingProfileId]: null }));
       if (!(err instanceof ApiError && err.status === 404)) onFeedback(errorMessage(err, messages.artworkLoadFailed));
     });
   }, [artwork, editingProfileId, messages.artworkLoadFailed, onFeedback]);
 
   useEffect(() => () => {
-    analysisGenerationRef.current += 1;
-    artworkGenerationRef.current += 1;
+    nextAnalysisGeneration(requestGenerationsRef.current);
+    nextArtworkGeneration(requestGenerationsRef.current);
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     for (const entry of Object.values(artworkRef.current)) {
       if (entry?.objectUrl) URL.revokeObjectURL(entry.objectUrl);
