@@ -8,8 +8,6 @@
  */
 
 .paper-profiles-page {
-  container-name: paper-profile-workspace;
-  container-type: inline-size;
   min-width: 0;
 }
 
@@ -21,11 +19,22 @@
 }
 
 /* --------------------------------------------------------------------------
-   Workspace sizing: respond to the actual content area, not window width.
-   The navigation rail and shell padding make viewport breakpoints inaccurate.
+   Workspace sizing.
+
+   Use flex wrapping instead of viewport-only breakpoints or a query container.
+   It reacts to the ACTUAL width left by the navigation rail and shell padding.
+   Avoiding `container-type` on this root is deliberate: layout containment can
+   change the containing block used by fixed drawers and modals.
    -------------------------------------------------------------------------- */
 
-.paper-profiles-page .pp-main-layout,
+.paper-profiles-page .pp-main-layout {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: stretch;
+  height: auto !important;
+  min-height: 0;
+}
+
 .paper-profiles-page .pp-preview-panel,
 .paper-profiles-page .pp-form-panel,
 .paper-profiles-page .pp-preview-panel__body,
@@ -33,28 +42,43 @@
   min-width: 0;
 }
 
-@container paper-profile-workspace (max-width: 980px) {
-  .paper-profiles-page .pp-main-layout {
-    display: flex !important;
-    flex-direction: column;
-    height: auto;
-    min-height: 0;
+.paper-profiles-page .pp-preview-panel {
+  order: 0;
+  flex: 999 1 540px;
+  width: auto !important;
+  height: calc(100vh - var(--pp-editor-offset, 200px));
+  min-height: var(--pp-panel-min-h, min(620px, calc(100vh - 220px)));
+}
+
+.paper-profiles-page .pp-form-panel {
+  flex: 1 1 380px;
+  width: auto !important;
+  height: calc(100vh - var(--pp-editor-offset, 200px));
+  min-height: var(--pp-panel-min-h, min(620px, calc(100vh - 220px)));
+}
+
+/* Once the available shell width cannot fit both preferred bases, flex-wrap
+   gives each panel its own row. Each panel remains independently bounded, so
+   the app shell may scroll between panels while form/canvas scrolling stays
+   local to the corresponding panel. */
+@media (max-width: 1180px) {
+  .paper-profiles-page .pp-preview-panel,
+  .paper-profiles-page .pp-form-panel {
+    flex-basis: 100%;
+    width: 100% !important;
   }
 
   .paper-profiles-page .pp-preview-panel {
-    order: -1;
-    width: 100% !important;
     min-height: clamp(420px, 56vh, 620px);
   }
 
   .paper-profiles-page .pp-form-panel {
-    width: 100%;
     min-height: 520px;
     max-height: min(720px, 72vh);
   }
 }
 
-@container paper-profile-workspace (max-width: 660px) {
+@media (max-width: 660px) {
   .paper-profiles-page .pp-preview-panel {
     min-height: 420px;
   }
@@ -71,22 +95,6 @@
 
   .paper-profiles-page .pp-canvas-fit {
     margin-left: 0;
-  }
-}
-
-/* Media fallback for engines that do not support container queries. */
-@media (max-width: 1180px) {
-  @supports not (container-type: inline-size) {
-    .paper-profiles-page .pp-main-layout {
-      display: flex !important;
-      flex-direction: column;
-      height: auto;
-    }
-
-    .paper-profiles-page .pp-preview-panel,
-    .paper-profiles-page .pp-form-panel {
-      width: 100% !important;
-    }
   }
 }
 
@@ -132,6 +140,7 @@
 
 .paper-profiles-page select option,
 .paper-profiles-page select optgroup {
+  color-scheme: light;
   background-color: #fff !important;
   color: #111827 !important;
 }
@@ -336,7 +345,7 @@
   scrollbar-gutter: stable;
 }
 
-@container paper-profile-workspace (max-width: 900px) {
+@media (max-width: 900px) {
   .paper-profiles-page .pp-presets-menu {
     position: fixed;
     top: auto;
@@ -349,7 +358,7 @@
   }
 }
 
-@container paper-profile-workspace (max-width: 560px) {
+@media (max-width: 560px) {
   .paper-profiles-page .pp-presets-menu {
     grid-template-columns: 1fr;
   }
@@ -451,7 +460,7 @@
   min-height: 0;
 }
 
-@container paper-profile-workspace (max-width: 720px) {
+@media (max-width: 720px) {
   .paper-profiles-page .pp-preview-quick-info {
     grid-template-columns: 1fr 1fr;
   }
