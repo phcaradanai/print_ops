@@ -99,10 +99,15 @@ test.describe('Paper Profile screenshot regression', () => {
     expect(formBox).not.toBeNull();
     expect(boxesOverlap(previewBox!, formBox!), 'short viewport caused panel overlap').toBe(false);
 
-    const documentCanScroll = await page.evaluate(
-      () => document.documentElement.scrollHeight > document.documentElement.clientHeight,
-    );
-    expect(documentCanScroll, 'short viewport should scroll rather than crush the editor').toBe(true);
+    const shellScroll = await page.locator('.app-main').evaluate((shell) => {
+      const initialTop = shell.scrollTop;
+      const canScroll = shell.scrollHeight > shell.clientHeight;
+      shell.scrollTop = shell.scrollHeight;
+      const moved = shell.scrollTop > initialTop;
+      return { canScroll, moved };
+    });
+    expect(shellScroll.canScroll, 'short viewport should leave the app shell scrollable').toBe(true);
+    expect(shellScroll.moved, 'short viewport should allow reaching content below the editor').toBe(true);
     expect(await hasHorizontalPageScroll(page)).toBe(false);
   });
 });
