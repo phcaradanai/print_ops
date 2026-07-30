@@ -1,36 +1,29 @@
 /**
- * Mutation counterpart to {@link useApiResource} (FE-01.1).
+ * Mutation counterpart to {@link useApiResource}.
  *
- * Every page reimplemented the same four lines around a POST: a `pending`
- * flag, a try/catch that replaced the server's reason with a fixed sentence,
- * and a `finally` that had to remember to clear the flag. This centralises it
- * and keeps the thrown `ApiError` intact so `Alert` / `ErrorBanner` can show
- * status, code and trace id.
+ * Besides centralising pending/result/error state, the hook is a safety boundary:
+ * while one mutation is in flight, every additional `run()` call receives the
+ * same promise and the underlying action is invoked only once. A disabled button
+ * is useful feedback, but it is not sufficient protection against two handlers,
+ * keyboard activation, or calls that happen before React re-renders.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface ApiAction<Args extends unknown[], Result> {
-  /** Runs the action. Resolves to the result, or `undefined` if it failed. */
+  /** Runs the action. Concurrent calls share the current in-flight Promise. */
   run: (...args: Args) => Promise<Result | undefined>;
   pending: boolean;
   /**
    * Thrown value of the last failed run; cleared when a run starts.
-   *
-   * RENDER-TIME ONLY. Inside an async handler, `action` is the object from the
-   * render that created the handler, so this field still holds the PREVIOUS
-   * value immediately after `await run()` — reading it there prints the
-   * fallback on the first failure and the previous error on the second. Use
-   * {@link getError} in handlers.
+   * Use {@link getError} immediately after awaiting `run()` inside a handler.
    */
   error: unknown;
-  /**
-   * The error of the run that just finished, readable synchronously after
-   * `await run()`. Backed by a ref, so it does not lag a render behind.
-   */
+  /** Synchronous view of the last run's error. */
   getError: () => unknown;
   /** Result of the last successful run. */
   result: Result | undefined;
+  /** Clears visible result/error state without cancelling an in-flight action. */
   reset: () => void;
 }
 
@@ -49,37 +42,44 @@ export function useApiAction<Args extends unknown[], Result>(
     };
   }, []);
 
-  // Held in a ref so `run` stays referentially stable even when the caller
-  // passes an inline arrow — a changing `run` would invalidate every memo and
-  // effect that depends on it.
   const actionRef = useRef(action);
   actionRef.current = action;
 
-  // Mirrors `error` without waiting for a re-render, so a handler can read the
-  // failure it just awaited. React state alone cannot serve that caller: the
-  // closure predates the update.
   const errorRef = useRef<unknown>(null);
+  const inFlightRef = useRef<Promise<Result | undefined> | null>(null);
 
-  const run = useCallback(async (...args: Args): Promise<Result | undefined> => {
-    setPending(true);
-    setError(null);
-    errorRef.current = null;
-    try {
-      const value = await actionRef.current(...args);
+  const run = useCallback((...args: Args): Promise<Result | undefined> => {
+    const existing = inFlightRef.current;
+    if (existing) return existing;
+
+    let current!: Promise<Result | undefined>;
+    current = (async () => {
       if (mounted.current) {
-        setResult(value);
-        setPending(false);
+        setPending(true);
+        setError(null);
       }
-      return value;
-    } catch (err: unknown) {
-      // Recorded even when unmounted: the caller may still be awaiting `run`.
-      errorRef.current = err;
-      if (mounted.current) {
-        setError(err);
-        setPending(false);
+      errorRef.current = null;
+
+      try {
+        const value = await actionRef.current(...args);
+        if (mounted.current) {
+          setResult(value);
+          setError(null);
+        }
+        return value;
+      } catch (err: unknown) {
+        // Recorded even when unmounted: the original caller may still await run.
+        errorRef.current = err;
+        if (mounted.current) setError(err);
+        return undefined;
+      } finally {
+        if (inFlightRef.current === current) inFlightRef.current = null;
+        if (mounted.current) setPending(false);
       }
-      return undefined;
-    }
+    })();
+
+    inFlightRef.current = current;
+    return current;
   }, []);
 
   const getError = useCallback(() => errorRef.current, []);
@@ -88,7 +88,9 @@ export function useApiAction<Args extends unknown[], Result>(
     setError(null);
     errorRef.current = null;
     setResult(undefined);
-    setPending(false);
+    // Reset is a presentation action, not cancellation. Keep the busy state
+    // truthful until the existing mutation actually settles.
+    setPending(inFlightRef.current !== null);
   }, []);
 
   return { run, pending, error, getError, result, reset };
