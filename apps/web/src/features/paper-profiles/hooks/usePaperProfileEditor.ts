@@ -14,6 +14,20 @@ function fieldId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
+/**
+ * Scroll the actual application scroll owner back to the editor after selecting
+ * a saved profile. The app shell owns scrolling; `window.scrollTo()` alone does
+ * not move `.app-main` in the desktop layout.
+ */
+export function scrollPaperProfileEditorIntoView(): void {
+  const shell = document.querySelector<HTMLElement>('.app-main');
+  if (shell && typeof shell.scrollTo === 'function') {
+    shell.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 export function usePaperProfileEditor() {
   const [state, dispatch] = useReducer(editorReducer, undefined, createEditorState);
 
@@ -59,7 +73,7 @@ export function usePaperProfileEditor() {
   }, []);
   const startEditing = useCallback((profile: PaperProfile) => {
     dispatch({ type: 'LOAD_PROFILE', profile });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollPaperProfileEditorIntoView();
   }, []);
   const resetEditor = useCallback(() => dispatch({ type: 'RESET_EDITOR' }), []);
 
