@@ -385,6 +385,55 @@ Fastify route wins over `setNotFoundHandler`, so a hard reload or a pasted link
 on Job Detail — this milestone's own page — shows raw JSON in the WebView.
 Fixing it means moving or prefixing backend routes, which this task forbids.
 
+## 5e. What FE-01.3 added (terminal freshness UX)
+
+FE-01.2 stopped the polling but left the clock running. On a finished job the
+line kept reading "Updated: 14 minutes ago" and growing — which is what an API
+outage, a frozen WebView and a disconnected desktop client also look like. The
+operator cannot tell "this job is done" from "this page has lost the server",
+and the second reading is the one that gets a working printer power-cycled.
+
+`Freshness` now takes `monitoringComplete` and derives six presentations through
+an exported `freshnessState(...)`: `LIVE`, `REFRESHING_LIVE`, `PAUSED_HIDDEN`,
+`STALE_ERROR`, `TERMINAL_COMPLETE`, `REFRESHING_TERMINAL`. Live wording is
+byte-identical to before.
+
+Precedence, both deliberate:
+
+- **terminal outranks paused** — nothing is waiting to resume, so "paused while
+  this window is in the background" would describe a loop that is not running.
+  `pollController` still emits `paused` on visibility change regardless of
+  whether polling is enabled, so without this rule a hidden finished job would
+  claim to be waiting.
+- **terminal does not outrank refreshing** — a manual re-check of a finished job
+  is real work and must be visible, under its own wording
+  (`state.refreshingFinal`) so it is not read as the live loop coming back.
+
+Terminal + `stale` (a manual re-check that failed) keeps the final-snapshot
+wording, adds `state.finalRefreshFailed`, and does **not** take the stale colour:
+the page's `ErrorBanner` already carries the failure, and a finished job is not a
+data-freshness problem. Colour is never the only signal — every state has text.
+
+Four keys, both locales: `state.finalCaptured`, `state.terminalUpdatesStopped`,
+`state.refreshingFinal`, `state.finalRefreshFailed`.
+
+`JobDetail` derives `monitoringComplete = job !== null && automaticPollingNeeded
+=== false`. The `job !== null` half matters: an unloaded job has no status, and
+without it the page would flash a "final state" claim before the first response
+arrived. `automaticPollingNeeded` remains the primary decision — the
+presentation reads it, not the reverse — so a wrong sentence can never disable
+polling.
+
+Coverage: 22 tests. The state machine, each rendered state, both locales, and
+the eight print/callback rows walked from `shouldPollJobDetail` through to the
+rendered sentence — asserting that exactly one of "final" and "live" appears,
+never both and never neither.
+
+Re-ran the FE-01.2 desktop serving check against the rebuilt bundle: shell,
+content types, MIME coverage, offline-only, and all six new strings (English and
+Thai) present in the shipped chunk. The pre-existing deep-link shadowing
+described in §5d is unchanged and still not fixed — backend scope.
+
 ## 6. FE-02 migration list (not started)
 
 Pages still on ad-hoc error handling, roughly by operator impact:
@@ -409,7 +458,5 @@ The page migration is **complete** as of FE-01.2 — every page except
    already; the backend half is a separate change.
 7. **Six SPA deep links are shadowed by legacy unprefixed API routes** — see
    §5d. Backend-scope, so untouched here.
-8. **`Freshness` keeps counting up after polling intentionally stops.** On a
-   finished job it reads "14 minutes ago" with nothing saying that updates
-   stopped on purpose rather than broke. Needs a state and two i18n keys, not a
-   mechanism.
+8. ~~**`Freshness` keeps counting up after polling intentionally stops.**~~
+   Closed by FE-01.3 — see §5e.

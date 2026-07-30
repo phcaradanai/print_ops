@@ -5212,6 +5212,21 @@ body {
   font-style: italic;
 }
 
+/* Automatic updates stopped on purpose. Deliberately NOT the stale colour: this
+   is a finished job, not a problem. */
+.freshness--complete {
+  color: var(--neutral-text-muted);
+}
+
+.freshness-complete-reason,
+.freshness-complete-note {
+  font-style: italic;
+}
+
+.freshness-complete-note {
+  color: #9a3412;
+}
+
 .reprint-facts {
   display: grid;
   grid-template-columns: minmax(140px, auto) 1fr;

@@ -141,6 +141,50 @@ export function ErrorBanner({ error, title, onRetry, onDismiss }: ErrorViewProps
   );
 }
 
+export interface FreshnessProps {
+  lastSuccessAt: number | null;
+  stale?: boolean;
+  refreshing?: boolean;
+  paused?: boolean;
+  /**
+   * The caller has intentionally stopped automatic updates because the subject
+   * reached a terminal state. Must come from a domain decision (for Job Detail:
+   * `shouldPollJobDetail`), never from elapsed time.
+   */
+  monitoringComplete?: boolean;
+  onRefresh?: () => void;
+}
+
+/**
+ * The six presentations this line has to keep apart. Two of them are new: a
+ * finished job is not the same fact as a connection that stopped answering, and
+ * before this existed both rendered as "Updated: 14 minutes ago".
+ */
+export type FreshnessState =
+  | 'LIVE'
+  | 'REFRESHING_LIVE'
+  | 'PAUSED_HIDDEN'
+  | 'STALE_ERROR'
+  | 'TERMINAL_COMPLETE'
+  | 'REFRESHING_TERMINAL';
+
+export function freshnessState({
+  stale = false,
+  refreshing = false,
+  paused = false,
+  monitoringComplete = false,
+}: Omit<FreshnessProps, 'lastSuccessAt' | 'onRefresh'>): FreshnessState {
+  // Terminal outranks paused: nothing is waiting to resume, so "paused while
+  // this window is in the background" would describe a loop that is not there.
+  // It does NOT outrank refreshing — a manual check on a finished job is real
+  // work and has to be visible.
+  if (monitoringComplete) return refreshing ? 'REFRESHING_TERMINAL' : 'TERMINAL_COMPLETE';
+  if (refreshing) return 'REFRESHING_LIVE';
+  if (stale) return 'STALE_ERROR';
+  if (paused) return 'PAUSED_HIDDEN';
+  return 'LIVE';
+}
+
 /**
  * Freshness line for retained data.
  *
@@ -150,6 +194,13 @@ export function ErrorBanner({ error, title, onRetry, onDismiss }: ErrorViewProps
  * closing, so wherever data is retained this line must state when it was last
  * true, and say plainly when it is no longer current.
  *
+ * `monitoringComplete` covers the other half of that: on a finished job the
+ * clock keeps running ("14 minutes ago") while nothing is polling any more, and
+ * an operator reads a growing number as an outage, a frozen client or data they
+ * should not trust. In that mode the line states that the snapshot is final and
+ * that stopping was deliberate — informational, never a warning — and keeps the
+ * manual Refresh button, which does not restart the loop.
+ *
  * Re-renders on a timer so "12 seconds ago" does not sit frozen at the moment
  * of the last successful fetch.
  */
@@ -158,14 +209,9 @@ export function Freshness({
   stale = false,
   refreshing = false,
   paused = false,
+  monitoringComplete = false,
   onRefresh,
-}: {
-  lastSuccessAt: number | null;
-  stale?: boolean;
-  refreshing?: boolean;
-  paused?: boolean;
-  onRefresh?: () => void;
-}) {
+}: FreshnessProps) {
   const { t } = useLocale();
   const [, setTick] = useState(0);
 
@@ -175,14 +221,43 @@ export function Freshness({
   }, []);
 
   const relative = formatRelativeTime(t, lastSuccessAt);
+  const state = freshnessState({ stale, refreshing, paused, monitoringComplete });
+  const terminal = state === 'TERMINAL_COMPLETE' || state === 'REFRESHING_TERMINAL';
+
+  // A finished job is not a warning, so it never takes the stale styling. The
+  // failed-refresh case is carried by its own sentence plus the page's
+  // ErrorBanner instead of by colour.
+  const className =
+    'freshness' + (terminal ? ' freshness--complete' : stale ? ' freshness--stale' : '');
 
   return (
-    <div className={'freshness' + (stale ? ' freshness--stale' : '')}>
+    <div className={className}>
+      {/* No colon in the terminal branch: both `Final state captured` and
+          `บันทึกสถานะสุดท้ายเมื่อ` already end in the preposition, so the label
+          pattern used by `state.updated` would read as "captured at: 14 minutes
+          ago". Thai is the default locale, so that is what most operators see. */}
       <span aria-live="polite">
-        {stale ? t('state.stale') : t('state.updated')}: {relative}
+        {terminal ? (
+          <>{t('state.finalCaptured')} {relative}</>
+        ) : (
+          <>{stale ? t('state.stale') : t('state.updated')}: {relative}</>
+        )}
       </span>
-      {refreshing && <span className="freshness-refreshing">{t('state.refreshing')}</span>}
-      {paused && !refreshing && <span className="freshness-paused">{t('state.paused')}</span>}
+      {state === 'REFRESHING_TERMINAL' && (
+        <span className="freshness-refreshing">{t('state.refreshingFinal')}</span>
+      )}
+      {state === 'REFRESHING_LIVE' && (
+        <span className="freshness-refreshing">{t('state.refreshing')}</span>
+      )}
+      {state === 'PAUSED_HIDDEN' && <span className="freshness-paused">{t('state.paused')}</span>}
+      {terminal && (
+        <span className="freshness-complete-reason">{t('state.terminalUpdatesStopped')}</span>
+      )}
+      {/* Manual check failed on a finished job: still the final state, just not
+          re-confirmed. Stated in words — the row keeps its calm colour. */}
+      {terminal && stale && (
+        <span className="freshness-complete-note">{t('state.finalRefreshFailed')}</span>
+      )}
       {onRefresh && (
         <Button variant="ghost" size="sm" onClick={onRefresh} busy={refreshing}>
           {t('common.refresh')}

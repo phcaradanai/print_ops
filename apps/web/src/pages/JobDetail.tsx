@@ -495,6 +495,10 @@ export default function JobDetail() {
   // Stopping is not resetting: `setPollingEnabled(false)` leaves the retained
   // job, trace and delivery data on screen and keeps manual refresh working.
   const automaticPollingNeeded = shouldPollJobDetail(jobDetailPollingInput(job, deliveries));
+  // Presentation counterpart of the same decision. `job !== null` keeps a page
+  // that has not loaded yet from claiming a final state — an unloaded job has no
+  // status, which the policy already reads as "still live".
+  const monitoringComplete = job !== null && automaticPollingNeeded === false;
 
   // Deps are the boolean and the three stable setters — never the resource
   // objects, which are new on every snapshot. A route change to another job id
@@ -568,6 +572,7 @@ export default function JobDetail() {
           stale={jobResource.stale}
           refreshing={jobResource.refreshing}
           paused={jobResource.paused}
+          monitoringComplete={monitoringComplete}
           onRefresh={refreshAll}
         />
       </div>

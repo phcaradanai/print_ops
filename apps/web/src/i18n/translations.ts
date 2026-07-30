@@ -892,6 +892,10 @@ const en: TranslationDict = {
   'state.stale': 'Not current — last updated',
   'state.refreshing': 'Refreshing…',
   'state.paused': 'Paused while this window is in the background',
+  'state.finalCaptured': 'Final state captured',
+  'state.terminalUpdatesStopped': 'Automatic updates stopped because this job is complete',
+  'state.refreshingFinal': 'Refreshing final state…',
+  'state.finalRefreshFailed': 'The latest check did not complete — this is still the last confirmed final state',
   'common.required': 'required',
   'auth.sessionExpired': 'Your session expired. Please sign in again.',
 
@@ -1865,6 +1869,10 @@ const th: TranslationDict = {
   'state.stale': 'ข้อมูลไม่เป็นปัจจุบัน — อัปเดตล่าสุดเมื่อ',
   'state.refreshing': 'กำลังรีเฟรช…',
   'state.paused': 'หยุดอัปเดตชั่วคราวขณะที่หน้าต่างนี้ไม่ได้ใช้งาน',
+  'state.finalCaptured': 'บันทึกสถานะสุดท้ายเมื่อ',
+  'state.terminalUpdatesStopped': 'หยุดอัปเดตอัตโนมัติแล้ว เนื่องจากงานนี้เสร็จสิ้น',
+  'state.refreshingFinal': 'กำลังตรวจสอบสถานะสุดท้ายอีกครั้ง…',
+  'state.finalRefreshFailed': 'การตรวจสอบครั้งล่าสุดไม่สำเร็จ — ข้อมูลนี้ยังเป็นสถานะสุดท้ายที่ยืนยันแล้ว',
   'common.required': 'จำเป็นต้องกรอก',
   'auth.sessionExpired': 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง',
 
