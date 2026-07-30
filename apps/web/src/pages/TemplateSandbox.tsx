@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../api/client.js';
+import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
+import { useApiResource } from '../hooks/useApiResource.js';
+import { ErrorBanner } from '../components/PageState.js';
 
 interface Printer {
   id: string;
@@ -153,13 +156,31 @@ export default function TemplateSandbox() {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
   // ---- load reference data ----
-  useEffect(() => {
-    void Promise.all([
-      apiFetch<Template[]>('/v1/sandbox/templates').then(setTemplates).catch(() => {}),
-      apiFetch<Paper[]>('/v1/paper-profiles').then(setPapers).catch(() => {}),
-      apiFetch<Printer[]>('/printers').then(setPrinters).catch(() => {}),
-    ]).finally(() => setLoading((s) => ({ ...s, init: false })));
+  // Each list was `.catch(() => {})`: a failure left the three dropdowns empty
+  // and the operator with no way to tell "nothing configured" from "the API is
+  // down" — on the one page whose whole purpose is diagnosing print setup.
+  const fetchReferenceData = useCallback(async () => {
+    const [templates, papers, printers] = await Promise.all([
+      apiFetch<Template[]>('/v1/sandbox/templates'),
+      apiFetch<Paper[]>('/v1/paper-profiles'),
+      apiFetch<Printer[]>('/printers'),
+    ]);
+    return { templates, papers, printers };
   }, []);
+
+  const reference = useApiResource(fetchReferenceData);
+
+  useEffect(() => {
+    if (!reference.data) return;
+    setTemplates(reference.data.templates);
+    setPapers(reference.data.papers);
+    setPrinters(reference.data.printers);
+    setLoading((s) => ({ ...s, init: false }));
+  }, [reference.data]);
+
+  useEffect(() => {
+    if (reference.error != null) setLoading((s) => ({ ...s, init: false }));
+  }, [reference.error]);
 
   const selectedTemplate = useMemo(() => templates.find((t) => t.id === templateId), [templates, templateId]);
   const selectedPrinter = useMemo(() => printers.find((p) => p.id === printerId), [printers, printerId]);
@@ -214,8 +235,10 @@ export default function TemplateSandbox() {
         }),
       });
       setPreview(res);
-    } catch {
-      setError(t('page.sandbox.renderFailed'));
+    } catch (err: unknown) {
+      // A template that fails to render says WHY (bad placeholder, missing
+      // paper profile); the generic sentence hid every one of those reasons.
+      setError(`${t('page.sandbox.renderFailed')} ${errorMessage(err)}`);
     } finally {
       setLoading((s) => ({ ...s, render: false }));
     }
@@ -260,7 +283,7 @@ export default function TemplateSandbox() {
         type: 'error',
         msg: err instanceof Error && err.message === 'PRINT_STATUS_TIMEOUT'
           ? t('page.sandbox.printStatusTimeout')
-          : t('page.sandbox.printError'),
+          : `${t('page.sandbox.printError')} ${errorMessage(err)}`,
       });
     } finally {
       setLoading((s) => ({ ...s, print: false }));
@@ -273,6 +296,16 @@ export default function TemplateSandbox() {
       <p style={{ color: '#6b7280', marginBottom: '1rem', fontSize: '0.9rem' }}>
         {t('page.sandbox.description')}
       </p>
+
+      {/* Reference data failed: the dropdowns below are empty because of this,
+          not because nothing is configured. */}
+      {reference.error != null && (
+        <ErrorBanner
+          error={reference.error}
+          title={t('page.sandbox.referenceLoadFailed')}
+          onRetry={reference.refresh}
+        />
+      )}
 
       {/* ===== Toast ===== */}
       {toast && (

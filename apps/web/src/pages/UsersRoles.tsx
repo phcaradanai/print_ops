@@ -1,6 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useState, type FormEvent } from 'react';
 import { useLocale } from '../i18n/index.js';
 import { apiFetch, getCurrentUser, type SessionUser } from '../api/client.js';
+import { errorMessage } from '../api/errors.js';
+import { useApiResource } from '../hooks/useApiResource.js';
+import { useApiAction } from '../hooks/useApiAction.js';
+import { ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 
 interface UserItem {
   id: string;
@@ -21,38 +25,33 @@ const ROLE_LEVELS: Record<SessionUser['role'], number> = {
 
 export default function UsersRoles() {
   const { t } = useLocale();
-  const [users, setUsers] = useState<UserItem[]>([]);
-  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
+  const fetchDirectory = useCallback(async () => {
+    const [users, currentUser] = await Promise.all([
+      apiFetch<UserItem[]>('/v1/users'),
+      getCurrentUser(),
+    ]);
+    return { users, currentUser };
+  }, []);
+
+  const directory = useApiResource(fetchDirectory);
+  const users = directory.data?.users ?? [];
+  const currentUser: SessionUser | null = directory.data?.currentUser ?? null;
 
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    let active = true;
-    Promise.all([
-      apiFetch<UserItem[]>('/v1/users'),
-      getCurrentUser(),
-    ])
-      .then(([usersData, user]) => {
-        if (!active) return;
-        setUsers(usersData);
-        setCurrentUser(user);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (active) {
-          setError(err instanceof Error ? err.message : String(err));
-          setLoading(false);
-        }
-      });
-    return () => { active = false; };
-  }, []);
+  const changePassword = useApiAction(async (targetId: string, password: string) => {
+    await apiFetch(`/v1/users/${targetId}/password`, {
+      method: 'PUT',
+      body: JSON.stringify({ password }),
+    });
+    return true;
+  });
+  const submitting = changePassword.pending;
+  const editError = changePassword.error != null ? errorMessage(changePassword.error) : null;
 
   const canEditPassword = (target: UserItem) => {
     if (!currentUser) return false;
@@ -65,32 +64,26 @@ export default function UsersRoles() {
   const handlePasswordSubmit = async (e: FormEvent, targetId: string) => {
     e.preventDefault();
     if (!newPassword) return;
-    setSubmitting(true);
-    setEditError(null);
-    try {
-      await apiFetch(`/v1/users/${targetId}/password`, {
-        method: 'PUT',
-        body: JSON.stringify({ password: newPassword }),
-      });
+    const ok = await changePassword.run(targetId, newPassword);
+    if (ok) {
       setEditingUserId(null);
       setNewPassword('');
       setShowPassword(false);
-    } catch (err) {
-      setEditError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
+      changePassword.reset();
     }
   };
 
-  if (loading) {
-    return <div className="p-4">{t('common.loading')}</div>;
+  if (directory.loading && !directory.data) {
+    return <LoadingState />;
   }
 
-  if (error) {
+  if (!directory.data && directory.error != null) {
     return (
-      <div className="p-4 text-red-600">
-        <h2>{t('error.title')}</h2>
-        <p>{error}</p>
+      <div className="page-container" style={{ padding: '2rem' }}>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 600, margin: '0 0 1rem' }}>
+          {t('page.usersRoles.title')}
+        </h1>
+        <ErrorState error={directory.error} onRetry={directory.refresh} />
       </div>
     );
   }
@@ -98,9 +91,17 @@ export default function UsersRoles() {
   return (
     <div className="page-container" style={{ padding: '2rem' }}>
       <header style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827', margin: 0 }}>
-          {t('page.usersRoles.title')}
-        </h1>
+        <div className="page-header">
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827', margin: 0 }}>
+            {t('page.usersRoles.title')}
+          </h1>
+          <Freshness
+            lastSuccessAt={directory.lastSuccessAt}
+            stale={directory.stale}
+            refreshing={directory.refreshing}
+            onRefresh={directory.refresh}
+          />
+        </div>
         <p style={{ color: '#6b7280', fontSize: '0.875rem', marginTop: '0.35rem' }}>
           {t('page.usersRoles.description')}
         </p>
@@ -222,7 +223,7 @@ export default function UsersRoles() {
                           setEditingUserId(null);
                           setNewPassword('');
                           setShowPassword(false);
-                          setEditError(null);
+                          changePassword.reset();
                         }}
                         disabled={submitting}
                         style={{
@@ -245,7 +246,7 @@ export default function UsersRoles() {
                           setEditingUserId(u.id);
                           setNewPassword('');
                           setShowPassword(false);
-                          setEditError(null);
+                          changePassword.reset();
                         }}
                         style={{
                           background: '#f3f4f6',

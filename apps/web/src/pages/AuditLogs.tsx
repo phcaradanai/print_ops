@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
+import { useApiResource } from '../hooks/useApiResource.js';
+import { EmptyState, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 
 interface AuditLog {
   id: string; action: string; actorId?: string;
@@ -11,30 +13,40 @@ interface AuditLog {
 
 export default function AuditLogs() {
   const { t } = useLocale();
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    apiFetch<AuditLog[]>('/audit-logs?limit=100')
-      .then((data) => { setLogs(data); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+  const fetchLogs = useCallback(() => apiFetch<AuditLog[]>('/audit-logs?limit=100'), []);
+  const logsResource = useApiResource(fetchLogs);
+  const logs = logsResource.data ?? [];
 
   return (
     <div>
-      <h1 className="page-title">{t('page.auditLogs.title')}</h1>
-      {loading ? <p className="loading-text">{t('common.loading')}</p> : (
+      <div className="page-header">
+        <h1 className="page-title" style={{ margin: 0 }}>{t('page.auditLogs.title')}</h1>
+        <Freshness
+          lastSuccessAt={logsResource.lastSuccessAt}
+          stale={logsResource.stale}
+          refreshing={logsResource.refreshing}
+          onRefresh={logsResource.refresh}
+        />
+      </div>
+
+      {logsResource.loading && !logsResource.data ? (
+        <LoadingState />
+      ) : logsResource.error != null && !logsResource.data ? (
+        // Previously `.catch(() => setLoading(false))`: a failed load rendered
+        // an empty table, i.e. "this system has no audit history".
+        <ErrorState error={logsResource.error} onRetry={logsResource.refresh} />
+      ) : (
         <table className="data-table">
           <thead>
             <tr>
               {[t('page.auditLogs.time'), t('page.auditLogs.action'), t('page.auditLogs.actor'), t('page.auditLogs.resource'), t('page.auditLogs.resourceId')].map((h) => (
-                <th key={h}>{h}</th>
+                <th key={h} scope="col">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {logs.length === 0 && (
-              <tr><td colSpan={5} className="loading-text" style={{ padding: "2rem", textAlign: "center" }}>{t('page.auditLogs.noLogs')}</td></tr>
+              <tr><td colSpan={5}><EmptyState title={t('page.auditLogs.noLogs')} /></td></tr>
             )}
             {logs.map((l) => (
               <tr key={l.id}>

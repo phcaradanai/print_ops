@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 import { formatRelativeTime } from '../lib/relativeTime.js';
+import { useApiResource } from '../hooks/useApiResource.js';
+import { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 
 interface Runner {
   id: string; name: string; hostname: string; ipAddress?: string;
@@ -13,27 +15,47 @@ const STATUS_COLOR: Record<string, string> = {
   online: '#a6e3a1', offline: '#f38ba8', busy: '#fab387', draining: '#f9e2af',
 };
 
+/** Runner health refresh. Suspended while the window is hidden and never
+ *  overlapping — see `lib/pollController.ts`. */
+const RUNNERS_POLL_MS = 15_000;
+
 export default function Runners() {
   const { t } = useLocale();
-  const [runners, setRunners] = useState<Runner[]>([]);
-  const [loading, setLoading] = useState(true);
+  const fetchRunners = useCallback(() => apiFetch<Runner[]>('/runners'), []);
+  const runnersResource = useApiResource(fetchRunners, { intervalMs: RUNNERS_POLL_MS });
+  const runners = runnersResource.data ?? [];
 
   const heartbeatAge = (ts?: string): string => formatRelativeTime(t, ts);
 
-  useEffect(() => {
-    apiFetch<Runner[]>('/runners')
-      .then((data) => { setRunners(data); setLoading(false); })
-      .catch(() => setLoading(false));
-    const iv = setInterval(() => {
-      apiFetch<Runner[]>('/runners').then(setRunners).catch(() => {});
-    }, 15000);
-    return () => clearInterval(iv);
-  }, []);
-
   return (
     <div>
-      <h1 className="page-title">{t('page.runners.title')}</h1>
-      {loading ? <p className="loading-text">{t('common.loading')}</p> : (
+      <div className="page-header">
+        <h1 className="page-title" style={{ margin: 0 }}>{t('page.runners.title')}</h1>
+        {/* "Runner online" is only meaningful with the age of that claim next
+            to it: a frozen table of green dots during an API outage is exactly
+            how an operator concludes printing is healthy when it is not. */}
+        <Freshness
+          lastSuccessAt={runnersResource.lastSuccessAt}
+          stale={runnersResource.stale}
+          refreshing={runnersResource.refreshing}
+          paused={runnersResource.paused}
+          onRefresh={runnersResource.refresh}
+        />
+      </div>
+
+      {runnersResource.stale && runnersResource.error != null && (
+        <ErrorBanner
+          error={runnersResource.error}
+          title={t('error.refresh.title')}
+          onRetry={runnersResource.refresh}
+        />
+      )}
+
+      {runnersResource.loading && !runnersResource.data ? (
+        <LoadingState />
+      ) : runnersResource.error != null && !runnersResource.data ? (
+        <ErrorState error={runnersResource.error} onRetry={runnersResource.refresh} />
+      ) : (
         <table className="data-table">
           <thead>
             <tr>
@@ -44,7 +66,7 @@ export default function Runners() {
           </thead>
           <tbody>
             {runners.length === 0 && (
-              <tr><td colSpan={6} className="loading-text" style={{ padding: "2rem", textAlign: "center" }}>{t('page.runners.noRunners')}</td></tr>
+              <tr><td colSpan={6}><EmptyState title={t('page.runners.noRunners')} /></td></tr>
             )}
             {runners.map((r) => (
               <tr key={r.id}>

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
-import { EmptyState, ErrorState, LoadingState } from '../components/PageState.js';
+import { useApiResource } from '../hooks/useApiResource.js';
+import { EmptyState, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 
 interface Printer {
   id: string; code: string; name: string; location?: string;
@@ -10,6 +11,8 @@ interface Printer {
   allowedTemplates?: string[]; maxCopiesPerJob?: number;
 }
 
+/** Live-status dot. This is printer reachability, NOT a print-job status — it
+ *  deliberately does not go through <StatusBadge />, which paints job statuses. */
 const STATUS_DOT: Record<string, string> = {
   idle: '#a6e3a1', online: '#a6e3a1', busy: '#fab387',
   offline: '#f38ba8', error: '#f38ba8', unknown: '#9399b2',
@@ -17,33 +20,36 @@ const STATUS_DOT: Record<string, string> = {
 
 export default function Printers() {
   const { t } = useLocale();
-  const [printers, setPrinters] = useState<Printer[]>([]);
-  const [loading, setLoading] = useState(true);
-  // Keep the thrown value, not a flattened string: ErrorState reads status,
-  // code and trace id off it (apiFetch already logged it).
-  const [error, setError] = useState<unknown>(null);
-
-  const load = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    apiFetch<Printer[]>('/printers')
-      .then((data) => { setPrinters(data); setLoading(false); })
-      .catch((err: unknown) => { setError(err); setLoading(false); });
-  }, []);
-
-  useEffect(load, [load]);
+  const fetchPrinters = useCallback(() => apiFetch<Printer[]>('/printers'), []);
+  const printersResource = useApiResource(fetchPrinters);
+  const printers = printersResource.data ?? [];
 
   return (
     <div>
-      <h1 className="page-title">{t('page.printers.title')}</h1>
-      {loading ? <LoadingState /> : error ? (
-        <ErrorState error={error} title={t('page.printers.failedToLoad')} onRetry={load} />
+      <div className="page-header">
+        <h1 className="page-title" style={{ margin: 0 }}>{t('page.printers.title')}</h1>
+        <Freshness
+          lastSuccessAt={printersResource.lastSuccessAt}
+          stale={printersResource.stale}
+          refreshing={printersResource.refreshing}
+          onRefresh={printersResource.refresh}
+        />
+      </div>
+
+      {printersResource.loading && !printersResource.data ? (
+        <LoadingState />
+      ) : printersResource.error != null && !printersResource.data ? (
+        <ErrorState
+          error={printersResource.error}
+          title={t('page.printers.failedToLoad')}
+          onRetry={printersResource.refresh}
+        />
       ) : (
         <table className="data-table">
           <thead>
             <tr>
               {[t('page.printers.code'), t('page.printers.name'), t('page.printers.location'), t('page.printers.protocol'), t('page.printers.status'), t('page.printers.maxCopies'), t('page.printers.active')].map((h) => (
-                <th key={h}>{h}</th>
+                <th key={h} scope="col">{h}</th>
               ))}
             </tr>
           </thead>

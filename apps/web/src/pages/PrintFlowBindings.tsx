@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../api/client.js';
+import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
+import { useApiResource } from '../hooks/useApiResource.js';
+import { useApiAction } from '../hooks/useApiAction.js';
+import { ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
+import { Alert } from '../components/Alert.js';
+import { Button } from '../components/Button.js';
 
 // Manages the (code_template + code_profile) -> printer bindings that the
 // dynamic print endpoint POST /api/v1/printer/{{code_template}}/{{code_profile}}
@@ -53,17 +59,31 @@ interface IntakeAttempt {
 
 export default function PrintFlowBindings() {
   const { t } = useLocale();
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [papers, setPapers] = useState<Paper[]>([]);
-  const [printers, setPrinters] = useState<Printer[]>([]);
-  const [bindings, setBindings] = useState<Binding[]>([]);
-  const [flowConfig, setFlowConfig] = useState<FlowConfig | null>(null);
   const [form, setForm] = useState({ templateCode: '', paperProfileId: '', printerCode: '', isDefault: true });
-  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; kind: 'success' | 'error' } | null>(null);
-  const [intakeLog, setIntakeLog] = useState<IntakeAttempt[]>([]);
-  const [intakeLoading, setIntakeLoading] = useState(false);
   const [failedOnly, setFailedOnly] = useState(false);
+
+  // All five lists load together and NONE of them is optional: the form maps a
+  // template to a paper profile to a printer, so a silently-empty list (the
+  // previous `.catch(() => {})` on each) produced a form whose dropdowns were
+  // empty for no stated reason.
+  const fetchFlow = useCallback(async () => {
+    const [templates, papers, printers, flowConfig, bindings] = await Promise.all([
+      apiFetch<Template[]>('/v1/templates'),
+      apiFetch<Paper[]>('/v1/paper-profiles'),
+      apiFetch<Printer[]>('/printers'),
+      apiFetch<FlowConfig>('/v1/print-flow/config'),
+      apiFetch<Binding[]>('/v1/printer-template-bindings'),
+    ]);
+    return { templates, papers, printers, flowConfig, bindings };
+  }, []);
+
+  const flow = useApiResource(fetchFlow);
+  const templates = flow.data?.templates ?? [];
+  const papers = flow.data?.papers ?? [];
+  const printers = flow.data?.printers ?? [];
+  const bindings = flow.data?.bindings ?? [];
+  const flowConfig = flow.data?.flowConfig ?? null;
 
   const paperCodeById = useMemo(() => {
     const map = new Map<string, string>();
@@ -71,36 +91,18 @@ export default function PrintFlowBindings() {
     return map;
   }, [papers]);
 
-  const loadBindings = useCallback(
-    () => apiFetch<Binding[]>('/v1/printer-template-bindings').then(setBindings).catch(() => {}),
-    [],
+  // The intake log is genuinely optional — the page works without it — so it
+  // is its own resource and its failure does not blank the bindings editor.
+  const fetchIntakeLog = useCallback(
+    () =>
+      apiFetch<IntakeAttempt[]>(
+        `/v1/print-flow/intake-log${failedOnly ? '?limit=100&outcome=rejected' : '?limit=100'}`,
+      ),
+    [failedOnly],
   );
-
-  const loadIntakeLog = useCallback(async () => {
-    setIntakeLoading(true);
-    try {
-      const query = failedOnly ? '?limit=100&outcome=rejected' : '?limit=100';
-      const attempts = await apiFetch<IntakeAttempt[]>(`/v1/print-flow/intake-log${query}`);
-      setIntakeLog(attempts);
-    } catch {
-      // Leave the previous list in place; the page still works without it.
-    } finally {
-      setIntakeLoading(false);
-    }
-  }, [failedOnly]);
-
-  const loadAll = useCallback(async () => {
-    await Promise.all([
-      apiFetch<Template[]>('/v1/templates').then(setTemplates).catch(() => {}),
-      apiFetch<Paper[]>('/v1/paper-profiles').then(setPapers).catch(() => {}),
-      apiFetch<Printer[]>('/printers').then(setPrinters).catch(() => {}),
-      apiFetch<FlowConfig>('/v1/print-flow/config').then(setFlowConfig).catch(() => {}),
-      loadBindings(),
-    ]);
-  }, [loadBindings]);
-
-  useEffect(() => { void loadAll(); }, [loadAll]);
-  useEffect(() => { void loadIntakeLog(); }, [loadIntakeLog]);
+  const intake = useApiResource(fetchIntakeLog);
+  const intakeLog = intake.data ?? [];
+  const intakeLoading = intake.loading || intake.refreshing;
 
   useEffect(() => {
     if (!message) return;
@@ -108,40 +110,49 @@ export default function PrintFlowBindings() {
     return () => clearTimeout(id);
   }, [message]);
 
-  const canCreate = form.templateCode && form.paperProfileId && form.printerCode && !busy;
+  const createBinding = useApiAction(async (values: typeof form) =>
+    apiFetch<Binding>('/v1/printer-template-bindings', {
+      method: 'POST',
+      body: JSON.stringify({ ...values, enabled: true }),
+    }),
+  );
+
+  const patchBinding = useApiAction(async (id: string, change: Partial<Binding>) =>
+    apiFetch<Binding>(`/v1/printer-template-bindings/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(change),
+    }),
+  );
+
+  const busy = createBinding.pending || patchBinding.pending;
+  const canCreate = Boolean(form.templateCode && form.paperProfileId && form.printerCode) && !busy;
 
   const create = useCallback(async () => {
     if (!canCreate) return;
-    setBusy(true);
-    try {
-      await apiFetch('/v1/printer-template-bindings', {
-        method: 'POST',
-        body: JSON.stringify({ ...form, enabled: true }),
-      });
+    const created = await createBinding.run(form);
+    if (created) {
       setMessage({ text: t('page.printFlow.created'), kind: 'success' });
       setForm({ templateCode: '', paperProfileId: '', printerCode: '', isDefault: true });
-      await loadBindings();
-    } catch {
-      setMessage({ text: t('page.printFlow.saveError'), kind: 'error' });
-    } finally {
-      setBusy(false);
+      flow.refresh();
+    } else {
+      setMessage({
+        text: `${t('page.printFlow.saveError')} ${errorMessage(createBinding.getError())}`,
+        kind: 'error',
+      });
     }
-  }, [canCreate, form, loadBindings, t]);
+  }, [canCreate, createBinding, flow, form, t]);
 
   const patch = useCallback(async (b: Binding, change: Partial<Binding>) => {
-    setBusy(true);
-    try {
-      await apiFetch(`/v1/printer-template-bindings/${b.id}`, {
-        method: 'PUT',
-        body: JSON.stringify(change),
+    const updated = await patchBinding.run(b.id, change);
+    if (updated) {
+      flow.refresh();
+    } else {
+      setMessage({
+        text: `${t('page.printFlow.saveError')} ${errorMessage(patchBinding.getError())}`,
+        kind: 'error',
       });
-      await loadBindings();
-    } catch {
-      setMessage({ text: t('page.printFlow.saveError'), kind: 'error' });
-    } finally {
-      setBusy(false);
     }
-  }, [loadBindings, t]);
+  }, [flow, patchBinding, t]);
 
   // Live preview of the resolved dynamic path for the current form selection.
   const previewTemplate = form.templateCode || '{{code_template}}';
@@ -187,10 +198,34 @@ export default function PrintFlowBindings() {
       <p className="print-flow-lead">{t('page.printFlow.description')}</p>
 
       {message && (
-        <div className={`settings-message settings-message--${message.kind}`} role="status" aria-live="polite">
+        <Alert
+          tone={message.kind === 'success' ? 'success' : 'error'}
+          onDismiss={() => setMessage(null)}
+          dismissLabel={t('error.dismiss')}
+        >
           {message.text}
-        </div>
+        </Alert>
       )}
+
+      {flow.loading && !flow.data && <LoadingState />}
+
+      {flow.error != null && !flow.data && (
+        <ErrorState error={flow.error} onRetry={flow.refresh} />
+      )}
+
+      {flow.stale && flow.error != null && (
+        <ErrorBanner error={flow.error} title={t('error.refresh.title')} onRetry={flow.refresh} />
+      )}
+
+      <div className="page-header">
+        <span />
+        <Freshness
+          lastSuccessAt={flow.lastSuccessAt}
+          stale={flow.stale}
+          refreshing={flow.refreshing}
+          onRefresh={flow.refresh}
+        />
+      </div>
 
       <div className="print-flow-endpoint" aria-label={t('page.printFlow.endpoint')}>
         <span className="print-flow-method">POST</span>
@@ -268,15 +303,20 @@ export default function PrintFlowBindings() {
             />
             {t('page.printFlow.intakeLogFailedOnly')}
           </label>
-          <button
-            type="button"
-            className="settings-btn-primary"
-            disabled={intakeLoading}
-            onClick={() => void loadIntakeLog()}
-          >
-            {intakeLoading ? t('common.loading') : t('page.printFlow.intakeLogRefresh')}
-          </button>
+          <Button onClick={intake.refresh} busy={intakeLoading} busyLabel={t('common.loading')}>
+            {t('page.printFlow.intakeLogRefresh')}
+          </Button>
         </div>
+
+        {/* The intake log is optional context, so its failure is a strip rather
+            than a page-level error — but it is no longer silent. */}
+        {intake.error != null && (
+          <ErrorBanner
+            error={intake.error}
+            title={t('page.printFlow.intakeLogFailed')}
+            onRetry={intake.refresh}
+          />
+        )}
 
         <div className="print-flow-table-wrap">
           <table className="print-flow-table">

@@ -246,25 +246,93 @@ blip is right; letting them look live is the defect this milestone closes, so
 `Freshness` (updated / not current / refreshing / paused) is mandatory next to
 retained data, not optional polish.
 
+## 5c. What FE-01.2 added (final closure)
+
+FE-01.1 built the machinery and converted three pages. FE-01.2 migrated the
+rest of the dashboard onto it, in three verified waves.
+
+**Converted to `useApiResource` / `useApiAction` / the shared primitives:**
+`AuditLogs`, `Printers`, `Runners`, `RoutePolicies`, `PrinterBindings`,
+`ExportCenter`, `PrinterDetail`, `DiscoveredPrinters`, `LocalDiagnostics`,
+`UsersRoles`, `Settings`, `PrintFlowBindings`, `TemplateSandbox`, `Templates`,
+`Webhooks`. Every page in `pages/` except `PaperProfiles.tsx` (deferred by
+instruction — it is being restructured separately) now goes through the
+foundation.
+
+Defects fixed along the way, beyond the mechanical conversion:
+
+* **Two manual `setInterval` loops removed** (`Runners` 15s, `LocalDiagnostics`
+  30s). Both now poll through `pollController`: no overlap, suspended while the
+  window is hidden, and a stale-marked table instead of a frozen one. `grep -rn
+  "setInterval" pages/` is now empty.
+* **Un-awaited mutations that rejected into nothing**: `RoutePolicies.create()`,
+  `PrinterBindings.create()` and every `ExportCenter` download were floating
+  promises. An invalid policy body or a denied export produced an unhandled
+  rejection and a button that appeared to do nothing at all.
+* **`Settings.saveWorkspace()` could not fail.** It swallowed the
+  `localStorage` exception internally and returned `void`, so the caller's
+  `catch` was unreachable and the page reported "Saved" over a write that never
+  happened. It now returns a boolean and the page says so (`settings.storageUnavailable`).
+* **`PrinterDetail` was showing raw translation keys.** It used
+  `t('page.printerDetail.testPrintSent') ?? 'fallback'` for keys that do not
+  exist — and `t()` returns the key itself when missing, which is truthy, so the
+  `??` fallback was dead code and the operator saw
+  `page.printerDetail.testPrintSent`. Those keys now exist in both locales,
+  along with the panel labels that were hardcoded English.
+* **`DiscoveredPrinters` used `window.confirm()`** for printer registration and
+  inferred its message tone by string-matching the message against a translated
+  prefix. Now `Dialog` + an explicit tone.
+* **Bulk loops now report why.** `Templates` import, `Webhooks` import and
+  `Webhooks` batch delete deliberately continue past a failed item — that part
+  is correct and unchanged — but each carries the first failure's reason into
+  the summary instead of reporting only a count.
+
+* **`useApiAction.error` was unreadable from the handler that awaited it.**
+  It is React state, so the `action` object a handler closed over still held the
+  previous value right after `await run()`: the first failure printed the
+  generic fallback and the second printed the *previous* error — a
+  plausible-looking wrong reason, the exact defect class this milestone exists
+  to remove. Nine call sites were affected (including two that shipped in
+  FE-01.1). `useApiAction` now also exposes ref-backed `getError()` for handler
+  use; `error` remains for render-time consumers, and which to use is documented
+  on the type. Pinned by `__tests__/apiActionError.test.ts`.
+
+**Intentional guards deliberately left alone** (as classified in F-5): the two
+`localStorage` guards in `Settings`, `JSON.parse` validation in
+`TemplateSandbox`, `Templates.parseImport` and `Webhooks`' payload check, and
+`Webhooks`' date-format fallback. Six `catch {}` remain in `pages/` and all six
+are these.
+
+**Freshness rule, applied uniformly:** every page converted to `useApiResource`
+renders `<Freshness>`. The hook retains data through a failure by design, so
+each conversion creates a retained-stale-data surface; the age of the data is
+therefore shown on all of them, not only the polled ones.
+
+Not in scope and untouched: `PaperProfiles`, navigation, route lazy loading,
+visual redesign, and `Webhooks`' own `showToast` layer (a shared toast primitive
+remains FE-02 work — `Webhooks` and `Templates` still have their own).
+
 ## 6. FE-02 migration list (not started)
 
 Pages still on ad-hoc error handling, roughly by operator impact:
 
-Closed in FE-01.1: `Dashboard`, `JobQueue`, `JobDetail` (plus `Printers` from
-FE-01). Remaining, roughly by operator impact:
+The page migration is **complete** as of FE-01.2 — every page except
+`PaperProfiles.tsx` is on the foundation. What remains is not page-by-page work:
 
-1. `Templates.tsx`, `Webhooks.tsx` — 4 generic `actionFailed` strings each;
-   both should move onto `useApiAction` + `Alert`
-2. `PrintFlowBindings.tsx` — one fully silent catch on load
-3. `Runners.tsx`, `AuditLogs.tsx`, `UsersRoles.tsx`, `PrinterDetail.tsx`,
-   `DiscoveredPrinters.tsx`, `LocalDiagnostics.tsx`, `RoutePolicies.tsx`,
-   `PrinterBindings.tsx`, `ExportCenter.tsx`, `TemplateSandbox.tsx`
-4. `Settings.tsx` — keep the `localStorage` guards, convert the save paths
-5. `PaperProfiles.tsx` — explicitly deferred; it is being restructured separately
-
-Also queued: a shared toast/notification primitive (`Webhooks`' `showToast` and
-`Settings`' `message` are still separate implementations — `JobQueue`'s is now
-`Alert`), i18n for the hardcoded Thai in `tauri.ts`, route-level code splitting,
-and jsdom-based interaction tests. Until jsdom exists, behaviour that must be
+1. **`PaperProfiles.tsx`** — deferred by instruction; restructured separately.
+2. **A shared toast primitive.** `Webhooks` and `Templates` still own
+   `showToast` / `ds-toast` implementations. `Alert` covers the inline case;
+   the floating-toast case has no shared component yet.
+3. **i18n for `src/tauri.ts`** — still builds Thai user-facing strings outside
+   the dictionary (`บันทึกไฟล์เรียบร้อยแล้ว`, `ไม่สามารถส่งออกไฟล์ได้`), so an
+   English user gets Thai. Same for the remaining hardcoded English column
+   headers in `UsersRoles`.
+4. **Route-level code splitting** — one 1.4 MB chunk, over Vite's warning
+   threshold on every build.
+5. **jsdom + interaction tests.** Until then, behaviour that must be tested
+   belongs in a framework-free module (as `pollController` is), because
+   `renderToStaticMarkup` cannot run effects or clicks.
+6. **The API does not emit `traceId` on error responses.** The frontend reads it
+   already; the backend half is a separate change. Until jsdom exists, behaviour that must be
 tested belongs in a framework-free module like `lib/pollController.ts` rather
 than inside a component.

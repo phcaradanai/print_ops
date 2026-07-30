@@ -1,6 +1,9 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { apiFetch } from '../api/client.js';
+import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
+import { useApiResource } from '../hooks/useApiResource.js';
+import { ErrorBanner, Freshness } from '../components/PageState.js';
 import { saveOrDownloadJsonFile } from '../utils/fileExport.js';
 
 interface Endpoint {
@@ -129,34 +132,49 @@ export default function Webhooks() {
   const formCardRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadData = () => {
-    void apiFetch<Endpoint[]>('/v1/webhook-endpoints').then((res) => {
-      setEndpoints(res);
-      // Remove selected IDs that no longer exist
-      setSelectedIds((prev) => prev.filter((id) => res.some((e) => e.id === id)));
-    }).catch(() => {
-      showToast(t('page.webhooks.toastLoadFailed'), 'error');
-    });
-    void apiFetch<Policy[]>('/v1/webhook-route-policies').then(setPolicies).catch(() => {});
-  };
+  // Endpoints + policies move onto the shared resource machinery. The policy
+  // list in particular was `.catch(() => {})`: with it empty, every endpoint
+  // rendered as bound to nothing.
+  const fetchEndpoints = useCallback(() => apiFetch<Endpoint[]>('/v1/webhook-endpoints'), []);
+  const fetchPolicies = useCallback(() => apiFetch<Policy[]>('/v1/webhook-route-policies'), []);
+
+  const endpointsResource = useApiResource(fetchEndpoints);
+  const policiesResource = useApiResource(fetchPolicies);
+
+  const loadData = useCallback(() => {
+    endpointsResource.refresh();
+    policiesResource.refresh();
+  }, [endpointsResource.refresh, policiesResource.refresh]);
 
   useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadCallbackLog = () => {
-    setCallbackLogLoading(true);
-    const qs = callbackLogFailedOnly ? '?limit=100&outcome=failed' : '?limit=100';
-    void apiFetch<CallbackAttempt[]>(`/v1/webhook-endpoints/callback-log${qs}`)
-      .then(setCallbackLog)
-      .catch(() => {})
-      .finally(() => setCallbackLogLoading(false));
-  };
+    if (!endpointsResource.data) return;
+    const rows = endpointsResource.data;
+    setEndpoints(rows);
+    // Drop selected ids that no longer exist.
+    setSelectedIds((prev) => prev.filter((id) => rows.some((e) => e.id === id)));
+  }, [endpointsResource.data]);
 
   useEffect(() => {
-    loadCallbackLog();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callbackLogFailedOnly]);
+    if (policiesResource.data) setPolicies(policiesResource.data);
+  }, [policiesResource.data]);
+
+  const fetchCallbackLog = useCallback(
+    () =>
+      apiFetch<CallbackAttempt[]>(
+        `/v1/webhook-endpoints/callback-log${callbackLogFailedOnly ? '?limit=100&outcome=failed' : '?limit=100'}`,
+      ),
+    [callbackLogFailedOnly],
+  );
+  const callbackLogResource = useApiResource(fetchCallbackLog);
+  const loadCallbackLog = callbackLogResource.refresh;
+
+  useEffect(() => {
+    setCallbackLog(callbackLogResource.data ?? []);
+  }, [callbackLogResource.data]);
+
+  useEffect(() => {
+    setCallbackLogLoading(callbackLogResource.loading || callbackLogResource.refreshing);
+  }, [callbackLogResource.loading, callbackLogResource.refreshing]);
 
   // Keyboard shortcut Ctrl+K to focus search box
   useEffect(() => {
@@ -339,8 +357,8 @@ export default function Webhooks() {
         res.ok ? 'success' : 'error',
       );
       loadCallbackLog();
-    } catch {
-      showToast(t('page.webhooks.toastCallbackTestFailed'), 'error');
+    } catch (err: unknown) {
+      showToast(`${t('page.webhooks.toastCallbackTestFailed')} ${errorMessage(err)}`, 'error');
     }
   }
 
@@ -353,8 +371,8 @@ export default function Webhooks() {
       const statusLabel = !e.enabled ? t('page.webhooks.statusEnabled') : t('page.webhooks.statusDraft');
       showToast(t('page.webhooks.toastStatusChanged').replace('{code}', e.endpointCode).replace('{status}', statusLabel));
       loadData();
-    } catch {
-      showToast(t('page.webhooks.toastStatusChangeFailed'), 'error');
+    } catch (err: unknown) {
+      showToast(`${t('page.webhooks.toastStatusChangeFailed')} ${errorMessage(err)}`, 'error');
     }
   }
 
@@ -371,8 +389,8 @@ export default function Webhooks() {
       showToast(t('page.webhooks.toastDeleted').replace('{code}', e.endpointCode));
       if (editingId === e.id) resetForm();
       loadData();
-    } catch {
-      showToast(t('page.webhooks.toastDeleteFailed'), 'error');
+    } catch (err: unknown) {
+      showToast(`${t('page.webhooks.toastDeleteFailed')} ${errorMessage(err)}`, 'error');
     }
   }
 
@@ -446,8 +464,8 @@ export default function Webhooks() {
         }
 
         setImportModalEndpoints(validList);
-      } catch {
-        showToast(t('page.webhooks.toastImportReadFailed'), 'error');
+      } catch (err: unknown) {
+        showToast(`${t('page.webhooks.toastImportReadFailed')} ${errorMessage(err)}`, 'error');
       }
     };
     reader.readAsText(file);
@@ -458,6 +476,7 @@ export default function Webhooks() {
     if (!importModalEndpoints || importModalEndpoints.length === 0) return;
 
     let successCount = 0;
+    let firstImportFailure = '';
     showToast(t('page.webhooks.toastImporting').replace('{n}', String(importModalEndpoints.length)), 'info');
 
     for (const item of importModalEndpoints) {
@@ -492,14 +511,23 @@ export default function Webhooks() {
           });
           successCount++;
         }
-      } catch {
-        // Continue import loop for remaining items
+      } catch (err: unknown) {
+        // Continuing is deliberate — one rejected endpoint must not abort the
+        // rest of the import. The reason is now carried into the summary
+        // instead of being dropped entirely.
+        if (!firstImportFailure) {
+          firstImportFailure = `${item.endpointCode ?? '?'}: ${errorMessage(err)}`;
+        }
       }
     }
 
     setImportModalEndpoints(null);
+    const importSummary = t('page.webhooks.toastImported')
+      .replace('{success}', String(successCount))
+      .replace('{total}', String(importModalEndpoints.length));
     showToast(
-      t('page.webhooks.toastImported').replace('{success}', String(successCount)).replace('{total}', String(importModalEndpoints.length)),
+      firstImportFailure ? `${importSummary} — ${firstImportFailure}` : importSummary,
+      firstImportFailure ? 'error' : 'success',
     );
     loadData();
   };
@@ -511,20 +539,30 @@ export default function Webhooks() {
 
     showToast(t('page.webhooks.toastBatchDeleting').replace('{n}', String(selectedIds.length)), 'info');
     let deletedCount = 0;
+    let firstDeleteFailure = '';
 
     await Promise.all(
       selectedIds.map(async (id) => {
         try {
           await apiFetch(`/v1/webhook-endpoints/${id}`, { method: 'DELETE' });
           deletedCount++;
-        } catch {
-          // ignore individual delete failure
+        } catch (err: unknown) {
+          // Per-item failure does not abort the batch, but "deleted 3" out of 5
+          // selected used to be the only signal that anything went wrong.
+          if (!firstDeleteFailure) firstDeleteFailure = errorMessage(err);
         }
       })
     );
 
     setSelectedIds([]);
-    showToast(t('page.webhooks.toastBatchDeleted').replace('{n}', String(deletedCount)));
+    const deleteSummary = t('page.webhooks.toastBatchDeleted').replace('{n}', String(deletedCount));
+    const failedCount = selectedIds.length - deletedCount;
+    showToast(
+      failedCount > 0
+        ? `${deleteSummary} — ${t('page.webhooks.toastBatchDeleteFailures').replace('{n}', String(failedCount))} ${firstDeleteFailure}`
+        : deleteSummary,
+      failedCount > 0 ? 'error' : 'success',
+    );
     loadData();
   };
 
@@ -639,6 +677,32 @@ export default function Webhooks() {
         </div>
       )}
 
+      {/* An endpoint list that failed to load must not read as "no webhooks
+          configured" — that invites re-creating endpoints that already exist. */}
+      {endpointsResource.error != null && (
+        <ErrorBanner
+          error={endpointsResource.error}
+          title={t('page.webhooks.toastLoadFailed')}
+          onRetry={endpointsResource.refresh}
+        />
+      )}
+
+      {policiesResource.error != null && (
+        <ErrorBanner
+          error={policiesResource.error}
+          title={t('page.webhooks.policiesLoadFailed')}
+          onRetry={policiesResource.refresh}
+        />
+      )}
+
+      {callbackLogResource.error != null && (
+        <ErrorBanner
+          error={callbackLogResource.error}
+          title={t('page.webhooks.callbackLogLoadFailed')}
+          onRetry={callbackLogResource.refresh}
+        />
+      )}
+
       {/* Top Page Header */}
       <header className="wh-header">
         <div className="wh-header-title-area">
@@ -646,6 +710,12 @@ export default function Webhooks() {
           <div className="wh-header-text">
             <h1>{t('page.webhooks.title')}</h1>
             <p>{t('page.webhooks.subtitle')}</p>
+            <Freshness
+              lastSuccessAt={endpointsResource.lastSuccessAt}
+              stale={endpointsResource.stale}
+              refreshing={endpointsResource.refreshing}
+              onRefresh={loadData}
+            />
           </div>
         </div>
 

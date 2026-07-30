@@ -102,7 +102,7 @@ export default function JobQueue() {
     if (!loaded) {
       setMessage({
         tone: 'error',
-        text: `${t('page.jobQueue.reprintLoadFailed')} ${errorMessage(loadReprintTarget.error)}`,
+        text: `${t('page.jobQueue.reprintLoadFailed')} ${errorMessage(loadReprintTarget.getError())}`,
       });
     }
   };
@@ -118,7 +118,7 @@ export default function JobQueue() {
     } else {
       setMessage({
         tone: 'error',
-        text: `${t('page.jobQueue.reprintFailed')} ${errorMessage(submitReprint.error)}`,
+        text: `${t('page.jobQueue.reprintFailed')} ${errorMessage(submitReprint.getError())}`,
       });
     }
   };

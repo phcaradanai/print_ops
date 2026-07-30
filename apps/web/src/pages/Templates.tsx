@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../api/client.js';
+import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
+import { useApiResource } from '../hooks/useApiResource.js';
+import { ErrorBanner, Freshness } from '../components/PageState.js';
 import { exportJsonFile } from '../tauri.js';
 import { renderBarcodeSvg, type BarcodeKind, type BarcodeSymbology } from '../lib/barcode.js';
 
@@ -237,8 +240,6 @@ function formatDate(value: string | undefined, locale: string): string {
 
 export default function Templates() {
   const { t, locale } = useLocale();
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [profiles, setProfiles] = useState<PaperProfileOption[]>([]);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -266,9 +267,18 @@ export default function Templates() {
   const gutterRef = useRef<HTMLDivElement | null>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
 
-  const load = () => apiFetch<Template[]>('/v1/templates').then(setTemplates).catch(() => {});
-  const loadProfiles = () => apiFetch<PaperProfileOption[]>('/v1/paper-profiles').then(setProfiles).catch(() => {});
-  useEffect(() => { void load(); void loadProfiles(); }, []);
+  // Both lists were `.catch(() => {})`: with the API down the page rendered as
+  // "no templates configured", which is indistinguishable from a fresh install
+  // and invites someone to re-create templates that already exist.
+  const fetchTemplates = useCallback(() => apiFetch<Template[]>('/v1/templates'), []);
+  const fetchProfiles = useCallback(() => apiFetch<PaperProfileOption[]>('/v1/paper-profiles'), []);
+
+  const templatesResource = useApiResource(fetchTemplates);
+  const profilesResource = useApiResource(fetchProfiles);
+  const templates = templatesResource.data ?? [];
+  const profiles = profilesResource.data ?? [];
+
+  const load = useCallback(() => templatesResource.refresh(), [templatesResource.refresh]);
 
   // Row "more" menu closes on any outside click, like a native popup menu.
   useEffect(() => {
@@ -349,10 +359,10 @@ export default function Templates() {
       setPreview(res);
       setPreviewHtml(res.renderedPreview);
       setPreviewError('');
-    } catch {
+    } catch (err: unknown) {
       setPreview(null);
       setPreviewHtml('');
-      setPreviewError(t('page.templates.previewFailed'));
+      setPreviewError(`${t('page.templates.previewFailed')} ${errorMessage(err)}`);
     }
   }
 
@@ -385,8 +395,8 @@ export default function Templates() {
       setForm({ ...EMPTY_FORM });
       setEditingId(null);
       await load();
-    } catch {
-      setMessage({ tone: 'error', text: t('page.templates.actionFailed') });
+    } catch (err: unknown) {
+      setMessage({ tone: 'error', text: `${t('page.templates.actionFailed')} ${errorMessage(err)}` });
     } finally {
       setBusy(false);
     }
@@ -427,8 +437,8 @@ export default function Templates() {
       });
       setMessage({ tone: 'ok', text: t('page.templates.duplicated') });
       await load();
-    } catch {
-      setMessage({ tone: 'error', text: t('page.templates.actionFailed') });
+    } catch (err: unknown) {
+      setMessage({ tone: 'error', text: `${t('page.templates.actionFailed')} ${errorMessage(err)}` });
     }
   }
 
@@ -438,8 +448,8 @@ export default function Templates() {
       await apiFetch(`/v1/templates/${id}/publish`, { method: 'POST' });
       setMessage({ tone: 'ok', text: t('page.templates.publishedOk') });
       await load();
-    } catch {
-      setMessage({ tone: 'error', text: t('page.templates.actionFailed') });
+    } catch (err: unknown) {
+      setMessage({ tone: 'error', text: `${t('page.templates.actionFailed')} ${errorMessage(err)}` });
     }
   }
 
@@ -448,8 +458,8 @@ export default function Templates() {
     try {
       await apiFetch(`/v1/templates/${id}/test-print`, { method: 'POST' });
       setMessage({ tone: 'ok', text: t('page.templates.testPrintSent') });
-    } catch {
-      setMessage({ tone: 'error', text: t('page.templates.actionFailed') });
+    } catch (err: unknown) {
+      setMessage({ tone: 'error', text: `${t('page.templates.actionFailed')} ${errorMessage(err)}` });
     }
   }
 
@@ -549,6 +559,7 @@ export default function Templates() {
     let created = 0;
     let updated = 0;
     let failed = 0;
+    let firstFailure = '';
     for (const entry of entries) {
       const paperProfileId = entry.paperProfileCode
         ? profiles.find((p) => p.code === entry.paperProfileCode)?.id
@@ -569,19 +580,24 @@ export default function Templates() {
           await apiFetch('/v1/templates', { method: 'POST', body: JSON.stringify(payload) });
           created++;
         }
-      } catch {
+      } catch (err: unknown) {
+        // Continuing past a bad entry is deliberate — one malformed template
+        // must not abort a 40-template import. What was missing is the reason:
+        // the summary reported "3 failed" and nothing else.
         failed++;
+        if (!firstFailure) firstFailure = `${entry.templateCode}: ${errorMessage(err)}`;
       }
     }
     setBusy(false);
+    const summary = t('page.templates.importDone')
+      .replace('{created}', String(created))
+      .replace('{updated}', String(updated))
+      .replace('{failed}', String(failed));
     setMessage({
       tone: failed > 0 ? 'error' : 'ok',
-      text: t('page.templates.importDone')
-        .replace('{created}', String(created))
-        .replace('{updated}', String(updated))
-        .replace('{failed}', String(failed)),
+      text: firstFailure ? `${summary} — ${firstFailure}` : summary,
     });
-    await load();
+    load();
   }
 
   const statusCounts = useMemo(() => {
@@ -684,6 +700,33 @@ export default function Templates() {
           <button type="button" className="ds-toast__close" onClick={() => setMessage(null)} aria-label={t('common.cancel')}>✕</button>
         </div>
       )}
+
+      {/* An empty template list must never be mistaken for "none configured". */}
+      {templatesResource.error != null && (
+        <ErrorBanner
+          error={templatesResource.error}
+          title={t('page.templates.loadFailed')}
+          onRetry={templatesResource.refresh}
+        />
+      )}
+
+      {profilesResource.error != null && (
+        <ErrorBanner
+          error={profilesResource.error}
+          title={t('page.templates.profilesLoadFailed')}
+          onRetry={profilesResource.refresh}
+        />
+      )}
+
+      <div className="page-header">
+        <span />
+        <Freshness
+          lastSuccessAt={templatesResource.lastSuccessAt}
+          stale={templatesResource.stale}
+          refreshing={templatesResource.refreshing}
+          onRefresh={templatesResource.refresh}
+        />
+      </div>
 
       <div className="tpl-layout">
         <section className="tpl-card tpl-editor" ref={formRef}>

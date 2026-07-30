@@ -1,7 +1,12 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { apiFetch } from '../api/client.js';
+import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { formatRelativeTime } from '../lib/relativeTime.js';
+import { useApiResource } from '../hooks/useApiResource.js';
+import { useApiAction } from '../hooks/useApiAction.js';
+import { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
+import { Button } from '../components/Button.js';
 
 interface Runner {
   id: string;
@@ -55,59 +60,99 @@ function Truncate({ value, display, className = '' }: { value?: string; display?
   );
 }
 
+/** Diagnostics refresh. Suspended while hidden, never overlapping — this page
+ *  is the one most likely to be left open on a second monitor for hours. */
+const DIAGNOSTICS_POLL_MS = 30_000;
+
 export default function LocalDiagnostics() {
   const { t } = useLocale();
-  const [runners, setRunners] = useState<Runner[]>([]);
-  const [printers, setPrinters] = useState<DiscoveredPrinter[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState<Record<string, boolean>>({});
-  const [refreshResult, setRefreshResult] = useState<Record<string, string>>({});
+  const [refreshingRunnerId, setRefreshingRunnerId] = useState<string | null>(null);
+  const [refreshResult, setRefreshResult] = useState<Record<string, { tone: 'ok' | 'error'; text: string }>>({});
 
   const relativeTime = (ts: string): string => formatRelativeTime(t, ts);
 
-  const load = useCallback(() => {
-    Promise.all([
+  const fetchDiagnostics = useCallback(async () => {
+    const [runners, printers] = await Promise.all([
       apiFetch<Runner[]>('/runners'),
       apiFetch<DiscoveredPrinter[]>('/v1/discovered-printers'),
-    ])
-      .then(([r, p]) => { setRunners(r); setPrinters(p); setLoading(false); })
-      .catch(() => setLoading(false));
+    ]);
+    return { runners, printers };
   }, []);
 
-  useEffect(() => {
-    load();
-    const iv = setInterval(load, 30000);
-    return () => clearInterval(iv);
-  }, [load]);
+  const diagnostics = useApiResource(fetchDiagnostics, { intervalMs: DIAGNOSTICS_POLL_MS });
+  const runners = diagnostics.data?.runners ?? [];
+  const printers = diagnostics.data?.printers ?? [];
+
+  const discover = useApiAction(async (runnerId: string) =>
+    apiFetch<{ queued: boolean; knownPrinters: number }>(
+      `/v1/runners/${runnerId}/printers/discover`,
+      { method: 'POST' },
+    ),
+  );
 
   async function triggerDiscover(runnerId: string) {
-    setRefreshing((prev) => ({ ...prev, [runnerId]: true }));
-    try {
-      const res = await apiFetch<{ queued: boolean; knownPrinters: number }>(
-        `/v1/runners/${runnerId}/printers/discover`,
-        { method: 'POST' }
-      );
-      setRefreshResult((prev) => ({ ...prev, [runnerId]: t('page.diagnostics.queuedKnown').replace('{n}', String(res.knownPrinters)) }));
-      setTimeout(() => load(), 3000);
-    } catch {
-      setRefreshResult((prev) => ({ ...prev, [runnerId]: t('page.diagnostics.requestFailed') }));
-    } finally {
-      setRefreshing((prev) => ({ ...prev, [runnerId]: false }));
+    setRefreshingRunnerId(runnerId);
+    const res = await discover.run(runnerId);
+    setRefreshingRunnerId(null);
+
+    if (res) {
+      setRefreshResult((prev) => ({
+        ...prev,
+        [runnerId]: {
+          tone: 'ok',
+          text: t('page.diagnostics.queuedKnown').replace('{n}', String(res.knownPrinters)),
+        },
+      }));
+      // Discovery is asynchronous on the runner: give it a moment, then re-read.
+      setTimeout(() => diagnostics.refresh(), 3000);
+    } else {
+      setRefreshResult((prev) => ({
+        ...prev,
+        [runnerId]: {
+          tone: 'error',
+          text: `${t('page.diagnostics.requestFailed')} ${errorMessage(discover.getError())}`,
+        },
+      }));
     }
   }
 
-  if (loading) return <p className="loading-text">{t('common.loading')}</p>;
+  if (diagnostics.loading && !diagnostics.data) return <LoadingState />;
+
+  if (!diagnostics.data && diagnostics.error != null) {
+    return (
+      <div>
+        <h1 style={{ marginBottom: '0.5rem' }}>{t('page.diagnostics.title')}</h1>
+        <ErrorState error={diagnostics.error} onRetry={diagnostics.refresh} />
+      </div>
+    );
+  }
 
   return (
     <div>
-      <h1 style={{ marginBottom: '0.5rem' }}>{t('page.diagnostics.title')}</h1>
+      <div className="page-header">
+        <h1 style={{ margin: 0 }}>{t('page.diagnostics.title')}</h1>
+        <Freshness
+          lastSuccessAt={diagnostics.lastSuccessAt}
+          stale={diagnostics.stale}
+          refreshing={diagnostics.refreshing}
+          paused={diagnostics.paused}
+          onRefresh={diagnostics.refresh}
+        />
+      </div>
       <p style={{ color: '#666', marginBottom: '2rem', fontSize: '0.9rem' }}>
         {t('page.diagnostics.description')}
       </p>
 
-      {runners.length === 0 && (
-        <p className="loading-text">{t('page.diagnostics.noRunners')}</p>
+      {/* Refresh failed but runner cards are still shown: they are a snapshot. */}
+      {diagnostics.stale && diagnostics.error != null && (
+        <ErrorBanner
+          error={diagnostics.error}
+          title={t('error.refresh.title')}
+          onRetry={diagnostics.refresh}
+        />
       )}
+
+      {runners.length === 0 && <EmptyState title={t('page.diagnostics.noRunners')} />}
 
       {runners.map((runner) => {
         const runnerPrinters = printers.filter((p) => p.runnerId === runner.id);
@@ -136,19 +181,24 @@ export default function LocalDiagnostics() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 {refreshResult[runner.id] && (
-                  <span style={{ fontSize: '0.8rem', color: '#666' }}>{refreshResult[runner.id]}</span>
+                  <span
+                    style={{
+                      fontSize: '0.8rem',
+                      color: refreshResult[runner.id]!.tone === 'error' ? '#991b1b' : '#666',
+                    }}
+                    role={refreshResult[runner.id]!.tone === 'error' ? 'alert' : 'status'}
+                  >
+                    {refreshResult[runner.id]!.text}
+                  </span>
                 )}
-                <button
+                <Button
+                  size="sm"
                   onClick={() => void triggerDiscover(runner.id)}
-                  disabled={refreshing[runner.id]}
-                  style={{
-                    padding: '0.4rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer',
-                    background: refreshing[runner.id] ? '#e0e0e0' : '#89b4fa', color: '#1e1e2e',
-                    fontSize: '0.8rem', fontWeight: 600,
-                  }}
+                  busy={refreshingRunnerId === runner.id}
+                  busyLabel={t('page.diagnostics.requesting')}
                 >
-                  {refreshing[runner.id] ? t('page.diagnostics.requesting') : t('page.diagnostics.refreshDiscovery')}
-                </button>
+                  {t('page.diagnostics.refreshDiscovery')}
+                </Button>
               </div>
             </div>
 

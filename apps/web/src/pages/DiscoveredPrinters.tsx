@@ -1,6 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState } from 'react';
 import { apiFetch } from '../api/client.js';
+import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
+import { useApiResource } from '../hooks/useApiResource.js';
+import { useApiAction } from '../hooks/useApiAction.js';
+import { EmptyState, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
+import { Alert } from '../components/Alert.js';
+import { Button } from '../components/Button.js';
+import { Dialog } from '../components/Dialog.js';
 
 interface DiscoveredPrinter {
   id: string;
@@ -51,42 +58,35 @@ function Truncate({ value, display, className = '' }: { value?: string; display?
 
 export default function DiscoveredPrinters() {
   const { t } = useLocale();
-  const [printers, setPrinters] = useState<DiscoveredPrinter[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [registering, setRegistering] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  const [pendingRegister, setPendingRegister] = useState<DiscoveredPrinter | null>(null);
 
-  const fetchPrinters = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setPrinters(await apiFetch<DiscoveredPrinter[]>('/v1/discovered-printers'));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t('page.discovery.failedToFetch'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const fetchPrinters = useCallback(() => apiFetch<DiscoveredPrinter[]>('/v1/discovered-printers'), []);
+  const printersResource = useApiResource(fetchPrinters);
+  const printers = printersResource.data ?? [];
 
-  useEffect(() => { void fetchPrinters(); }, []);
+  const register = useApiAction(async (printer: DiscoveredPrinter) => {
+    await apiFetch(`/v1/discovered-printers/${printer.id}/register`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    printersResource.refresh();
+    return printer.localPrinterName;
+  });
 
-  const handleRegister = async (id: string, name: string) => {
-    if (!confirm(t('page.discovery.confirmRegister').replace('{name}', name))) return;
-    setRegistering(id);
-    setMessage(null);
-    try {
-      await apiFetch(`/v1/discovered-printers/${id}/register`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
-      setMessage(t('page.discovery.registerSuccess').replace('{name}', name));
-      void fetchPrinters();
-    } catch (e) {
-      setMessage(t('page.discovery.registerError').replace('{message}', e instanceof Error ? e.message : t('page.discovery.unknownError')));
-    } finally {
-      setRegistering(null);
-    }
+  const confirmRegister = async () => {
+    if (!pendingRegister) return;
+    const printer = pendingRegister;
+    setPendingRegister(null);
+    const name = await register.run(printer);
+    setMessage(
+      name
+        ? { tone: 'ok', text: t('page.discovery.registerSuccess').replace('{name}', name) }
+        : {
+            tone: 'error',
+            text: t('page.discovery.registerError').replace('{message}', errorMessage(register.getError(), t('page.discovery.unknownError'))),
+          },
+    );
   };
 
   const formatTime = (iso: string) => {
@@ -103,30 +103,43 @@ export default function DiscoveredPrinters() {
             {t('page.discovery.description')}
           </p>
         </div>
-        <button
-          onClick={() => void fetchPrinters()}
-          style={{ padding: '0.5rem 1rem', background: '#1e1e2e', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.875rem' }}
-        >
-          {t('common.refresh')}
-        </button>
+        {/* Freshness carries the refresh affordance; discovery data ages fast
+            (a printer unplugged five minutes ago still lists as present). */}
+        <Freshness
+          lastSuccessAt={printersResource.lastSuccessAt}
+          stale={printersResource.stale}
+          refreshing={printersResource.refreshing}
+          onRefresh={printersResource.refresh}
+        />
       </div>
 
+      {/* Tone was previously inferred by string-matching the message against a
+          translated prefix — it broke the moment either string changed. */}
       {message && (
-        <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', borderRadius: 6, background: message.startsWith(t('page.discovery.error')) ? '#fee2e2' : '#dcfce7', color: message.startsWith(t('page.discovery.error')) ? '#dc2626' : '#16a34a', fontSize: '0.875rem' }}>
-          {message}
-        </div>
+        <Alert
+          tone={message.tone === 'ok' ? 'success' : 'error'}
+          onDismiss={() => setMessage(null)}
+          dismissLabel={t('error.dismiss')}
+        >
+          {message.text}
+        </Alert>
       )}
 
-      {loading && <p style={{ color: '#6b7280' }}>{t('page.discovery.loading')}</p>}
-      {error && <p style={{ color: '#dc2626' }}>{t('page.discovery.error')}: {error}</p>}
+      {printersResource.loading && !printersResource.data && <LoadingState label={t('page.discovery.loading')} />}
 
-      {!loading && !error && printers.length === 0 && (
-        <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280', background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-          {t('page.discovery.empty')}
-        </div>
+      {printersResource.error != null && !printersResource.data && (
+        <ErrorState
+          error={printersResource.error}
+          title={t('page.discovery.failedToFetch')}
+          onRetry={printersResource.refresh}
+        />
       )}
 
-      {!loading && printers.length > 0 && (
+      {!printersResource.loading && printersResource.error == null && printers.length === 0 && (
+        <EmptyState title={t('page.discovery.empty')} />
+      )}
+
+      {printers.length > 0 && (
         <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
             <colgroup>
@@ -181,13 +194,14 @@ export default function DiscoveredPrinters() {
                     </td>
                     <td style={{ padding: '0.75rem 1rem' }}>
                       {!p.registeredPrinterId && (
-                        <button
-                          disabled={registering === p.id}
-                          onClick={() => void handleRegister(p.id, p.localPrinterName)}
-                          style={{ padding: '0.375rem 0.75rem', background: '#1e1e2e', color: '#fff', border: 'none', borderRadius: 4, cursor: registering === p.id ? 'not-allowed' : 'pointer', fontSize: '0.75rem', opacity: registering === p.id ? 0.6 : 1 }}
+                        <Button
+                          size="sm"
+                          busy={register.pending}
+                          busyLabel={t('page.discovery.registering')}
+                          onClick={() => setPendingRegister(p)}
                         >
-                          {registering === p.id ? t('page.discovery.registering') : t('page.discovery.register')}
-                        </button>
+                          {t('page.discovery.register')}
+                        </Button>
                       )}
                     </td>
                   </tr>
@@ -197,6 +211,29 @@ export default function DiscoveredPrinters() {
           </table>
         </div>
       )}
+
+      {/* Replaces window.confirm(): a native modal blocks the whole WebView,
+          cannot be styled or translated consistently, and is invisible to the
+          rest of the app's state. */}
+      <Dialog
+        open={pendingRegister !== null}
+        onClose={() => setPendingRegister(null)}
+        title={t('page.discovery.register')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPendingRegister(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={() => void confirmRegister()} busy={register.pending}>
+              {t('page.discovery.register')}
+            </Button>
+          </>
+        }
+      >
+        {pendingRegister && (
+          <p>{t('page.discovery.confirmRegister').replace('{name}', pendingRegister.localPrinterName)}</p>
+        )}
+      </Dialog>
     </div>
   );
 }

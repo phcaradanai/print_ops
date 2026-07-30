@@ -5182,6 +5182,16 @@ body {
   font-size: 0.875rem;
 }
 
+/* Page title row: title on the left, freshness/refresh on the right. */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-lg);
+  flex-wrap: wrap;
+  margin-bottom: var(--spacing-lg);
+}
+
 /* Age of the data on screen. Always next to retained/polled content. */
 .freshness {
   display: flex;

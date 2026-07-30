@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocale, type Locale } from '../i18n/index.js';
+import { errorMessage } from '../api/errors.js';
+import { useApiAction } from '../hooks/useApiAction.js';
+import { Alert } from '../components/Alert.js';
 import {
   type NatsSettings,
   DEFAULT_NATS_SETTINGS,
@@ -26,7 +29,15 @@ function loadWorkspace(): { projectName: string; workspacePath: string; apiKey: 
   }
 }
 
-function saveWorkspace(projectName: string, workspacePath: string, apiKey: string): void {
+/**
+ * Returns false when the browser refused to persist (private/partitioned mode).
+ *
+ * The guard itself is deliberate and stays — `localStorage` genuinely can throw
+ * here. What changed is that it no longer lies: it used to swallow the failure
+ * and return void, so the caller's own catch could never fire and the page
+ * reported "Saved" over a write that never happened.
+ */
+function saveWorkspace(projectName: string, workspacePath: string, apiKey: string): boolean {
   try {
     localStorage.setItem(WS_PROJECT_KEY, projectName);
     localStorage.setItem(WS_PATH_KEY, workspacePath);
@@ -35,8 +46,9 @@ function saveWorkspace(projectName: string, workspacePath: string, apiKey: strin
     } else {
       localStorage.removeItem(API_KEY_STORAGE_KEY);
     }
+    return true;
   } catch {
-    // localStorage unavailable
+    return false;
   }
 }
 
@@ -65,7 +77,6 @@ export default function Settings() {
   const [natsDirty, setNatsDirty] = useState(false);
   const [natsLoading, setNatsLoading] = useState(true);
   const [natsSupported, setNatsSupported] = useState(false);
-  const [natsSaving, setNatsSaving] = useState(false);
 
   // Clear message after delay
   useEffect(() => {
@@ -123,16 +134,15 @@ export default function Settings() {
 
   const handleWsSave = useCallback(() => {
     setSaving(true);
-    try {
-      saveWorkspace(wsDraft.projectName, wsDraft.workspacePath, wsDraft.apiKey);
+    const persisted = saveWorkspace(wsDraft.projectName, wsDraft.workspacePath, wsDraft.apiKey);
+    if (persisted) {
       setWs(wsDraft);
       setWsDirty(false);
       setMessage({ text: t('settings.saved'), kind: 'success' });
-    } catch {
-      setMessage({ text: t('settings.savedError'), kind: 'error' });
-    } finally {
-      setSaving(false);
+    } else {
+      setMessage({ text: t('settings.storageUnavailable'), kind: 'error' });
     }
+    setSaving(false);
   }, [wsDraft, t]);
 
   const handleWsCancel = useCallback(() => {
@@ -142,20 +152,19 @@ export default function Settings() {
 
   const handleReset = useCallback(() => {
     setResetting(true);
-    try {
-      setLocale('th');
-      setLang('th');
-      const defaults = { projectName: '', workspacePath: '', apiKey: '' };
-      saveWorkspace('', '', '');
-      setWs(defaults);
-      setWsDraft(defaults);
-      setWsDirty(false);
-      setMessage({ text: t('settings.resetDone'), kind: 'success' });
-    } catch {
-      setMessage({ text: t('settings.savedError'), kind: 'error' });
-    } finally {
-      setResetting(false);
-    }
+    setLocale('th');
+    setLang('th');
+    const defaults = { projectName: '', workspacePath: '', apiKey: '' };
+    const persisted = saveWorkspace('', '', '');
+    setWs(defaults);
+    setWsDraft(defaults);
+    setWsDirty(false);
+    setMessage(
+      persisted
+        ? { text: t('settings.resetDone'), kind: 'success' }
+        : { text: t('settings.storageUnavailable'), kind: 'error' },
+    );
+    setResetting(false);
   }, [setLocale, t]);
 
   // ---- NATS handlers ----
@@ -174,28 +183,31 @@ export default function Settings() {
     [nats, natsDraft],
   );
 
-  const handleNatsSave = useCallback(() => {
-    setNatsSaving(true);
-    // Saving restarts only the backend API process in-place and waits for a
-    // health check before resolving — it does NOT restart the whole desktop
-    // app (a prior version did, which raced with the single-instance guard
-    // and could silently leave the old, unconfigured server running). A
-    // successful resolve here means the new NATS settings are genuinely
-    // active, not just written to disk.
-    saveNatsSettings(natsDraft)
-      .then(() => {
-        setNats(natsDraft);
-        setNatsDirty(false);
-        setMessage({ text: t('settings.saved'), kind: 'success' });
-      })
-      .catch((err: unknown) => {
-        setMessage({
-          text: err instanceof Error ? err.message : t('settings.savedError'),
-          kind: 'error',
-        });
-      })
-      .finally(() => setNatsSaving(false));
-  }, [natsDraft, t]);
+  // Saving restarts only the backend API process in-place and waits for a
+  // health check before resolving — it does NOT restart the whole desktop app
+  // (a prior version did, which raced with the single-instance guard and could
+  // silently leave the old, unconfigured server running). A successful resolve
+  // here means the new NATS settings are genuinely active, not just written to
+  // disk — which is why the button must stay busy for the whole round trip.
+  const saveNats = useApiAction(async (settings: NatsSettings) => {
+    await saveNatsSettings(settings);
+    return settings;
+  });
+  const natsSaving = saveNats.pending;
+
+  const handleNatsSave = useCallback(async () => {
+    const saved = await saveNats.run(natsDraft);
+    if (saved) {
+      setNats(saved);
+      setNatsDirty(false);
+      setMessage({ text: t('settings.saved'), kind: 'success' });
+    } else {
+      setMessage({
+        text: `${t('settings.savedError')} ${errorMessage(saveNats.getError())}`,
+        kind: 'error',
+      });
+    }
+  }, [natsDraft, saveNats, t]);
 
   const handleNatsCancel = useCallback(() => {
     setNatsDraft(nats);
@@ -207,13 +219,13 @@ export default function Settings() {
       <h1>{t('settings.title')}</h1>
 
       {message && (
-        <div
-          className={`settings-message settings-message--${message.kind}`}
-          role="status"
-          aria-live="polite"
+        <Alert
+          tone={message.kind === 'success' ? 'success' : 'error'}
+          onDismiss={() => setMessage(null)}
+          dismissLabel={t('error.dismiss')}
         >
           {message.text}
-        </div>
+        </Alert>
       )}
 
       {/* Language */}
@@ -383,7 +395,7 @@ export default function Settings() {
                 type="button"
                 className="settings-btn-primary"
                 disabled={!natsDirty || natsSaving}
-                onClick={handleNatsSave}
+                onClick={() => void handleNatsSave()}
               >
                 {natsSaving ? t('common.loading') : t('settings.nats.applyAndRestart')}
               </button>
