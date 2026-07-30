@@ -33,10 +33,7 @@ export function saveApiKey(key: string): void {
 /**
  * `localStorage` is not guaranteed: it throws in private-mode/partitioned
  * contexts and does not exist at all outside a browser (SSR-style rendering,
- * tests). `getApiKey` already guarded it; `token()` did not, so a single
- * unavailable store turned every API call into an unrelated
- * `ReferenceError: localStorage is not defined` before the request was even
- * built. Guard both directions in one place.
+ * tests). Guard both directions in one place.
  */
 function storageGet(key: string): string | null {
   try {
@@ -66,18 +63,7 @@ function token(): string {
   return storageGet('token') ?? '';
 }
 
-/**
- * Session-expiry notification (FE-01.1).
- *
- * A token that expired mid-session used to produce a 401 on every subsequent
- * call, which each page rendered as its own "could not load" error. The
- * operator was left on a shell that could not load anything, with no hint that
- * signing in again was the fix.
- *
- * Only **401** unwinds the session. A **403** is a permission decision about a
- * valid session — logging the user out on 403 would kick a VIEWER out of the
- * app for clicking an admin action.
- */
+/** Session-expiry notification. Only 401 unwinds the session; 403 does not. */
 type UnauthorizedListener = () => void;
 const unauthorizedListeners = new Set<UnauthorizedListener>();
 
@@ -103,12 +89,8 @@ function authHeaders(): HeadersInit {
   const authToken = token();
   const apiKey = getApiKey();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`;
-  }
-  if (apiKey) {
-    headers['X-Api-Key'] = apiKey;
-  }
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  if (apiKey) headers['X-Api-Key'] = apiKey;
   return headers;
 }
 
@@ -117,6 +99,7 @@ export function apiBase(): string {
   if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE as string;
   return '';
 }
+
 export function healthUrl(): string {
   return apiBase() + '/health';
 }
@@ -131,14 +114,7 @@ function apiUrl(path: string): string {
   return apiBase() + path;
 }
 
-/**
- * Performs an authenticated API call. Always rejects with an {@link ApiError}
- * carrying the status, the server's own message/code and any trace id, so
- * callers can show the operator something actionable instead of
- * "API /jobs -> 500". A fetch-level rejection (server down, offline) becomes an
- * ApiError with `status === 0` and `code === 'NETWORK_ERROR'`.
- */
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function authenticatedResponse(path: string, init: RequestInit, scope: string): Promise<Response> {
   const headers = new Headers(authHeaders());
   new Headers(init.headers).forEach((value, key) => headers.set(key, value));
   const url = apiUrl(path);
@@ -148,16 +124,26 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     res = await fetch(url, { ...init, headers });
   } catch (cause) {
     const error = networkApiError(path, cause);
-    logError('apiFetch', error);
+    logError(scope, error);
     throw error;
   }
 
   if (!res.ok) {
     const error = await apiErrorFromResponse(res, path);
-    logError('apiFetch', error);
+    logError(scope, error);
     if (res.status === 401) notifyUnauthorized();
     throw error;
   }
+
+  return res;
+}
+
+/**
+ * Performs an authenticated JSON API call. A successful endpoint is required
+ * to return valid JSON; empty bodies remain an error instead of being cast to T.
+ */
+export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await authenticatedResponse(path, init, 'apiFetch');
 
   try {
     return (await res.json()) as T;
@@ -172,6 +158,16 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     logError('apiFetch', error);
     throw error;
   }
+}
+
+/**
+ * Explicit success-without-data variant for commands whose response body is not
+ * part of the frontend contract. It accepts 204 and empty 200 responses, and
+ * also drains a body when a server returns one for backward compatibility.
+ */
+export async function apiFetchVoid(path: string, init: RequestInit = {}): Promise<void> {
+  const res = await authenticatedResponse(path, init, 'apiFetchVoid');
+  await res.text();
 }
 
 export async function login(email: string, password: string): Promise<SessionUser> {
@@ -193,9 +189,6 @@ export async function login(email: string, password: string): Promise<SessionUse
 
   if (!res.ok) {
     const parsed = await apiErrorFromResponse(res, path);
-    // A rejected credential is the expected case and must not leak the server's
-    // wording; anything else (server down, misconfigured gateway) is a real
-    // fault the operator has to see verbatim.
     const error =
       res.status === 401
         ? new ApiError({
@@ -232,7 +225,7 @@ export async function apiDownload(path: string, filename: string): Promise<void>
   a.setAttribute('data-auth', authToken);
   // Trigger via fetch + blob to attach auth header
   const headers: Record<string, string> = {};
-  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
   if (apiKey) headers['X-Api-Key'] = apiKey;
   let res: Response;
   try {
