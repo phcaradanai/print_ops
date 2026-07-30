@@ -25,7 +25,11 @@ export function useCanvasInteraction(editor: PaperProfileEditor) {
   const activeScaleRef = useRef(1);
   const dragOffsetRef = useRef({ xMm: 0, yMm: 0 });
   const stateRef = useRef(editor.state);
+  const updateFieldRef = useRef(editor.updateField);
+  const selectFieldRef = useRef(editor.selectField);
   stateRef.current = editor.state;
+  updateFieldRef.current = editor.updateField;
+  selectFieldRef.current = editor.selectField;
 
   const endDrag = useCallback(() => {
     setDraggingFieldId(null);
@@ -64,13 +68,13 @@ export function useCanvasInteraction(editor: PaperProfileEditor) {
         if (Math.abs(field.xMm - xMm) < SNAP_THRESHOLD_MM) xMm = field.xMm;
         if (Math.abs(field.yMm - yMm) < SNAP_THRESHOLD_MM) yMm = field.yMm;
       }
-      editor.updateField(draggingFieldId, {
+      updateFieldRef.current(draggingFieldId, {
         xMm: Number(xMm.toFixed(1)),
         yMm: Number(yMm.toFixed(1)),
       });
     };
     return registerPointerDragListeners(document, onPointerMove, endDrag);
-  }, [draggingFieldId, editor, endDrag]);
+  }, [draggingFieldId, endDrag]);
 
   const startDrag = useCallback((
     event: ReactPointerEvent<HTMLButtonElement>,
@@ -93,9 +97,9 @@ export function useCanvasInteraction(editor: PaperProfileEditor) {
     }
     activeSheetRef.current = sheet;
     activeScaleRef.current = scale;
-    editor.selectField(id);
+    selectFieldRef.current(id);
     setDraggingFieldId(id);
-  }, [editor]);
+  }, []);
 
   return { draggingFieldId, startDrag, endDrag };
 }
