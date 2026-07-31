@@ -85,10 +85,11 @@ function notifyUnauthorized(): void {
   }
 }
 
-function authHeaders(): HeadersInit {
+function authHeaders(hasBody: boolean): HeadersInit {
   const authToken = token();
   const apiKey = getApiKey();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = {};
+  if (hasBody) headers['Content-Type'] = 'application/json';
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
   if (apiKey) headers['X-Api-Key'] = apiKey;
   return headers;
@@ -122,7 +123,7 @@ function apiUrl(path: string): string {
 }
 
 async function authenticatedResponse(path: string, init: RequestInit, scope: string): Promise<Response> {
-  const headers = new Headers(authHeaders());
+  const headers = new Headers(authHeaders(init.body != null));
   new Headers(init.headers).forEach((value, key) => headers.set(key, value));
   const url = apiUrl(path);
 

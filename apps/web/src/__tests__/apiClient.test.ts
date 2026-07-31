@@ -69,6 +69,14 @@ describe('apiFetch', () => {
 });
 
 describe('apiFetchVoid', () => {
+  it('does not send a JSON content type for a bodyless POST', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 })) as typeof fetch;
+
+    await apiFetchVoid('/v1/print-flow/nats-test', { method: 'POST' });
+
+    const [, init] = vi.mocked(globalThis.fetch).mock.calls[0] ?? [];
+    expect(new Headers(init?.headers).has('Content-Type')).toBe(false);
+  });
   it('accepts HTTP 204 with no body', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 })) as typeof fetch;
     await expect(apiFetchVoid('/printers/p1/test-print', { method: 'POST' })).resolves.toBeUndefined();
