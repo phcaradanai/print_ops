@@ -25,6 +25,7 @@ export type AuditAction =
   | 'service_account.created'
   | 'service_account.key_rotated'
   | 'service_account.revoked'
+  | 'database.backup_exported'
   | 'permission.denied'
   | 'printer.registered_from_discovery'
   | 'template.created'

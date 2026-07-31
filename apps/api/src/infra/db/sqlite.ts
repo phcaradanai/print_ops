@@ -6,11 +6,11 @@
  */
 import initSqlJs, { type Database } from 'sql.js';
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from 'node:fs';
+import { copyFileSync, readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
-import { runSchemaMigration } from './sqlite.schema.js';
+import { CURRENT_SCHEMA_VERSION, runSchemaMigration, schemaVersion } from './sqlite.schema.js';
 
 let _db: Database | undefined;
 let _persistentDb: Database | undefined;
@@ -24,6 +24,26 @@ let _dbLockServer: Server | undefined;
 let _dbLockEndpoint: string | undefined;
 let _dbLockRelease: Promise<void> = Promise.resolve();
 let _cleanupHandlersInstalled = false;
+
+export function databaseBackupDirectory(target = dbPath()): string {
+  return `${resolve(target)}.backups`;
+}
+
+function backupTimestamp(): string {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+/** Create a byte-for-byte copy before any migration mutates the in-memory DB. */
+export function createPreMigrationBackup(target: string, fromVersion: number): string {
+  const directory = databaseBackupDirectory(target);
+  mkdirSync(directory, { recursive: true });
+  const backup = join(
+    directory,
+    `printops-before-v${fromVersion}-to-v${CURRENT_SCHEMA_VERSION}-${backupTimestamp()}.db`,
+  );
+  copyFileSync(target, backup);
+  return backup;
+}
 
 function queueSave(): void {
   if (_saveQueued) return;
@@ -182,6 +202,11 @@ export function saveDb(): void {
   try {
     writeFileSync(temporary, buffer);
     renameSync(temporary, target);
+  } catch (error) {
+    throw new Error(
+      `PRINTOPS_DB_WRITE_FAILED: cannot persist ${target}. Check disk space, folder permissions, and file locks. `
+      + `${error instanceof Error ? error.message : String(error)}`,
+    );
   } finally {
     if (existsSync(temporary)) {
       try { unlinkSync(temporary); } catch { /* preserve the primary DB */ }
@@ -259,9 +284,30 @@ async function initialiseDatabase(generation: number): Promise<void> {
     // recreate the DB after that close, and do not retain the acquired lock.
     assertCurrentGeneration(generation);
 
+    let openedExisting = false;
     if (existsSync(target)) {
-      const buffer = readFileSync(target);
-      _db = new SQL.Database(new Uint8Array(buffer));
+      let buffer: Buffer;
+      try {
+        buffer = readFileSync(target);
+      } catch (error) {
+        throw new Error(
+          `PRINTOPS_DB_READ_FAILED: cannot read ${target}. Check permissions and ensure the path is a database file. `
+          + `${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      try {
+        _db = new SQL.Database(new Uint8Array(buffer));
+        const integrity = _db.exec('PRAGMA integrity_check');
+        if (integrity[0]?.values[0]?.[0] !== 'ok') {
+          throw new Error(`integrity_check returned ${String(integrity[0]?.values[0]?.[0] ?? 'no result')}`);
+        }
+      } catch (error) {
+        throw new Error(
+          `PRINTOPS_DB_CORRUPT: unable to open ${target}. Preserve the file and restore a verified backup. `
+          + `${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      openedExisting = true;
       // eslint-disable-next-line no-console
       console.log(`[sqlite] opened ${target} (${buffer.length.toLocaleString()} bytes)`);
     } else {
@@ -270,7 +316,22 @@ async function initialiseDatabase(generation: number): Promise<void> {
       console.log(`[sqlite] created new database (will save to ${target})`);
     }
 
-    runSchemaMigration(_db);
+    const fromVersion = schemaVersion(_db);
+    let backupPath: string | undefined;
+    if (openedExisting && fromVersion < CURRENT_SCHEMA_VERSION) {
+      backupPath = createPreMigrationBackup(target, fromVersion);
+      // eslint-disable-next-line no-console
+      console.log(`[sqlite] pre-migration backup → ${backupPath}`);
+    }
+    try {
+      runSchemaMigration(_db);
+    } catch (error) {
+      throw new Error(
+        `PRINTOPS_DB_MIGRATION_FAILED: schema ${fromVersion} → ${CURRENT_SCHEMA_VERSION} failed. `
+        + `Original database preserved${backupPath ? `; backup: ${backupPath}` : ''}. `
+        + `${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     saveDb(); // persist initial schema
 
     if (!_cleanupHandlersInstalled) {

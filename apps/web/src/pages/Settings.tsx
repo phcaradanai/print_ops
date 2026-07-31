@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLocale, type Locale } from '../i18n/index.js';
 import { errorMessage } from '../api/errors.js';
 import {
+  apiDownload,
   getNatsRuntimeStatus,
   getRuntimeArchitecture,
   testNatsConnection,
@@ -81,6 +82,7 @@ export default function Settings() {
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
 
   // NATS client configuration (desktop only)
   const [nats, setNats] = useState<NatsSettings>(DEFAULT_NATS_SETTINGS);
@@ -347,6 +349,22 @@ export default function Settings() {
                 {runtimeResource.data.deferredProtocols.join(', ')}
               </span>
             </p>
+            <div className="settings-actions">
+              <button
+                type="button"
+                className="settings-btn-secondary"
+                disabled={backingUp}
+                onClick={() => {
+                  setBackingUp(true);
+                  void apiDownload('/v1/system/database-backup', `printops-backup-${new Date().toISOString().slice(0, 10)}.db`)
+                    .catch((cause) => setMessage({ text: errorMessage(cause), kind: 'error' }))
+                    .finally(() => setBackingUp(false));
+                }}
+              >
+                {backingUp ? t('common.loading') : t('settings.database.backup')}
+              </button>
+            </div>
+            <p className="settings-hint">{t('settings.database.backupHint')}</p>
           </>
         )}
       </section>

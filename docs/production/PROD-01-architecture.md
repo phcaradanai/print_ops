@@ -60,6 +60,18 @@ The API validates those values before creating repositories or starting a worker
 - The queue is in memory. On startup, safe pre-dispatch states can be restored; uncertain `DISPATCHED` or `PRINTING` jobs become `UNVERIFIED` and are not replayed automatically.
 - Tauri stores the database, settings, JWT secret, and logs outside the installation directory so an application upgrade does not replace them.
 - NATS configuration is stored by the desktop shell and injected into a restarted API sidecar.
+- SQLite uses `PRAGMA user_version`. Version-zero databases are copied byte for
+  byte into a timestamped `.backups` directory before the transactional
+  migration to version 1. A corrupt, newer, unreadable, locked, or unwritable
+  database fails startup with a stage-specific error; the primary file is
+  never overwritten in place.
+- An OWNER can download a consistent SQLite snapshot from Settings. The export
+  is marked `no-store` and audited. It contains operational history and must be
+  handled as sensitive data.
+- The desktop supervises both packaged sidecars. Unexpected server or discovery
+  runner exits are logged and restarted with the same validated packaged
+  configuration. Normal shutdown sets a guard before terminating children so
+  the supervisor cannot resurrect them.
 
 ## NATS lifecycle
 

@@ -207,6 +207,30 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
     cmd
 }
 
+fn build_runner_command(paths: &ServerPaths) -> Command {
+    let (out, err) = child_stdio(&paths.logs_dir.join("desktop-runner.log"));
+    let mut cmd = Command::new(paths.res_dir.join("printops-runner.exe"));
+    cmd.arg("run")
+        .current_dir(&paths.res_dir)
+        .env("PRINTOPS_API_BASE_URL", SERVER_URL)
+        .env("PRINTOPS_RUNNER_NAME", "desktop-runner")
+        .env("PRINTOPS_DISCOVERY_MODE", "windows")
+        .env("PRINTOPS_EXECUTOR_MODE", "windows-spooler")
+        .env("PRINTOPS_POLL_INTERVAL_MS", "2000")
+        .env(
+            "PRINTOPS_JOBS_ENABLED",
+            DESKTOP_DISCOVERY_RUNNER_JOBS_ENABLED.to_string(),
+        )
+        .env(
+            "PRINTOPS_RUNNER_BOOTSTRAP_SECRET",
+            &paths.runner_bootstrap_secret,
+        )
+        .stdin(Stdio::null())
+        .stdout(out)
+        .stderr(err);
+    cmd
+}
+
 /// Polls the API's health endpoint until it responds 200 or `timeout` elapses.
 /// Returns whether it became healthy in time.
 fn wait_for_server_health(timeout: Duration) -> bool {
@@ -287,6 +311,10 @@ impl ShutdownGuard {
         self.0
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_ok()
+    }
+
+    fn started(&self) -> bool {
+        self.0.load(Ordering::Acquire)
     }
 }
 
@@ -369,6 +397,32 @@ fn kill_child(slot: &Mutex<Option<Child>>, log: &Path, label: &str) {
             let _ = child.kill();
             let _ = child.wait();
         }
+    }
+}
+
+fn restart_exited_child(
+    slot: &Mutex<Option<Child>>,
+    log: &Path,
+    label: &str,
+    build: impl FnOnce() -> Command,
+) {
+    let Ok(mut guard) = slot.lock() else { return };
+    let exited = match guard.as_mut() {
+        Some(child) => match child.try_wait() {
+            Ok(Some(status)) => {
+                log_line(log, &format!("ERROR: {label} exited unexpectedly ({status}); restarting"));
+                true
+            }
+            Ok(None) => false,
+            Err(error) => {
+                log_line(log, &format!("ERROR: could not inspect {label}: {error}; restarting"));
+                true
+            }
+        },
+        None => true,
+    };
+    if exited {
+        *guard = spawn_child(build(), log, label);
     }
 }
 
@@ -491,32 +545,11 @@ pub fn run() {
 
             // ── Start runner (optional: the dashboard still loads without it) ──
             let runner_child = if runner_exe.exists() {
-                let (out, err) = child_stdio(&logs.join("desktop-runner.log"));
-                let mut cmd = Command::new(&runner_exe);
-                cmd.arg("run")
-                    .current_dir(&res_dir)
-                    .env("PRINTOPS_API_BASE_URL", SERVER_URL)
-                    .env("PRINTOPS_RUNNER_NAME", "desktop-runner")
-                    .env("PRINTOPS_DISCOVERY_MODE", "windows")
-                    .env("PRINTOPS_EXECUTOR_MODE", "windows-spooler")
-                    .env("PRINTOPS_POLL_INTERVAL_MS", "2000")
-                    // Discovery only: the API executes jobs in-process via its
-                    // TypeScript WindowsSpoolerAdapter, so leaving job polling
-                    // on here would let the Go runner claim the same queue
-                    // and double-print (it also cannot execute against this
-                    // IPP/GDI printer via raw WritePrinter).
-                    .env(
-                        "PRINTOPS_JOBS_ENABLED",
-                        DESKTOP_DISCOVERY_RUNNER_JOBS_ENABLED.to_string(),
-                    )
-                    .env(
-                        "PRINTOPS_RUNNER_BOOTSTRAP_SECRET",
-                        &server_paths.runner_bootstrap_secret,
-                    )
-                    .stdin(Stdio::null())
-                    .stdout(out)
-                    .stderr(err);
-                spawn_child(cmd, &app_log, "printops-runner.exe")
+                spawn_child(
+                    build_runner_command(&server_paths),
+                    &app_log,
+                    "printops-runner.exe",
+                )
             } else {
                 log_line(
                     &app_log,
@@ -530,6 +563,40 @@ pub fn run() {
                 runner_child: Mutex::new(runner_child),
                 shutdown: ShutdownGuard::default(),
                 paths: server_paths,
+            });
+
+            // Sidecars are product processes, not fire-and-forget helpers.
+            // Detect an unexpected exit and restart the exact packaged command.
+            // ShutdownGuard prevents resurrection during a normal app exit.
+            let supervisor_handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_secs(2));
+                let Some(state) = supervisor_handle.try_state::<AppState>() else { return };
+                if state.shutdown.started() {
+                    return;
+                }
+                let nats_settings = state
+                    .paths
+                    .db_path
+                    .parent()
+                    .map(|data_dir| load_nats_settings(data_dir, &state.paths.app_log))
+                    .unwrap_or_default();
+                if state.paths.res_dir.join("server.exe").exists() {
+                    restart_exited_child(
+                        &state.server_child,
+                        &state.paths.app_log,
+                        "server.exe",
+                        || build_server_command(&state.paths, &nats_settings),
+                    );
+                }
+                if state.paths.res_dir.join("printops-runner.exe").exists() {
+                    restart_exited_child(
+                        &state.runner_child,
+                        &state.paths.app_log,
+                        "printops-runner.exe",
+                        || build_runner_command(&state.paths),
+                    );
+                }
             });
 
             // The config window is created before `setup` runs, so its first load

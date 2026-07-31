@@ -100,6 +100,7 @@ import { IntakeOutcomeCallbackService } from './services/intake-outcome-callback
 import { runtimeArchitectureFromEnv } from './infra/runtime-architecture.js';
 import { hashPassword } from './infra/auth/password.js';
 import { serviceAccountRoutes } from './routes/v1/service-accounts.routes.js';
+import { databaseBackupRoutes } from './routes/v1/database-backup.routes.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -838,6 +839,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await paperProfileImportRoutes(v1, { importService: importPaperProfile });
     await v1UserRoutes(v1, { users: userRepo });
     await serviceAccountRoutes(v1, { serviceAccounts: serviceAccountRepo, audit: auditRepo });
+    await databaseBackupRoutes(v1, { audit: auditRepo, sqliteEnabled: useSqlite });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
   if (printIntakeCfg) {

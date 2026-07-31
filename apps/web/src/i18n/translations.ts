@@ -118,6 +118,8 @@ const en: TranslationDict = {
   'settings.serviceAccounts.revoke': 'Revoke',
   'settings.serviceAccounts.rotateConfirm': 'Rotate this key? The previous key will stop working immediately.',
   'settings.serviceAccounts.revokeConfirm': 'Revoke this key? The integration will stop working immediately.',
+  'settings.database.backup': 'Download database backup',
+  'settings.database.backupHint': 'Sensitive: this backup contains operational history. Store it encrypted and restore only while PrintOps is stopped.',
 
   // Splash
   'splash.starting': 'Starting local PrintOps service…',
@@ -1157,6 +1159,8 @@ const th: TranslationDict = {
   'settings.serviceAccounts.revoke': 'เพิกถอน',
   'settings.serviceAccounts.rotateConfirm': 'หมุนเวียนคีย์นี้หรือไม่ คีย์เดิมจะหยุดทำงานทันที',
   'settings.serviceAccounts.revokeConfirm': 'เพิกถอนคีย์นี้หรือไม่ ระบบเชื่อมต่อจะหยุดทำงานทันที',
+  'settings.database.backup': 'ดาวน์โหลดข้อมูลสำรองฐานข้อมูล',
+  'settings.database.backupHint': 'ข้อมูลละเอียดอ่อน: ไฟล์นี้มีประวัติการทำงาน ให้จัดเก็บแบบเข้ารหัสและกู้คืนเฉพาะเมื่อปิด PrintOps แล้ว',
 
   // Splash
   'splash.starting': 'กำลังเริ่มบริการ PrintOps ภายในเครื่อง…',

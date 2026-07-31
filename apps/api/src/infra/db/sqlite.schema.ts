@@ -1,5 +1,12 @@
 import type { Database } from 'sql.js';
 
+export const CURRENT_SCHEMA_VERSION = 1;
+
+export function schemaVersion(db: Database): number {
+  const result = db.exec('PRAGMA user_version');
+  return Number(result[0]?.values[0]?.[0] ?? 0);
+}
+
 function hasColumn(db: Database, table: string, column: string): boolean {
   const stmt = db.prepare(`PRAGMA table_info(${table})`);
   try {
@@ -18,11 +25,36 @@ function ensureColumn(db: Database, table: string, column: string, definition: s
   }
 }
 
-/** Run CREATE TABLE IF NOT EXISTS for all entities. Idempotent — safe to call every boot. */
+/**
+ * Apply every schema change transactionally and advance PRAGMA user_version.
+ *
+ * Version 0 is the legacy unversioned schema. Its migration deliberately runs
+ * the complete idempotent schema below so databases from any earlier desktop
+ * build converge to the same version-1 shape.
+ */
 export function runSchemaMigration(db: Database): void {
+  const fromVersion = schemaVersion(db);
+  if (fromVersion > CURRENT_SCHEMA_VERSION) {
+    throw new Error(
+      `PRINTOPS_DB_NEWER_SCHEMA: database schema ${fromVersion} is newer than this application supports (${CURRENT_SCHEMA_VERSION}).`,
+    );
+  }
+  if (fromVersion === CURRENT_SCHEMA_VERSION) return;
+
   db.run('PRAGMA journal_mode=WAL');
   db.run('PRAGMA foreign_keys=ON');
+  db.run('BEGIN IMMEDIATE TRANSACTION');
+  try {
+    migrateVersionZeroToOne(db);
+    db.run(`PRAGMA user_version=${CURRENT_SCHEMA_VERSION}`);
+    db.run('COMMIT');
+  } catch (error) {
+    try { db.run('ROLLBACK'); } catch { /* retain the original migration error */ }
+    throw error;
+  }
+}
 
+function migrateVersionZeroToOne(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS printers (
       id TEXT PRIMARY KEY NOT NULL,

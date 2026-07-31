@@ -41,6 +41,7 @@ describe('SQLite schema migration', () => {
         occurred_at TEXT NOT NULL
       )
     `);
+    db.run('PRAGMA user_version = 0');
     closeDatabase();
 
     await initDatabase();

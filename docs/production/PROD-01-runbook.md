@@ -97,18 +97,25 @@ without requiring an application restart. Duplicate client IDs are prohibited.
 
 ## Backup and restore
 
-The per-user application-data directory contains `printops.db`, desktop
-settings, installation secrets, and logs. Until the dedicated backup action is
-implemented and accepted, database backup/restore remains a pilot limitation:
+Select **Settings → Download database backup** while signed in as OWNER. The
+download is a consistent SQLite snapshot and the action is audited. It contains
+operational history and must be moved immediately to approved encrypted
+storage.
+
+Restore remains an offline operator procedure:
 
 1. Exit PrintOps and confirm its sidecars have stopped.
-2. Copy the entire application-data directory to approved encrypted storage.
-3. Record application version and backup time.
-4. Restore only while PrintOps is stopped and only to the same protected
-   Windows user context.
+2. Preserve the current `printops.db` under a new incident filename.
+3. Copy the verified backup to the application-data directory as `printops.db`.
+4. Start PrintOps and verify owner login, schema version, printers, jobs,
+   callback state, and Audit Logs.
+
+On an application upgrade, PrintOps creates a timestamped byte-for-byte backup
+in `printops.db.backups` before applying a schema migration. A failed migration
+preserves the primary and backup and prevents startup.
 
 Never copy `jwt-secret.txt` or `runner-bootstrap-secret.txt` into support
-attachments. A production backup procedure still requires Phase 4 validation.
+attachments. Packaged restore still requires clean-machine acceptance evidence.
 
 ## Logs and support
 
@@ -126,8 +133,10 @@ may be recovered. A job interrupted in `DISPATCHED` or `PRINTING` must become
 `UNVERIFIED` and must not print automatically. Follow the job trace and inspect
 the physical printer before an OWNER decides whether to create a new request.
 
-If a sidecar fails, capture its redacted log and restart PrintOps. Do not launch
-a second server or runner manually against the same database.
+If a sidecar exits unexpectedly, the desktop logs the exit and restarts that
+sidecar with the packaged configuration. If repeated restarts continue, capture
+the redacted logs and restart PrintOps. Do not launch a second server or runner
+manually against the same database.
 
 ## Upgrade, rollback, and uninstall
 

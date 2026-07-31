@@ -26,7 +26,9 @@ or unit tests do not override a blocked acceptance gate.
 
 - Clean Windows installation without developer toolchains.
 - Full first-run and legacy-database authentication exercise in the installer.
-- Dedicated database backup/restore UI and versioned migration rollback proof.
+- Packaged restore, prior-installer migration, and migration rollback proof
+  remain outstanding; backup download and versioned pre-migration copies are
+  implemented.
 - Credential-safe downloadable support bundle.
 - Physical UI, HTTP, and NATS prints through a real installed printer.
 - The physical printer failure matrix.
