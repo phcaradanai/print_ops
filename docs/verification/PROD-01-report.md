@@ -10,9 +10,9 @@ physical, cross-machine, and upgrade evidence. A `BLOCKED` row is not a pass.
 | Report date/time | 2026-07-31, Asia/Bangkok |
 | Branch | `mvp_nippon` |
 | Application version | 0.1.15 |
-| Git commit | Pending authentication-phase commit |
-| Installer MSI | Pending rebuilt installer |
-| Installer NSIS | Pending rebuilt installer |
+| Git commit | `7cd6a5e8a2cf18640607342f506513f4e1c4b7ca` |
+| Installer MSI | `PrinterOps_0.1.15_x64_en-US.msi`, 26,509,312 bytes, SHA-256 `9ec1e4c81582d4e4ad8c6ca0dfa63a76792d02dbaa82279cc7df5460f723a304` |
+| Installer NSIS | `PrinterOps_0.1.15_x64-setup.exe`, 20,146,690 bytes, SHA-256 `fa8c0ded4f41bbe2ce8c419e8f8ce2e120710486d774ddfcfb6e7431896bb546` |
 | Windows version | Development workstation only; clean-machine value pending |
 | Printer | Pending physical acceptance |
 | NATS | Automated loopback: 2.10.29, pinned digest; cross-machine acceptance pending |
@@ -21,7 +21,7 @@ physical, cross-machine, and upgrade evidence. A `BLOCKED` row is not a pass.
 
 | Gate | Result | Evidence |
 | --- | --- | --- |
-| AUTOMATED | PARTIAL | API 45 files/350+ tests, web 23 files/453 tests, API/web typechecks and builds, Go suite, Rust suite, SQLite migration/backup, readiness, support-bundle redaction, pinned real JetStream/TCP callback matrix, and 67 built-static Playwright tests pass; packaged sidecar smoke remains incomplete. |
+| AUTOMATED | PASS | API 45 files/351 tests, web 23 files/453 tests, API/web typechecks and builds, Go suite, Rust suite, SQLite migration/backup, readiness, support-bundle redaction, pinned real JetStream/TCP callback matrix, 67 built-static Playwright tests, release-verifier negatives, final MSI/NSIS verification, and packaged sidecar smoke pass. |
 | PACKAGED CLEAN-MACHINE | BLOCKED | No post-authentication installer clean-install evidence captured. |
 | PHYSICAL PRINTER | BLOCKED | No physical sample or packaged UI/HTTP/NATS print matrix captured. |
 | CROSS-MACHINE NATS | BLOCKED | No off-host broker/listener evidence captured. |
@@ -39,7 +39,7 @@ physical, cross-machine, and upgrade evidence. A `BLOCKED` row is not a pass.
 | KEY-02 | Rotate/revoke immediately invalidate lifecycle state | Hash changes on rotation; account inactive on revoke | `apps/api/src/tests/service-account-security.test.ts` | PASS | Bound-port external caller exercise pending |
 | KEY-03 | OWNER-only mutation with actor audit | ADMIN receives 403; three actor-attributed audit actions recorded | `apps/api/src/tests/service-account-security.test.ts` | PASS | Audit UI screenshot pending |
 | AUTH-05 | External intake unavailable before OWNER setup | API-key hook returns 503 before readiness | `apps/api/src/tests/service-account-security.test.ts` | PASS | Real NATS pending-message behavior pending |
-| API-01 | Existing API regression suite stays green | 45 files / 350 tests pass | Local command output, 2026-07-31 | PASS | Bound-port and real-service integration remain |
+| API-01 | Existing API regression suite stays green | 45 files / 351 tests pass | Local command output, 2026-07-31 | PASS | Physical and off-host integration remain |
 | WEB-01 | Frontend regressions absent and translations remain paired | 23 files / 453 tests pass; production Vite build passes | Local command output, 2026-07-31 | PASS | Packaged WebView exercise pending |
 | RUNNER-01 | Go runner remains build/test clean | `go test ./...` passes | Local command output, 2026-07-31 | PASS | Packaged runner authentication pending |
 | DESKTOP-01 | Per-installation secrets use OS CSPRNG and persist | Rust check and 5 tests pass | Local command output, 2026-07-31 | PASS | File ACL/clean-install inspection pending |
@@ -51,6 +51,8 @@ physical, cross-machine, and upgrade evidence. A `BLOCKED` row is not a pass.
 | SUPPORT-01 | Support export is OWNER-only, audited, bounded, and credential-safe | ADMIN receives 403; payloads, targets, URL credentials, bearer tokens, API keys, and passwords are absent | `apps/api/src/tests/readiness-support-bundle.test.ts` | PASS | Manual packaged bundle review pending |
 | NATS-E2E-01 | Real JetStream intake and real TCP callbacks cover both transports without duplicates | Pinned NATS 2.10.29 container passes API/NATS intake × HTTP/NATS callback, no-callback, DLQ, retry/recovery, and cross-transport idempotency cells | `artifacts/e2e/e2e-report.json`, generated 2026-07-31T10:07:45Z | PASS | Loopback fake-printer automation only; off-host and physical proof pending |
 | WEB-E2E-01 | Production static bundle remains operable at supported viewports | 67/67 Playwright tests pass against `apps/web/dist` | Local command output, 2026-07-31 | PASS | WebView2 packaged exercise pending |
+| RELEASE-01 | Release fails closed and emits current installer hashes | Four verifier-negative tests reject version drift, forbidden artifacts, missing/zero resources, and stale outputs; final post-bundle gate verifies both installers against current resources | `scripts/release-verify.test.mjs`, `artifacts/prod-01/release-manifest.json`, generated 2026-07-31T10:29:07Z | PASS | Code signing and clean-machine installation pending |
+| PACKAGED-01 | Shipped API and discovery binaries start with production topology and persist state | Final bundled `server.exe` reports healthy, bootstraps one OWNER, registers discovery-only runner, reports `SINGLE_EXECUTOR`, and restarts with the same SQLite database | `artifacts/prod-01/packaged-sidecar-smoke.json`, generated after final bundle | PASS | Tauri/WebView2 clean-machine UI and filesystem ACL exercise pending |
 
 ## Packaged, physical, cross-machine, and recovery matrices
 
