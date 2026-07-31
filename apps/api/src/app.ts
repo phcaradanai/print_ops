@@ -298,6 +298,16 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     // snapshot that endpoint's callback configuration onto the job.
     webhookEndpointRepo,
   );
+  // Dynamic printing (the template/profile HTTP route and NATS intake) is a
+  // rendered-document flow. Keep its service separate from the legacy
+  // /print-jobs intake above: that route may submit an already-rendered/raw
+  // document, while dynamic intake must turn template + payload into printable
+  // content before the adapter sees the job.
+  const acceptDynamicPrintJob = new AcceptExternalJobService(
+    jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus,
+    templateRepo, paperRepo, templateRenderer, intakeAttemptRepo,
+    webhookEndpointRepo,
+  );
   const cancelJob = new CancelJobService(jobRepo, traceRepo, auditRepo, eventBus);
   const executeJob = new ExecuteJobService(jobRepo, printerRepo, traceRepo, auditRepo, queue, eventBus, registry);
   const registerRunner = new RegisterRunnerService(runnerRepo, auditRepo, eventBus);
@@ -332,7 +342,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const resolvePrinterBinding = new ResolvePrinterBindingService(paperRepo, bindingRepo, templateRepo);
   const dynamicPrint = new DynamicPrintService(
     resolvePrinterBinding,
-    acceptExternalJob,
+    acceptDynamicPrintJob,
     intakeAttemptRepo,
     // `endpoint_code` on the dynamic HTTP body and the NATS envelope resolves
     // through here; the template repo closes the hole where an explicit
