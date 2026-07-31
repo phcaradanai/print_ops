@@ -149,7 +149,7 @@ try {
 
   const initial = await json(base, '/auth/bootstrap');
   if (initial.status !== 200 || initial.body?.state !== 'REQUIRED_NEW') {
-    throw new Error(`unexpected initial bootstrap state: ${JSON.stringify(initial)}`);
+    throw new Error(`unexpected initial bootstrap state: HTTP ${initial.status}, state=${initial.body?.state ?? 'missing'}`);
   }
   findings.push({ check: 'first-run-no-seeded-owner', status: 'PASS' });
 
@@ -162,8 +162,8 @@ try {
       passwordConfirmation: ownerPassword,
     },
   });
-  if (bootstrapped.status !== 201 || !bootstrapped.body?.token) {
-    throw new Error(`owner bootstrap failed: ${JSON.stringify(bootstrapped)}`);
+  if (bootstrapped.status !== 200 || !bootstrapped.body?.token) {
+    throw new Error(`owner bootstrap failed: HTTP ${bootstrapped.status}, token=${bootstrapped.body?.token ? 'present' : 'missing'}`);
   }
   const auth = { authorization: `Bearer ${bootstrapped.body.token}` };
   findings.push({ check: 'owner-bootstrap', status: 'PASS' });
@@ -175,7 +175,7 @@ try {
     return rows?.find((item) => item.name === 'packaged-smoke-discovery');
   });
   if (runner.metadata?.jobs_enabled !== false || runner.supportedProtocols?.length !== 0) {
-    throw new Error(`discovery runner advertised execution capability: ${JSON.stringify(runner)}`);
+    throw new Error('discovery runner advertised execution capability');
   }
   findings.push({ check: 'runner-discovery-only', status: 'PASS' });
 
@@ -184,7 +184,7 @@ try {
       || architecture.body?.invariant?.code !== 'SINGLE_EXECUTOR'
       || architecture.body?.executor?.owner !== 'api-local-worker'
       || architecture.body?.discovery?.jobsEnabled !== false) {
-    throw new Error(`unsafe runtime architecture: ${JSON.stringify(architecture)}`);
+    throw new Error(`unsafe runtime architecture: HTTP ${architecture.status}`);
   }
   findings.push({ check: 'single-executor-invariant', status: 'PASS' });
 
@@ -193,7 +193,7 @@ try {
       || readiness.body?.components?.localApi?.state !== 'READY'
       || readiness.body?.components?.database?.state !== 'READY'
       || readiness.body?.components?.localPrintWorker?.state !== 'READY') {
-    throw new Error(`core readiness is not healthy: ${JSON.stringify(readiness)}`);
+    throw new Error(`core readiness is not healthy: HTTP ${readiness.status}`);
   }
   findings.push({ check: 'core-readiness', status: 'PASS' });
 
@@ -206,7 +206,7 @@ try {
   await waitFor('restarted packaged API health', async () => (await fetch(`${base}/health`)).ok);
   const persisted = await json(base, '/auth/bootstrap');
   if (persisted.status !== 200 || persisted.body?.state !== 'READY') {
-    throw new Error(`owner state did not survive restart: ${JSON.stringify(persisted)}`);
+    throw new Error(`owner state did not survive restart: HTTP ${persisted.status}, state=${persisted.body?.state ?? 'missing'}`);
   }
   findings.push({ check: 'sqlite-restart-persistence', status: 'PASS' });
 
