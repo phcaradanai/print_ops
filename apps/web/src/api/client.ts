@@ -108,6 +108,27 @@ export interface NatsRuntimeStatus {
 export function getNatsRuntimeStatus(): Promise<NatsRuntimeStatus> { return apiFetch<NatsRuntimeStatus>('/v1/print-flow/nats-status'); }
 export function testNatsConnection(): Promise<{ ok: boolean; stage: string; code?: string; message: string; durationMs: number }> { return apiFetch('/v1/print-flow/nats-test', { method: 'POST' }); }
 
+export interface RuntimeArchitecture {
+  runtimeMode: 'packaged-windows-desktop' | 'server';
+  executor: {
+    owner: 'api-local-worker' | 'external-runner';
+    mode: 'typescript-windows-spooler' | 'external-runner';
+    enabled: boolean;
+  };
+  discovery: {
+    owner: 'go-runner';
+    mode: 'windows-installed-printers' | 'platform-configured';
+    jobsEnabled: boolean;
+  };
+  invariant: { ok: true; code: 'SINGLE_EXECUTOR' };
+  supportedProductionProtocols: string[];
+  deferredProtocols: string[];
+}
+
+export function getRuntimeArchitecture(): Promise<RuntimeArchitecture> {
+  return apiFetch<RuntimeArchitecture>('/v1/print-flow/runtime-architecture');
+}
+
 export function healthUrl(): string {
   return apiBase() + '/health';
 }

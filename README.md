@@ -452,7 +452,7 @@ Operators can also retrieve:
 - Current dashboard auth accepts any password for the seeded admin user.
 - API key auth exists for external `/api/v1` endpoints, with a seeded dev key.
 - Real printer adapters are not confirmed production-ready.
-- Current runner execution uses local Go runner adapter execution. The Go runner resolves the printer protocol at runtime and dispatches to the matching executor.
+- Packaged Windows execution is owned by the bundled API local worker through the TypeScript `WindowsSpoolerAdapter`. The Go runner performs discovery and heartbeat only.
 - Docker Compose references Dockerfiles that are not present in this repo.
 - Production service account creation, key rotation, and deployment steps are TBD / ต้องยืนยัน.
 
@@ -842,7 +842,7 @@ field ที่ยืนยันจาก route code ว่าจำเป็�
 - auth ปัจจุบันยังรับ password อะไรก็ได้สำหรับ admin dev user
 - external API มี API key auth และมี dev key ที่ seed มา
 - real printer adapters ยังไม่ยืนยันว่าใช้งาน production ได้
-- runner execution ใช้ Go runner เป็นหลัก โดย resolve printer protocol และ dispatch ไป executor ที่ตรงกัน
+- ในแพ็กเกจ Windows ตัวทำงาน API ภายในเครื่องเป็นผู้ดำเนินงานพิมพ์ผ่าน TypeScript `WindowsSpoolerAdapter` ส่วน Go runner ใช้ค้นหาเครื่องพิมพ์และส่ง heartbeat เท่านั้น
 - production service account, key rotation, network setup, และ deployment steps ยัง TBD / ต้องยืนยัน
 
 ## More Documentation

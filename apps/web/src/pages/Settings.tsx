@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocale, type Locale } from '../i18n/index.js';
 import { errorMessage } from '../api/errors.js';
-import { getNatsRuntimeStatus, testNatsConnection, type NatsRuntimeStatus } from '../api/client.js';
+import {
+  getNatsRuntimeStatus,
+  getRuntimeArchitecture,
+  testNatsConnection,
+  type NatsRuntimeStatus,
+} from '../api/client.js';
 import { useApiAction } from '../hooks/useApiAction.js';
+import { useApiResource } from '../hooks/useApiResource.js';
 import { Alert } from '../components/Alert.js';
+import { ErrorBanner, Freshness, LoadingState } from '../components/PageState.js';
 import {
   type NatsSettings,
   DEFAULT_NATS_SETTINGS,
@@ -55,6 +62,8 @@ function saveWorkspace(projectName: string, workspacePath: string, apiKey: strin
 
 export default function Settings() {
   const { t, locale, setLocale } = useLocale();
+  const fetchRuntimeArchitecture = useCallback(() => getRuntimeArchitecture(), []);
+  const runtimeResource = useApiResource(fetchRuntimeArchitecture);
 
   // Language
   const [lang, setLang] = useState<Locale>(locale);
@@ -268,6 +277,77 @@ export default function Settings() {
             <option value="th">{t('settings.language.th')}</option>
           </select>
         </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-system-heading">
+        <div className="settings-section-heading">
+          <h2 id="settings-system-heading">{t('settings.system.title')}</h2>
+          <Freshness
+            lastSuccessAt={runtimeResource.lastSuccessAt}
+            stale={runtimeResource.stale}
+            refreshing={runtimeResource.refreshing}
+            paused={runtimeResource.paused}
+            onRefresh={runtimeResource.refresh}
+          />
+        </div>
+        <p className="settings-hint">{t('settings.system.description')}</p>
+        {runtimeResource.data === undefined && runtimeResource.error == null && <LoadingState />}
+        {runtimeResource.error != null && (
+          <ErrorBanner error={runtimeResource.error} onRetry={runtimeResource.refresh} />
+        )}
+        {runtimeResource.data && (
+          <>
+            <div className="settings-runtime-state" role="status">
+              <span className="settings-runtime-state__mark" aria-hidden="true">✓</span>
+              <span>
+                <strong>{t('settings.system.singleExecutor')}</strong>
+                <small>{t('settings.system.singleExecutorDetail')}</small>
+              </span>
+            </div>
+            <dl className="settings-runtime-grid">
+              <div>
+                <dt>{t('settings.system.runtime')}</dt>
+                <dd>{runtimeResource.data.runtimeMode === 'packaged-windows-desktop'
+                  ? t('settings.system.runtime.packaged')
+                  : t('settings.system.runtime.server')}</dd>
+              </div>
+              <div>
+                <dt>{t('settings.system.executorOwner')}</dt>
+                <dd>{runtimeResource.data.executor.owner === 'api-local-worker'
+                  ? t('settings.system.executor.api')
+                  : t('settings.system.executor.external')}</dd>
+              </div>
+              <div>
+                <dt>{t('settings.system.executorMode')}</dt>
+                <dd>{runtimeResource.data.executor.mode === 'typescript-windows-spooler'
+                  ? t('settings.system.executor.windowsSpooler')
+                  : t('settings.system.executor.external')}</dd>
+              </div>
+              <div>
+                <dt>{t('settings.system.discoveryOwner')}</dt>
+                <dd>{t('settings.system.discovery.goRunner')}</dd>
+              </div>
+              <div>
+                <dt>{t('settings.system.runnerClaims')}</dt>
+                <dd>{runtimeResource.data.discovery.jobsEnabled
+                  ? t('settings.system.runnerClaims.enabled')
+                  : t('settings.system.runnerClaims.disabled')}</dd>
+              </div>
+              <div>
+                <dt>{t('settings.system.protocolScope')}</dt>
+                <dd>{runtimeResource.data.supportedProductionProtocols.length
+                  ? runtimeResource.data.supportedProductionProtocols.join(', ')
+                  : t('common.noData')}</dd>
+              </div>
+            </dl>
+            <p className="settings-hint">
+              {t('settings.system.deferred')}{' '}
+              <span className="settings-hint--mono">
+                {runtimeResource.data.deferredProtocols.join(', ')}
+              </span>
+            </p>
+          </>
+        )}
       </section>
 
       {/* Workspace Profile */}

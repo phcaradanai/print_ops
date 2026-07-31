@@ -14,6 +14,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 const SERVER_URL: &str = "http://127.0.0.1:31415";
 const SERVER_PORT: &str = "31415";
+const DESKTOP_DISCOVERY_RUNNER_JOBS_ENABLED: bool = false;
 const NATS_SETTINGS_FILE: &str = "nats-settings.json";
 const JWT_SECRET_FILE: &str = "jwt-secret.txt";
 
@@ -179,7 +180,12 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
         .env("PORT", SERVER_PORT)
         .env("HOST", "127.0.0.1")
         .env("DB_MODE", "sqlite")
+        .env("PRINTOPS_RUNTIME_MODE", "packaged-windows-desktop")
         .env("PRINTOPS_LOCAL_WORKER", "true")
+        .env(
+            "PRINTOPS_DISCOVERY_RUNNER_JOBS_ENABLED",
+            DESKTOP_DISCOVERY_RUNNER_JOBS_ENABLED.to_string(),
+        )
         .env("PRINTOPS_DB_PATH", &paths.db_path)
         .env("SQL_WASM_PATH", &paths.wasm_path)
         .env("JWT_SECRET", &paths.jwt_secret)
@@ -500,7 +506,10 @@ pub fn run() {
                     // on here would let the Go runner claim the same queue
                     // and double-print (it also cannot execute against this
                     // IPP/GDI printer via raw WritePrinter).
-                    .env("PRINTOPS_JOBS_ENABLED", "false")
+                    .env(
+                        "PRINTOPS_JOBS_ENABLED",
+                        DESKTOP_DISCOVERY_RUNNER_JOBS_ENABLED.to_string(),
+                    )
                     .env("PRINTOPS_DEV_EMAIL", "admin@printerops.local")
                     .env("PRINTOPS_DEV_PASSWORD", "dev-password")
                     .stdin(Stdio::null())

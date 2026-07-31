@@ -3,6 +3,7 @@ import type { IntakeAttemptRepositoryPort } from '@printerops/domain';
 import { requirePermission } from './permission-guard.js';
 import { redactNatsUrl, type PrintIntakeConfig } from '../../infra/nats/print-intake.js';
 import type { NatsRuntimeStatus } from '../../infra/nats/nats-connection-manager.js';
+import type { RuntimeArchitecture } from '../../infra/runtime-architecture.js';
 
 /**
  * Read-only view of the dynamic print-flow transports, for the sysadmin
@@ -19,6 +20,7 @@ export async function v1PrintFlowRoutes(
     natsStatus: () => NatsRuntimeStatus;
     natsTest: () => Promise<{ ok: boolean; stage: string; code?: string; message: string; durationMs: number }>;
     intakeLog?: IntakeAttemptRepositoryPort;
+    runtimeArchitecture: RuntimeArchitecture;
   },
 ): Promise<void> {
   app.get(
@@ -54,6 +56,12 @@ export async function v1PrintFlowRoutes(
   app.get('/print-flow/nats-status', { onRequest: [requirePermission('template:read')] }, async (_req, reply) => reply.send(deps.natsStatus()));
 
   app.post('/print-flow/nats-test', { onRequest: [requirePermission('template:read')] }, async (_req, reply) => reply.send(await deps.natsTest()));
+
+  app.get(
+    '/print-flow/runtime-architecture',
+    { onRequest: [requirePermission('template:read')] },
+    async (_req, reply) => reply.send(deps.runtimeArchitecture),
+  );
 
   // Read-only log of every dynamic-print-flow intake attempt (NATS or HTTP),
   // including rejected/dead-lettered ones — so a sysadmin can see that a job

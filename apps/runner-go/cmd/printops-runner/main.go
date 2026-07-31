@@ -73,13 +73,15 @@ func runRunner(ctx context.Context) error {
 	reg, err := client.Register(regCtx, api.RegisterRequest{
 		Name:               cfg.RunnerName,
 		Hostname:           cfg.Hostname,
-		SupportedProtocols: []string{"fake", "raw-tcp-9100", "windows-spooler", "zpl", "tspl"},
+		SupportedProtocols: supportedProtocols(cfg),
 		Metadata: map[string]any{
-			"os":             cfg.OS,
-			"arch":           cfg.Arch,
-			"version":        cfg.Version,
-			"executor_mode":  string(cfg.ExecutorMode),
-			"discovery_mode": string(cfg.ResolveDiscoveryMode()),
+			"os":                       cfg.OS,
+			"arch":                     cfg.Arch,
+			"version":                  cfg.Version,
+			"executor_mode":            effectiveExecutorMode(cfg),
+			"configured_executor_mode": string(cfg.ExecutorMode),
+			"jobs_enabled":             cfg.JobsEnabled,
+			"discovery_mode":           string(cfg.ResolveDiscoveryMode()),
 		},
 		Os:       cfg.OS,
 		Arch:     cfg.Arch,
@@ -148,6 +150,20 @@ func runRunner(ctx context.Context) error {
 		"completed", jobLooper.Completed(), "failed", jobLooper.Failed(),
 		"metrics", metrics.Snapshot())
 	return nil
+}
+
+func effectiveExecutorMode(cfg *config.Config) string {
+	if !cfg.JobsEnabled {
+		return "disabled-discovery-only"
+	}
+	return string(cfg.ExecutorMode)
+}
+
+func supportedProtocols(cfg *config.Config) []string {
+	if !cfg.JobsEnabled {
+		return []string{}
+	}
+	return []string{"fake", "raw-tcp-9100", "windows-spooler", "zpl", "tspl"}
 }
 
 // buildDiscovery constructs the discovery backend for the given mode.

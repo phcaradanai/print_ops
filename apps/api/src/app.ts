@@ -97,6 +97,7 @@ import { initDatabase, getDb } from './infra/db/sqlite.js';
 import { pruneOldRecords, retentionDaysFromEnv, retentionMaxRowsFromEnv } from './infra/db/retention.js';
 import { ReprintJobService } from './services/reprint-job.service.js';
 import { IntakeOutcomeCallbackService } from './services/intake-outcome-callback.service.js';
+import { runtimeArchitectureFromEnv } from './infra/runtime-architecture.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -153,6 +154,7 @@ const resultCallbackHttpSender: CallbackHttpSender = async (url, body, opts) => 
 declare var __dirname: string;
 
 export async function buildApp(opts: { jwtSecret?: string } = {}) {
+  const runtimeArchitecture = runtimeArchitectureFromEnv();
   const app = Fastify({
     logger: {
       redact: ['req.headers.authorization', 'req.headers["x-api-key"]', 'body.payload'],
@@ -780,7 +782,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   await app.register(async (v1) => {
     await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, acceptExternalJob, cancelJob, executeJob, apiKeyHook, intakeLog: intakeAttemptRepo, intakeCallbacks: intakeOutcomeCallbacks });
     await v1PrinterPrintRoutes(v1, { dynamicPrint, apiKeyHook, intakeLog: intakeAttemptRepo, intakeCallbacks: intakeOutcomeCallbacks });
-    await v1PrintFlowRoutes(v1, { printIntake: printIntakeCfg, natsStatus: () => natsManager.getStatus(), natsTest: () => natsManager.testConnection(), intakeLog: intakeAttemptRepo });
+    await v1PrintFlowRoutes(v1, { printIntake: printIntakeCfg, natsStatus: () => natsManager.getStatus(), natsTest: () => natsManager.testConnection(), intakeLog: intakeAttemptRepo, runtimeArchitecture });
     await v1PrinterRoutes(v1, { printers: printerRepo, getPrinterStatus, apiKeyHook });
     await v1ExportRoutes(v1, { exportJobs, audit: auditRepo, exporter, apiKeyHook });
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });

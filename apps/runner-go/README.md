@@ -1,11 +1,12 @@
-# PrintOps Go Runner (Canonical Production Runner)
+# PrintOps Go Runner
 
-The official production runner for PrintOps, written in Go. Replaces the legacy TypeScript runner as the default runner for all workflows. Handles printer discovery, job polling, execution, heartbeat, and trace reporting as a single statically compiled binary.
+The Go runner is a statically compiled local agent whose role depends on the deployment mode.
 
 ## Status
 
 - **API/Web/Desktop**: TypeScript (unchanged)
-- **Go Runner** (`apps/runner-go`): **Canonical production runner** — started by default via `npm run dev`, launched by the desktop app
+- **Packaged Windows desktop**: discovery and heartbeat only. `PRINTOPS_JOBS_ENABLED=false`; the bundled API local worker is the sole job executor through the TypeScript `WindowsSpoolerAdapter`.
+- **Future remote/headless deployment**: the Go runner can poll and execute jobs when `PRINTOPS_JOBS_ENABLED=true`, but this mode is not in the PROD-01 supported production scope and needs its own physical acceptance matrix.
 - **TypeScript runner** (`apps/runner`): Legacy reference only — preserved for historical tests and dev comparison; not started or built by default
 
 ## Why Go for the Runner?
@@ -46,6 +47,7 @@ export PRINTOPS_RUNNER_NAME="Lab Go Runner"
 export PRINTOPS_RUNNER_TOKEN=<your-jwt>        # optional; dev-login fallback if unset
 export PRINTOPS_DISCOVERY_MODE=fake            # auto|windows|macos|fake
 export PRINTOPS_EXECUTOR_MODE=fake             # fake|windows-spooler|cups|rawtcp
+export PRINTOPS_JOBS_ENABLED=true              # false = discovery/heartbeat only
 export PRINTOPS_POLL_INTERVAL_MS=500
 export PRINTOPS_LOG_LEVEL=debug
 
@@ -81,6 +83,7 @@ Environment variables always override file values.
 | `PRINTOPS_DISCOVERY_INTERVAL_MS` | `60000` | Printer discovery + sync interval |
 | `PRINTOPS_DISCOVERY_MODE` | `auto` | `auto\|windows\|macos\|fake` |
 | `PRINTOPS_EXECUTOR_MODE` | `fake` | `fake\|windows-spooler\|cups\|rawtcp` |
+| `PRINTOPS_JOBS_ENABLED` | `true` | Enable job polling/execution. Packaged desktop forces `false`. |
 | `PRINTOPS_LOG_LEVEL` | `info` | `debug\|info\|warn\|error` |
 | `PRINTOPS_CONFIG_FILE` | (none) | Path to KEY=VALUE config file |
 
@@ -98,7 +101,9 @@ Uses PowerShell `Get-Printer` + `Get-PrinterPort` (read-only, JSON output). Neve
 
 Uses `lpstat -p`, `lpstat -v`, `lpoptions -d`. 5-second timeout. Falls back to empty results with a warning if CUPS is unavailable.
 
-## Executor Modes
+## Executor Modes (remote/headless candidate only)
+
+These modes are dormant when `PRINTOPS_JOBS_ENABLED=false`. They are not the packaged Windows desktop execution path.
 
 ### Fake (Default)
 
@@ -108,9 +113,9 @@ Simulates print latency. Configurable success/fail. Generates evidence without t
 
 Connects to a printer's raw TCP port (default 9100), writes payload bytes. Connect/write timeouts, no retry by default. Not enabled in MVP — for future label printer (ZPL/TSPL) support.
 
-### Windows Spooler / CUPS (Future)
+### Windows Spooler / CUPS (deferred)
 
-Placeholders for real OS-level spooler execution.
+Not supported for PROD-01 through the Go runner. The packaged Windows pilot uses the API-owned TypeScript Windows spooler adapter.
 
 ## API Endpoints Used
 
