@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocale, type Locale } from '../i18n/index.js';
 import { errorMessage } from '../api/errors.js';
+import { getNatsRuntimeStatus, testNatsConnection, type NatsRuntimeStatus } from '../api/client.js';
 import { useApiAction } from '../hooks/useApiAction.js';
 import { Alert } from '../components/Alert.js';
 import {
@@ -77,6 +78,8 @@ export default function Settings() {
   const [natsDirty, setNatsDirty] = useState(false);
   const [natsLoading, setNatsLoading] = useState(true);
   const [natsSupported, setNatsSupported] = useState(false);
+  const [natsStatus, setNatsStatus] = useState<NatsRuntimeStatus | null>(null);
+  const [natsTesting, setNatsTesting] = useState(false);
 
   // Clear message after delay
   useEffect(() => {
@@ -106,6 +109,24 @@ export default function Settings() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    if (!natsSupported) return;
+    let cancelled = false;
+    const refresh = () => { void getNatsRuntimeStatus().then((value) => { if (!cancelled) setNatsStatus(value); }).catch(() => {}); };
+    refresh();
+    const timer = window.setInterval(refresh, 3000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [natsSupported]);
+
+  const handleNatsTest = useCallback(async () => {
+    setNatsTesting(true);
+    try {
+      const result = await testNatsConnection();
+      setMessage({ text: result.ok ? 'NATS ready (' + result.durationMs + 'ms)' : 'NATS ' + result.stage + ': ' + result.message, kind: result.ok ? 'success' : 'error' });
+    } catch (error) { setMessage({ text: errorMessage(error), kind: 'error' }); }
+    finally { setNatsTesting(false); }
   }, []);
 
   // ---- handlers ----
@@ -200,7 +221,9 @@ export default function Settings() {
     if (saved) {
       setNats(saved);
       setNatsDirty(false);
-      setMessage({ text: t('settings.saved'), kind: 'success' });
+      const live = await getNatsRuntimeStatus().catch(() => null);
+      if (live) setNatsStatus(live);
+      setMessage({ text: live && live.enabled && !live.connected ? 'Settings saved, but NATS is not connected.' : t('settings.saved'), kind: live && live.enabled && !live.connected ? 'error' : 'success' });
     } else {
       setMessage({
         text: `${t('settings.savedError')} ${errorMessage(saveNats.getError())}`,
@@ -336,6 +359,17 @@ export default function Settings() {
         {!natsLoading && natsSupported && (
           <>
             <p className="settings-hint">{t('settings.nats.description')}</p>
+            {natsStatus && (
+              <div className="settings-hint settings-hint--mono" role="status">
+                NATS: {natsStatus.state} | server: {natsStatus.server ?? 'not configured'} | intake: {natsStatus.intakeReady ? 'ready' : 'not ready'}
+                {natsStatus.lastErrorMessage && <><br />Last error: {natsStatus.lastErrorMessage}</>}
+              </div>
+            )}
+            <div className="settings-actions">
+              <button type="button" className="settings-btn-secondary" disabled={natsTesting} onClick={() => void handleNatsTest()}>
+                {natsTesting ? 'Testing...' : 'Test connection'}
+              </button>
+            </div>
             <div className="settings-field settings-field--checkbox">
               <label htmlFor="settings-nats-enabled">
                 <input
@@ -359,6 +393,9 @@ export default function Settings() {
                 disabled={natsSaving || !natsDraft.enabled}
               />
             </div>
+            {/^(nats:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|$)/i.test(natsDraft.url.trim()) && (
+              <p className="settings-hint">Warning: localhost and 127.0.0.1 mean this PrintOps workstation, not a remote broker.</p>
+            )}
             <div className="settings-field">
               <label htmlFor="settings-nats-client">
                 {t('settings.nats.clientId')}

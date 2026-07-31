@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { IntakeAttemptRepositoryPort } from '@printerops/domain';
 import { requirePermission } from './permission-guard.js';
 import { redactNatsUrl, type PrintIntakeConfig } from '../../infra/nats/print-intake.js';
+import type { NatsRuntimeStatus } from '../../infra/nats/nats-connection-manager.js';
 
 /**
  * Read-only view of the dynamic print-flow transports, for the sysadmin
@@ -15,7 +16,8 @@ export async function v1PrintFlowRoutes(
   app: FastifyInstance,
   deps: {
     printIntake?: PrintIntakeConfig | undefined;
-    printIntakeConnected: () => boolean;
+    natsStatus: () => NatsRuntimeStatus;
+    natsTest: () => Promise<{ ok: boolean; stage: string; code?: string; message: string; durationMs: number }>;
     intakeLog?: IntakeAttemptRepositoryPort;
   },
 ): Promise<void> {
@@ -34,7 +36,7 @@ export async function v1PrintFlowRoutes(
         nats: nats
           ? {
               enabled: true,
-              connected: deps.printIntakeConnected(),
+              connected: deps.natsStatus().connected,
               url: redactNatsUrl(nats.url),
               stream: nats.stream,
               clientId: nats.clientId,
@@ -44,10 +46,14 @@ export async function v1PrintFlowRoutes(
               maxDeliver: nats.maxDeliver,
               authRequired: false,
             }
-          : { enabled: false, connected: false, authRequired: false },
+          : { ...deps.natsStatus(), enabled: false, connected: false, authRequired: false },
       });
     },
   );
+
+  app.get('/print-flow/nats-status', { onRequest: [requirePermission('template:read')] }, async (_req, reply) => reply.send(deps.natsStatus()));
+
+  app.post('/print-flow/nats-test', { onRequest: [requirePermission('template:read')] }, async (_req, reply) => reply.send(await deps.natsTest()));
 
   // Read-only log of every dynamic-print-flow intake attempt (NATS or HTTP),
   // including rejected/dead-lettered ones — so a sysadmin can see that a job

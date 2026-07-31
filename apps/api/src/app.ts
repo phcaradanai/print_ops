@@ -88,7 +88,8 @@ import {
 import { retryPolicyFromEnv } from './services/callback-retry-policy.js';
 import { paperProfileImportRoutes } from './routes/v1/paper-profile-imports.routes.js';
 import { sandboxRoutes } from './routes/v1/sandbox.routes.js';
-import { startPrintIntakeConsumer, printIntakeConfigFromEnv, type PrintIntakeConfig } from './infra/nats/print-intake.js';
+import { printIntakeConfigFromEnv, type PrintIntakeConfig } from './infra/nats/print-intake.js';
+import { NatsConnectionManager } from './infra/nats/nats-connection-manager.js';
 import { v1PrintFlowRoutes } from './routes/v1/print-flow.routes.js';
 import { join, dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -717,10 +718,10 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   let printIntakeCfg: PrintIntakeConfig | undefined;
   // NATS publisher for webhook callbacks; assigned if the print-intake
   // consumer (which owns the connection) successfully starts.
-  let natsPublisher: NatsPublisher | undefined;
+
   // True once startPrintIntakeConsumer actually succeeds — printIntakeCfg
   // alone only means the env config was valid, not that the consumer is live.
-  let printIntakeConnected = false;
+
   try {
     printIntakeCfg = printIntakeConfigFromEnv();
   } catch (err) {
@@ -729,14 +730,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     // the authenticated HTTP API must remain available for recovery.
     app.log.error({ err }, 'print-intake disabled: invalid client-scoped NATS configuration');
   }
-  // Routes are registered before the optional NATS consumer starts. This must
-  // be created AFTER printIntakeCfg is loaded; otherwise the conditional
-  // snapshots `undefined` even though NATS connects later during startup.
+  const natsManager = new NatsConnectionManager(printIntakeCfg, { dynamicPrint, logger: app.log, intakeLog: intakeAttemptRepo });
   const routeNatsPublisher: NatsPublisher | undefined = printIntakeCfg
-    ? (subject, payload) => {
-        if (!natsPublisher) throw new Error('NATS transport is not connected');
-        return natsPublisher(subject, payload);
-      }
+    ? (subject, payload) => natsManager.publish(subject, payload)
     : undefined;
 
   // Health check (no auth)
@@ -756,7 +752,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   await app.register(async (v1) => {
     await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, acceptExternalJob, cancelJob, executeJob, apiKeyHook, intakeLog: intakeAttemptRepo });
     await v1PrinterPrintRoutes(v1, { dynamicPrint, apiKeyHook, intakeLog: intakeAttemptRepo });
-    await v1PrintFlowRoutes(v1, { printIntake: printIntakeCfg, printIntakeConnected: () => printIntakeConnected, intakeLog: intakeAttemptRepo });
+    await v1PrintFlowRoutes(v1, { printIntake: printIntakeCfg, natsStatus: () => natsManager.getStatus(), natsTest: () => natsManager.testConnection(), intakeLog: intakeAttemptRepo });
     await v1PrinterRoutes(v1, { printers: printerRepo, getPrinterStatus, apiKeyHook });
     await v1ExportRoutes(v1, { exportJobs, audit: auditRepo, exporter, apiKeyHook });
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
@@ -769,32 +765,12 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
   if (printIntakeCfg) {
-    try {
-      const printIntakeHandle = await startPrintIntakeConsumer(
-        { dynamicPrint, logger: app.log, intakeLog: intakeAttemptRepo },
-        printIntakeCfg,
-      );
-      printIntakeConnected = true;
-      const natsPublisherLocal: NatsPublisher = (subject, payload) =>
-        printIntakeHandle.publishTo(subject, payload);
-      // Webhook callbacks can fan out to BOTH HTTP and NATS. The NATS
-      // publisher reuses the print-intake consumer's connection so a
-      // caller-supplied reply subject is reachable on the same broker.
-      natsPublisher = natsPublisherLocal;
-      const callbackService = new WebhookCallbackService(app.log, httpCallbackSender, natsPublisherLocal, webhookCallbackAttemptRepo);
-      dynamicIntake.setCallbackService(callbackService);
-      // Terminal result callbacks over NATS reuse the same connection, so a
-      // caller-supplied reply subject is reachable on the same broker. Core
-      // publish only — see docs/architecture/result-callbacks.md for why
-      // JetStream is not promised here.
-      resultCallbackNats = natsPublisherLocal;
-      app.addHook('onClose', async () => {
-        await printIntakeHandle.stop();
-      });
-    } catch (err) {
-      app.log.error({ err }, 'print-intake consumer failed to start; continuing without NATS transport');
-    }
+    const natsPublisherLocal: NatsPublisher = (subject, payload) => natsManager.publish(subject, payload);
+    dynamicIntake.setCallbackService(new WebhookCallbackService(app.log, httpCallbackSender, natsPublisherLocal, webhookCallbackAttemptRepo));
+    resultCallbackNats = natsPublisherLocal;
   }
+  natsManager.start();
+  app.addHook('onClose', async () => { await natsManager.stop(); });
 
   // Landing page — serve Vite index.html if available, otherwise inline UI
   const staticRoots = [

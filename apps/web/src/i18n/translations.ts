@@ -100,11 +100,11 @@ const en: TranslationDict = {
   'login.error': 'Invalid email or password',
 
   // Splash
-  'splash.starting': 'PrintOps is starting…',
+  'splash.starting': 'Starting local PrintOps service…',
   'splash.ready': 'System Ready',
-  'splash.unable': 'Unable to connect to server',
+  'splash.unable': 'Local PrintOps service is not responding.',
   'splash.tagline': 'Print Gateway for Hospitals',
-  'splash.progress': 'Starting… ({n}/120)',
+  'splash.progress': 'Starting local service… ({n}/120)',
 
   // Error boundary
   'error.title': 'Something went wrong',
@@ -1100,11 +1100,11 @@ const th: TranslationDict = {
   'login.error': 'อีเมลหรือรหัสผ่านไม่ถูกต้อง',
 
   // Splash
-  'splash.starting': 'PrintOps กำลังเริ่มทำงาน…',
+  'splash.starting': 'กำลังเริ่มบริการ PrintOps ภายในเครื่อง…',
   'splash.ready': 'ระบบพร้อมใช้งาน',
-  'splash.unable': 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้',
+  'splash.unable': 'บริการ PrintOps ภายในเครื่องไม่ตอบสนอง',
   'splash.tagline': 'เกตเวย์การพิมพ์สำหรับโรงพยาบาล',
-  'splash.progress': 'กำลังเริ่ม… ({n}/120)',
+  'splash.progress': 'กำลังเริ่มบริการภายในเครื่อง… ({n}/120)',
 
   // Error boundary
   'error.title': 'เกิดข้อผิดพลาด',

@@ -100,6 +100,13 @@ export function apiBase(): string {
   return '';
 }
 
+export interface NatsRuntimeStatus {
+  enabled: boolean; state: string; connected: boolean; intakeReady: boolean; callbackPublishReady: boolean; streamReady: boolean; consumerReady: boolean; clientId?: string; subject?: string; stream?: string; durable?: string; server?: string; lastAttemptAt?: string; nextRetryAt?: string; lastErrorCode?: string; lastErrorMessage?: string;
+}
+
+export function getNatsRuntimeStatus(): Promise<NatsRuntimeStatus> { return apiFetch<NatsRuntimeStatus>('/v1/print-flow/nats-status'); }
+export function testNatsConnection(): Promise<{ ok: boolean; stage: string; code?: string; message: string; durationMs: number }> { return apiFetch('/v1/print-flow/nats-test', { method: 'POST' }); }
+
 export function healthUrl(): string {
   return apiBase() + '/health';
 }

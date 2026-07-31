@@ -177,6 +177,7 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
     // upgrades because it is outside the install folder.
     cmd.current_dir(&paths.res_dir)
         .env("PORT", SERVER_PORT)
+        .env("HOST", "127.0.0.1")
         .env("DB_MODE", "sqlite")
         .env("PRINTOPS_LOCAL_WORKER", "true")
         .env("PRINTOPS_DB_PATH", &paths.db_path)
