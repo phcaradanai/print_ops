@@ -182,6 +182,9 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
             DESKTOP_DISCOVERY_RUNNER_JOBS_ENABLED.to_string(),
         )
         .env("PRINTOPS_DB_PATH", &paths.db_path)
+        .env("PRINTOPS_LOG_DIR", &paths.logs_dir)
+        .env("PRINTOPS_APP_VERSION", env!("CARGO_PKG_VERSION"))
+        .env("PRINTOPS_GIT_COMMIT", env!("PRINTOPS_GIT_COMMIT"))
         .env("SQL_WASM_PATH", &paths.wasm_path)
         .env("JWT_SECRET", &paths.jwt_secret)
         .env("PRINTOPS_RUNNER_BOOTSTRAP_SECRET", &paths.runner_bootstrap_secret)

@@ -44,6 +44,7 @@ export interface NatsRuntimeStatus {
   lastAttemptAt?: string;
   nextRetryAt?: string;
   lastErrorCode?: string;
+  lastErrorStage?: string;
   lastErrorMessage?: string;
 }
 
@@ -237,12 +238,28 @@ export class NatsConnectionManager {
     while (!this.stopRequested && this.cfg) {
       retry++;
       const attemptedAt = new Date().toISOString();
-      this.status = { ...this.status, state: 'CONNECTING', lastAttemptAt: attemptedAt, nextRetryAt: undefined };
+      this.status = {
+        ...this.status,
+        state: 'CONNECTING',
+        lastAttemptAt: attemptedAt,
+        nextRetryAt: undefined,
+        lastErrorStage: 'TCP_CONNECT',
+      };
       try {
         const nc = await connect({ servers: this.cfg.url, timeout: 3_000, waitOnFirstConnect: true, maxReconnectAttempts: 0, name: `printops-${this.cfg.clientId}` });
         this.connection = nc;
-        this.status = { ...this.status, state: 'CONNECTED', connected: true, callbackPublishReady: true, lastConnectedAt: new Date().toISOString(), lastErrorCode: undefined, lastErrorMessage: undefined };
+        this.status = {
+          ...this.status,
+          state: 'CONNECTED',
+          connected: true,
+          callbackPublishReady: true,
+          lastConnectedAt: new Date().toISOString(),
+          lastErrorCode: undefined,
+          lastErrorStage: undefined,
+          lastErrorMessage: undefined,
+        };
         this.deps.logger.info({ server: redactNatsUrl(this.cfg.url), clientId: this.cfg.clientId }, 'NATS core connection ready');
+        this.status = { ...this.status, lastErrorStage: 'JETSTREAM_SETUP' };
         await this.setupConsumer(nc);
         retry = 0;
         await nc.closed();
@@ -279,6 +296,7 @@ export class NatsConnectionManager {
         streamReady: true,
         consumeLoopActive: false,
         lastErrorCode: 'CREDENTIALS_NOT_INITIALIZED',
+        lastErrorStage: 'OWNER_BOOTSTRAP',
         lastErrorMessage: 'Complete first-run owner setup before NATS print intake is enabled',
       };
       await sleep(250);
@@ -294,6 +312,7 @@ export class NatsConnectionManager {
       consumerReady: true,
       intakeReady: true,
       lastErrorCode: undefined,
+      lastErrorStage: undefined,
       lastErrorMessage: undefined,
     };
     this.deps.logger.info({ stream: this.cfg.stream, subject: this.cfg.subject, durable: this.cfg.durable }, 'NATS print-intake consumer ready');
@@ -308,7 +327,7 @@ export class NatsConnectionManager {
   }
 
   private setDisconnected(message: string): void {
-    this.status = { ...this.status, state: 'DISCONNECTED', connected: false, intakeReady: false, callbackPublishReady: false, consumerReady: false, streamReady: false, lastDisconnectedAt: new Date().toISOString(), lastErrorCode: 'CONNECTION_CLOSED', lastErrorMessage: message };
+    this.status = { ...this.status, state: 'DISCONNECTED', connected: false, intakeReady: false, callbackPublishReady: false, consumerReady: false, streamReady: false, lastDisconnectedAt: new Date().toISOString(), lastErrorCode: 'CONNECTION_CLOSED', lastErrorStage: 'CONNECTION_CLOSED', lastErrorMessage: message };
   }
 
   private setError(error: unknown, context: string): void {

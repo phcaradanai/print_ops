@@ -3,10 +3,12 @@ import { useLocale, type Locale } from '../i18n/index.js';
 import { errorMessage } from '../api/errors.js';
 import {
   apiDownload,
+  getReadiness,
   getNatsRuntimeStatus,
   getRuntimeArchitecture,
   testNatsConnection,
   type NatsRuntimeStatus,
+  type ReadinessState,
 } from '../api/client.js';
 import { useApiAction } from '../hooks/useApiAction.js';
 import { useApiResource } from '../hooks/useApiResource.js';
@@ -66,6 +68,8 @@ export default function Settings() {
   const { t, locale, setLocale } = useLocale();
   const fetchRuntimeArchitecture = useCallback(() => getRuntimeArchitecture(), []);
   const runtimeResource = useApiResource(fetchRuntimeArchitecture);
+  const fetchReadiness = useCallback(() => getReadiness(), []);
+  const readinessResource = useApiResource(fetchReadiness);
 
   // Language
   const [lang, setLang] = useState<Locale>(locale);
@@ -83,6 +87,7 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
+  const [downloadingSupport, setDownloadingSupport] = useState(false);
 
   // NATS client configuration (desktop only)
   const [nats, setNats] = useState<NatsSettings>(DEFAULT_NATS_SETTINGS);
@@ -92,6 +97,23 @@ export default function Settings() {
   const [natsSupported, setNatsSupported] = useState(false);
   const [natsStatus, setNatsStatus] = useState<NatsRuntimeStatus | null>(null);
   const [natsTesting, setNatsTesting] = useState(false);
+
+  const readinessLabels: Record<string, string> = {
+    desktopShell: t('settings.readiness.desktopShell'),
+    localApi: t('settings.readiness.localApi'),
+    database: t('settings.readiness.database'),
+    localPrintWorker: t('settings.readiness.localPrintWorker'),
+    discoveryRunner: t('settings.readiness.discoveryRunner'),
+    selectedPrinter: t('settings.readiness.selectedPrinter'),
+    natsCore: t('settings.readiness.natsCore'),
+    jetStream: t('settings.readiness.jetStream'),
+    stream: t('settings.readiness.stream'),
+    durableConsumer: t('settings.readiness.durableConsumer'),
+    httpCallback: t('settings.readiness.httpCallback'),
+    natsCallback: t('settings.readiness.natsCallback'),
+    callbackRetryQueue: t('settings.readiness.callbackRetryQueue'),
+  };
+  const readinessStateLabel = (state: ReadinessState) => t(`settings.readiness.state.${state}`);
 
   // Clear message after delay
   useEffect(() => {
@@ -349,6 +371,38 @@ export default function Settings() {
                 {runtimeResource.data.deferredProtocols.join(', ')}
               </span>
             </p>
+            <div className="settings-readiness-heading">
+              <div>
+                <h3>{t('settings.readiness.title')}</h3>
+                <p className="settings-hint">{t('settings.readiness.description')}</p>
+              </div>
+              <Freshness
+                lastSuccessAt={readinessResource.lastSuccessAt}
+                stale={readinessResource.stale}
+                refreshing={readinessResource.refreshing}
+                paused={readinessResource.paused}
+                onRefresh={readinessResource.refresh}
+              />
+            </div>
+            {readinessResource.data === undefined && readinessResource.error == null && <LoadingState />}
+            {readinessResource.error != null && (
+              <ErrorBanner error={readinessResource.error} onRetry={readinessResource.refresh} />
+            )}
+            {readinessResource.data && (
+              <ul className="settings-readiness-list" aria-label={t('settings.readiness.title')}>
+                {Object.entries(readinessResource.data.components).map(([key, item]) => (
+                  <li key={key}>
+                    <span className={`settings-readiness-mark settings-readiness-mark--${item.state.toLowerCase()}`} aria-hidden="true" />
+                    <span className="settings-readiness-body">
+                      <span className="settings-readiness-label">{readinessLabels[key] ?? key}</span>
+                      <span className="settings-readiness-message">{item.message}</span>
+                      {item.action && <span className="settings-readiness-action">{t('settings.readiness.action')} {item.action}</span>}
+                    </span>
+                    <span className="settings-readiness-state">{readinessStateLabel(item.state)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             <div className="settings-actions">
               <button
                 type="button"
@@ -363,8 +417,22 @@ export default function Settings() {
               >
                 {backingUp ? t('common.loading') : t('settings.database.backup')}
               </button>
+              <button
+                type="button"
+                className="settings-btn-secondary"
+                disabled={downloadingSupport}
+                onClick={() => {
+                  setDownloadingSupport(true);
+                  void apiDownload('/v1/system/support-bundle', `printops-support-${new Date().toISOString().slice(0, 10)}.json`)
+                    .catch((cause) => setMessage({ text: errorMessage(cause), kind: 'error' }))
+                    .finally(() => setDownloadingSupport(false));
+                }}
+              >
+                {downloadingSupport ? t('common.loading') : t('settings.support.download')}
+              </button>
             </div>
             <p className="settings-hint">{t('settings.database.backupHint')}</p>
+            <p className="settings-hint">{t('settings.support.hint')}</p>
           </>
         )}
       </section>
@@ -460,10 +528,16 @@ export default function Settings() {
           <>
             <p className="settings-hint">{t('settings.nats.description')}</p>
             {natsStatus && (
-              <div className="settings-hint settings-hint--mono" role="status">
-                NATS: {natsStatus.state} | server: {natsStatus.server ?? 'not configured'} | intake: {natsStatus.intakeReady ? 'ready' : 'not ready'}
-                {natsStatus.lastErrorMessage && <><br />Last error: {natsStatus.lastErrorMessage}</>}
-              </div>
+              <dl className="settings-nats-diagnostics" aria-label={t('settings.nats.diagnostics')}>
+                <div><dt>{t('settings.nats.state')}</dt><dd>{natsStatus.state}</dd></div>
+                <div><dt>{t('settings.nats.server')}</dt><dd>{natsStatus.server ?? t('common.noData')}</dd></div>
+                <div><dt>{t('settings.nats.intake')}</dt><dd>{natsStatus.intakeReady ? t('settings.readiness.state.READY') : t('settings.readiness.state.UNAVAILABLE')}</dd></div>
+                <div><dt>{t('settings.nats.callback')}</dt><dd>{natsStatus.callbackPublishReady ? t('settings.readiness.state.READY') : t('settings.readiness.state.UNAVAILABLE')}</dd></div>
+                <div><dt>{t('settings.nats.lastConnected')}</dt><dd>{natsStatus.lastConnectedAt ?? t('common.noData')}</dd></div>
+                <div><dt>{t('settings.nats.lastAttempt')}</dt><dd>{natsStatus.lastAttemptAt ?? t('common.noData')}</dd></div>
+                <div><dt>{t('settings.nats.nextRetry')}</dt><dd>{natsStatus.nextRetryAt ?? t('common.noData')}</dd></div>
+                {natsStatus.lastErrorCode && <div><dt>{t('settings.nats.lastError')}</dt><dd>{natsStatus.lastErrorStage}: {natsStatus.lastErrorCode}<br />{natsStatus.lastErrorMessage}</dd></div>}
+              </dl>
             )}
             <div className="settings-actions">
               <button type="button" className="settings-btn-secondary" disabled={natsTesting} onClick={() => void handleNatsTest()}>

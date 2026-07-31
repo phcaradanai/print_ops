@@ -29,7 +29,8 @@ or unit tests do not override a blocked acceptance gate.
 - Packaged restore, prior-installer migration, and migration rollback proof
   remain outstanding; backup download and versioned pre-migration copies are
   implemented.
-- Credential-safe downloadable support bundle.
+- Packaged manual review of the downloadable support bundle on a clean pilot
+  machine; automated payload/credential redaction checks are implemented.
 - Physical UI, HTTP, and NATS prints through a real installed printer.
 - The physical printer failure matrix.
 - Cross-machine NATS, callback receiver, reconnect, and duplicate-client matrix.

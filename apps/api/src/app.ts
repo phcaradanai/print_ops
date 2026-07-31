@@ -101,6 +101,7 @@ import { runtimeArchitectureFromEnv } from './infra/runtime-architecture.js';
 import { hashPassword } from './infra/auth/password.js';
 import { serviceAccountRoutes } from './routes/v1/service-accounts.routes.js';
 import { databaseBackupRoutes } from './routes/v1/database-backup.routes.js';
+import { readinessRoutes } from './routes/v1/readiness.routes.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -840,6 +841,19 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1UserRoutes(v1, { users: userRepo });
     await serviceAccountRoutes(v1, { serviceAccounts: serviceAccountRepo, audit: auditRepo });
     await databaseBackupRoutes(v1, { audit: auditRepo, sqliteEnabled: useSqlite });
+    await readinessRoutes(v1, {
+      runtimeArchitecture,
+      natsStatus: () => natsManager.getStatus(),
+      sqliteEnabled: useSqlite,
+      printers: printerRepo,
+      runners: runnerRepo,
+      discoveredPrinters: discoveredPrinterRepo,
+      webhookEndpoints: webhookEndpointRepo,
+      intakeAttempts: intakeAttemptRepo,
+      callbackAttempts: webhookCallbackAttemptRepo,
+      callbackDeliveries: callbackDeliveryRepo,
+      audit: auditRepo,
+    });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
   if (printIntakeCfg) {

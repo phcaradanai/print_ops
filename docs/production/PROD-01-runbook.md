@@ -123,8 +123,20 @@ Desktop, server, and runner logs are below the per-user PrintOps application
 data/log directory. Redact credentials, payloads, patient data, callback
 secrets, NATS credentials, and API keys before sharing.
 
-The required downloadable support bundle is not yet accepted. Do not substitute
-an unreviewed archive of the application-data directory.
+In Settings → System status, select **Download support bundle**. The OWNER-only
+action is audited and exports build identity, runtime/readiness state, bounded
+attempt summaries, discovery state, schema version, and bounded log tails.
+Print payloads, callback destinations, credential-shaped fields, and runner
+network identity are excluded or redacted automatically. Review the JSON before
+sharing it outside the organization. Do not substitute an archive of the
+application-data directory.
+
+The readiness list is intentionally component-based. `NOT_CONFIGURED` means an
+optional transport is disabled; `UNAVAILABLE` means a configured or required
+component needs action. NATS diagnostics show the sanitized server, last
+successful connection, last attempt, next retry, error stage/code, and an
+operator action. Local Settings and diagnostics remain available while NATS is
+offline.
 
 ## Restart and recovery
 

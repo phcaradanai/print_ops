@@ -462,8 +462,113 @@ body {
   font-size: 0.85rem;
 }
 
+.settings-readiness-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--neutral-border);
+}
+
+.settings-readiness-heading h3 {
+  margin: 0 0 0.25rem;
+  color: var(--neutral-deep);
+  font-size: 0.95rem;
+}
+
+.settings-readiness-list {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--neutral-border);
+}
+
+.settings-readiness-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.65rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--neutral-border);
+}
+
+.settings-readiness-mark {
+  width: 0.65rem;
+  height: 0.65rem;
+  margin-top: 0.25rem;
+  border-radius: 50%;
+  background: var(--semantic-neutral);
+}
+
+.settings-readiness-mark--ready { background: #2f7d3c; }
+.settings-readiness-mark--degraded { background: #b66a00; }
+.settings-readiness-mark--unavailable { background: #b42318; }
+.settings-readiness-mark--not_configured { background: var(--semantic-neutral); }
+
+.settings-readiness-body,
+.settings-readiness-label,
+.settings-readiness-message,
+.settings-readiness-action {
+  display: block;
+}
+
+.settings-readiness-label {
+  color: var(--neutral-deep);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.settings-readiness-message,
+.settings-readiness-action {
+  margin-top: 0.15rem;
+  color: var(--neutral-text-muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.settings-readiness-action {
+  color: #854d0e;
+}
+
+.settings-readiness-state {
+  color: var(--neutral-text);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.settings-nats-diagnostics {
+  margin: 0 0 1rem;
+  padding: 0.65rem;
+  border-radius: var(--rounded-md);
+  background: var(--neutral-subtle);
+  font-family: var(--font-mono-family);
+  font-size: 0.75rem;
+}
+
+.settings-nats-diagnostics > div {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 0.6fr) minmax(0, 1.4fr);
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.settings-nats-diagnostics dt {
+  color: var(--neutral-text-muted);
+}
+
+.settings-nats-diagnostics dd {
+  margin: 0;
+  color: var(--neutral-deep);
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 640px) {
   .settings-section-heading,
+  .settings-readiness-heading,
   .settings-runtime-grid > div {
     display: block;
   }
@@ -474,6 +579,22 @@ body {
 
   .settings-runtime-grid dd {
     margin-top: 0.2rem;
+  }
+
+  .settings-readiness-list li {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .settings-readiness-state {
+    grid-column: 2;
+  }
+
+  .settings-nats-diagnostics > div {
+    display: block;
+  }
+
+  .settings-nats-diagnostics dd {
+    margin-top: 0.1rem;
   }
 }
 
@@ -564,6 +685,7 @@ body {
 
 .settings-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
 }

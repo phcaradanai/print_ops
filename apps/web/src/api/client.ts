@@ -103,7 +103,7 @@ export function apiBase(): string {
 }
 
 export interface NatsRuntimeStatus {
-  enabled: boolean; state: string; connected: boolean; intakeReady: boolean; callbackPublishReady: boolean; streamReady: boolean; consumerReady: boolean; clientId?: string; subject?: string; stream?: string; durable?: string; server?: string; lastAttemptAt?: string; nextRetryAt?: string; lastErrorCode?: string; lastErrorMessage?: string;
+  enabled: boolean; state: string; connected: boolean; intakeReady: boolean; callbackPublishReady: boolean; streamReady: boolean; consumerReady: boolean; clientId?: string; subject?: string; stream?: string; durable?: string; server?: string; lastConnectedAt?: string; lastDisconnectedAt?: string; lastAttemptAt?: string; nextRetryAt?: string; lastErrorCode?: string; lastErrorStage?: string; lastErrorMessage?: string;
 }
 
 export function getNatsRuntimeStatus(): Promise<NatsRuntimeStatus> { return apiFetch<NatsRuntimeStatus>('/v1/print-flow/nats-status'); }
@@ -128,6 +128,23 @@ export interface RuntimeArchitecture {
 
 export function getRuntimeArchitecture(): Promise<RuntimeArchitecture> {
   return apiFetch<RuntimeArchitecture>('/v1/print-flow/runtime-architecture');
+}
+
+export type ReadinessState = 'READY' | 'DEGRADED' | 'NOT_CONFIGURED' | 'UNAVAILABLE';
+export interface ReadinessComponent {
+  state: ReadinessState;
+  message: string;
+  action?: string;
+  details?: Record<string, unknown>;
+}
+export interface ReadinessSnapshot {
+  status: 'READY' | 'DEGRADED';
+  checkedAt: string;
+  components: Record<string, ReadinessComponent>;
+}
+
+export function getReadiness(): Promise<ReadinessSnapshot> {
+  return apiFetch<ReadinessSnapshot>('/v1/system/readiness');
 }
 
 export function healthUrl(): string {

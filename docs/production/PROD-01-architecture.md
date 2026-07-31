@@ -56,7 +56,10 @@ The API validates those values before creating repositories or starting a worker
 
 ## Persistence boundaries
 
-- The per-user SQLite database stores configuration, registered/discovered printers, jobs, traces, audits, intake attempts, callback attempts, and callback delivery state.
+- The per-user SQLite database stores configuration, registered/discovered
+  printers, jobs, traces, audits, and durable callback-delivery state. Recent
+  intake and per-attempt callback diagnostics are bounded in-memory rings and
+  reset when the API sidecar restarts.
 - The queue is in memory. On startup, safe pre-dispatch states can be restored; uncertain `DISPATCHED` or `PRINTING` jobs become `UNVERIFIED` and are not replayed automatically.
 - Tauri stores the database, settings, JWT secret, and logs outside the installation directory so an application upgrade does not replace them.
 - NATS configuration is stored by the desktop shell and injected into a restarted API sidecar.
@@ -102,6 +105,22 @@ The Go discovery runner does not send packaged terminal results because it never
 - explicitly deferred protocols.
 
 Settings → System status presents the same contract to the operator. It must not infer execution ownership from a runner heartbeat or configured executor backend.
+
+`GET /api/v1/system/readiness` is the authenticated, no-store operational
+snapshot. It reports desktop shell, local API, database, local worker,
+discovery runner, registered Windows printer, NATS core, JetStream, stream,
+durable consumer, HTTP callback, NATS callback, and callback retry queue as
+independent components. Optional transports use `NOT_CONFIGURED`; they do not
+make a healthy local printing path look offline. Every unavailable component
+includes a suggested operator action and NATS diagnostics include sanitized
+server, last connection/attempt, next retry, and error code/stage.
+
+`GET /api/v1/system/support-bundle` is OWNER-only, audited, and returns a
+no-store JSON support artifact. It contains build identity, runtime modes,
+readiness, NATS state, schema version, bounded recent intake/callback summaries,
+discovery state, and bounded desktop/server/runner log tails. Callback targets,
+runner IP addresses/metadata, printer attributes, callback payloads, and
+credential-shaped fields are excluded or redacted before serialization.
 
 ## Authentication and secret boundaries
 
