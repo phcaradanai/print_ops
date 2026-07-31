@@ -5919,3 +5919,520 @@ body {
   outline: 2px solid #9f1239;
   outline-offset: 1px;
 }
+
+/* ============================================================
+   Job Detail — verdict, evidence, technical detail
+   ============================================================
+
+   Three tiers, ranked by the question an operator actually asks:
+
+     Tier 0  the verdict + the decision that follows from it
+     Tier 1  the evidence behind the verdict
+     Tier 2  forensics, collapsed — present and findable, not competing
+
+   Tokens only. The old page hardcoded 10px radii and
+   `0 1px 3px rgba(0,0,0,0.08)`, both off-system (DESIGN.md caps radius at 8px
+   and specifies 0.1 for Card Rest), plus a #8839ef purple on the NATS line
+   that was a third accent colour in a one-accent system. */
+
+.job-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2xl);
+}
+
+.job-detail__header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-lg);
+  flex-wrap: wrap;
+}
+
+.job-detail__header .page-title {
+  margin: 0;
+}
+
+.job-detail__id {
+  font-family: var(--font-mono-family);
+  font-size: 0.7rem;
+  color: var(--neutral-text-muted);
+}
+
+/* ---- Tier 0: verdict band ---- */
+
+/* The only element on the page allowed to be large. It leads through size,
+   position and whitespace rather than saturation — a hospital screen under
+   fluorescent light does not need to be shouted at. */
+.job-verdict {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-xl) var(--spacing-2xl);
+  background: var(--neutral-surface);
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Tinted disc behind the mark. The tint is the same semantic colour the status
+   badge uses, so band and badge can never disagree about one job. The mark
+   itself is Deep Navy — the statusColors.ts audit found every one of these
+   pastels fails 4.5:1 against white and clears it comfortably against navy. */
+.job-verdict__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  color: var(--neutral-deep);
+  background: var(--semantic-neutral);
+}
+
+.job-verdict--confirmed .job-verdict__mark { background: #a6e3a1; }
+.job-verdict--caution   .job-verdict__mark { background: #f5c97b; }
+.job-verdict--negative  .job-verdict__mark { background: #f38ba8; }
+.job-verdict--pending   .job-verdict__mark { background: #89b4fa; }
+.job-verdict--progress  .job-verdict__mark { background: #fab387; }
+.job-verdict--neutral   .job-verdict__mark { background: #bac2de; }
+
+.job-verdict__body {
+  min-width: 0;
+}
+
+.job-verdict__headline-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.job-verdict__headline {
+  margin: 0;
+  font-family: var(--font-heading-family);
+  font-size: 1.375rem;
+  font-weight: var(--font-heading-weight);
+  line-height: var(--font-heading-line-height);
+  color: var(--neutral-deep);
+  text-wrap: balance;
+}
+
+/* The sentence an operator acts on. Held to a readable measure so the Thai
+   verdicts — which run considerably longer than the English — stay scannable
+   instead of becoming a paragraph. */
+.job-verdict__detail {
+  margin: var(--spacing-sm) 0 0;
+  max-width: 68ch;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--neutral-text);
+  /* `pretty` rather than `balance`: this is running prose, and the Thai
+     verdicts are long enough that balancing every line would leave a single
+     word stranded on the last one. */
+  text-wrap: pretty;
+}
+
+.job-verdict__note {
+  margin-top: var(--spacing-md);
+}
+
+.job-verdict__provenance {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--neutral-text-muted);
+}
+
+.job-verdict__provenance a {
+  color: var(--primary);
+}
+
+.job-verdict__provenance-reason {
+  font-style: italic;
+}
+
+.job-verdict__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--spacing-sm);
+}
+
+/* Why the action is absent. An operator who cannot reprint deserves the reason,
+   not a missing button. */
+.job-verdict__blocked {
+  margin: 0;
+  max-width: 22ch;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--neutral-text-muted);
+  text-align: right;
+}
+
+.job-verdict__link {
+  font-size: 0.8rem;
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .job-verdict {
+    grid-template-columns: auto 1fr;
+    row-gap: var(--spacing-lg);
+  }
+
+  /* The action drops below the sentence rather than being squeezed beside it,
+     and aligns with the text column, not the mark. */
+  .job-verdict__actions {
+    grid-column: 2;
+    align-items: stretch;
+  }
+
+  .job-verdict__blocked {
+    max-width: none;
+    text-align: left;
+  }
+}
+
+/* ---- the failure's own words, under the verdict that summarises it ---- */
+
+.job-error {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border: 1px solid var(--semantic-error);
+  border-radius: var(--rounded-lg);
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.8125rem;
+}
+
+/* ---- panels ---- */
+
+.job-panel {
+  padding: var(--spacing-xl) var(--spacing-2xl);
+  background: var(--neutral-surface);
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg);
+}
+
+.job-panel__heading {
+  margin: 0 0 var(--spacing-lg);
+  font-family: var(--font-label-family);
+  font-size: var(--font-label-size);
+  font-weight: var(--font-label-weight);
+  line-height: var(--font-label-line-height);
+  letter-spacing: var(--font-label-letter-spacing);
+  text-transform: uppercase;
+  color: var(--neutral-text-muted);
+}
+
+.job-panel__aside {
+  margin: var(--spacing-md) 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--neutral-text-muted);
+  word-break: break-word;
+}
+
+.job-panel__aside-label {
+  font-weight: 600;
+}
+
+.job-panel__aside code {
+  font-family: var(--font-mono-family);
+  background: var(--neutral-page);
+  padding: 2px 6px;
+  border-radius: var(--rounded-sm);
+}
+
+.job-panel__link {
+  font-size: 0.72rem;
+  color: var(--primary);
+}
+
+/* ---- fact grids ---- */
+
+.job-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.job-facts--wide {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  margin-bottom: var(--spacing-lg);
+}
+
+.job-facts--dense {
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+}
+
+.job-fact {
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--neutral-surface);
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-md);
+}
+
+.job-fact__label {
+  margin-bottom: 4px;
+  font-size: 0.65rem;
+  font-weight: var(--font-label-weight);
+  letter-spacing: var(--font-label-letter-spacing);
+  text-transform: uppercase;
+  color: var(--neutral-text-muted);
+}
+
+.job-fact__value {
+  font-size: var(--font-body-size);
+  font-weight: 600;
+  color: var(--neutral-text);
+  word-break: break-word;
+}
+
+.job-fact__value--mono {
+  font-family: var(--font-mono-family);
+}
+
+.job-fact__value a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.job-fact__value a:hover {
+  text-decoration: underline;
+}
+
+/* ---- Tier 1: evidence ---- */
+
+.job-evidence-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: var(--spacing-2xl);
+  align-items: start;
+}
+
+/* Inside the evidence row the shared print-evidence block sits on a surface of
+   its own rather than the rule-delimited strip it used as a full-width band. */
+.job-evidence-row .print-evidence {
+  margin: 0;
+  padding: var(--spacing-xl) var(--spacing-2xl);
+  background: var(--neutral-surface);
+  border: 1px solid var(--neutral-border);
+  border-top: 1px solid var(--neutral-border);
+  border-bottom: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg);
+}
+
+/* ---- delivery entries ---- */
+
+.job-delivery-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+}
+
+.job-delivery {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-md);
+}
+
+.job-delivery__head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+/* Decorative — the adjacent text carries the state. */
+.job-delivery__symbol {
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.job-delivery--pending .job-delivery__symbol { color: var(--semantic-neutral); }
+.job-delivery--active  .job-delivery__symbol { color: var(--primary); }
+.job-delivery--ok      .job-delivery__symbol { color: #40a02b; }
+.job-delivery--waiting .job-delivery__symbol { color: #df8e1d; }
+.job-delivery--failed  .job-delivery__symbol { color: #d20f39; }
+
+.job-delivery__title {
+  font-size: 0.8rem;
+}
+
+.job-delivery__attempts {
+  font-size: 0.75rem;
+  color: var(--neutral-text-muted);
+}
+
+.job-delivery__flag {
+  padding: 2px 6px;
+  border-radius: var(--rounded-sm);
+  background: #fff4e0;
+  color: #8a5a00;
+  font-size: 0.65rem;
+}
+
+.job-delivery__target {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  color: var(--neutral-text);
+  word-break: break-all;
+}
+
+.job-delivery__times,
+.job-delivery__ids {
+  display: flex;
+  gap: var(--spacing-xl);
+  flex-wrap: wrap;
+  margin-top: 4px;
+  color: var(--neutral-text-muted);
+}
+
+.job-delivery__times { font-size: 0.7rem; }
+.job-delivery__ids { font-size: 0.65rem; }
+
+.job-delivery__error {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  color: #d20f39;
+}
+
+/* ---- Tier 2: technical detail ---- */
+
+.job-technical {
+  background: var(--neutral-surface);
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg);
+}
+
+.job-technical__summary {
+  padding: var(--spacing-md) var(--spacing-2xl);
+  font-family: var(--font-label-family);
+  font-size: var(--font-label-size);
+  font-weight: var(--font-label-weight);
+  letter-spacing: var(--font-label-letter-spacing);
+  text-transform: uppercase;
+  color: var(--neutral-text-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.job-technical__summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Authored disclosure caret — one consistent stroke, rotated on open. */
+.job-technical__summary::before {
+  content: '';
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: var(--spacing-md);
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg) translate(-1px, -1px);
+  transition: transform 0.2s ease;
+}
+
+.job-technical[open] > .job-technical__summary::before {
+  transform: rotate(45deg) translate(-2px, -2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-technical__summary::before {
+    transition: none;
+  }
+}
+
+.job-technical__summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: var(--rounded-lg);
+}
+
+.job-technical__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2xl);
+  padding: 0 var(--spacing-2xl) var(--spacing-2xl);
+  border-top: 1px solid var(--neutral-border);
+  padding-top: var(--spacing-xl);
+}
+
+.job-technical__times {
+  display: flex;
+  gap: var(--spacing-2xl);
+  flex-wrap: wrap;
+  margin-top: var(--spacing-md);
+  font-size: 0.75rem;
+  color: var(--neutral-text-muted);
+}
+
+/* ---- trace timeline ---- */
+
+.job-trace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.job-trace__step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+}
+
+.job-trace__marker {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--semantic-neutral);
+}
+
+.job-trace__step--success .job-trace__marker { background: #a6e3a1; }
+.job-trace__step--failed  .job-trace__marker { background: #f38ba8; }
+.job-trace__step--running .job-trace__marker { background: #89b4fa; }
+.job-trace__step--skipped .job-trace__marker { background: #9399b2; }
+.job-trace__step--unknown .job-trace__marker { background: var(--neutral-border-strong); }
+
+.job-trace__card {
+  flex: 1;
+  min-width: 0;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--neutral-surface);
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-md);
+}
+
+.job-trace__name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--neutral-text);
+}
+
+/* The step status is repeated as text here, so the marker colour is never the
+   only thing distinguishing a failed step from a skipped one. */
+.job-trace__meta {
+  margin-top: 2px;
+  font-size: 0.7rem;
+  color: var(--neutral-text-muted);
+}
+
+.job-trace__summary {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  color: var(--neutral-text);
+}
+
+.job-trace__error {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  color: #9f1239;
+}

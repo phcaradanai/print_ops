@@ -10,6 +10,7 @@ import {
   type FormEvent,
 } from 'react';
 import { bootstrapOwner, getBootstrapState, getCurrentUser, login, logout, healthUrl, onUnauthorized, type BootstrapInfo, type SessionUser } from './api/client.js';
+import { SessionProvider } from './api/session.js';
 import { LocaleProvider, useLocale } from './i18n/index.js';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary.js';
 import { errorMessage } from './api/errors.js';
@@ -550,6 +551,7 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
   const pagePath = NAV_ITEMS.find((item) => item.to === '/' ? location.pathname === '/' : location.pathname === item.to || location.pathname.startsWith(item.to + '/'))?.to;
   const pageAllowed = user.role === 'OWNER' || !user.allowedPages || !pagePath || user.allowedPages.includes(pagePath);
   return (
+    <SessionProvider user={user}>
     <div className="app-shell">
       <AppNav user={user} onLogout={onLogout} />
       <main className="app-main">
@@ -585,6 +587,7 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
         </Suspense>}
       </main>
     </div>
+    </SessionProvider>
   );
 }
 

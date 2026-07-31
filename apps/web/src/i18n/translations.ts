@@ -272,6 +272,60 @@ const en: TranslationDict = {
     'Core NATS: the message left PrintOps, but no subscriber acknowledged it.',
   'page.jobDetail.viewCallbackLog': 'View callback log',
 
+  // Job verdict — the plain-language answer to "did my label come out?".
+  // Headline answers "did it print?"; detail answers "what do I do?".
+  // Each verdict is one complete sentence per language, never assembled from
+  // fragments: Thai word order does not survive English concatenation, and
+  // these are the strings an operator acts on.
+  'page.jobDetail.verdict.printed.headline': 'Printed',
+  'page.jobDetail.verdict.printed.detail': 'The printer confirmed this page came out.',
+  'page.jobDetail.verdict.printing.headline': 'Printing now',
+  'page.jobDetail.verdict.printing.detail': 'The printer is working on this job.',
+  'page.jobDetail.verdict.waiting.headline': 'Not printed yet',
+  'page.jobDetail.verdict.waiting.detail':
+    'This job is waiting in the queue. It has not reached the printer.',
+  'page.jobDetail.verdict.sent.headline': 'Sent to the printer',
+  'page.jobDetail.verdict.sent.detail':
+    'The job has left the queue and is on its way to the printer.',
+  'page.jobDetail.verdict.unverified.headline': 'May have printed\u00A0— not verified',
+  'page.jobDetail.verdict.unverified.detail':
+    'Check the printer before reprinting — a label may already exist. The job was sent and nothing reported a fault, but no printer confirmed a page came out.',
+  'page.jobDetail.verdict.timeout.headline': 'No response\u00A0— may have printed',
+  'page.jobDetail.verdict.timeout.detail':
+    'Check the printer before reprinting — a label may already exist. The printer never responded, so the outcome is unknown.',
+  'page.jobDetail.verdict.failed.headline': 'Did not print',
+  'page.jobDetail.verdict.failed.detail':
+    'This job failed before a page came out. Reprinting is safe.',
+  'page.jobDetail.verdict.cancelled.headline': 'Cancelled',
+  'page.jobDetail.verdict.cancelled.detail':
+    'This job was cancelled before printing. Reprinting is safe.',
+  'page.jobDetail.verdict.duplicate.headline': 'Not printed\u00A0— duplicate request',
+  'page.jobDetail.verdict.duplicate.detail':
+    'An identical request had already been accepted, so this one did not print. Open the original job to see what happened to it.',
+  'page.jobDetail.verdict.unknown.headline': 'Outcome unknown',
+  'page.jobDetail.verdict.unknown.detail':
+    'This job reported a status this app does not recognise. Check the printer before reprinting — a label may already exist.',
+
+  // Evidence / forensics tiers
+  'page.jobDetail.whatHappened': 'What happened',
+  'page.jobDetail.technicalDetail': 'Technical detail',
+  'page.jobDetail.showTechnical': 'Show technical detail',
+  'page.jobDetail.hideTechnical': 'Hide technical detail',
+  'page.jobDetail.provenance': 'Origin',
+  'page.jobDetail.reprintReason': 'Reprint reason',
+  'page.jobDetail.originalRequestId': 'Original request ID',
+
+  // Reprint, from the job's own page
+  'page.jobDetail.reprint': 'Reprint',
+  'page.jobDetail.reprintAgain': 'Reprint again',
+  'page.jobDetail.reprintNotPermitted':
+    'Your role can view this job but cannot reprint it.',
+  'page.jobDetail.reprintBlockedIdentity':
+    'This job cannot be reprinted safely: its original request or runner identity was not recorded.',
+  'page.jobDetail.reprintOpenOriginal': 'Open the original job',
+  'page.jobDetail.reprintSubmitted': 'Reprint submitted as {id}',
+  'page.jobDetail.reprintFailed': 'Reprint failed.',
+
   // Runners
   'page.runners.title': 'Runners',
   'page.runners.name': 'Name',
@@ -1358,6 +1412,58 @@ const th: TranslationDict = {
   'page.jobDetail.bestEffortHelp':
     'Core NATS: ข้อความออกจาก PrintOps แล้ว แต่ไม่มีผู้รับยืนยันว่าได้รับ',
   'page.jobDetail.viewCallbackLog': 'ดูบันทึก callback',
+
+  // Job verdict.
+  // ⚠ DRAFT — requires native-Thai review before release. See
+  // docs/frontend/job-detail-verdict-and-reprint.md §1 for the four specific
+  // review questions, in particular whether 'อาจพิมพ์ออกมาแล้ว' can be skimmed
+  // as "printed" (the failure mode with clinical consequences).
+  //
+  // In the ambiguous cases the instruction comes BEFORE the explanation:
+  // under time pressure the operator must reach "check the printer" first.
+  'page.jobDetail.verdict.printed.headline': 'พิมพ์แล้ว',
+  'page.jobDetail.verdict.printed.detail': 'เครื่องพิมพ์ยืนยันแล้วว่าพิมพ์ออกมาจริง',
+  'page.jobDetail.verdict.printing.headline': 'กำลังพิมพ์',
+  'page.jobDetail.verdict.printing.detail': 'เครื่องพิมพ์กำลังทำงานอยู่',
+  'page.jobDetail.verdict.waiting.headline': 'ยังไม่ได้พิมพ์',
+  'page.jobDetail.verdict.waiting.detail': 'งานนี้อยู่ในคิว ยังไม่ถึงเครื่องพิมพ์',
+  'page.jobDetail.verdict.sent.headline': 'ส่งไปยังเครื่องพิมพ์แล้ว',
+  'page.jobDetail.verdict.sent.detail': 'งานออกจากคิวแล้วและกำลังส่งไปยังเครื่องพิมพ์',
+  'page.jobDetail.verdict.unverified.headline': 'อาจพิมพ์ออกมาแล้ว\u00A0— ยืนยันไม่ได้',
+  'page.jobDetail.verdict.unverified.detail':
+    'ตรวจสอบที่เครื่องพิมพ์ก่อนสั่งพิมพ์ซ้ำ อาจมีสติกเกอร์ออกมาแล้ว ระบบส่งงานไปแล้วและไม่พบข้อผิดพลาด แต่ไม่มีการยืนยันจากเครื่องพิมพ์ว่าพิมพ์ออกมาจริง',
+  'page.jobDetail.verdict.timeout.headline': 'ไม่มีการตอบกลับ\u00A0— อาจพิมพ์ออกมาแล้ว',
+  'page.jobDetail.verdict.timeout.detail':
+    'ตรวจสอบที่เครื่องพิมพ์ก่อนสั่งพิมพ์ซ้ำ อาจมีสติกเกอร์ออกมาแล้ว เครื่องพิมพ์ไม่ตอบกลับ จึงไม่ทราบผลลัพธ์',
+  'page.jobDetail.verdict.failed.headline': 'ไม่ได้พิมพ์',
+  'page.jobDetail.verdict.failed.detail': 'งานล้มเหลวก่อนที่จะพิมพ์ออกมา สั่งพิมพ์ซ้ำได้',
+  'page.jobDetail.verdict.cancelled.headline': 'ยกเลิกแล้ว',
+  'page.jobDetail.verdict.cancelled.detail': 'งานถูกยกเลิกก่อนพิมพ์ สั่งพิมพ์ซ้ำได้',
+  'page.jobDetail.verdict.duplicate.headline': 'ไม่ได้พิมพ์\u00A0— คำขอซ้ำ',
+  'page.jobDetail.verdict.duplicate.detail':
+    'มีคำขอเดียวกันถูกรับไว้ก่อนแล้ว งานนี้จึงไม่ได้พิมพ์ เปิดงานต้นฉบับเพื่อดูผลลัพธ์',
+  'page.jobDetail.verdict.unknown.headline': 'ไม่ทราบผลลัพธ์',
+  'page.jobDetail.verdict.unknown.detail':
+    'งานนี้รายงานสถานะที่แอปไม่รู้จัก ตรวจสอบที่เครื่องพิมพ์ก่อนสั่งพิมพ์ซ้ำ อาจมีสติกเกอร์ออกมาแล้ว',
+
+  // Evidence / forensics tiers
+  'page.jobDetail.whatHappened': 'เกิดอะไรขึ้น',
+  'page.jobDetail.technicalDetail': 'รายละเอียดทางเทคนิค',
+  'page.jobDetail.showTechnical': 'แสดงรายละเอียดทางเทคนิค',
+  'page.jobDetail.hideTechnical': 'ซ่อนรายละเอียดทางเทคนิค',
+  'page.jobDetail.provenance': 'ที่มา',
+  'page.jobDetail.reprintReason': 'เหตุผลที่พิมพ์ซ้ำ',
+  'page.jobDetail.originalRequestId': 'Request ID เดิม',
+
+  // Reprint, from the job's own page
+  'page.jobDetail.reprint': 'พิมพ์ซ้ำ',
+  'page.jobDetail.reprintAgain': 'พิมพ์ซ้ำอีกครั้ง',
+  'page.jobDetail.reprintNotPermitted': 'สิทธิ์ของคุณดูงานนี้ได้ แต่สั่งพิมพ์ซ้ำไม่ได้',
+  'page.jobDetail.reprintBlockedIdentity':
+    'งานนี้สั่งพิมพ์ซ้ำอย่างปลอดภัยไม่ได้ เนื่องจากไม่มีบันทึก Request ID เดิมหรือข้อมูลตัวรับงาน',
+  'page.jobDetail.reprintOpenOriginal': 'เปิดงานต้นฉบับ',
+  'page.jobDetail.reprintSubmitted': 'ส่งงานพิมพ์ซ้ำแล้ว: {id}',
+  'page.jobDetail.reprintFailed': 'สั่งพิมพ์ซ้ำไม่สำเร็จ',
 
   // Runners
   'page.runners.title': 'ตัวรับงาน',
