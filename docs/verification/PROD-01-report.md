@@ -21,7 +21,7 @@ physical, cross-machine, and upgrade evidence. A `BLOCKED` row is not a pass.
 
 | Gate | Result | Evidence |
 | --- | --- | --- |
-| AUTOMATED | PASS | API 45 files/351 tests, web 23 files/453 tests, API/web typechecks and builds, Go suite, Rust suite, SQLite migration/backup, readiness, support-bundle redaction, pinned real JetStream/TCP callback matrix, 67 built-static Playwright tests, release-verifier negatives, final MSI/NSIS verification, and packaged sidecar smoke pass. |
+| AUTOMATED | PASS | API 45 files/351 tests, web 23 files/453 tests, API/web typechecks and builds, Go suite, Rust suite, SQLite migration/backup, readiness, support-bundle redaction, pinned real JetStream/TCP callback matrix, 67 built-static Playwright tests, release-verifier negatives, final MSI/NSIS verification, packaged sidecar smoke, and packaged Tauri supervision smoke pass. |
 | PACKAGED CLEAN-MACHINE | BLOCKED | No post-authentication installer clean-install evidence captured. |
 | PHYSICAL PRINTER | BLOCKED | No physical sample or packaged UI/HTTP/NATS print matrix captured. |
 | CROSS-MACHINE NATS | BLOCKED | No off-host broker/listener evidence captured. |
@@ -34,7 +34,7 @@ physical, cross-machine, and upgrade evidence. A `BLOCKED` row is not a pass.
 | AUTH-01 | One atomic OWNER bootstrap | Concurrent requests yield one success and one 409; one OWNER stored | `apps/api/src/tests/auth-security.test.ts` | PASS | Packaged UI exercise pending |
 | AUTH-02 | Strong salted password; legacy plaintext rejected | scrypt round-trip succeeds; wrong/plaintext values fail | `apps/api/src/tests/auth-security.test.ts` | PASS | Password recovery procedure pending |
 | AUTH-03 | Existing database requires matching OWNER email | Mismatched migration email returns 409 | `apps/api/src/tests/auth-security.test.ts` | PASS | Prior real database copy pending |
-| AUTH-04 | Runner secret is exact-match only | Invalid secret 401; valid secret issues JWT | `apps/api/src/tests/auth-security.test.ts` | PASS | Packaged sidecar exercise pending |
+| AUTH-04 | Runner secret is exact-match only | Invalid secret 401; valid secret issues JWT; shipped discovery runner authenticates and registers under isolated packaged state | `apps/api/src/tests/auth-security.test.ts`, `artifacts/prod-01/packaged-sidecar-smoke.json` | PASS | Clean-machine filesystem inspection pending |
 | KEY-01 | Key plaintext shown only on create/rotate and hash stored | Random `po_live_…` returned; list/audit omit key/hash | `apps/api/src/tests/service-account-security.test.ts` | PASS | Packaged clipboard/operator exercise pending |
 | KEY-02 | Rotate/revoke immediately invalidate lifecycle state | Hash changes on rotation; account inactive on revoke | `apps/api/src/tests/service-account-security.test.ts` | PASS | Bound-port external caller exercise pending |
 | KEY-03 | OWNER-only mutation with actor audit | ADMIN receives 403; three actor-attributed audit actions recorded | `apps/api/src/tests/service-account-security.test.ts` | PASS | Audit UI screenshot pending |
@@ -53,6 +53,7 @@ physical, cross-machine, and upgrade evidence. A `BLOCKED` row is not a pass.
 | WEB-E2E-01 | Production static bundle remains operable at supported viewports | 67/67 Playwright tests pass against `apps/web/dist` | Local command output, 2026-07-31 | PASS | WebView2 packaged exercise pending |
 | RELEASE-01 | Release fails closed and emits current installer hashes | Four verifier-negative tests reject version drift, forbidden artifacts, missing/zero resources, and stale outputs; final post-bundle gate verifies both installers against current resources | `scripts/release-verify.test.mjs`, `artifacts/prod-01/release-manifest.json`, generated 2026-07-31T10:29:07Z | PASS | Code signing and clean-machine installation pending |
 | PACKAGED-01 | Shipped API and discovery binaries start with production topology and persist state | Final bundled `server.exe` reports healthy, bootstraps one OWNER, registers discovery-only runner, reports `SINGLE_EXECUTOR`, and restarts with the same SQLite database | `artifacts/prod-01/packaged-sidecar-smoke.json`, generated after final bundle | PASS | Tauri/WebView2 clean-machine UI and filesystem ACL exercise pending |
+| PACKAGED-02 | Tauri supervises product sidecars and owns normal shutdown | Actual release desktop launches both children, recovers health after forced API termination, restarts the forced-terminated discovery runner, and leaves no observed child running after normal window close | `artifacts/prod-01/packaged-desktop-supervision-smoke.json` | PASS | Abrupt desktop-process termination and clean-machine exercise pending |
 
 ## Packaged, physical, cross-machine, and recovery matrices
 
