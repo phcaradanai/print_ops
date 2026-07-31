@@ -54,30 +54,14 @@ step('Building API server.exe (pkg bundle)', () => {
 
 // ──── Go runner ───────────────────────────────────────────────────────
 step('Building Go runner (printops-runner.exe)', () => {
-  const goVer = (() => {
-    try {
-      return execSync('go version', { encoding: 'utf8' }).trim();
-    } catch { return null; }
-  })();
-
-  if (!goVer) {
-    console.warn('[BUILD] WARNING: Go not found — skipping runner build.');
-    console.warn('[BUILD] The installer will work but printer discovery/printing will be disabled.');
-    console.warn('[BUILD] Install Go from https://go.dev/dl/ and re-run this script.');
-    return;
-  }
+  const goVer = execSync('go version', { encoding: 'utf8' }).trim();
   console.log(`[BUILD] ${goVer}`);
 
-  try {
-    execSync('go build -o printops-runner.exe ./cmd/printops-runner/', {
-      stdio: 'inherit',
-      cwd: RUNNER_DIR,
-    });
-    console.log('[BUILD] OK: printops-runner.exe built');
-  } catch (e) {
-    console.warn('[BUILD] WARNING: go build failed — runner will not be included.');
-    console.warn(e.message);
-  }
+  execSync('go build -trimpath -o printops-runner.exe ./cmd/printops-runner/', {
+    stdio: 'inherit',
+    cwd: RUNNER_DIR,
+  });
+  console.log('[BUILD] OK: printops-runner.exe built');
 });
 
 // ──── Windows HTML print helper ─────────────────────────────────────
@@ -97,6 +81,7 @@ step('Building WebView2 HTML print helper', () => {
 // ──── Copy resources ──────────────────────────────────────────────────
 step('Copying resources into src-tauri/resources/', () => {
   const d = path.resolve(__dirname, '..', 'resources');
+  f.rmSync(d, { recursive: true, force: true });
   f.mkdirSync(d, { recursive: true });
 
   const webDist = path.join(ROOT, 'apps', 'web', 'dist');
@@ -107,7 +92,7 @@ step('Copying resources into src-tauri/resources/', () => {
     f.cpSync(webDist, apiStatic, { recursive: true });
     console.log('[BUILD] Copied web/dist → api/dist/static');
   } else {
-    console.warn('[BUILD] WARNING: web/dist not found');
+    throw new Error('[BUILD] ERROR: web/dist not found');
   }
 
   // Copy server.exe
@@ -124,6 +109,8 @@ step('Copying resources into src-tauri/resources/', () => {
   if (f.existsSync(apiStatic)) {
     f.cpSync(apiStatic, path.join(d, 'static'), { recursive: true });
     console.log('[BUILD] Copied static files');
+  } else {
+    throw new Error('[BUILD] ERROR: api/dist/static not found');
   }
 
   // Copy sql-wasm.wasm
@@ -131,21 +118,18 @@ step('Copying resources into src-tauri/resources/', () => {
   if (f.existsSync(wasmPath)) {
     f.cpSync(wasmPath, path.join(d, 'sql-wasm.wasm'));
     console.log('[BUILD] Copied sql-wasm.wasm');
+  } else {
+    throw new Error('[BUILD] ERROR: sql-wasm.wasm not found');
   }
 
   // Copy runner
   const runnerExe = path.join(RUNNER_DIR, 'printops-runner.exe');
-  const runnerExeAlt = path.join(RUNNER_DIR, 'printops-runner.exe');
   const runnerDst = path.join(d, 'printops-runner.exe');
   if (f.existsSync(runnerExe)) {
     f.cpSync(runnerExe, runnerDst);
     console.log('[BUILD] Copied printops-runner.exe');
-  } else if (f.existsSync(runnerExeAlt)) {
-    f.cpSync(runnerExeAlt, runnerDst);
-    console.log('[BUILD] Copied printops-runner.exe');
   } else {
-    console.warn('[BUILD] WARNING: printops-runner.exe not found — printer discovery disabled');
-    console.warn('[BUILD]   cd apps/runner-go && go build -o printops-runner.exe ./cmd/printops-runner/');
+    throw new Error('[BUILD] ERROR: printops-runner.exe not found');
   }
 
   // Copy WebView2 HTML print helper and its managed/native dependencies.

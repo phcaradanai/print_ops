@@ -1,0 +1,43 @@
+# PROD-01 code-backed gap table
+
+Last updated: 2026-07-31 (Asia/Bangkok)
+
+Status meanings:
+
+- **PASS**: current repository evidence directly covers the stated in-repository requirement.
+- **PARTIAL**: implementation exists, but required production or failure-matrix evidence is incomplete.
+- **BLOCKED**: the gate requires external hardware, another machine/service, or clean-install evidence that is not present.
+- **FAIL**: current evidence contradicts the requirement.
+
+This table is an implementation guide, not an acceptance report. Automated evidence does not convert a packaged, physical, cross-machine, or upgrade gate into a pass.
+
+| Phase | Status | Current evidence | Remaining proof or implementation |
+| --- | --- | --- | --- |
+| 0. Branch reconciliation | PASS | Merge `24b4555` records `origin/main` ancestry. Commit `232fd78` deliberately ports the workspace watch scripts while preserving the Go runner workflow. Commit `c023bcf` hardens the active `NatsConnectionManager`; `apps/api/src/tests/nats-consumer-lifecycle.test.ts` covers compatible reuse, subject conflict, create race, and safe tuning updates. | Real JetStream reconnect and duplicate-consume-loop integration evidence remains part of Phases 7–8. |
+| 1. Truthful Windows architecture | PARTIAL | `apps/desktop/src-tauri/src/lib.rs` starts the bundled API and discovery runner; packaged runner environment disables job execution. `apps/api/src/infra/print-worker.ts` owns local execution. | Commit the architecture document, remove stale canonical-executor claims, expose executor mode consistently, and add a no-double-executor startup invariant/test. |
+| 2. Fail-closed release | PARTIAL | Root `release:verify` validates toolchains, version consistency, forbidden tracked artifacts, complete builds, required resources, freshness, zero-byte files, and writes a SHA-256 resource manifest. `desktop:bundle` adds MSI/NSIS freshness and SHA-256 output. `build-all.js` no longer skips Go or missing resources. | Run `desktop:bundle`, retain its release manifest, add automated negative tests for missing/stale resources, and prove clean installation. |
+| 3. Packaged authentication | FAIL | Existing login behavior and development seed paths have not yet been shown to meet first-run owner/bootstrap/API-key requirements. | Implement atomic first-run owner setup, production seed suppression, hashed API-key lifecycle, migration behavior, packaged CORS restrictions, and security tests. |
+| 4. Persistence/recovery | PARTIAL | SQLite persistence, exclusive-lock tests, and job lifecycle recovery logic exist under `apps/api/src`. | Audit every required state transition, version and back up migrations, add backup/restore UI, and capture packaged crash/upgrade/uninstall evidence. |
+| 5. Readiness/support diagnostics | PARTIAL | `NatsConnectionManager` exposes split core/intake/callback/consumer state; local diagnostics UI and export commands exist. | Audit all required component states, produce a credential-safe support bundle, and exercise broker/network late recovery. |
+| 6. Real Windows printing | BLOCKED | Windows spooler, WebView2 helper, discovery, UI workflows, and packaged resources exist. | Execute the complete UI/HTTP/NATS physical workflow and failure matrix with an installed printer; capture job-specific evidence and physical samples. |
+| 7. Cross-machine NATS/callback | BLOCKED | NATS intake and HTTP/NATS callback implementations and automated tests exist. | Run real JetStream and callback receiver off-host, execute all 16 cases, and retain sanitized broker/listener/trace evidence. |
+| 8. Automated release/runtime checks | PARTIAL | TypeScript, Go, and focused lifecycle tests exist; release resource validation is now executable. | Add bound-port API/callback tests, real temporary NATS, migration/restart, packaged smoke, Playwright, security, no-double-executor, and verifier negative tests; run the full suite. |
+| Production documentation | FAIL | This gap table exists. | Create the required architecture, runbook, verification report, and known-limitations documents with current evidence. |
+| Final acceptance | BLOCKED | No current report proves a clean workstation install, real printer matrix, cross-machine topology, or upgrade/rollback matrix. | Complete each external matrix and mark blocked cases as PASS only after reproducible packaged evidence is captured. |
+
+## Release-verifier evidence
+
+Run:
+
+```powershell
+npm run release:verify
+npm run desktop:bundle
+```
+
+Expected generated evidence (ignored by Git):
+
+- `artifacts/prod-01/resource-manifest.json`
+- `artifacts/prod-01/release-manifest.json`
+
+The post-bundle manifest records the application version, Git commit, build timestamp, resource inventory, installer paths, sizes, and SHA-256 hashes. An installer older than the verified resources fails the gate.
+

@@ -15,6 +15,9 @@ apps/*/src/**/*.d.ts.map
 .env.local
 .env.*.local
 *.log
+*.tmp
+vitest.config.ts.timestamp-*.mjs
+**/printops.db
 coverage/
 .DS_Store
 *.tsbuildinfo
