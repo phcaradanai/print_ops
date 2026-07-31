@@ -10,9 +10,9 @@ physical, cross-machine, and upgrade evidence. A `BLOCKED` row is not a pass.
 | Report date/time | 2026-07-31, Asia/Bangkok |
 | Branch | `mvp_nippon` |
 | Application version | 0.1.15 |
-| Git commit | `7cd6a5e8a2cf18640607342f506513f4e1c4b7ca` |
-| Installer MSI | `PrinterOps_0.1.15_x64_en-US.msi`, 26,509,312 bytes, SHA-256 `9ec1e4c81582d4e4ad8c6ca0dfa63a76792d02dbaa82279cc7df5460f723a304` |
-| Installer NSIS | `PrinterOps_0.1.15_x64-setup.exe`, 20,146,690 bytes, SHA-256 `fa8c0ded4f41bbe2ce8c419e8f8ce2e120710486d774ddfcfb6e7431896bb546` |
+| Git commit | `10d21c49cf02f3c12d1db00d5c11054ce6d3c6f8` |
+| Installer MSI | `PrinterOps_0.1.15_x64_en-US.msi`, 26,509,312 bytes, SHA-256 `09983988134351c158e8bcaa50dd4d1983ab602320ed374517b4f33442c8302e` |
+| Installer NSIS | `PrinterOps_0.1.15_x64-setup.exe`, 20,146,741 bytes, SHA-256 `ca072cfb46009871c599dba32bee32cc6567b8b7060749a9ab52538368f696f5` |
 | Windows version | Development workstation only; clean-machine value pending |
 | Printer | Pending physical acceptance |
 | NATS | Automated loopback: 2.10.29, pinned digest; cross-machine acceptance pending |
@@ -51,9 +51,9 @@ physical, cross-machine, and upgrade evidence. A `BLOCKED` row is not a pass.
 | SUPPORT-01 | Support export is OWNER-only, audited, bounded, and credential-safe | ADMIN receives 403; payloads, targets, URL credentials, bearer tokens, API keys, and passwords are absent | `apps/api/src/tests/readiness-support-bundle.test.ts` | PASS | Manual packaged bundle review pending |
 | NATS-E2E-01 | Real JetStream intake and real TCP callbacks cover both transports without duplicates | Pinned NATS 2.10.29 container passes API/NATS intake × HTTP/NATS callback, no-callback, DLQ, retry/recovery, and cross-transport idempotency cells | `artifacts/e2e/e2e-report.json`, generated 2026-07-31T10:07:45Z | PASS | Loopback fake-printer automation only; off-host and physical proof pending |
 | WEB-E2E-01 | Production static bundle remains operable at supported viewports | 67/67 Playwright tests pass against `apps/web/dist` | Local command output, 2026-07-31 | PASS | WebView2 packaged exercise pending |
-| RELEASE-01 | Release fails closed and emits current installer hashes | Four verifier-negative tests reject version drift, forbidden artifacts, missing/zero resources, and stale outputs; final post-bundle gate verifies both installers against current resources | `scripts/release-verify.test.mjs`, `artifacts/prod-01/release-manifest.json`, generated 2026-07-31T10:29:07Z | PASS | Code signing and clean-machine installation pending |
+| RELEASE-01 | Release fails closed and emits current installer hashes | Four verifier-negative tests reject version drift, forbidden artifacts, missing/zero resources, and stale outputs; final post-bundle gate verifies both installers against current resources | `scripts/release-verify.test.mjs`, `artifacts/prod-01/release-manifest.json`, generated 2026-07-31T10:50:05Z | PASS | Code signing and clean-machine installation pending |
 | PACKAGED-01 | Shipped API and discovery binaries start with production topology and persist state | Final bundled `server.exe` reports healthy, bootstraps one OWNER, registers discovery-only runner, reports `SINGLE_EXECUTOR`, and restarts with the same SQLite database | `artifacts/prod-01/packaged-sidecar-smoke.json`, generated after final bundle | PASS | Tauri/WebView2 clean-machine UI and filesystem ACL exercise pending |
-| PACKAGED-02 | Tauri supervises product sidecars and owns normal shutdown | Actual release desktop launches both children, recovers health after forced API termination, restarts the forced-terminated discovery runner, and leaves no observed child running after normal window close | `artifacts/prod-01/packaged-desktop-supervision-smoke.json` | PASS | Abrupt desktop-process termination and clean-machine exercise pending |
+| PACKAGED-02 | Tauri contains and supervises product sidecars | Actual release desktop enforces single instance, recovers both forced-terminated sidecars, contains them in a kill-on-close Windows Job Object, leaves no child after abrupt shell termination, restarts cleanly, and leaves no child after normal close | `artifacts/prod-01/packaged-desktop-supervision-smoke.json`, generated 2026-07-31T10:50:32Z | PASS | Clean-machine UI exercise pending |
 
 ## Packaged, physical, cross-machine, and recovery matrices
 

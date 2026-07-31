@@ -150,6 +150,12 @@ sidecar with the packaged configuration. If repeated restarts continue, capture
 the redacted logs and restart PrintOps. Do not launch a second server or runner
 manually against the same database.
 
+The packaged Windows desktop also owns both sidecars through a kill-on-close
+Job Object. A forced desktop-process termination stops the API and discovery
+runner instead of leaving orphan processes holding the database or loopback
+port. Start PrintOps normally afterward and confirm local API, database, worker,
+and runner readiness before resuming work.
+
 ## Upgrade, rollback, and uninstall
 
 Before upgrade:

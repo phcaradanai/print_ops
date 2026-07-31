@@ -75,6 +75,10 @@ The API validates those values before creating repositories or starting a worker
   runner exits are logged and restarted with the same validated packaged
   configuration. Normal shutdown sets a guard before terminating children so
   the supervisor cannot resurrect them.
+- On Windows, both sidecars are assigned to a desktop-owned Job Object with
+  `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. Abrupt desktop termination therefore
+  closes the job and terminates its contained children, preventing orphaned
+  sidecars from retaining the database lock or loopback port on the next launch.
 
 ## NATS lifecycle
 
