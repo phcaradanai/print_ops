@@ -6,6 +6,7 @@ type AuthenticatedUser = {
   sub?: string;
   role?: Role;
   email?: string;
+  kind?: string;
 };
 
 export function requirePermission(permission: Permission) {
@@ -17,6 +18,9 @@ export function requirePermission(permission: Permission) {
     }
 
     const user = req.user as AuthenticatedUser;
+    if (user.kind === 'runner' && permission !== 'runner:read' && permission !== 'runner:manage') {
+      return reply.status(403).send({ error: 'Runner credentials cannot access operator APIs' });
+    }
     const role = user.role;
     if (!role || !ROLE_PERMISSIONS[role]?.includes(permission)) {
       return reply.status(403).send({ error: `Missing permission: ${permission}` });

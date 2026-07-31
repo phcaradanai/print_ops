@@ -18,6 +18,7 @@ import {
   saveNatsSettings,
   isTauriAvailable,
 } from '../tauri.js';
+import { ServiceAccountSettings } from '../components/ServiceAccountSettings.js';
 
 // ----- workspace profile persistence -----
 
@@ -388,7 +389,8 @@ export default function Settings() {
           </label>
           <input
             id="settings-ws-apikey"
-            type="text"
+            type="password"
+            autoComplete="off"
             value={wsDraft.apiKey}
             placeholder={t('settings.workspace.apiKeyPlaceholder')}
             onChange={(e) => handleWsChange('apiKey', e.target.value)}
@@ -528,6 +530,7 @@ export default function Settings() {
           </>
         )}
       </section>
+      <ServiceAccountSettings />
     </div>
   );
 }

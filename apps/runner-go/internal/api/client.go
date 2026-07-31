@@ -55,6 +55,23 @@ func (c *Client) Login(ctx context.Context, email, password string) error {
 	return nil
 }
 
+// LoginRunner exchanges a per-installation bootstrap secret for a short-lived
+// bearer token without depending on a human user's password.
+func (c *Client) LoginRunner(ctx context.Context, secret string) error {
+	body := map[string]string{"secret": secret}
+	var resp struct {
+		Token string `json:"token"`
+	}
+	if _, err := c.doJSON(ctx, http.MethodPost, "/auth/runner", body, &resp, false); err != nil {
+		return fmt.Errorf("runner login: %w", err)
+	}
+	if resp.Token == "" {
+		return errors.New("runner login: empty token in response")
+	}
+	c.Token = resp.Token
+	return nil
+}
+
 // RegisterRequest is the payload for POST /runners/register (legacy route,
 // backward compatible). The existing API expects name/hostname/protocols/metadata.
 type RegisterRequest struct {

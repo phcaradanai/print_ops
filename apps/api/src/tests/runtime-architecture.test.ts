@@ -56,7 +56,7 @@ describe('runtime executor architecture', () => {
       const login = await built.app.inject({
         method: 'POST',
         url: '/auth/login',
-        payload: { email: 'admin@printerops.local', password: 'dev-password' },
+        payload: { email: 'admin@printerops.local', password: 'Dev-password1!' },
       });
       expect(login.statusCode).toBe(200);
       const token = (login.json() as { token: string }).token;

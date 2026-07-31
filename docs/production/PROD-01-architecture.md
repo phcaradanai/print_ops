@@ -91,6 +91,40 @@ The Go discovery runner does not send packaged terminal results because it never
 
 Settings → System status presents the same contract to the operator. It must not infer execution ownership from a runner heartbeat or configured executor backend.
 
+## Authentication and secret boundaries
+
+Packaged mode starts without users, passwords, or service-account keys. Until a
+hashed active OWNER exists:
+
+- the dashboard shows the owner bootstrap flow;
+- HTTP API-key print intake returns `503`;
+- NATS can establish its core connection and durable consumer, but does not
+  start consuming print messages; and
+- the NATS readiness status reports `CREDENTIALS_NOT_INITIALIZED`.
+
+Owner passwords use Node's maintained `crypto.scrypt` implementation with a
+random 128-bit salt and constant-time verification. Passwordless and plaintext
+legacy records never authenticate. An existing development database enters an
+explicit migration state and requires the email of its existing OWNER; other
+passwordless accounts are disabled when migration completes.
+
+Integration keys are random `po_live_…` values. The API returns plaintext only
+from create and rotate operations, stores only SHA-256 plus an eight-character
+non-secret prefix, and audits create/rotate/revoke with actor and timestamp.
+
+The desktop shell separately persists:
+
+- a CSPRNG-generated JWT signing secret; and
+- a CSPRNG-generated runner bootstrap secret.
+
+The discovery runner exchanges the latter for a short-lived runner JWT. Runner
+JWTs are restricted to registration, heartbeat, and discovery synchronization;
+they cannot access operator or print-intake APIs. Neither secret is a human
+password or the public development credential.
+
+Packaged CORS accepts only the loopback/desktop origins required by the local
+WebView. Development fixtures exist only when `PRINTOPS_DEV_SEED=true`.
+
 ## Future remote/headless mode
 
 The Go runner contains polling and executor implementations for development and future remote/headless deployments. In such a deployment it may be configured with `PRINTOPS_JOBS_ENABLED=true` and become the execution owner.
@@ -103,4 +137,3 @@ That mode is not part of PROD-01. Before it can be called production-supported i
 - restart and uncertain-dispatch recovery evidence;
 - cross-machine callback evidence; and
 - its own upgrade and operations runbook.
-

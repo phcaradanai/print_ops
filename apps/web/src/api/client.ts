@@ -18,8 +18,9 @@ export function getApiKey(): string {
     return stored.trim();
   }
   return (import.meta.env.VITE_API_KEY as string | undefined) ??
-         (import.meta.env.VITE_DEV_API_KEY as string | undefined) ??
-         'printops-dev-apikey-2026';
+         (import.meta.env.DEV
+           ? (import.meta.env.VITE_DEV_API_KEY as string | undefined) ?? 'printops-dev-apikey-2026'
+           : '');
 }
 
 export function saveApiKey(key: string): void {
@@ -255,6 +256,32 @@ export async function login(email: string, password: string): Promise<SessionUse
     throw error;
   }
 
+  const data = await res.json() as { token: string; user: SessionUser };
+  storageSet('token', data.token);
+  return data.user;
+}
+
+export type BootstrapState = 'READY' | 'REQUIRED_NEW' | 'MIGRATION_REQUIRED';
+
+export async function getBootstrapState(): Promise<BootstrapState> {
+  const res = await fetch(apiBase() + '/auth/bootstrap');
+  if (!res.ok) throw await apiErrorFromResponse(res, '/auth/bootstrap');
+  return ((await res.json()) as { state: BootstrapState }).state;
+}
+
+export async function bootstrapOwner(input: {
+  name: string;
+  email: string;
+  password: string;
+  passwordConfirmation: string;
+}): Promise<SessionUser> {
+  const path = '/auth/bootstrap';
+  const res = await fetch(apiBase() + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw await apiErrorFromResponse(res, path);
   const data = await res.json() as { token: string; user: SessionUser };
   storageSet('token', data.token);
   return data.user;

@@ -98,6 +98,8 @@ import { pruneOldRecords, retentionDaysFromEnv, retentionMaxRowsFromEnv } from '
 import { ReprintJobService } from './services/reprint-job.service.js';
 import { IntakeOutcomeCallbackService } from './services/intake-outcome-callback.service.js';
 import { runtimeArchitectureFromEnv } from './infra/runtime-architecture.js';
+import { hashPassword } from './infra/auth/password.js';
+import { serviceAccountRoutes } from './routes/v1/service-accounts.routes.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -157,7 +159,20 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const runtimeArchitecture = runtimeArchitectureFromEnv();
   const app = Fastify({
     logger: {
-      redact: ['req.headers.authorization', 'req.headers["x-api-key"]', 'body.payload'],
+      redact: {
+        paths: [
+          'req.headers.authorization',
+          'req.headers.x-api-key',
+          'req.body.password',
+          'req.body.passwordConfirmation',
+          'req.body.secret',
+          'req.body.apiKey',
+          'req.body.callbackSecret',
+          'req.body.payload',
+          'res.body.apiKey',
+        ],
+        censor: '[REDACTED]',
+      },
     },
   });
 
@@ -170,7 +185,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const corsAllowedOriginsEnv = process.env['CORS_ALLOWED_ORIGINS'];
   const corsOrigin = corsAllowedOriginsEnv
     ? corsAllowedOriginsEnv.split(',').map((origin) => origin.trim()).filter(Boolean)
-    : true;
+    : runtimeArchitecture.runtimeMode === 'packaged-windows-desktop'
+      ? ['http://127.0.0.1:31415', 'http://localhost:31415', 'tauri://localhost', 'https://tauri.localhost']
+      : true;
   await app.register(cors, { origin: corsOrigin });
 
   const jwtSecret = opts.jwtSecret ?? process.env['JWT_SECRET'];
@@ -198,6 +215,17 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   app.decorate('authenticate', async function (req: FastifyRequest, reply: FastifyReply) {
     try {
       await req.jwtVerify();
+      const identity = req.user as { kind?: string };
+      if (identity.kind === 'runner') {
+        const path = new URL(req.url, 'http://localhost').pathname;
+        const allowed =
+          (req.method === 'POST' && path === '/runners/register')
+          || (req.method === 'POST' && /^\/runners\/[^/]+\/heartbeat$/.test(path))
+          || (req.method === 'POST' && /^\/api\/v1\/runners\/[^/]+\/printers\/discovery$/.test(path));
+        if (!allowed) {
+          return reply.status(403).send({ error: 'Runner credentials are restricted to discovery and heartbeat operations' });
+        }
+      }
     } catch (err) {
       reply.send(err);
     }
@@ -523,36 +551,45 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     });
   }
 
+  const productionCredentialsReady = async () => {
+    const users = await userRepo.findAll();
+    return users.some((user) => user.isActive && user.role === 'OWNER' && user.passwordHash?.startsWith('scrypt$'));
+  };
+
   // API key middleware
-  const apiKeyHook = buildApiKeyAuth(serviceAccountRepo);
+  const apiKeyHook = buildApiKeyAuth(serviceAccountRepo, productionCredentialsReady);
 
   // A persistent store must never be re-seeded as a new instance on every
   // desktop start; doing so duplicates sample data and can overwrite records.
-  const shouldSeedDemoData = !useSqlite || (await userRepo.findAll({ limit: 1 })).length === 0;
+  const devSeedEnabled = process.env['PRINTOPS_DEV_SEED'] === 'true';
+  const shouldSeedDemoData = devSeedEnabled && (!useSqlite || (await userRepo.findAll({ limit: 1 })).length === 0);
 
-  // Seed default local users. MVP auth accepts any password for these accounts.
-  for (const user of [
-    { email: 'sysadmin@printerops.local', name: 'Sysadmin', role: 'OWNER' as const },
-    { email: 'admin@printerops.local', name: 'Admin', role: 'ADMIN' as const },
-    { email: 'user@printerops.local', name: 'User', role: 'OPERATOR' as const },
-    { email: 'viewer@printerops.local', name: 'Viewer', role: 'VIEWER' as const },
-  ]) {
-    if (!(await userRepo.findByEmail(user.email))) {
-      userRepo.seed({
-        id: generateId(),
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+  const devPasswordHash = devSeedEnabled ? await hashPassword('Dev-password1!') : undefined;
+  if (devSeedEnabled) {
+    for (const user of [
+      { email: 'sysadmin@printerops.local', name: 'Sysadmin', role: 'OWNER' as const },
+      { email: 'admin@printerops.local', name: 'Admin', role: 'ADMIN' as const },
+      { email: 'user@printerops.local', name: 'User', role: 'OPERATOR' as const },
+      { email: 'viewer@printerops.local', name: 'Viewer', role: 'VIEWER' as const },
+    ]) {
+      if (!(await userRepo.findByEmail(user.email))) {
+        userRepo.seed({
+          id: generateId(),
+          email: user.email,
+          name: user.name,
+          passwordHash: devPasswordHash,
+          role: user.role,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
     }
   }
 
   // Seed dev service account
   const devKey = DEV_API_KEY;
-  if (!(await serviceAccountRepo.findBySourceSystem('integration-service'))) {
+  if (devSeedEnabled && !(await serviceAccountRepo.findBySourceSystem('integration-service'))) {
     serviceAccountRepo.seed({
       id: generateId(),
       name: 'Dev Integration Service',
@@ -750,7 +787,12 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     // the authenticated HTTP API must remain available for recovery.
     app.log.error({ err }, 'print-intake disabled: invalid client-scoped NATS configuration');
   }
-  const natsManager = new NatsConnectionManager(printIntakeCfg, { dynamicPrint, logger: app.log, intakeLog: intakeAttemptRepo });
+  const natsManager = new NatsConnectionManager(printIntakeCfg, {
+    dynamicPrint,
+    logger: app.log,
+    intakeLog: intakeAttemptRepo,
+    isIntakeEnabled: productionCredentialsReady,
+  });
   const routeNatsPublisher: NatsPublisher | undefined = printIntakeCfg
     ? (subject, payload) => natsManager.publish(subject, payload)
     : undefined;
@@ -770,7 +812,10 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
 
   // Routes — legacy internal API
   await app.register(async (api) => {
-    await authRoutes(api, { users: userRepo });
+    await authRoutes(api, {
+      users: userRepo,
+      runnerBootstrapSecret: process.env['PRINTOPS_RUNNER_BOOTSTRAP_SECRET'],
+    });
     await printerRoutes(api, { printers: printerRepo, createPrinter, getPrinterStatus, registry });
     await jobRoutes(api, { jobs: jobRepo, traces: traceRepo, createJob, executeJob, reprintJob });
     await runnerRoutes(api, { runners: runnerRepo, jobs: jobRepo, registerRunner, runnerHeartbeat });
@@ -792,6 +837,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob, getPrinterStatus, logger: app.log, callbackSender: httpCallbackSender, callbackNats: routeNatsPublisher, callbackAttemptLog: webhookCallbackAttemptRepo, callbackDeliveries: callbackDeliveryRepo });
     await paperProfileImportRoutes(v1, { importService: importPaperProfile });
     await v1UserRoutes(v1, { users: userRepo });
+    await serviceAccountRoutes(v1, { serviceAccounts: serviceAccountRepo, audit: auditRepo });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
   if (printIntakeCfg) {

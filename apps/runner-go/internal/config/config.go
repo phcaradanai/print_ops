@@ -63,6 +63,9 @@ type Config struct {
 	// Token is the runner auth bearer token. Optional in dev: when empty the
 	// runner falls back to a dev login against the API.
 	Token string
+	// BootstrapSecret is injected by the desktop shell and exchanged for a
+	// short-lived JWT without using a human user's password.
+	BootstrapSecret string
 
 	PollInterval      time.Duration
 	HeartbeatInterval time.Duration
@@ -120,20 +123,21 @@ func Load() (*Config, error) {
 	hostname, _ := os.Hostname()
 
 	cfg := &Config{
-		APIBaseURL:    firstNonEmpty(get("PRINTOPS_API_BASE_URL"), defaultAPIBaseURL),
-		RunnerID:      get("PRINTOPS_RUNNER_ID"),
-		RunnerName:    firstNonEmpty(get("PRINTOPS_RUNNER_NAME"), defaultRunnerName),
-		Token:         get("PRINTOPS_RUNNER_TOKEN"),
-		DiscoveryMode: DiscoveryMode(firstNonEmpty(strings.ToLower(get("PRINTOPS_DISCOVERY_MODE")), string(DiscoveryAuto))),
-		ExecutorMode:  ExecutorMode(firstNonEmpty(strings.ToLower(get("PRINTOPS_EXECUTOR_MODE")), string(ExecutorFake))),
-		LogLevel:      firstNonEmpty(get("PRINTOPS_LOG_LEVEL"), defaultLogLevel),
-		SNMPCommunity: firstNonEmpty(get("PRINTOPS_SNMP_COMMUNITY"), defaultSNMPCommunity),
-		Hostname:      firstNonEmpty(get("PRINTOPS_HOSTNAME"), hostname, "unknown-host"),
-		OS:            runtime.GOOS,
-		Arch:          runtime.GOARCH,
-		Version:       Version,
-		DevEmail:      firstNonEmpty(get("PRINTOPS_DEV_EMAIL"), defaultDevEmail),
-		DevPassword:   firstNonEmpty(get("PRINTOPS_DEV_PASSWORD"), defaultDevPassword),
+		APIBaseURL:      firstNonEmpty(get("PRINTOPS_API_BASE_URL"), defaultAPIBaseURL),
+		RunnerID:        get("PRINTOPS_RUNNER_ID"),
+		RunnerName:      firstNonEmpty(get("PRINTOPS_RUNNER_NAME"), defaultRunnerName),
+		Token:           get("PRINTOPS_RUNNER_TOKEN"),
+		BootstrapSecret: get("PRINTOPS_RUNNER_BOOTSTRAP_SECRET"),
+		DiscoveryMode:   DiscoveryMode(firstNonEmpty(strings.ToLower(get("PRINTOPS_DISCOVERY_MODE")), string(DiscoveryAuto))),
+		ExecutorMode:    ExecutorMode(firstNonEmpty(strings.ToLower(get("PRINTOPS_EXECUTOR_MODE")), string(ExecutorFake))),
+		LogLevel:        firstNonEmpty(get("PRINTOPS_LOG_LEVEL"), defaultLogLevel),
+		SNMPCommunity:   firstNonEmpty(get("PRINTOPS_SNMP_COMMUNITY"), defaultSNMPCommunity),
+		Hostname:        firstNonEmpty(get("PRINTOPS_HOSTNAME"), hostname, "unknown-host"),
+		OS:              runtime.GOOS,
+		Arch:            runtime.GOARCH,
+		Version:         Version,
+		DevEmail:        firstNonEmpty(get("PRINTOPS_DEV_EMAIL"), defaultDevEmail),
+		DevPassword:     firstNonEmpty(get("PRINTOPS_DEV_PASSWORD"), defaultDevPassword),
 	}
 
 	cfg.PollInterval, err = durationMs(get("PRINTOPS_POLL_INTERVAL_MS"), defaultPollIntervalMs)
@@ -211,6 +215,8 @@ func (c *Config) Redacted() map[string]any {
 	tokenState := "unset(dev-login)"
 	if c.Token != "" {
 		tokenState = "set(redacted)"
+	} else if c.BootstrapSecret != "" {
+		tokenState = "bootstrap(redacted)"
 	}
 	return map[string]any{
 		"api_base_url":          c.APIBaseURL,

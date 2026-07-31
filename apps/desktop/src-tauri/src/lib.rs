@@ -17,6 +17,7 @@ const SERVER_PORT: &str = "31415";
 const DESKTOP_DISCOVERY_RUNNER_JOBS_ENABLED: bool = false;
 const NATS_SETTINGS_FILE: &str = "nats-settings.json";
 const JWT_SECRET_FILE: &str = "jwt-secret.txt";
+const RUNNER_BOOTSTRAP_SECRET_FILE: &str = "runner-bootstrap-secret.txt";
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -90,41 +91,16 @@ fn jwt_secret_path(data_dir: &Path) -> PathBuf {
     data_dir.join(JWT_SECRET_FILE)
 }
 
-/// Generates a per-installation secret. Not a CSPRNG — it mixes wall-clock
-/// nanoseconds, the process id, and a stack-address ASLR sample through a
-/// splitmix64-style diffusion — but it is generated locally, persisted only
-/// on this machine's disk, and never checked into source control. That is
-/// the property that actually matters here: the API previously fell back to
-/// a literal hardcoded string (`dev-secret-change-in-production`) baked into
-/// the public repository whenever `JWT_SECRET` wasn't set, and the desktop
-/// launcher never set it, so every installed copy of the app signed and
-/// accepted JWTs with the same publicly-known secret. Anyone with that
-/// string could forge an OWNER-role token against any installation.
+fn runner_bootstrap_secret_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(RUNNER_BOOTSTRAP_SECRET_FILE)
+}
+
+/// Generates a cryptographically secure per-installation secret using the
+/// operating system random source.
 fn generate_random_hex_secret() -> String {
-    let mut state: u64 = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0x9E37_79B9_7F4A_7C15);
-    state ^= (std::process::id() as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    let stack_marker = 0u8;
-    state ^= (&stack_marker as *const u8 as u64).wrapping_mul(0x94D0_49BB_1331_11EB);
-
-    fn splitmix64_next(state: &mut u64) -> u64 {
-        *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = *state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    }
-
-    let mut hex = String::with_capacity(64);
-    for _ in 0..4 {
-        let word = splitmix64_next(&mut state);
-        for byte in word.to_le_bytes() {
-            hex.push_str(&format!("{byte:02x}"));
-        }
-    }
-    hex
+    let mut bytes = [0u8; 32];
+    getrandom::getrandom(&mut bytes).expect("operating system random source unavailable");
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// Loads the persisted per-installation JWT secret, generating and saving one
@@ -155,6 +131,24 @@ fn load_or_create_jwt_secret(data_dir: &Path, log: &Path) -> String {
     secret
 }
 
+fn load_or_create_runner_bootstrap_secret(data_dir: &Path, log: &Path) -> String {
+    let path = runner_bootstrap_secret_path(data_dir);
+    if let Ok(existing) = fs::read_to_string(&path) {
+        let trimmed = existing.trim();
+        if trimmed.len() >= 32 {
+            return trimmed.to_string();
+        }
+    }
+    let secret = generate_random_hex_secret();
+    let temporary = path.with_extension("txt.tmp");
+    if fs::write(&temporary, &secret).and_then(|_| fs::rename(&temporary, &path)).is_err() {
+        log_line(log, "WARNING: could not persist runner bootstrap secret");
+    } else {
+        log_line(log, "Generated per-installation runner bootstrap secret");
+    }
+    secret
+}
+
 /// Everything `save_nats_settings` needs to rebuild the API server's launch
 /// command later, without redoing directory-resolution logic or drifting out
 /// of sync with the equivalent block in `setup()`.
@@ -165,6 +159,7 @@ struct ServerPaths {
     logs_dir: PathBuf,
     app_log: PathBuf,
     jwt_secret: String,
+    runner_bootstrap_secret: String,
 }
 
 /// Builds the `server.exe` launch command for the given NATS settings. Used
@@ -189,6 +184,7 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
         .env("PRINTOPS_DB_PATH", &paths.db_path)
         .env("SQL_WASM_PATH", &paths.wasm_path)
         .env("JWT_SECRET", &paths.jwt_secret)
+        .env("PRINTOPS_RUNNER_BOOTSTRAP_SECRET", &paths.runner_bootstrap_secret)
         .env(
             "PRINTOPS_HTML_PRINT_HELPER",
             paths.res_dir.join("print-helper").join("printops-html-print.exe"),
@@ -471,6 +467,8 @@ pub fn run() {
             // so dashboard/runner JWTs cannot be forged with a value that is
             // public in source control.
             let jwt_secret = load_or_create_jwt_secret(&data_dir, &app_log);
+            let runner_bootstrap_secret =
+                load_or_create_runner_bootstrap_secret(&data_dir, &app_log);
 
             let server_paths = ServerPaths {
                 res_dir: res_dir.clone(),
@@ -479,6 +477,7 @@ pub fn run() {
                 logs_dir: logs.clone(),
                 app_log: app_log.clone(),
                 jwt_secret,
+                runner_bootstrap_secret,
             };
 
             // ── Start API server ──
@@ -510,8 +509,10 @@ pub fn run() {
                         "PRINTOPS_JOBS_ENABLED",
                         DESKTOP_DISCOVERY_RUNNER_JOBS_ENABLED.to_string(),
                     )
-                    .env("PRINTOPS_DEV_EMAIL", "admin@printerops.local")
-                    .env("PRINTOPS_DEV_PASSWORD", "dev-password")
+                    .env(
+                        "PRINTOPS_RUNNER_BOOTSTRAP_SECRET",
+                        &server_paths.runner_bootstrap_secret,
+                    )
                     .stdin(Stdio::null())
                     .stdout(out)
                     .stderr(err);

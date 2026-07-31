@@ -103,7 +103,12 @@ export async function resolveEndpointCallbackIntent(
   sourceSystem: string,
   intakePayload: Record<string, unknown>,
 ): Promise<JobCallbackIntent | undefined> {
+  const code = endpointCode?.trim();
   if (!endpoints) {
+    // Backward-compatible deployments and focused service tests may not
+    // provide an endpoint repository. That is safe only when the caller did
+    // not request a callback at all.
+    if (!code) return undefined;
     throw new AppError(
       'CALLBACK_ENDPOINT_UNAVAILABLE',
       'Callback endpoints are not available on this deployment.',
@@ -111,7 +116,6 @@ export async function resolveEndpointCallbackIntent(
     );
   }
 
-  const code = endpointCode?.trim();
   const endpoint = code
     ? await endpoints.findByCode(code)
     : await findDefaultCallbackEndpoint(endpoints, sourceSystem);

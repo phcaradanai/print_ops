@@ -36,7 +36,7 @@ async function login(app: BuiltApp['app']): Promise<string> {
   const response = await app.inject({
     method: 'POST',
     url: '/auth/login',
-    payload: { email: 'sysadmin@printerops.local', password: 'dev-password' },
+    payload: { email: 'sysadmin@printerops.local', password: 'Dev-password1!' },
   });
   expect(response.statusCode).toBe(200);
   return (response.json() as { token: string }).token;

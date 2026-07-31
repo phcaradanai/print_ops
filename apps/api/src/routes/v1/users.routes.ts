@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { UserRepositoryPort, Role } from '@printerops/domain';
+import { hashPassword, validatePassword } from '../../infra/auth/password.js';
 
 const ROLE_LEVELS: Record<Role, number> = {
   VIEWER: 1,
@@ -21,7 +22,6 @@ export async function v1UserRoutes(
       name: u.name,
       role: u.role,
       isActive: u.isActive,
-      password: u.passwordHash,
       createdAt: u.createdAt,
       updatedAt: u.updatedAt,
     }));
@@ -35,6 +35,8 @@ export async function v1UserRoutes(
     if (!password) {
       return reply.status(400).send({ error: 'Password is required' });
     }
+    const validation = validatePassword(password);
+    if (!validation.valid) return reply.status(400).send({ error: validation.error });
 
     const currentUser = await deps.users.findById(payload.sub);
     const targetUser = await deps.users.findById(id);
@@ -50,7 +52,7 @@ export async function v1UserRoutes(
       }
     }
 
-    await deps.users.update(id, { passwordHash: password });
+    await deps.users.update(id, { passwordHash: await hashPassword(password) });
 
     return { success: true };
   });

@@ -21,7 +21,7 @@ async function login(app: Awaited<ReturnType<typeof buildApp>>['app'], email: st
   const response = await app.inject({
     method: 'POST',
     url: '/auth/login',
-    payload: { email, password: 'dev-password' },
+    payload: { email, password: 'Dev-password1!' },
   });
   expect(response.statusCode).toBe(200);
   return (response.json() as { token: string }).token;

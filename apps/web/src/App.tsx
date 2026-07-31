@@ -9,7 +9,7 @@ import {
   type ReactNode,
   type FormEvent,
 } from 'react';
-import { getCurrentUser, login, logout, healthUrl, onUnauthorized, type SessionUser } from './api/client.js';
+import { bootstrapOwner, getBootstrapState, getCurrentUser, login, logout, healthUrl, onUnauthorized, type BootstrapState, type SessionUser } from './api/client.js';
 import { LocaleProvider, useLocale } from './i18n/index.js';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary.js';
 import { errorMessage } from './api/errors.js';
@@ -251,7 +251,7 @@ function LoginView({
 }) {
   const { t } = useLocale();
   const [email, setEmail] = useState(import.meta.env.DEV ? 'sysadmin@printerops.local' : '');
-  const [password, setPassword] = useState(import.meta.env.DEV ? 'dev-password' : '');
+  const [password, setPassword] = useState(import.meta.env.DEV ? 'Dev-password1!' : '');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -305,7 +305,48 @@ function LoginView({
           {submitting ? t('common.signingIn') : t('common.signIn')}
         </button>
 
-        <div className="login-hint">{t('login.hint')}</div>
+        {import.meta.env.DEV && <div className="login-hint">{t('login.hint')}</div>}
+      </form>
+    </div>
+  );
+}
+
+function OwnerSetupView({ state, onComplete }: { state: BootstrapState; onComplete: (user: SessionUser) => void }) {
+  const { t } = useLocale();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordConfirmation, setPasswordConfirmation] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      onComplete(await bootstrapOwner({ name, email, password, passwordConfirmation }));
+    } catch (err) {
+      setError(errorMessage(err, t('setup.error')));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="login-screen">
+      <form className="login-panel" onSubmit={(event) => void submit(event)}>
+        <div>
+          <h1>{t('setup.title')}</h1>
+          <p>{state === 'MIGRATION_REQUIRED' ? t('setup.migrationSubtitle') : t('setup.subtitle')}</p>
+        </div>
+        <label>{t('setup.name')}<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required /></label>
+        <label>{t('login.email')}<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="username" required /></label>
+        <label>{t('login.password')}<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="new-password" required /></label>
+        <label>{t('setup.confirmPassword')}<input value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} type="password" autoComplete="new-password" required /></label>
+        <div className="login-hint">{t('setup.passwordHint')}</div>
+        {error && <div className="login-error" role="alert">{error}</div>}
+        <button type="submit" disabled={submitting}>{submitting ? t('setup.creating') : t('setup.create')}</button>
       </form>
     </div>
   );
@@ -548,6 +589,7 @@ export default function App() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [bootstrapState, setBootstrapState] = useState<BootstrapState>('READY');
 
   // Subscribed BEFORE the session check below, so a 401 from that very first
   // `getCurrentUser()` is handled by the same path as one that happens an hour
@@ -588,9 +630,13 @@ export default function App() {
 
   useEffect(() => {
     if (!apiReady) return;
-    getCurrentUser()
-      .then(setUser)
-      .catch(() => logout())
+    getBootstrapState()
+      .then(async (state) => {
+        setBootstrapState(state);
+        if (state === 'READY') {
+          try { setUser(await getCurrentUser()); } catch { logout(); }
+        }
+      })
       .finally(() => setCheckingSession(false));
   }, [apiReady]);
 
@@ -611,13 +657,16 @@ export default function App() {
     return (
       <LocaleProvider>
         <RouteErrorBoundary>
-          <LoginView
+          {bootstrapState === 'READY' ? <LoginView
             onLogin={(next) => {
               setSessionExpired(false);
               setUser(next);
             }}
             sessionExpired={sessionExpired}
-          />
+          /> : <OwnerSetupView state={bootstrapState} onComplete={(next) => {
+            setBootstrapState('READY');
+            setUser(next);
+          }} />}
         </RouteErrorBoundary>
       </LocaleProvider>
     );

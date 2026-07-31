@@ -134,6 +134,7 @@ export class NatsConnectionManager {
       logger: PrintIntakeLogger;
       intakeLog?: IntakeAttemptRepositoryPort;
       intakeCallbacks?: IntakeOutcomeCallbackService;
+      isIntakeEnabled?: () => Promise<boolean>;
     },
   ) {
     this.status = cfg
@@ -270,10 +271,31 @@ export class NatsConnectionManager {
     const jsm = await nc.jetstreamManager();
     const ensured = await ensurePrintIntakeConsumer(jsm, this.cfg);
     this.status = { ...this.status, consumerAction: ensured.action, setupInFlight: false };
+    while (!this.stopRequested && this.deps.isIntakeEnabled && !(await this.deps.isIntakeEnabled())) {
+      this.status = {
+        ...this.status,
+        intakeReady: false,
+        consumerReady: true,
+        streamReady: true,
+        consumeLoopActive: false,
+        lastErrorCode: 'CREDENTIALS_NOT_INITIALIZED',
+        lastErrorMessage: 'Complete first-run owner setup before NATS print intake is enabled',
+      };
+      await sleep(250);
+    }
+    if (this.stopRequested) return;
     const consumer = await nc.jetstream().consumers.get(this.cfg.stream, this.cfg.durable);
     const messages = await consumer.consume();
     this.messages = messages;
-    this.status = { ...this.status, consumeLoopActive: true, streamReady: true, consumerReady: true, intakeReady: true };
+    this.status = {
+      ...this.status,
+      consumeLoopActive: true,
+      streamReady: true,
+      consumerReady: true,
+      intakeReady: true,
+      lastErrorCode: undefined,
+      lastErrorMessage: undefined,
+    };
     this.deps.logger.info({ stream: this.cfg.stream, subject: this.cfg.subject, durable: this.cfg.durable }, 'NATS print-intake consumer ready');
     void (async () => {
       try {

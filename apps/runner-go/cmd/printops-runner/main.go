@@ -57,6 +57,15 @@ func runRunner(ctx context.Context) error {
 	if cfg.Token != "" {
 		client.Token = cfg.Token
 		log.Info("auth: using provided runner token (redacted)")
+	} else if cfg.BootstrapSecret != "" {
+		log.Info("auth: exchanging desktop bootstrap credential")
+		loginCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		if err := client.LoginRunner(loginCtx, cfg.BootstrapSecret); err != nil {
+			cancel()
+			return fmt.Errorf("runner login: %w", err)
+		}
+		cancel()
+		log.Info("auth: runner login succeeded")
 	} else {
 		log.Info("auth: no token set; performing dev login", "email", cfg.DevEmail)
 		loginCtx, cancel := context.WithTimeout(ctx, 10*time.Second)

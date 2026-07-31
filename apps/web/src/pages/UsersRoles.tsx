@@ -12,7 +12,6 @@ interface UserItem {
   name: string;
   role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER';
   isActive: boolean;
-  password?: string;
   createdAt: string;
 }
 
@@ -41,7 +40,6 @@ export default function UsersRoles() {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
   const changePassword = useApiAction(async (targetId: string, password: string) => {
     await apiFetch(`/v1/users/${targetId}/password`, {
@@ -115,7 +113,6 @@ export default function UsersRoles() {
               <th style={{ padding: '0.75rem', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#374151' }}>Email</th>
               <th style={{ padding: '0.75rem', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#374151' }}>Role</th>
               <th style={{ padding: '0.75rem', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#374151' }}>Status</th>
-              <th style={{ padding: '0.75rem', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#374151' }}>Password</th>
               <th style={{ padding: '0.75rem', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#374151' }}>Actions</th>
             </tr>
           </thead>
@@ -136,32 +133,6 @@ export default function UsersRoles() {
                     <span style={{ color: '#059669', fontSize: '0.75rem', fontWeight: 500 }}>Active</span>
                   ) : (
                     <span style={{ color: '#dc2626', fontSize: '0.75rem', fontWeight: 500 }}>Inactive</span>
-                  )}
-                </td>
-                <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#111827' }}>
-                  {canEditPassword(u) ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ fontFamily: 'monospace', minWidth: '80px', color: '#4b5563' }}>
-                        {visiblePasswords[u.id] ? (u.password || '—') : '••••••••'}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setVisiblePasswords(prev => ({ ...prev, [u.id]: !prev[u.id] }))}
-                        style={{
-                          background: 'transparent',
-                          border: '1px solid #d1d5db',
-                          borderRadius: '4px',
-                          padding: '0.15rem 0.4rem',
-                          fontSize: '0.7rem',
-                          cursor: 'pointer',
-                          color: '#6b7280',
-                        }}
-                      >
-                        {visiblePasswords[u.id] ? 'Hide' : 'Show'}
-                      </button>
-                    </div>
-                  ) : (
-                    <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>••••••••</span>
                   )}
                 </td>
                 <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#111827' }}>
@@ -269,7 +240,7 @@ export default function UsersRoles() {
             ))}
             {users.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#6b7280', fontSize: '0.875rem' }}>
+                <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#6b7280', fontSize: '0.875rem' }}>
                   No users found.
                 </td>
               </tr>
