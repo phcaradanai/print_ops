@@ -287,6 +287,11 @@ const en: TranslationDict = {
   'page.usersRoles.description': 'Manage users and assign roles: OWNER, ADMIN, OPERATOR, VIEWER.',
   'page.usersRoles.pageAccess': 'Page access',
   'page.usersRoles.accessError': 'Could not update page access.',
+  'page.usersRoles.activate': 'Activate',
+  'page.usersRoles.deactivate': 'Deactivate',
+  'page.usersRoles.activateUser': 'Activate user account',
+  'page.usersRoles.deactivateUser': 'Deactivate user account',
+  'page.usersRoles.statusError': 'Could not update account status.',
 
   // ExportCenter
   'page.export.title': 'Export Center',
@@ -1360,6 +1365,11 @@ const th: TranslationDict = {
   'page.usersRoles.description': 'จัดการผู้ใช้และกำหนดบทบาท: OWNER, ADMIN, OPERATOR, VIEWER',
   'page.usersRoles.pageAccess': 'การเข้าถึงหน้า',
   'page.usersRoles.accessError': 'ไม่สามารถอัปเดตการเข้าถึงหน้าได้',
+  'page.usersRoles.activate': 'เปิดใช้งาน',
+  'page.usersRoles.deactivate': 'ปิดใช้งาน',
+  'page.usersRoles.activateUser': 'เปิดใช้งานบัญชีผู้ใช้',
+  'page.usersRoles.deactivateUser': 'ปิดใช้งานบัญชีผู้ใช้',
+  'page.usersRoles.statusError': 'ไม่สามารถอัปเดตสถานะบัญชีได้',
 
   // ExportCenter
   'page.export.title': 'ศูนย์ส่งออก',

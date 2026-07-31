@@ -45,6 +45,7 @@ export default function UsersRoles() {
   const [showPassword, setShowPassword] = useState(false);
   const [accessUserId, setAccessUserId] = useState<string | null>(null);
   const [selectedPages, setSelectedPages] = useState<string[]>([]);
+  const [statusUserId, setStatusUserId] = useState<string | null>(null);
 
   const changePassword = useApiAction(async (targetId: string, password: string) => {
     await apiFetch(`/v1/users/${targetId}/password`, {
@@ -59,6 +60,10 @@ export default function UsersRoles() {
     await apiFetch(`/v1/users/${targetId}/access`, { method: 'PUT', body: JSON.stringify({ allowedPages }) });
     return true;
   });
+  const changeStatus = useApiAction(async (targetId: string, isActive: boolean) => {
+    await apiFetch(`/v1/users/${targetId}/status`, { method: 'PUT', body: JSON.stringify({ isActive }) });
+    return true;
+  });
 
   const canEditPassword = (target: UserItem) => {
     if (!currentUser) return false;
@@ -68,6 +73,17 @@ export default function UsersRoles() {
     return currentLevel > targetLevel;
   };
   const canEditAccess = (target: UserItem) => Boolean(currentUser && target.role !== 'OWNER' && currentUser.id !== target.id && ROLE_LEVELS[currentUser.role] > ROLE_LEVELS[target.role]);
+  const canEditStatus = (target: UserItem) => Boolean(currentUser && target.role !== 'OWNER' && currentUser.id !== target.id && ROLE_LEVELS[currentUser.role] > ROLE_LEVELS[target.role]);
+
+  const handleStatusChange = async (target: UserItem) => {
+    setStatusUserId(target.id);
+    const ok = await changeStatus.run(target.id, !target.isActive);
+    if (ok) {
+      changeStatus.reset();
+      setStatusUserId(null);
+      await directory.refresh();
+    }
+  };
 
   const handlePasswordSubmit = async (e: FormEvent, targetId: string) => {
     e.preventDefault();
@@ -256,6 +272,23 @@ export default function UsersRoles() {
                     ) : (
                       <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>Read-only</span>
                     )
+                  )}
+                  {canEditStatus(u) && (
+                    <button
+                      type="button"
+                      className="ui-button ui-button--secondary ui-button--sm"
+                      disabled={changeStatus.pending}
+                      aria-label={u.isActive ? t('page.usersRoles.deactivateUser') : t('page.usersRoles.activateUser')}
+                      onClick={() => void handleStatusChange(u)}
+                      style={{ marginInlineStart: '0.5rem' }}
+                    >
+                      {u.isActive ? t('page.usersRoles.deactivate') : t('page.usersRoles.activate')}
+                    </button>
+                  )}
+                  {changeStatus.error != null && statusUserId === u.id && (
+                    <span className="error-text" role="alert" style={{ display: 'block', marginTop: '0.35rem' }}>
+                      {errorMessage(changeStatus.error, t('page.usersRoles.statusError'))}
+                    </span>
                   )}
                 </td>
               </tr>

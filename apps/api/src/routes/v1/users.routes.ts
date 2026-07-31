@@ -53,6 +53,27 @@ export async function v1UserRoutes(
     return { id: updated.id, allowedPages: updated.allowedPages ?? [] };
   });
 
+  app.put('/users/:id/status', { onRequest: [app.authenticate] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { isActive } = (req.body ?? {}) as { isActive?: unknown };
+    const payload = req.user as { sub: string; role: Role };
+    if (typeof isActive !== 'boolean') {
+      return reply.status(400).send({ error: 'isActive must be a boolean' });
+    }
+    const currentUser = await deps.users.findById(payload.sub);
+    const targetUser = await deps.users.findById(id);
+    if (!currentUser) return reply.status(401).send({ error: 'Unauthorized' });
+    if (!targetUser) return reply.status(404).send({ error: 'User not found' });
+    if (targetUser.role === 'OWNER') {
+      return reply.status(403).send({ error: 'OWNER account status cannot be changed' });
+    }
+    if (currentUser.id === targetUser.id || ROLE_LEVELS[currentUser.role] <= ROLE_LEVELS[targetUser.role]) {
+      return reply.status(403).send({ error: 'Only a higher role may change this user status' });
+    }
+    const updated = await deps.users.update(id, { isActive });
+    return { id: updated.id, isActive: updated.isActive };
+  });
+
   app.put('/users/:id/password', { onRequest: [app.authenticate] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     const { password } = req.body as { password?: string };

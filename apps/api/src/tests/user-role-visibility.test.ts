@@ -74,4 +74,38 @@ describe('user directory role visibility', () => {
     expect((await app.inject({ method: 'PUT', url: '/api/v1/users/owner/access', headers: { authorization: ownerAuth }, payload: { allowedPages: ['/'] } })).statusCode).toBe(403);
     await app.close();
   });
+
+  it('allows only a higher role to activate or deactivate a lower-role account', async () => {
+    const app = await buildTestApp();
+    const adminAuth = `Bearer ${app.jwt.sign({ sub: 'admin', role: 'ADMIN', email: 'admin@example.test' })}`;
+    const deactivate = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/users/operator/status',
+      headers: { authorization: adminAuth },
+      payload: { isActive: false },
+    });
+    expect(deactivate.statusCode).toBe(200);
+    expect(deactivate.json()).toEqual({ id: 'operator', isActive: false });
+
+    const activate = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/users/operator/status',
+      headers: { authorization: adminAuth },
+      payload: { isActive: true },
+    });
+    expect(activate.statusCode).toBe(200);
+    expect(activate.json()).toEqual({ id: 'operator', isActive: true });
+    await app.close();
+  });
+
+  it('rejects self, equal-role, upward, OWNER, and malformed status changes', async () => {
+    const app = await buildTestApp();
+    const operatorAuth = `Bearer ${app.jwt.sign({ sub: 'operator', role: 'OPERATOR', email: 'operator@example.test' })}`;
+    const ownerAuth = `Bearer ${app.jwt.sign({ sub: 'owner', role: 'OWNER', email: 'owner@example.test' })}`;
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/users/operator/status', headers: { authorization: operatorAuth }, payload: { isActive: false } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/users/admin/status', headers: { authorization: operatorAuth }, payload: { isActive: false } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/users/owner/status', headers: { authorization: ownerAuth }, payload: { isActive: false } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/users/viewer/status', headers: { authorization: ownerAuth }, payload: { isActive: 'yes' } })).statusCode).toBe(400);
+    await app.close();
+  });
 });
