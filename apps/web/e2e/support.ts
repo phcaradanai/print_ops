@@ -78,6 +78,9 @@ export async function installHarness(page: Page, options: HarnessOptions = {}): 
     if (url.pathname === '/health') {
       return route.fulfill({ json: { status: 'ok' } });
     }
+    if (url.pathname === '/auth/bootstrap') {
+      return route.fulfill({ json: { state: 'READY' } });
+    }
     if (url.pathname === '/me') {
       return route.fulfill({
         json: {

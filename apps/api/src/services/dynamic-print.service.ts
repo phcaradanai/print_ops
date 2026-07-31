@@ -148,6 +148,7 @@ export class DynamicPrintService {
         payload: req.payload ?? {},
         copies: req.copies,
         priority: req.priority,
+        endpoint_code: req.endpoint_code,
         metadata: {
           ...(req.metadata ?? {}),
           code_profile: req.code_profile,

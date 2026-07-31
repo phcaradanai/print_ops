@@ -1,14 +1,20 @@
 # PrintOps E2E Results — Transport × Callback Matrix
 
-Date: 2026-07-27 (re-run after the result-callback implementation)
+Date: 2026-07-31 (production-gate rerun)
 Branch `mvp_nippon` · Windows, Node 24.18.0
-Evidence: `artifacts/e2e/e2e-report.json` (not committed)
+Evidence: `artifacts/e2e/e2e-report.json`
 Harness: `apps/api/src/tests/e2e/harness.ts`
 
-Environment: API in-process (`buildApp`), `DB_MODE=memory`,
-`PRINTOPS_LOCAL_WORKER=true`, NATS 2.x JetStream in Docker on `:14222`,
-real HTTP webhook receiver, real NATS subscriber. Printer `OFFICE_LASER_01`
+Environment: API bound to a random loopback TCP port (`buildApp`), disposable
+SQLite, `PRINTOPS_LOCAL_WORKER=true`, discovery-only Go runner, NATS 2.10.29
+JetStream pinned by image digest on a random loopback port, real TCP HTTP
+webhook receiver, and real NATS subscriber. Printer `OFFICE_LASER_01`
 (protocol `fake`). No real printer was used.
+
+The 2026-07-31 report is `PASS` with 25 findings, 10 webhook captures, two
+terminal NATS callbacks, three intentional DLQ captures, and zero validation
+failures. This remains automated loopback evidence, not cross-machine or
+physical-printer acceptance.
 
 > **Previous run (same date, before the fix)** recorded: rows 1–2 PARTIAL
 > (callback body carried `status:"QUEUED"` while the job ended `SUCCESS`), rows

@@ -15,13 +15,13 @@ physical, cross-machine, and upgrade evidence. A `BLOCKED` row is not a pass.
 | Installer NSIS | Pending rebuilt installer |
 | Windows version | Development workstation only; clean-machine value pending |
 | Printer | Pending physical acceptance |
-| NATS | Pending cross-machine acceptance |
+| NATS | Automated loopback: 2.10.29, pinned digest; cross-machine acceptance pending |
 
 ## Gate summary
 
 | Gate | Result | Evidence |
 | --- | --- | --- |
-| AUTOMATED | PARTIAL | API 45 files/350 tests, web 23 files/453 tests, API/web typechecks and builds, Go suite, Rust suite, SQLite migration/backup, readiness, and support-bundle redaction automation pass; bound-port, real NATS, Playwright, and packaged smoke automation remain incomplete. |
+| AUTOMATED | PARTIAL | API 45 files/350+ tests, web 23 files/453 tests, API/web typechecks and builds, Go suite, Rust suite, SQLite migration/backup, readiness, support-bundle redaction, pinned real JetStream/TCP callback matrix, and 67 built-static Playwright tests pass; packaged sidecar smoke remains incomplete. |
 | PACKAGED CLEAN-MACHINE | BLOCKED | No post-authentication installer clean-install evidence captured. |
 | PHYSICAL PRINTER | BLOCKED | No physical sample or packaged UI/HTTP/NATS print matrix captured. |
 | CROSS-MACHINE NATS | BLOCKED | No off-host broker/listener evidence captured. |
@@ -49,6 +49,8 @@ physical, cross-machine, and upgrade evidence. A `BLOCKED` row is not a pass.
 | DB-04 | Restart does not replay uncertain physical work | Safe states rehydrate; `DISPATCHED`/`PRINTING` become `UNVERIFIED` | `apps/api/src/tests/local-worker-rehydration.test.ts` | PASS | Forced packaged termination pending |
 | READY-01 | Required runtime components are represented independently | Local/API/DB/worker/discovery/printer and split NATS/callback/retry states returned with actions | `apps/api/src/tests/readiness-support-bundle.test.ts` | PASS | Packaged Settings screenshot pending |
 | SUPPORT-01 | Support export is OWNER-only, audited, bounded, and credential-safe | ADMIN receives 403; payloads, targets, URL credentials, bearer tokens, API keys, and passwords are absent | `apps/api/src/tests/readiness-support-bundle.test.ts` | PASS | Manual packaged bundle review pending |
+| NATS-E2E-01 | Real JetStream intake and real TCP callbacks cover both transports without duplicates | Pinned NATS 2.10.29 container passes API/NATS intake × HTTP/NATS callback, no-callback, DLQ, retry/recovery, and cross-transport idempotency cells | `artifacts/e2e/e2e-report.json`, generated 2026-07-31T10:07:45Z | PASS | Loopback fake-printer automation only; off-host and physical proof pending |
+| WEB-E2E-01 | Production static bundle remains operable at supported viewports | 67/67 Playwright tests pass against `apps/web/dist` | Local command output, 2026-07-31 | PASS | WebView2 packaged exercise pending |
 
 ## Packaged, physical, cross-machine, and recovery matrices
 

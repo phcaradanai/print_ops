@@ -76,7 +76,12 @@ export type ConsumerAction = 'CREATED' | 'REUSED' | 'UPDATED';
 const consumerDefaults = { ack_policy: AckPolicy.Explicit, deliver_policy: DeliverPolicy.All, replay_policy: ReplayPolicy.Instant, ack_wait: nanos(30_000) };
 function isMissingConsumer(error: unknown): boolean {
   const value = error as { code?: unknown; api_error_code?: unknown; apiErrorCode?: unknown } | undefined;
-  return value?.code === 'consumer_not_found' || value?.code === '10014' || value?.api_error_code === 10014 || value?.apiErrorCode === 10014;
+  return value?.code === 'consumer_not_found'
+    || value?.code === 404
+    || value?.code === '404'
+    || value?.code === '10014'
+    || value?.api_error_code === 10014
+    || value?.apiErrorCode === 10014;
 }
 function isConsumerCreateRace(error: unknown): boolean {
   const value = error as { code?: unknown; api_error_code?: unknown; apiErrorCode?: unknown; message?: unknown } | undefined;

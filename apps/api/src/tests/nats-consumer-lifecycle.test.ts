@@ -53,6 +53,19 @@ function manager(options: {
 }
 
 describe('active NATS durable-consumer lifecycle', () => {
+  it('creates a durable when a real NATS server reports missing as 404', async () => {
+    const add = vi.fn().mockResolvedValue(consumerInfo());
+    const fixture = manager({
+      info: vi.fn().mockRejectedValue({ code: '404' }),
+      add,
+    });
+
+    const result = await ensurePrintIntakeConsumer(fixture.jsm as never, config);
+
+    expect(result.action).toBe('CREATED');
+    expect(add).toHaveBeenCalledTimes(1);
+  });
+
   it('reuses a compatible durable without creating a second consumer', async () => {
     const fixture = manager();
 

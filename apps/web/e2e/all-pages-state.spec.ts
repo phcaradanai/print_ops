@@ -61,6 +61,16 @@ test.describe('all-page interaction state', () => {
             });
             return true;
           }
+          if (url.pathname.endsWith('/v1/system/readiness')) {
+            await route.fulfill({
+              json: {
+                status: 'READY',
+                checkedAt: '2026-07-31T07:00:00.000Z',
+                components: {},
+              },
+            });
+            return true;
+          }
           if (url.pathname === '/printers') {
             await route.fulfill({ json: path === '/printers' ? [] : [printer] });
             return true;

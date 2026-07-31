@@ -14,10 +14,10 @@
  * Needs a JetStream-enabled NATS on PRINTOPS_E2E_NATS_URL (default :14222).
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { connect, type NatsConnection } from 'nats';
+import { connect, JSONCodec, type NatsConnection } from 'nats';
 
 const NATS_URL = process.env['PRINTOPS_E2E_NATS_URL'] ?? 'nats://127.0.0.1:14222';
 const CLIENT_ID = 'e2eclient';
@@ -26,14 +26,20 @@ const INTAKE_SUBJECT = `${SUBJECT_PREFIX}.${CLIENT_ID}`;
 const CALLBACK_SUBJECT = 'e2e.callback.result';
 const STREAM = 'E2ESTREAM';
 const ARTIFACTS = resolve(process.cwd(), 'artifacts/e2e');
+const DB_PATH = resolve(ARTIFACTS, `production-path-${process.pid}.sqlite`);
+const RUNNER_BOOTSTRAP_SECRET = 'e2e-runner-bootstrap-secret-32-characters-minimum';
 
 // buildApp reads all of these at import/boot time.
 process.env['NODE_ENV'] = 'test';
 process.env['DB_MODE'] = 'sqlite';
-process.env['PRINTOPS_DB_PATH'] = resolve(ARTIFACTS, 'production-path.sqlite');
+process.env['PRINTOPS_DB_PATH'] = DB_PATH;
 process.env['SQL_WASM_PATH'] = resolve(process.cwd(), 'node_modules/sql.js/dist/sql-wasm.wasm');
 process.env['JWT_SECRET'] = 'e2e-harness-secret-not-a-real-credential';
-process.env['PRINTOPS_LOCAL_WORKER'] = 'false';
+process.env['PRINTOPS_DEV_SEED'] = 'true';
+process.env['PRINTOPS_RUNNER_BOOTSTRAP_SECRET'] = RUNNER_BOOTSTRAP_SECRET;
+process.env['PRINTOPS_RUNTIME_MODE'] = 'packaged-windows-desktop';
+process.env['PRINTOPS_LOCAL_WORKER'] = 'true';
+process.env['PRINTOPS_DISCOVERY_RUNNER_JOBS_ENABLED'] = 'false';
 process.env['PRINTOPS_NATS_URL'] = NATS_URL;
 process.env['PRINTOPS_NATS_CLIENT_ID'] = CLIENT_ID;
 process.env['PRINTOPS_NATS_SUBJECT_PREFIX'] = SUBJECT_PREFIX;
@@ -91,6 +97,8 @@ async function waitFor<T>(label: string, check: () => T | Promise<T>, ms = 8000)
 
 async function main(): Promise<void> {
   mkdirSync(ARTIFACTS, { recursive: true });
+  rmSync(DB_PATH, { force: true });
+  rmSync(`${DB_PATH}.backups`, { recursive: true, force: true });
 
   // --- 1. webhook receiver -----------------------------------------
   const receiver = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -162,8 +170,10 @@ async function main(): Promise<void> {
       PRINTOPS_RUNNER_NAME: 'e2e-production-go-runner',
       PRINTOPS_DISCOVERY_MODE: 'fake',
       PRINTOPS_EXECUTOR_MODE: 'fake',
+      PRINTOPS_JOBS_ENABLED: 'false',
+      PRINTOPS_RUNNER_BOOTSTRAP_SECRET: RUNNER_BOOTSTRAP_SECRET,
       PRINTOPS_POLL_INTERVAL_MS: '100',
-      PRINTOPS_HEARTBEAT_INTERVAL_MS: '500',
+      PRINTOPS_HEARTBEAT_INTERVAL_MS: '5000',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -196,7 +206,7 @@ async function main(): Promise<void> {
   // /auth/login -- not /api/v1/auth/login like every other route.
   const login = await json('/auth/login', {
     method: 'POST',
-    body: { email: 'admin@printerops.local', password: 'e2e-local-dev-password' },
+    body: { email: 'admin@printerops.local', password: 'Dev-password1!' },
   });
   const token = (login.body as { token?: string; accessToken?: string })?.token
     ?? (login.body as { accessToken?: string })?.accessToken;
@@ -345,11 +355,17 @@ async function main(): Promise<void> {
   /* CELL 3/4 - NATS intake -> fake print -> (webhook | NATS) callback */
   /* ================================================================ */
   const js = nc.jetstream();
-  const publishIntake = async (requestId: string, label: string, endpointCode?: string): Promise<void> => {
-    await js.publish(INTAKE_SUBJECT, JSON.stringify({
+  const natsJson = JSONCodec<Record<string, unknown>>();
+  const publishIntake = async (
+    requestId: string,
+    label: string,
+    endpointCode?: string,
+    sourceSystem = 'e2e-nats-intake',
+  ): Promise<void> => {
+    await js.publish(INTAKE_SUBJECT, natsJson.encode({
       target_client_id: CLIENT_ID,
       request_id: requestId,
-      source_system: 'e2e-nats-intake',
+      source_system: sourceSystem,
       code_template: 'TEST_LABEL',
       code_profile: 'ignored-when-printer-code-set',
       printer_code: 'OFFICE_LASER_01',
@@ -401,8 +417,8 @@ async function main(): Promise<void> {
     const requestId = `e2e-nats-nocb-${stamp}`;
     const wBefore = webhookCaptures.length;
     const nBefore = natsCaptures.length;
-    await publishIntake(requestId, 'NOCB');
-    const job = await waitTerminal(requestId, 'e2e-nats-intake');
+    await publishIntake(requestId, 'NOCB', undefined, 'e2e-nats-no-callback');
+    const job = await waitTerminal(requestId, 'e2e-nats-no-callback');
     await sleep(2000);
     record({
       cell: 'NATS->print->NO-CALLBACK (backward compatibility)', requestId,
@@ -495,9 +511,9 @@ async function main(): Promise<void> {
   {
     // Same request_id via the NATS transport twice.
     const requestId = `e2e-dupe-nats-${stamp}`;
-    await publishIntake(requestId, 'D2');
+    await publishIntake(requestId, 'D2', undefined, 'e2e-nats-idempotency');
     await sleep(1500);
-    await publishIntake(requestId, 'D2');
+    await publishIntake(requestId, 'D2', undefined, 'e2e-nats-idempotency');
     await sleep(2000);
     const all = await json(`/api/v1/print-jobs?limit=200`, { headers: { 'x-api-key': apiKey } });
     const items = Array.isArray(all.body) ? all.body : ((all.body as { items?: unknown[] })?.items ?? []);
@@ -511,14 +527,14 @@ async function main(): Promise<void> {
   {
     // Cross-transport: NATS intake then the dedicated API print path, same id.
     const requestId = `e2e-dupe-cross-${stamp}`;
-    await publishIntake(requestId, 'D3');
+    await publishIntake(requestId, 'D3', undefined, 'e2e-cross-transport');
     await sleep(1500);
     const viaApi = await json('/api/v1/print-jobs', {
       method: 'POST',
       headers: { 'x-api-key': apiKey },
       body: {
         request_id: requestId,
-        source_system: 'e2e-nats-intake',
+        source_system: 'e2e-cross-transport',
         printer_code: 'OFFICE_LASER_01',
         template_code: 'TEST_LABEL',
         payload: { label: 'D3', barcode: '5555' },
@@ -587,7 +603,7 @@ async function main(): Promise<void> {
     const job = await waitTerminal(requestId, 'e2e-e2e-http');
     // The first backoff is ~5s (±20% jitter); wait past it so the retry sweep
     // has had a real chance to fire a second attempt.
-    await sleep(9000);
+    await sleep(15000);
     const attempts = webhookCaptures.length - before;
     webhookReplyStatus = 200;
     const deliveries = job?.['id'] ? await deliveriesFor(String(job['id'])) : [];
@@ -637,9 +653,43 @@ async function main(): Promise<void> {
   /* ================================================================ */
   /* teardown + artifacts                                              */
   /* ================================================================ */
+  const validationFailures: string[] = [];
+  const requireCell = (
+    cell: string,
+    predicate: (finding: Record<string, unknown>) => boolean,
+    description: string,
+  ): void => {
+    const finding = findings.find((entry) => entry['cell'] === cell);
+    if (!finding || !predicate(finding)) validationFailures.push(`${cell}: ${description}`);
+  };
+  requireCell('API->print->WEBHOOK', (row) =>
+    row['callbackReceived'] === true && row['reportsTerminalStatus'] === true,
+  'terminal HTTP callback was not observed');
+  requireCell('API->print->NATS', (row) =>
+    row['callbackReceived'] === true && row['reportsTerminalStatus'] === true,
+  'terminal NATS callback was not observed');
+  requireCell('NATS->print->WEBHOOK', (row) =>
+    row['jobCreated'] === true && Number(row['webhookCallbacksSeen']) === 1,
+  'NATS intake did not produce exactly one HTTP callback');
+  requireCell('NATS->print->NATS', (row) =>
+    row['jobCreated'] === true && Number(row['natsCallbacksSeen']) === 1,
+  'NATS intake did not produce exactly one NATS callback');
+  requireCell('IDEMPOTENCY-http-twice', (row) => row['sameJobId'] === true,
+    'duplicate HTTP intake returned different jobs');
+  requireCell('IDEMPOTENCY-nats-twice', (row) => Number(row['jobsCreated']) === 1,
+    'duplicate NATS intake created more than one job');
+  requireCell('CALLBACK-FAILURE-500', (row) => row['retried'] === true,
+    'HTTP callback 500 did not schedule a real retry');
+  requireCell('CALLBACK-RECOVERY-AFTER-500', (row) =>
+    Array.isArray(row['deliveries'])
+      && row['deliveries'].some((delivery) =>
+        (delivery as Record<string, unknown>)['deliveryStatus'] === 'DELIVERED'),
+  'callback did not recover after the receiver returned to 200');
+
   const report = {
     generatedAt: new Date().toISOString(),
     natsUrl: NATS_URL,
+    natsImage: process.env['PRINTOPS_E2E_NATS_IMAGE'] ?? 'externally managed',
     intakeSubject: INTAKE_SUBJECT,
     callbackSubject: `${CALLBACK_SUBJECT}.>`,
     printerUsed: 'OFFICE_LASER_01 (protocol=fake)',
@@ -647,15 +697,24 @@ async function main(): Promise<void> {
     webhookCaptures,
     natsCaptures,
     dlqCaptures,
+    validation: {
+      status: validationFailures.length === 0 ? 'PASS' : 'FAIL',
+      failures: validationFailures,
+    },
   };
   writeFileSync(resolve(ARTIFACTS, 'e2e-report.json'), JSON.stringify(report, null, 2));
   console.log(`\n[done] wrote ${resolve(ARTIFACTS, 'e2e-report.json')}`);
   console.log(`[done] webhook captures=${webhookCaptures.length} nats captures=${natsCaptures.length} dlq=${dlqCaptures.length}`);
 
-  await app.close();
   runner.kill();
+  await app.close();
   receiver.close();
   await nc.drain().catch(() => {});
+  rmSync(DB_PATH, { force: true });
+  rmSync(`${DB_PATH}.backups`, { recursive: true, force: true });
+  if (validationFailures.length > 0) {
+    throw new Error(`E2E assertions failed:\n- ${validationFailures.join('\n- ')}`);
+  }
   process.exit(0);
 }
 
