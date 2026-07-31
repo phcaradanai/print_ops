@@ -13,7 +13,10 @@ interface UserItem {
   role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER';
   isActive: boolean;
   createdAt: string;
+  allowedPages?: string[];
 }
+
+const PAGE_OPTIONS = ['/', '/printers', '/jobs', '/runners', '/templates', '/paper-profiles', '/discovered-printers', '/diagnostics', '/template-sandbox', '/webhooks', '/route-policies', '/printer-bindings', '/print-flow', '/audit-logs', '/users', '/export', '/settings'];
 
 const ROLE_LEVELS: Record<SessionUser['role'], number> = {
   VIEWER: 1,
@@ -40,6 +43,8 @@ export default function UsersRoles() {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [accessUserId, setAccessUserId] = useState<string | null>(null);
+  const [selectedPages, setSelectedPages] = useState<string[]>([]);
 
   const changePassword = useApiAction(async (targetId: string, password: string) => {
     await apiFetch(`/v1/users/${targetId}/password`, {
@@ -50,6 +55,10 @@ export default function UsersRoles() {
   });
   const submitting = changePassword.pending;
   const editError = changePassword.error != null ? errorMessage(changePassword.error) : null;
+  const changeAccess = useApiAction(async (targetId: string, allowedPages: string[]) => {
+    await apiFetch(`/v1/users/${targetId}/access`, { method: 'PUT', body: JSON.stringify({ allowedPages }) });
+    return true;
+  });
 
   const canEditPassword = (target: UserItem) => {
     if (!currentUser) return false;
@@ -58,6 +67,7 @@ export default function UsersRoles() {
     const targetLevel = ROLE_LEVELS[target.role] ?? 0;
     return currentLevel > targetLevel;
   };
+  const canEditAccess = (target: UserItem) => Boolean(currentUser && target.role !== 'OWNER' && currentUser.id !== target.id && ROLE_LEVELS[currentUser.role] > ROLE_LEVELS[target.role]);
 
   const handlePasswordSubmit = async (e: FormEvent, targetId: string) => {
     e.preventDefault();
@@ -136,6 +146,18 @@ export default function UsersRoles() {
                   )}
                 </td>
                 <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#111827' }}>
+                  {accessUserId === u.id ? (
+                    <div className="user-access-editor">
+                      <div className="user-access-grid">
+                        {PAGE_OPTIONS.map(page => <label key={page}><input type="checkbox" checked={selectedPages.includes(page)} onChange={() => setSelectedPages(p => p.includes(page) ? p.filter(x => x !== page) : [...p, page])} />{page}</label>)}
+                      </div>
+                      <div className="user-access-actions">
+                        <button type="button" className="ui-button ui-button--primary ui-button--sm" disabled={changeAccess.pending} onClick={() => void changeAccess.run(u.id, selectedPages).then(ok => { if (ok) { setAccessUserId(null); void directory.refresh(); } })}>{t('common.save')}</button>
+                        <button type="button" className="ui-button ui-button--secondary ui-button--sm" onClick={() => setAccessUserId(null)}>{t('common.cancel')}</button>
+                      </div>
+                    </div>
+                  ) : canEditAccess(u) ? <button type="button" className="ui-button ui-button--secondary ui-button--sm" onClick={() => { setAccessUserId(u.id); setSelectedPages(u.allowedPages ?? PAGE_OPTIONS); changeAccess.reset(); }}>{t('page.usersRoles.pageAccess')}</button> : null}
+                  {changeAccess.error != null && accessUserId === u.id && <span className="error-text" role="alert">{errorMessage(changeAccess.error, t('page.usersRoles.accessError'))}</span>}
                   {editingUserId === u.id ? (
                     <form onSubmit={(e) => void handlePasswordSubmit(e, u.id)} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #d1d5db', background: '#ffffff', borderRadius: '6px', overflow: 'hidden' }}>

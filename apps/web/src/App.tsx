@@ -370,7 +370,7 @@ function AppNav({
   const [adminExpanded, setAdminExpanded] = useState(false);
 
   const visibleNav = useMemo(
-    () => NAV_ITEMS.filter((item) => item.roles.includes(user.role)),
+    () => NAV_ITEMS.filter((item) => item.roles.includes(user.role) && (user.role === 'OWNER' || !user.allowedPages || user.allowedPages.includes(item.to))),
     [user],
   );
 
@@ -546,11 +546,14 @@ function RequireRoles({
 
 function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
   const { t } = useLocale();
+  const location = useLocation();
+  const pagePath = NAV_ITEMS.find((item) => item.to === '/' ? location.pathname === '/' : location.pathname === item.to || location.pathname.startsWith(item.to + '/'))?.to;
+  const pageAllowed = user.role === 'OWNER' || !user.allowedPages || !pagePath || user.allowedPages.includes(pagePath);
   return (
     <div className="app-shell">
       <AppNav user={user} onLogout={onLogout} />
       <main className="app-main">
-        <Suspense fallback={<div className="loading-text" role="status">{t('common.loading')}</div>}>
+        {!pageAllowed ? <div className="not-authorized" role="alert"><h1>{t('auth.notAuthorized.title')}</h1><p>{t('auth.notAuthorized.message')}</p></div> : <Suspense fallback={<div className="loading-text" role="status">{t('common.loading')}</div>}>
           <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/printers" element={<Printers />} />
@@ -579,7 +582,7 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
           <Route path="/export" element={<ExportCenter />} />
           <Route path="/settings" element={<Settings />} />
           </Routes>
-        </Suspense>
+        </Suspense>}
       </main>
     </div>
   );

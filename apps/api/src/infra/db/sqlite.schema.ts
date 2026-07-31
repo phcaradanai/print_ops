@@ -213,6 +213,7 @@ function migrateVersionZeroToOne(db: Database): void {
   `);
 
   ensureColumn(db, 'users', 'password_hash', 'TEXT');
+  ensureColumn(db, 'users', 'allowed_pages_json', 'TEXT');
 
   db.run(`
     CREATE TABLE IF NOT EXISTS service_accounts (

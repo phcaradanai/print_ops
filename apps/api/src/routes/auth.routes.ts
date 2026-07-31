@@ -62,7 +62,7 @@ export async function authRoutes(
     try {
       const owner = await operation;
       const token = await reply.jwtSign({ sub: owner.id, role: owner.role, email: owner.email });
-      return { token, user: { id: owner.id, email: owner.email, name: owner.name, role: owner.role } };
+      return { token, user: { id: owner.id, email: owner.email, name: owner.name, role: owner.role, allowedPages: owner.allowedPages } };
     } finally {
       bootstrapInFlight = undefined;
     }
@@ -82,7 +82,7 @@ export async function authRoutes(
     }
 
     const token = await reply.jwtSign({ sub: user.id, role: user.role, email: user.email });
-    return { token, user: { id: user.id, email: user.email, name: user.name, role: user.role } };
+    return { token, user: { id: user.id, email: user.email, name: user.name, role: user.role, allowedPages: user.allowedPages } };
   });
 
   app.post('/auth/runner', async (req, reply) => {
@@ -106,6 +106,6 @@ export async function authRoutes(
     const payload = req.user as { sub: string; role: string; email: string };
     const user = await deps.users.findById(payload.sub);
     if (!user) throw new Error('User not found');
-    return { id: user.id, email: user.email, name: user.name, role: user.role };
+    return { id: user.id, email: user.email, name: user.name, role: user.role, allowedPages: user.allowedPages };
   });
 }

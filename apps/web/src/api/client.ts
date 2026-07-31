@@ -8,6 +8,7 @@ export interface SessionUser {
   email: string;
   name: string;
   role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER';
+  allowedPages?: string[];
 }
 
 const API_KEY_STORAGE_KEY = 'printops-api-key';

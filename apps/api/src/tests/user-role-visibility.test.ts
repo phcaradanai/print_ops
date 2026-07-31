@@ -55,4 +55,23 @@ describe('user directory role visibility', () => {
     expect(response.body).not.toContain('scrypt$');
     await app.close();
   });
+
+  it('allows a higher role to set lower-role page access', async () => {
+    const app = await buildTestApp();
+    const authorization = `Bearer ${app.jwt.sign({ sub: 'admin', role: 'ADMIN', email: 'admin@example.test' })}`;
+    const response = await app.inject({ method: 'PUT', url: '/api/v1/users/operator/access', headers: { authorization }, payload: { allowedPages: ['/', '/jobs'] } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ id: 'operator', allowedPages: ['/', '/jobs'] });
+    await app.close();
+  });
+
+  it('prevents self-service and upward access changes while OWNER remains immutable', async () => {
+    const app = await buildTestApp();
+    const operatorAuth = `Bearer ${app.jwt.sign({ sub: 'operator', role: 'OPERATOR', email: 'operator@example.test' })}`;
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/users/operator/access', headers: { authorization: operatorAuth }, payload: { allowedPages: ['/'] } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/users/admin/access', headers: { authorization: operatorAuth }, payload: { allowedPages: ['/'] } })).statusCode).toBe(403);
+    const ownerAuth = `Bearer ${app.jwt.sign({ sub: 'owner', role: 'OWNER', email: 'owner@example.test' })}`;
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/users/owner/access', headers: { authorization: ownerAuth }, payload: { allowedPages: ['/'] } })).statusCode).toBe(403);
+    await app.close();
+  });
 });

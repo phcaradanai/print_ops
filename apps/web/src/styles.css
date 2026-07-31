@@ -5155,6 +5155,13 @@ body {
   color: var(--semantic-error);
 }
 
+.user-access-editor { min-width: 20rem; padding: var(--spacing-sm) 0; }
+.user-access-grid { display: grid; grid-template-columns: repeat(2, minmax(8rem, 1fr)); gap: 0.4rem 0.75rem; }
+.user-access-grid label { display: flex; align-items: center; gap: 0.4rem; color: var(--neutral-text); font-size: 0.75rem; }
+.user-access-grid input { width: 1rem; height: 1rem; accent-color: var(--primary); }
+.user-access-actions { display: flex; gap: var(--spacing-sm); margin-top: var(--spacing-md); }
+@media (max-width: 640px) { .user-access-editor { min-width: 15rem; } .user-access-grid { grid-template-columns: 1fr; } }
+
 /* ---------------------------------------------------------------------------
    Shared page states (FE-01) — LoadingState / EmptyState / ErrorState /
    ErrorBanner in src/components/PageState.tsx. Additive only: nothing above

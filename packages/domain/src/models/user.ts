@@ -1,5 +1,8 @@
 export type Role = 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER';
 
+export const APP_PAGES = ['/', '/printers', '/jobs', '/runners', '/templates', '/paper-profiles', '/discovered-printers', '/diagnostics', '/template-sandbox', '/webhooks', '/route-policies', '/printer-bindings', '/print-flow', '/audit-logs', '/users', '/export', '/settings'] as const;
+export type AppPage = typeof APP_PAGES[number];
+
 export type Permission =
   | 'printer:read'
   | 'printer:create'
@@ -82,6 +85,8 @@ export interface User {
   name: string;
   passwordHash?: string;
   role: Role;
+  /** Undefined means use the role defaults. OWNER always has every page. */
+  allowedPages?: AppPage[];
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;

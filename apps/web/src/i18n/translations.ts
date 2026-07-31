@@ -285,6 +285,8 @@ const en: TranslationDict = {
   // UsersRoles
   'page.usersRoles.title': 'Users & Roles',
   'page.usersRoles.description': 'Manage users and assign roles: OWNER, ADMIN, OPERATOR, VIEWER.',
+  'page.usersRoles.pageAccess': 'Page access',
+  'page.usersRoles.accessError': 'Could not update page access.',
 
   // ExportCenter
   'page.export.title': 'Export Center',
@@ -1356,6 +1358,8 @@ const th: TranslationDict = {
   // UsersRoles
   'page.usersRoles.title': 'ผู้ใช้และบทบาท',
   'page.usersRoles.description': 'จัดการผู้ใช้และกำหนดบทบาท: OWNER, ADMIN, OPERATOR, VIEWER',
+  'page.usersRoles.pageAccess': 'การเข้าถึงหน้า',
+  'page.usersRoles.accessError': 'ไม่สามารถอัปเดตการเข้าถึงหน้าได้',
 
   // ExportCenter
   'page.export.title': 'ศูนย์ส่งออก',
