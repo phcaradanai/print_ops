@@ -48,10 +48,13 @@ function buildFieldsTemplateHtml(profile: PaperProfile): string {
       // text and barcodes stay upright exactly as they do in the preview.
       const xMm = rotated ? sourcePrintableHeightMm - f.yMm : f.xMm;
       const yMm = rotated ? f.xMm : f.yMm;
+      const isMachineReadable = f.type === 'barcode' || f.type === 'qrcode';
       const style =
         `position:absolute;left:${xMm}mm;top:${yMm}mm;` +
-        `font-size:${f.fontSize}pt;font-weight:${f.bold ? 700 : 400};` +
-        `color:${escapeHtmlAttr(f.color)};white-space:nowrap;` +
+        (isMachineReadable
+          ? 'font-size:0;line-height:0;'
+          : `font-size:${f.fontSize}pt;font-weight:${f.bold ? 700 : 400};color:${escapeHtmlAttr(f.color)};`) +
+        `white-space:nowrap;` +
         fieldAnchorTransform(f.align);
       return `  <span style="${style}">{{${placeholderKey}}}</span>`;
     })

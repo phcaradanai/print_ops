@@ -23,13 +23,10 @@ export interface BarcodeRenderOptions {
   heightMm?: number;
   /** Print human-readable text beneath a 1D barcode. Default true. */
   includeText?: boolean;
-  /** Side length in mm for QR codes. Ignored for 1D symbologies. Default 20mm.
-   *  bwip-js honours `height`/`width` in millimeters for every symbology
-   *  (verified empirically: doubling the mm value exactly doubles the raster
-   *  pixel dimensions), so this maps straight through — the actual on-screen/
-   *  on-paper physical size is still determined by whatever CSS box the
-   *  consumer places the resulting image in (see `imgTag` in
-   *  simple-template-renderer.ts, which sets explicit CSS `mm` dimensions). */
+  /** Side length in mm for QR codes. The rasterizer deliberately ignores this:
+   *  physical size has one source of truth, the CSS mm box emitted by imgTag.
+   *  Keeping raster generation size-independent prevents bwip-js rounding and
+   *  quiet-zone choices from competing with the configured print dimension. */
   qrSizeMm?: number;
 }
 
@@ -52,7 +49,7 @@ export async function renderBarcodeDataUri(
   // `includetext` entirely rather than setting them to undefined.
   const buffer = await bwipjs.toBuffer(
     kind === 'qrcode'
-      ? { bcid, text: data, scale: 3, height: opts?.qrSizeMm ?? 20, width: opts?.qrSizeMm ?? 20 }
+      ? { bcid, text: data, scale: 4 }
       : {
           bcid,
           text: data,

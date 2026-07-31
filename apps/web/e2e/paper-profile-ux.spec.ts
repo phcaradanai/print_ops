@@ -421,6 +421,32 @@ test.describe('paper profile controls', () => {
       (ring.outlineStyle !== 'none' && parseFloat(ring.outlineWidth) > 0) || ring.boxShadow !== 'none';
     expect(hasRing, `no focus ring: ${JSON.stringify(ring)}`).toBe(true);
   });
+
+  test('QR uses its millimetre size and disables text-only styling', async ({ page }) => {
+    await openEditor(page);
+    await editMixedProfile(page);
+
+    const qrRow = page.locator('.pp-field-row', { has: page.locator('.pp-field-type-badge', { hasText: 'QR' }) });
+    const qrSize = qrRow.getByLabel('Size (mm)');
+    const fontSize = qrRow.getByLabel('Font size (pt)');
+    const color = qrRow.getByLabel('Color');
+    const bold = qrRow.getByLabel('Bold');
+    const alignment = qrRow.getByLabel('Align');
+
+    await expect(qrSize).toBeEnabled();
+    await expect(fontSize).toBeDisabled();
+    await expect(color).toBeDisabled();
+    await expect(bold).toBeDisabled();
+    await expect(alignment).toBeEnabled();
+
+    const preview = qrRow.locator('[aria-label^="qrcode preview"]');
+    const before = await preview.boundingBox();
+    await qrSize.fill('30');
+    const after = await preview.boundingBox();
+    expect(before?.width).toBeCloseTo(20 * 96 / 25.4, 0);
+    expect(after?.width).toBeCloseTo(30 * 96 / 25.4, 0);
+    expect(after?.height).toBeCloseTo(30 * 96 / 25.4, 0);
+  });
 });
 
 test.describe('paper profile popup layers', () => {

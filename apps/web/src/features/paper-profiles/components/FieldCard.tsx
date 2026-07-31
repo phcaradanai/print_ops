@@ -10,6 +10,7 @@ export function FieldCard({ field, editor, t }: {
   t: Translate;
 }) {
   const update = (patch: Partial<DynamicField>) => editor.updateField(field.id, patch);
+  const isMachineReadable = field.type === 'barcode' || field.type === 'qrcode';
   return (
     <div id={`paper-field-${field.id}`}
       className={`pp-field-row${editor.state.selectedFieldId === field.id ? ' is-selected' : ''}`}
@@ -43,6 +44,7 @@ export function FieldCard({ field, editor, t }: {
         <FieldNumber id={`pp-y-${field.id}`} label={t('page.paperProfiles.fieldYmm')} value={field.yMm}
           onChange={(yMm) => update({ yMm })} />
         <FieldNumber id={`pp-size-${field.id}`} label={t('page.paperProfiles.fieldFontSizePt')} value={field.fontSize}
+          disabled={isMachineReadable}
           onChange={(fontSize) => update({ fontSize: clampFontSize(fontSize) })} />
         <div className="pp-field-row__cell">
           <label htmlFor={`pp-align-${field.id}`}>{t('page.paperProfiles.align')}</label>
@@ -57,11 +59,13 @@ export function FieldCard({ field, editor, t }: {
         <div className="pp-field-row__cell">
           <label htmlFor={`pp-color-${field.id}`}>{t('page.paperProfiles.fieldColor')}</label>
           <input id={`pp-color-${field.id}`} className="pp-color" type="color" value={field.color}
-            aria-label={t('page.paperProfiles.fieldColor')} onChange={(event) => update({ color: event.target.value })} />
+            disabled={isMachineReadable} aria-label={t('page.paperProfiles.fieldColor')}
+            onChange={(event) => update({ color: event.target.value })} />
         </div>
         <div className="pp-field-row__cell pp-field-row__cell--tight">
           <label className="pp-checkbox-label">
             <input aria-label={t('page.paperProfiles.bold')} type="checkbox" checked={field.bold}
+              disabled={isMachineReadable}
               onChange={(event) => update({ bold: event.target.checked })} /> {t('page.paperProfiles.fieldBoldLabel')}
           </label>
         </div>
@@ -71,16 +75,18 @@ export function FieldCard({ field, editor, t }: {
   );
 }
 
-function FieldNumber({ id, label, value, onChange }: {
+function FieldNumber({ id, label, value, disabled, onChange }: {
   id: string;
   label: string;
   value: number;
+  disabled?: boolean;
   onChange: (value: number) => void;
 }) {
   return (
     <div className="pp-field-row__cell">
       <label htmlFor={id}>{label}</label>
       <input id={id} className="pp-number pp-input--sm" aria-label={label} type="number" step="0.1"
+        disabled={disabled}
         value={value} onChange={(event) => {
           const next = Number.parseFloat(event.target.value);
           if (!Number.isNaN(next)) onChange(next);

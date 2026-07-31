@@ -179,7 +179,7 @@ function zplBarcodeCommand(kind: 'barcode' | 'qrcode', value: string): string {
 function imgTag(dataUri: string, kind: 'barcode' | 'qrcode', sizeMm?: { heightMm?: number; sizeMm?: number }): string {
   const heightMm = kind === 'qrcode' ? (sizeMm?.sizeMm ?? 20) : (sizeMm?.heightMm ?? 12);
   const widthCss = kind === 'qrcode' ? `${heightMm}mm` : 'auto';
-  return `<img src="${dataUri}" alt="${kind}" style="display:inline-block;vertical-align:middle;height:${heightMm}mm;width:${widthCss};max-width:100%" />`;
+  return `<img src="${dataUri}" alt="${kind}" style="display:block;height:${heightMm}mm;width:${widthCss};max-width:none" />`;
 }
 
 export class SimpleTemplateRenderer implements TemplateRendererPort {
