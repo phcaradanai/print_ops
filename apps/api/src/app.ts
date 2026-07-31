@@ -285,7 +285,14 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const createPrinter = new CreatePrinterService(printerRepo, eventBus, auditRepo);
   const getPrinterStatus = new GetPrinterStatusService(printerRepo, registry);
   const createJob = new CreatePrintJobService(jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus);
-  const reprintJob = new ReprintJobService(jobRepo, createJob, auditRepo);
+  const reprintJob = new ReprintJobService(
+    jobRepo,
+    createJob,
+    auditRepo,
+    templateRepo,
+    paperRepo,
+    templateRenderer,
+  );
   const acceptExternalJob = new AcceptExternalJobService(
     jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus,
     // Template repo only — NOT the paper repo or the renderer. That combination

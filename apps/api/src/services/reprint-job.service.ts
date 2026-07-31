@@ -1,4 +1,11 @@
-import type { AuditRepositoryPort, Job, JobRepositoryPort } from '@printerops/domain';
+import type {
+  AuditRepositoryPort,
+  Job,
+  JobRepositoryPort,
+  PaperProfileRepositoryPort,
+  PrintTemplateRepositoryPort,
+  TemplateRendererPort,
+} from '@printerops/domain';
 import { generateId, NotFoundError, ValidationError } from '@printerops/shared';
 import type { CreatePrintJobService } from './create-print-job.service.js';
 
@@ -15,6 +22,9 @@ export class ReprintJobService {
     private readonly jobs: JobRepositoryPort,
     private readonly createJob: CreatePrintJobService,
     private readonly audit: AuditRepositoryPort,
+    private readonly templates?: PrintTemplateRepositoryPort,
+    private readonly papers?: PaperProfileRepositoryPort,
+    private readonly renderer?: TemplateRendererPort,
   ) {}
 
   async execute(originalJobId: string, input: ReprintJobInput, actorId: string): Promise<Job> {
@@ -34,13 +44,14 @@ export class ReprintJobService {
       throw new ValidationError('Changing the destination printer requires explicit confirmation');
     }
 
+    const renderedPrintPayload = await this.resolvePrintContent(original);
     const requestId = `reprint-${generateId()}`;
     const created = await this.createJob.execute({
       printerId: input.printerId,
       templateCode: original.templateCode,
       resolvedTemplateCode: original.resolvedTemplateCode,
       paperProfileId: original.paperProfileId,
-      renderedPrintPayload: original.renderedPrintPayload,
+      renderedPrintPayload,
       documentUrl: original.documentUrl,
       documentBase64: original.documentBase64,
       payloadSnapshot: original.payloadSnapshot,
@@ -83,4 +94,46 @@ export class ReprintJobService {
     });
     return created;
   }
+
+  /**
+   * Older dynamic/NATS jobs may have persisted the template and input payload
+   * without rendered bytes. Reinstalling keeps that SQLite history, so blindly
+   * cloning such a job only creates another adapter-level NO_CONTENT failure.
+   * Re-render from the immutable job snapshot when possible.
+   */
+  private async resolvePrintContent(original: Job): Promise<string | undefined> {
+    if (original.renderedPrintPayload || original.documentBase64) {
+      return original.renderedPrintPayload;
+    }
+
+    const templateCode = original.resolvedTemplateCode ?? original.templateCode;
+    const payload = asRecord(original.metadata['payload']);
+    if (!templateCode || !payload || !this.templates || !this.papers || !this.renderer) {
+      throw new ValidationError(
+        'Original job has no printable content and cannot be re-rendered from its saved template and payload',
+      );
+    }
+
+    const template = await this.templates.findByCode(templateCode);
+    if (!template || template.status !== 'PUBLISHED') {
+      throw new ValidationError(`Original print template '${templateCode}' is unavailable`);
+    }
+    const paperProfileId = original.paperProfileId ?? template.paperProfileId;
+    const paper = paperProfileId ? await this.papers.findById(paperProfileId) : undefined;
+    if (!paper) {
+      throw new ValidationError('Original paper profile is unavailable');
+    }
+
+    const rendered = await this.renderer.renderPrintPayload(template, payload, paper);
+    if (!rendered.renderedPrintPayload) {
+      throw new ValidationError('Original job re-render produced no printable content');
+    }
+    return rendered.renderedPrintPayload;
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
 }
