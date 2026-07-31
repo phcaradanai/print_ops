@@ -1,5 +1,7 @@
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -7,29 +9,30 @@ import {
   type ReactNode,
   type FormEvent,
 } from 'react';
-import Dashboard from './pages/Dashboard.js';
-import Printers from './pages/Printers.js';
-import PrinterDetail from './pages/PrinterDetail.js';
-import JobQueue from './pages/JobQueue.js';
-import JobDetail from './pages/JobDetail.js';
-import Runners from './pages/Runners.js';
-import AuditLogs from './pages/AuditLogs.js';
-import UsersRoles from './pages/UsersRoles.js';
-import ExportCenter from './pages/ExportCenter.js';
-import Settings from './pages/Settings.js';
-import DiscoveredPrinters from './pages/DiscoveredPrinters.js';
-import LocalDiagnostics from './pages/LocalDiagnostics.js';
-import Templates from './pages/Templates.js';
-import PaperProfiles from './pages/PaperProfiles.js';
-import TemplateSandbox from './pages/TemplateSandbox.js';
-import Webhooks from './pages/Webhooks.js';
-import RoutePolicies from './pages/RoutePolicies.js';
-import PrinterBindings from './pages/PrinterBindings.js';
-import PrintFlowBindings from './pages/PrintFlowBindings.js';
 import { getCurrentUser, login, logout, healthUrl, onUnauthorized, type SessionUser } from './api/client.js';
 import { LocaleProvider, useLocale } from './i18n/index.js';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary.js';
 import { errorMessage } from './api/errors.js';
+
+const Dashboard = lazy(() => import('./pages/Dashboard.js'));
+const Printers = lazy(() => import('./pages/Printers.js'));
+const PrinterDetail = lazy(() => import('./pages/PrinterDetail.js'));
+const JobQueue = lazy(() => import('./pages/JobQueue.js'));
+const JobDetail = lazy(() => import('./pages/JobDetail.js'));
+const Runners = lazy(() => import('./pages/Runners.js'));
+const AuditLogs = lazy(() => import('./pages/AuditLogs.js'));
+const UsersRoles = lazy(() => import('./pages/UsersRoles.js'));
+const ExportCenter = lazy(() => import('./pages/ExportCenter.js'));
+const Settings = lazy(() => import('./pages/Settings.js'));
+const DiscoveredPrinters = lazy(() => import('./pages/DiscoveredPrinters.js'));
+const LocalDiagnostics = lazy(() => import('./pages/LocalDiagnostics.js'));
+const Templates = lazy(() => import('./pages/Templates.js'));
+const PaperProfiles = lazy(() => import('./pages/PaperProfiles.js'));
+const TemplateSandbox = lazy(() => import('./pages/TemplateSandbox.js'));
+const Webhooks = lazy(() => import('./pages/Webhooks.js'));
+const RoutePolicies = lazy(() => import('./pages/RoutePolicies.js'));
+const PrinterBindings = lazy(() => import('./pages/PrinterBindings.js'));
+const PrintFlowBindings = lazy(() => import('./pages/PrintFlowBindings.js'));
 
 // ----- navigation definition -----
 
@@ -498,11 +501,13 @@ function RequireRoles({
 }
 
 function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
+  const { t } = useLocale();
   return (
     <div className="app-shell">
       <AppNav user={user} onLogout={onLogout} />
       <main className="app-main">
-        <Routes>
+        <Suspense fallback={<div className="loading-text" role="status">{t('common.loading')}</div>}>
+          <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/printers" element={<Printers />} />
           <Route path="/printers/:id" element={<PrinterDetail />} />
@@ -529,7 +534,8 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
           <Route path="/users" element={<UsersRoles />} />
           <Route path="/export" element={<ExportCenter />} />
           <Route path="/settings" element={<Settings />} />
-        </Routes>
+          </Routes>
+        </Suspense>
       </main>
     </div>
   );

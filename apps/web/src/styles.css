@@ -2086,9 +2086,10 @@ body {
 }
 
 .pp-presets-menu {
-  position: absolute;
-  top: calc(100% + var(--pp-space-2));
-  right: 0;
+  position: fixed;
+  top: 4rem;
+  left: auto;
+  right: 0.75rem;
   z-index: 20;
   display: grid;
   grid-template-columns: repeat(2, minmax(170px, 1fr));

@@ -330,7 +330,7 @@ export default function TemplateSandbox() {
             <div style={{ ...sectionStyle, paddingTop: '1.1rem' }}>
               <div style={sectionTitleStyle}>{t('page.sandbox.printer')}</div>
               <label style={labelStyle}>{t('page.sandbox.selectPrinter')}</label>
-              <select style={inputStyle} value={printerId} onChange={(e) => setPrinterId(e.target.value)}>
+              <select aria-label={t('page.sandbox.selectPrinter')} style={inputStyle} value={printerId} onChange={(e) => setPrinterId(e.target.value)}>
                 <option value="">{t('page.sandbox.selectPrinterPlaceholder')}</option>
                 {printers.filter((p) => p.isActive).map((p) => (
                   <option key={p.id} value={p.id}>
@@ -365,7 +365,7 @@ export default function TemplateSandbox() {
               <div style={sectionTitleStyle}>{t('page.sandbox.templatePaper')}</div>
               <div style={{ marginBottom: '0.5rem' }}>
                 <label style={labelStyle}>{t('page.sandbox.paperProfile')}</label>
-                <select style={inputStyle} value={paperProfileId} onChange={(e) => handlePaperProfileChange(e.target.value)}>
+                <select aria-label={t('page.sandbox.paperProfile')} style={inputStyle} value={paperProfileId} onChange={(e) => handlePaperProfileChange(e.target.value)}>
                   <option value="">{t('page.sandbox.paperProfileDefault')}</option>
                   {papers.map((p) => (
                     <option key={p.id} value={p.id}>{p.code} ({p.widthMm}×{p.heightMm}mm, {p.dpi}dpi)</option>
@@ -379,7 +379,7 @@ export default function TemplateSandbox() {
               </div>
               <div>
                 <label style={labelStyle}>{t('page.sandbox.template')}</label>
-                <select style={inputStyle} value={templateId} onChange={(e) => handleTemplateChange(e.target.value)}>
+                <select aria-label={t('page.sandbox.template')} style={inputStyle} value={templateId} onChange={(e) => handleTemplateChange(e.target.value)}>
                   <option value="">{t('page.sandbox.selectTemplatePlaceholder')}</option>
                   {templates.map((t) => (
                     <option key={t.id} value={t.id}>{t.templateCode} — {t.name}</option>
@@ -410,6 +410,7 @@ export default function TemplateSandbox() {
                     −
                   </button>
                   <input
+                    aria-label={t('page.sandbox.copies')}
                     type="number"
                     min={1}
                     style={{ ...inputStyle, width: 64, textAlign: 'center' }}
@@ -487,6 +488,7 @@ export default function TemplateSandbox() {
             <div style={sectionLastStyle}>
               <div style={sectionTitleStyle}>{t('page.sandbox.samplePayload')}</div>
               <textarea
+                aria-label={t('page.sandbox.samplePayload')}
                 value={payload}
                 onChange={(e) => setPayload(e.target.value)}
                 rows={6}

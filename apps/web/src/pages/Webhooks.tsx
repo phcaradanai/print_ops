@@ -727,6 +727,7 @@ export default function Webhooks() {
           <div className="wh-search-box">
             <span className="wh-search-icon-left">🔍</span>
             <input
+              aria-label={t('page.webhooks.searchPlaceholder')}
               ref={searchInputRef}
               type="text"
               className="wh-search-input"
@@ -789,6 +790,7 @@ export default function Webhooks() {
                   {t('page.webhooks.endpointCode')} <span className="required">*</span>
                 </label>
                 <input
+                  aria-label={t('page.webhooks.endpointCode')}
                   ref={endpointCodeInputRef}
                   className="wh-input"
                   placeholder={t('page.webhooks.endpointCodePlaceholder')}
@@ -804,6 +806,7 @@ export default function Webhooks() {
                   {t('page.webhooks.name')} <span className="required">*</span>
                 </label>
                 <input
+                  aria-label={t('page.webhooks.name')}
                   className="wh-input"
                   placeholder={t('page.webhooks.namePlaceholder')}
                   value={form.name}
@@ -815,6 +818,7 @@ export default function Webhooks() {
               <div className="wh-field">
                 <label className="wh-field-label">{t('page.webhooks.source')}</label>
                 <input
+                  aria-label={t('page.webhooks.source')}
                   className="wh-input"
                   list="source-systems-list"
                   placeholder={t('page.webhooks.sourcePlaceholder')}
@@ -832,6 +836,7 @@ export default function Webhooks() {
               <div className="wh-field">
                 <label className="wh-field-label">{t('page.webhooks.authPolicyLabel')}</label>
                 <select
+                  aria-label={t('page.webhooks.authPolicyLabel')}
                   className="wh-select"
                   value={form.routePolicyId || form.authMode}
                   onChange={(e) => {
@@ -864,6 +869,7 @@ export default function Webhooks() {
               <div className="wh-field">
                 <label className="wh-field-label">{t('page.webhooks.callbackModeLabel')}</label>
                 <select
+                  aria-label={t('page.webhooks.callbackModeLabel')}
                   className="wh-select"
                   value={form.callbackTransport}
                   onChange={(e) =>
@@ -883,6 +889,7 @@ export default function Webhooks() {
                   Callback URL <span>🔗</span>
                 </label>
                 <input
+                  aria-label="Callback URL"
                   className="wh-input"
                   placeholder="https://example.com/webhook"
                   value={form.callbackUrl}
@@ -895,6 +902,7 @@ export default function Webhooks() {
               <div className="wh-field">
                 <label className="wh-field-label">{t('page.webhooks.natsSubjectLabel')}</label>
                 <input
+                  aria-label={t('page.webhooks.natsSubjectLabel')}
                   className="wh-input"
                   placeholder={t('page.webhooks.natsSubjectPlaceholder')}
                   value={form.callbackNatsSubject}
@@ -930,6 +938,7 @@ export default function Webhooks() {
                     ))}
                   </div>
                   <textarea
+                    aria-label={t('page.webhooks.payloadTemplate')}
                     ref={textareaRef}
                     className="wh-code-textarea"
                     rows={7}
@@ -1094,6 +1103,7 @@ export default function Webhooks() {
             <div className="wh-search-box">
               <span className="wh-search-icon-left">🔍</span>
               <input
+                aria-label={t('page.webhooks.searchPlaceholder')}
                 type="text"
                 className="wh-search-input"
                 style={{ width: 190, paddingRight: '1rem' }}
@@ -1104,6 +1114,7 @@ export default function Webhooks() {
             </div>
 
             <select
+              aria-label={t('page.webhooks.statusAllOption')}
               className="wh-select"
               style={{ height: 38 }}
               value={statusFilter}
@@ -1128,9 +1139,11 @@ export default function Webhooks() {
               <tr>
                 <th style={{ width: 36, textAlign: 'center' }}>
                   <input
+                    aria-label={t('page.webhooks.selectAllOnPage')}
                     type="checkbox"
                     checked={isAllPaginatedSelected}
                     onChange={toggleSelectAllPaginated}
+                    disabled={paginatedEndpoints.length === 0}
                     title={t('page.webhooks.selectAllOnPage')}
                   />
                 </th>
@@ -1155,6 +1168,7 @@ export default function Webhooks() {
                   <tr key={e.id} style={{ background: selectedIds.includes(e.id) ? '#eff6ff' : undefined }}>
                     <td style={{ textAlign: 'center' }}>
                       <input
+                        aria-label={`${t('page.webhooks.endpoint')} ${e.endpointCode}`}
                         type="checkbox"
                         checked={selectedIds.includes(e.id)}
                         onChange={() => toggleSelectRow(e.id)}
@@ -1257,6 +1271,7 @@ export default function Webhooks() {
             </button>
 
             <select
+              aria-label={t('page.webhooks.perPage').replace('{n}', String(pageSize))}
               className="wh-select"
               style={{ height: 32, padding: '0 0.5rem', fontSize: '0.8rem', marginLeft: '0.5rem' }}
               value={pageSize}
