@@ -13,10 +13,16 @@ export async function v1UserRoutes(
   app: FastifyInstance,
   deps: { users: UserRepositoryPort }
 ): Promise<void> {
-  app.get('/users', { onRequest: [app.authenticate] }, async () => {
-    // Only return safe fields
+  app.get('/users', { onRequest: [app.authenticate] }, async (req) => {
+    const payload = req.user as { sub: string; role: Role; email: string };
+    const viewerLevel = ROLE_LEVELS[payload.role] ?? 0;
+
+    // Password hashes are never returned. A caller may only enumerate accounts
+    // at their own role level or below, so lower roles cannot discover OWNER or
+    // other privileged identities through the API even if the UI route is
+    // hidden from them.
     const users = await deps.users.findAll();
-    return users.map(u => ({
+    return users.filter(u => (ROLE_LEVELS[u.role] ?? 0) <= viewerLevel).map(u => ({
       id: u.id,
       email: u.email,
       name: u.name,
