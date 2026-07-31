@@ -118,4 +118,15 @@ describe('versioned SQLite migration', () => {
     process.env['SQL_WASM_PATH'] = SQL_WASM_PATH;
     await expect(initDatabase()).rejects.toThrow(/PRINTOPS_DB_READ_FAILED/);
   });
+
+  it('reports an actionable write-stage error when the database parent cannot be created', async () => {
+    const directory = temporaryDirectory();
+    const blockingFile = join(directory, 'not-a-directory');
+    writeFileSync(blockingFile, 'blocking-file');
+    process.env['PRINTOPS_DB_PATH'] = join(blockingFile, 'printops.db');
+    process.env['SQL_WASM_PATH'] = SQL_WASM_PATH;
+
+    await expect(initDatabase()).rejects.toThrow(/PRINTOPS_DB_WRITE_FAILED/);
+    expect(readFileSync(blockingFile, 'utf8')).toBe('blocking-file');
+  });
 });

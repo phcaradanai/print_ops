@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
+import initSqlJs from 'sql.js';
 
 const root = resolve(import.meta.dirname, '..');
 const resources = join(root, 'apps/desktop/src-tauri/resources');
@@ -79,7 +80,7 @@ async function json(base, path, init = {}) {
   return { status: response.status, body };
 }
 
-function startServer(port) {
+function startServer(port, targetDbPath = dbPath, targetLog = serverLog) {
   const child = spawn(serverExe, [], {
     cwd: resources,
     env: {
@@ -91,7 +92,7 @@ function startServer(port) {
       PRINTOPS_RUNTIME_MODE: 'packaged-windows-desktop',
       PRINTOPS_LOCAL_WORKER: 'true',
       PRINTOPS_DISCOVERY_RUNNER_JOBS_ENABLED: 'false',
-      PRINTOPS_DB_PATH: dbPath,
+      PRINTOPS_DB_PATH: targetDbPath,
       PRINTOPS_LOG_DIR: logsDir,
       PRINTOPS_APP_VERSION: '0.1.15',
       PRINTOPS_GIT_COMMIT: 'packaged-sidecar-smoke',
@@ -104,7 +105,7 @@ function startServer(port) {
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
-  collect(child, serverLog);
+  collect(child, targetLog);
   return child;
 }
 
@@ -137,6 +138,60 @@ async function stop(child) {
     new Promise((resolveWait) => setTimeout(resolveWait, 5_000)),
   ]);
   if (child.exitCode === null) child.kill('SIGKILL');
+}
+
+async function waitForExit(label, child, timeoutMs = 20_000) {
+  if (child.exitCode !== null) return child.exitCode;
+  return await Promise.race([
+    new Promise((resolveExit) => child.once('close', resolveExit)),
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} did not exit`)), timeoutMs)),
+  ]);
+}
+
+async function seedRecoveryMatrix() {
+  const SQL = await initSqlJs({ locateFile: () => wasmPath });
+  const db = new SQL.Database(readFileSync(dbPath));
+  const now = new Date().toISOString();
+  const ids = {
+    accepted: 'packaged-recovery-accepted',
+    validated: 'packaged-recovery-validated',
+    queued: 'packaged-recovery-queued',
+    dispatched: 'packaged-recovery-dispatched',
+    printing: 'packaged-recovery-printing',
+  };
+  const statement = db.prepare(`
+    INSERT INTO jobs (
+      id, printer_id, created_by, status, priority, priority_label, trace_id,
+      correlation_id, rendered_print_payload, mime_type, copies, duplex,
+      color_mode, retry_count, max_retries, metadata, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, 50, 'normal', ?, ?, ?, 'text/plain', 1, 0, 'monochrome', 0, 3, '{}', ?, ?)
+  `);
+  try {
+    for (const [statusName, id] of Object.entries(ids)) {
+      statement.run([
+        id,
+        'missing-printer-for-recovery-proof',
+        'packaged-recovery-smoke',
+        statusName.toUpperCase(),
+        `trace-${id}`,
+        `correlation-${id}`,
+        `recovery-${statusName}`,
+        now,
+        now,
+      ]);
+    }
+  } finally {
+    statement.free();
+  }
+  writeFileSync(dbPath, Buffer.from(db.export()));
+  db.close();
+  return ids;
+}
+
+async function getJob(base, auth, id) {
+  const result = await json(base, `/jobs/${id}`, { headers: auth });
+  if (result.status !== 200) throw new Error(`recovery job ${id} returned HTTP ${result.status}`);
+  return result.body;
 }
 
 try {
@@ -202,6 +257,7 @@ try {
   await stop(serverChild);
   serverChild = undefined;
 
+  const recoveryIds = await seedRecoveryMatrix();
   serverChild = startServer(port);
   await waitFor('restarted packaged API health', async () => (await fetch(`${base}/health`)).ok);
   const persisted = await json(base, '/auth/bootstrap');
@@ -209,6 +265,64 @@ try {
     throw new Error(`owner state did not survive restart: HTTP ${persisted.status}, state=${persisted.body?.state ?? 'missing'}`);
   }
   findings.push({ check: 'sqlite-restart-persistence', status: 'PASS' });
+
+  const expectedRecovery = {
+    accepted: { status: 'QUEUED', previousStatus: 'ACCEPTED', safe: true },
+    validated: { status: 'QUEUED', previousStatus: 'VALIDATED', safe: true },
+    queued: { status: 'QUEUED' },
+    dispatched: { status: 'UNVERIFIED', previousStatus: 'DISPATCHED', suppressed: true },
+    printing: { status: 'UNVERIFIED', previousStatus: 'PRINTING', suppressed: true },
+  };
+  for (const [name, expectation] of Object.entries(expectedRecovery)) {
+    const job = await getJob(base, auth, recoveryIds[name]);
+    if (job.status !== expectation.status
+        || (expectation.previousStatus && job.metadata?.recovery?.previousStatus !== expectation.previousStatus)
+        || (expectation.safe && job.metadata?.recovery?.safePreDispatchRecovery !== true)
+        || (expectation.suppressed && (job.metadata?.recovery?.autoReplaySuppressed !== true
+          || job.errorCode !== 'RECOVERY_PRINT_STATUS_UNKNOWN'))) {
+      throw new Error(`unsafe packaged restart recovery for ${name}: status=${job.status ?? 'missing'}`);
+    }
+    findings.push({ check: `restart-state-${name}`, status: 'PASS' });
+  }
+
+  await new Promise((resolveWait) => setTimeout(resolveWait, 1_200));
+  for (const name of ['dispatched', 'printing']) {
+    const job = await getJob(base, auth, recoveryIds[name]);
+    if (job.status !== 'UNVERIFIED') throw new Error(`ambiguous ${name} job was replayed`);
+  }
+  findings.push({ check: 'ambiguous-jobs-never-auto-replayed', status: 'PASS' });
+
+  const lockedLog = join(logsDir, 'database-locked.log');
+  const lockedPort = await freePort();
+  const lockedChild = startServer(lockedPort, dbPath, lockedLog);
+  await waitForExit('database lock contender', lockedChild);
+  await waitFor('database lock diagnostic', () => {
+    return existsSync(lockedLog) && readFileSync(lockedLog, 'utf8').includes('PRINTOPS_DB_LOCKED');
+  });
+  findings.push({ check: 'database-lock-fails-closed', status: 'PASS' });
+
+  const corruptPath = join(work, 'corrupt.db');
+  const corruptBytes = Buffer.from('deliberately-corrupt-packaged-database');
+  writeFileSync(corruptPath, corruptBytes);
+  const corruptLog = join(logsDir, 'database-corrupt.log');
+  const corruptChild = startServer(await freePort(), corruptPath, corruptLog);
+  await waitForExit('corrupt database process', corruptChild);
+  await waitFor('corrupt database diagnostic', () => {
+    return existsSync(corruptLog) && readFileSync(corruptLog, 'utf8').includes('PRINTOPS_DB_CORRUPT');
+  });
+  if (!readFileSync(corruptPath).equals(corruptBytes)) throw new Error('corrupt database was modified');
+  findings.push({ check: 'corrupt-database-preserved', status: 'PASS' });
+
+  const blockingParent = join(work, 'database-parent-is-file');
+  writeFileSync(blockingParent, 'preserve-blocker');
+  const unwritableLog = join(logsDir, 'database-write-failed.log');
+  const unwritableChild = startServer(await freePort(), join(blockingParent, 'printops.db'), unwritableLog);
+  await waitForExit('unwritable database process', unwritableChild);
+  await waitFor('database write diagnostic', () => {
+    return existsSync(unwritableLog) && readFileSync(unwritableLog, 'utf8').includes('PRINTOPS_DB_WRITE_FAILED');
+  });
+  if (readFileSync(blockingParent, 'utf8') !== 'preserve-blocker') throw new Error('write blocker was modified');
+  findings.push({ check: 'database-write-fails-closed', status: 'PASS' });
 
   mkdirSync(artifacts, { recursive: true });
   const report = {

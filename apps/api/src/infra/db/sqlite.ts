@@ -194,12 +194,12 @@ export function saveDb(): void {
   const data = db.export();
   const buffer = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
   const target = _activeDbPath ?? dbPath();
-  mkdirSync(dirname(target), { recursive: true });
   // Never overwrite the durable copy in-place. A crash during a direct write
   // can truncate the database and erase saved profiles; rename keeps either
   // the previous or the complete new snapshot at the canonical path.
   const temporary = `${target}.${process.pid}.tmp`;
   try {
+    mkdirSync(dirname(target), { recursive: true });
     writeFileSync(temporary, buffer);
     renameSync(temporary, target);
   } catch (error) {
