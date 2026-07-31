@@ -17,6 +17,7 @@ const appData = join(tempRoot, 'appdata');
 const localAppData = join(tempRoot, 'localappdata');
 const findings = [];
 let desktop;
+let duplicateDesktop;
 let observedSidecars = new Set();
 
 function assert(condition, message) {
@@ -97,6 +98,15 @@ async function captureSidecars() {
   };
 }
 
+function launchDesktop() {
+  return spawn(desktopExe, [], {
+    cwd: join(root, 'apps', 'desktop', 'src-tauri', 'target', 'release'),
+    env: { ...process.env, APPDATA: appData, LOCALAPPDATA: localAppData },
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+}
+
 async function closeDesktopNormally() {
   const result = powershell(
     `$p = Get-Process -Id ${desktop.pid} -ErrorAction Stop; ` +
@@ -113,12 +123,7 @@ try {
   mkdirSync(localAppData, { recursive: true });
   mkdirSync(artifacts, { recursive: true });
 
-  desktop = spawn(desktopExe, [], {
-    cwd: join(root, 'apps', 'desktop', 'src-tauri', 'target', 'release'),
-    env: { ...process.env, APPDATA: appData, LOCALAPPDATA: localAppData },
-    stdio: 'ignore',
-    windowsHide: true,
-  });
+  desktop = launchDesktop();
 
   await waitFor('packaged desktop API health', healthOk);
   const initial = await waitFor('initial packaged sidecars', async () => {
@@ -126,6 +131,13 @@ try {
     return value.server && value.runner ? value : undefined;
   });
   findings.push({ check: 'desktop-launches-both-sidecars', status: 'PASS' });
+
+  duplicateDesktop = launchDesktop();
+  await waitFor('duplicate desktop exits', () => !processExists(duplicateDesktop.pid), 20_000);
+  const afterDuplicate = await captureSidecars();
+  assert(Number(afterDuplicate.server.ProcessId) === Number(initial.server.ProcessId), 'duplicate launch replaced API sidecar');
+  assert(Number(afterDuplicate.runner.ProcessId) === Number(initial.runner.ProcessId), 'duplicate launch replaced discovery sidecar');
+  findings.push({ check: 'second-desktop-launch-is-single-instance', status: 'PASS' });
 
   terminatePid(Number(initial.server.ProcessId));
   const restartedServer = await waitFor('API sidecar restart', async () => {
@@ -148,6 +160,21 @@ try {
   findings.push({ check: 'desktop-restarts-crashed-discovery-runner', status: 'PASS' });
 
   assert(Number(restartedServer.ProcessId) !== Number(initial.server.ProcessId), 'API PID did not change');
+  const beforeAbruptExit = await captureSidecars();
+  terminatePid(desktop.pid);
+  await waitFor('abrupt desktop exit stops contained sidecars', () => {
+    return !processExists(Number(beforeAbruptExit.server.ProcessId)) && !processExists(Number(beforeAbruptExit.runner.ProcessId));
+  }, 20_000);
+  findings.push({ check: 'abrupt-desktop-exit-stops-sidecars', status: 'PASS' });
+
+  desktop = launchDesktop();
+  await waitFor('packaged desktop restart health', healthOk);
+  await waitFor('sidecars after packaged desktop restart', async () => {
+    const value = await captureSidecars();
+    return value.server && value.runner ? value : undefined;
+  });
+  findings.push({ check: 'desktop-restarts-after-abrupt-exit', status: 'PASS' });
+
   await closeDesktopNormally();
   await waitFor(
     'sidecars stopped after normal desktop exit',
@@ -172,6 +199,7 @@ try {
   console.error(`[FAIL] packaged desktop supervision smoke: ${error.message}`);
   process.exitCode = 1;
 } finally {
+  if (duplicateDesktop && processExists(duplicateDesktop.pid)) terminatePid(duplicateDesktop.pid);
   if (desktop && processExists(desktop.pid)) terminatePid(desktop.pid);
   for (const pid of observedSidecars) {
     if (processExists(pid)) terminatePid(pid);

@@ -2,15 +2,86 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
+use std::sync::{atomic::{AtomicBool, Ordering}, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, Url};
 
 #[cfg(windows)]
+use std::os::windows::io::AsRawHandle;
+#[cfg(windows)]
 use std::os::windows::process::CommandExt;
 #[cfg(windows)]
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+#[cfg(windows)]
+use windows_sys::Win32::System::JobObjects::{
+    AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+    SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+};
+#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[cfg(windows)]
+struct SidecarJob(HANDLE);
+
+#[cfg(windows)]
+unsafe impl Send for SidecarJob {}
+#[cfg(windows)]
+unsafe impl Sync for SidecarJob {}
+
+#[cfg(windows)]
+impl Drop for SidecarJob {
+    fn drop(&mut self) {
+        unsafe { CloseHandle(self.0) };
+    }
+}
+
+#[cfg(windows)]
+static SIDECAR_JOB: OnceLock<Result<SidecarJob, String>> = OnceLock::new();
+
+#[cfg(windows)]
+fn sidecar_job() -> Result<&'static SidecarJob, String> {
+    SIDECAR_JOB
+        .get_or_init(|| unsafe {
+            let handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            if handle.is_null() {
+                return Err(format!(
+                    "CreateJobObjectW failed: {}",
+                    std::io::Error::last_os_error()
+                ));
+            }
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let configured = SetInformationJobObject(
+                handle,
+                JobObjectExtendedLimitInformation,
+                &info as *const _ as *const _,
+                std::mem::size_of_val(&info) as u32,
+            );
+            if configured == 0 {
+                let error = std::io::Error::last_os_error();
+                CloseHandle(handle);
+                return Err(format!("SetInformationJobObject failed: {error}"));
+            }
+            Ok(SidecarJob(handle))
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+#[cfg(windows)]
+fn assign_sidecar_to_job(child: &Child) -> Result<(), String> {
+    let job = sidecar_job()?;
+    let assigned = unsafe { AssignProcessToJobObject(job.0, child.as_raw_handle() as HANDLE) };
+    if assigned == 0 {
+        return Err(format!(
+            "AssignProcessToJobObject failed: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(())
+}
 
 const SERVER_URL: &str = "http://127.0.0.1:31415";
 const SERVER_PORT: &str = "31415";
@@ -382,7 +453,17 @@ fn spawn_child(mut cmd: Command, log: &Path, label: &str) -> Option<Child> {
     cmd.creation_flags(CREATE_NO_WINDOW);
 
     match cmd.spawn() {
-        Ok(child) => {
+        Ok(mut child) => {
+            #[cfg(windows)]
+            if let Err(error) = assign_sidecar_to_job(&child) {
+                log_line(
+                    log,
+                    &format!("ERROR: failed to contain {label} in desktop job: {error}"),
+                );
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
             log_line(log, &format!("{label} started (pid: {})", child.id()));
             Some(child)
         }
