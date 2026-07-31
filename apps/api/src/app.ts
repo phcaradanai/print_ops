@@ -96,6 +96,7 @@ import { readFileSync } from 'node:fs';
 import { initDatabase, getDb } from './infra/db/sqlite.js';
 import { pruneOldRecords, retentionDaysFromEnv, retentionMaxRowsFromEnv } from './infra/db/retention.js';
 import { ReprintJobService } from './services/reprint-job.service.js';
+import { IntakeOutcomeCallbackService } from './services/intake-outcome-callback.service.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -751,6 +752,16 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const routeNatsPublisher: NatsPublisher | undefined = printIntakeCfg
     ? (subject, payload) => natsManager.publish(subject, payload)
     : undefined;
+  const intakeOutcomeCallbacks = new IntakeOutcomeCallbackService(
+    webhookEndpointRepo,
+    new WebhookCallbackService(
+      app.log,
+      httpCallbackSender,
+      routeNatsPublisher,
+      webhookCallbackAttemptRepo,
+    ),
+  );
+  natsManager.setIntakeCallbacks(intakeOutcomeCallbacks);
 
   // Health check (no auth)
   app.get('/health', async () => ({ status: 'ok', uptime: process.uptime() }));
@@ -767,8 +778,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
 
   // Routes — external API v1
   await app.register(async (v1) => {
-    await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, acceptExternalJob, cancelJob, executeJob, apiKeyHook, intakeLog: intakeAttemptRepo });
-    await v1PrinterPrintRoutes(v1, { dynamicPrint, apiKeyHook, intakeLog: intakeAttemptRepo });
+    await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, acceptExternalJob, cancelJob, executeJob, apiKeyHook, intakeLog: intakeAttemptRepo, intakeCallbacks: intakeOutcomeCallbacks });
+    await v1PrinterPrintRoutes(v1, { dynamicPrint, apiKeyHook, intakeLog: intakeAttemptRepo, intakeCallbacks: intakeOutcomeCallbacks });
     await v1PrintFlowRoutes(v1, { printIntake: printIntakeCfg, natsStatus: () => natsManager.getStatus(), natsTest: () => natsManager.testConnection(), intakeLog: intakeAttemptRepo });
     await v1PrinterRoutes(v1, { printers: printerRepo, getPrinterStatus, apiKeyHook });
     await v1ExportRoutes(v1, { exportJobs, audit: auditRepo, exporter, apiKeyHook });

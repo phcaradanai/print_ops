@@ -5,6 +5,7 @@ import {
 } from 'nats';
 import type { DynamicPrintService } from '../../services/dynamic-print.service.js';
 import type { IntakeAttemptRepositoryPort } from '@printerops/domain';
+import type { IntakeOutcomeCallbackService } from '../../services/intake-outcome-callback.service.js';
 import {
   handlePrintIntakeMessage,
   redactNatsUrl,
@@ -121,6 +122,7 @@ export class NatsConnectionManager {
       dynamicPrint: DynamicPrintService;
       logger: PrintIntakeLogger;
       intakeLog?: IntakeAttemptRepositoryPort;
+      intakeCallbacks?: IntakeOutcomeCallbackService;
     },
   ) {
     this.status = cfg
@@ -157,6 +159,10 @@ export class NatsConnectionManager {
 
   getStatus(): NatsRuntimeStatus {
     return { ...this.status };
+  }
+
+  setIntakeCallbacks(service: IntakeOutcomeCallbackService): void {
+    this.deps.intakeCallbacks = service;
   }
 
   start(): void {

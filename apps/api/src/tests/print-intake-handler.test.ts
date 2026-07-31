@@ -7,6 +7,7 @@ import {
 } from '../infra/nats/print-intake.js';
 import type { DynamicPrintService } from '../services/dynamic-print.service.js';
 import { AppError } from '@printerops/shared';
+import type { IntakeOutcomeCallbackService } from '../services/intake-outcome-callback.service.js';
 
 /**
  * Unit tests for the NATS JetStream print-intake message handler.
@@ -307,5 +308,63 @@ describe('NATS print-intake message handler', () => {
     expect(dynamicPrint.submit).toHaveBeenCalledTimes(1);
     expect(dynamicPrint.submitted[0]!['printer_code']).toBe('LAB_LABEL_01');
     expect(msg.ack).toHaveBeenCalledTimes(1);
+  });
+
+  it('hooks a final 4xx rejection before dead-lettering', async () => {
+    const dynamicPrint = makeDynamicPrint(() => {
+      throw new AppError('TEMPLATE_NOT_FOUND', 'template is unavailable', 422);
+    });
+    const nc = makeNc();
+    const notifyRejected = vi.fn().mockResolvedValue(true);
+    const intakeCallbacks = { notifyRejected } as unknown as IntakeOutcomeCallbackService;
+    const msg = makeMsg({
+      target_client_id: CLIENT_ID,
+      request_id: 'REQ-NATS-REJECT',
+      source_system: 'medisync',
+      code_template: 'missing',
+      code_profile: 'profile',
+      endpoint_code: 'result-hook',
+      payload: { label: 'x' },
+    });
+
+    await handlePrintIntakeMessage(msg, { dynamicPrint, logger, intakeCallbacks }, nc, cfg);
+
+    expect(notifyRejected).toHaveBeenCalledWith(expect.objectContaining({
+      endpointCode: 'result-hook',
+      requestId: 'REQ-NATS-REJECT',
+      intakeTransport: 'NATS',
+      stage: 'INTAKE',
+      errorCode: 'TEMPLATE_NOT_FOUND',
+    }));
+    expect(msg.term).toHaveBeenCalledTimes(1);
+  });
+
+  it('hooks a transient failure only when the final retry is exhausted', async () => {
+    const dynamicPrint = makeDynamicPrint(() => { throw new Error('database unavailable'); });
+    const nc = makeNc();
+    const notifyRejected = vi.fn().mockResolvedValue(true);
+    const intakeCallbacks = { notifyRejected } as unknown as IntakeOutcomeCallbackService;
+    const envelope = {
+      target_client_id: CLIENT_ID,
+      request_id: 'REQ-NATS-EXHAUSTED',
+      source_system: 'medisync',
+      code_template: 't',
+      code_profile: 'p',
+      endpoint_code: 'result-hook',
+      payload: {},
+    };
+
+    const retryable = makeMsg(envelope, { redeliveryCount: 3 });
+    await handlePrintIntakeMessage(retryable, { dynamicPrint, logger, intakeCallbacks }, nc, cfg);
+    expect(retryable.nak).toHaveBeenCalledTimes(1);
+    expect(notifyRejected).not.toHaveBeenCalled();
+
+    const exhausted = makeMsg(envelope, { redeliveryCount: 4 });
+    await handlePrintIntakeMessage(exhausted, { dynamicPrint, logger, intakeCallbacks }, nc, cfg);
+    expect(notifyRejected).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'INTAKE_RETRIES_EXHAUSTED',
+      errorCode: 'INTAKE_FAILED',
+    }));
+    expect(exhausted.term).toHaveBeenCalledTimes(1);
   });
 });

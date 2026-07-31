@@ -45,6 +45,9 @@ export interface CallbackContext {
   intakePayload: Record<string, unknown>;
   /** The accept response returned to the caller (or the final job result). */
   result: Record<string, unknown>;
+  /** Canonical system event that must not be replaced by an endpoint's legacy
+   * acceptance payload template (for example `print.job.rejected`). */
+  payloadOverride?: Record<string, unknown>;
 }
 
 /** Per-transport delivery outcome, returned by `send()` so callers (the
@@ -190,8 +193,8 @@ export class WebhookCallbackService {
     }
 
     const userTemplate = resolveTemplate(endpoint.callbackPayloadTemplate, intakePayload);
-    const payload: Record<string, unknown> =
-      Object.keys(userTemplate).length > 0
+    const payload: Record<string, unknown> = ctx.payloadOverride ??
+      (Object.keys(userTemplate).length > 0
         ? userTemplate
         : {
             // `event_type` names this for what it is: an ACCEPTANCE
@@ -205,7 +208,7 @@ export class WebhookCallbackService {
             status: result['status'],
             trace_id: result['trace_id'],
             duplicate: result['duplicate'] ?? false,
-          };
+          });
 
     return { target, payload };
   }

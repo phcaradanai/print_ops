@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../app.js';
 
 const API_KEY = 'printops-dev-apikey-2026';
@@ -158,5 +158,52 @@ describe('Dynamic print HTTP endpoint (POST /api/v1/printer/:code_template/:code
       payload: { request_id: 'REQ-NOAUTH', source_system: 'sys', payload: {} },
     });
     expect(res.statusCode).toBe(401);
+  });
+
+  it('hooks a pre-job API rejection to the configured HTTP destination', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 204 }),
+    );
+    const { app } = await buildApp();
+    const token = await login(app, 'sysadmin@printerops.local');
+    const endpoint = await app.inject({
+      method: 'POST',
+      url: '/api/v1/webhook-endpoints',
+      headers: auth(token),
+      payload: {
+        endpointCode: 'api-rejection-hook',
+        name: 'API rejection hook',
+        sourceSystem: 'integration-service',
+        authMode: 'NONE',
+        enabled: true,
+        routePolicyId: '',
+        callbackTransport: 'HTTP',
+        callbackUrl: 'https://receiver.example/results',
+        callbackOnPrintResult: true,
+      },
+    });
+    expect(endpoint.statusCode).toBe(201);
+
+    const rejected = await app.inject({
+      method: 'POST',
+      url: '/api/v1/printer/NO_SUCH_TEMPLATE/LABEL_100X50',
+      headers: withApiKey(),
+      payload: {
+        request_id: 'REQ-HTTP-REJECTED',
+        source_system: 'integration-service',
+        printer_code: 'LAB_LABEL_01',
+        endpoint_code: 'api-rejection-hook',
+        payload: { label: 'x' },
+      },
+    });
+    expect(rejected.statusCode).toBe(422);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://receiver.example/results',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"event_type":"print.job.rejected"'),
+      }),
+    );
+    fetchMock.mockRestore();
   });
 });

@@ -5,6 +5,7 @@ import type { ExecuteJobService } from '../../services/execute-job.service.js';
 import type { JobRepositoryPort, TraceRepositoryPort, ServiceAccount, IntakeAttemptRepositoryPort } from '@printerops/domain';
 import { AppError } from '@printerops/shared';
 import { redactJob, redactJobs } from '../job-redaction.js';
+import type { IntakeOutcomeCallbackService } from '../../services/intake-outcome-callback.service.js';
 
 type ReqWithServiceAccount = { serviceAccount: ServiceAccount };
 
@@ -18,6 +19,7 @@ export async function v1PrintJobRoutes(
     executeJob: ExecuteJobService;
     apiKeyHook: (req: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<void>;
     intakeLog?: IntakeAttemptRepositoryPort;
+    intakeCallbacks?: IntakeOutcomeCallbackService;
   }
 ): Promise<void> {
   const guard = { onRequest: [deps.apiKeyHook] };
@@ -40,7 +42,7 @@ export async function v1PrintJobRoutes(
       endpoint_code?: string;
     };
 
-    const rejectEarly = (reason: string) => {
+    const rejectEarly = async (reason: string, errorCode = 'VALIDATION_ERROR') => {
       void deps.intakeLog?.record({
         source: 'api',
         outcome: 'rejected',
@@ -51,14 +53,25 @@ export async function v1PrintJobRoutes(
         codeTemplate: body.template_code,
         printerCode: body.printer_code,
       });
+      await deps.intakeCallbacks?.notifyRejected({
+        endpointCode: body.endpoint_code,
+        sourceSystem: body.source_system ?? sa.sourceSystem,
+        requestId: body.request_id,
+        sourceReference: body.source_reference,
+        intakeTransport: 'API',
+        stage: 'VALIDATION',
+        errorCode,
+        errorMessage: reason,
+        intakePayload: body.payload ?? {},
+      }).catch(() => false);
     };
 
     if (!body.request_id) {
-      rejectEarly('request_id is required');
+      await rejectEarly('request_id is required');
       return reply.status(400).send({ error: 'request_id is required' });
     }
     if (!body.printer_code) {
-      rejectEarly('printer_code is required');
+      await rejectEarly('printer_code is required');
       return reply.status(400).send({ error: 'printer_code is required' });
     }
 
@@ -68,7 +81,7 @@ export async function v1PrintJobRoutes(
       !sa.allowedPrinterCodes.includes(body.printer_code)
     ) {
       const reason = `printer_code '${body.printer_code}' not allowed for this service account`;
-      rejectEarly(reason);
+      await rejectEarly(reason, 'FORBIDDEN');
       return reply.status(403).send({ error: reason });
     }
 
@@ -92,6 +105,17 @@ export async function v1PrintJobRoutes(
       const status = result.duplicate ? 200 : 201;
       return reply.status(status).send(result);
     } catch (err: unknown) {
+      await deps.intakeCallbacks?.notifyRejected({
+        endpointCode: body.endpoint_code,
+        sourceSystem: body.source_system ?? sa.sourceSystem,
+        requestId: body.request_id,
+        sourceReference: body.source_reference,
+        intakeTransport: 'API',
+        stage: 'INTAKE',
+        errorCode: err instanceof AppError ? err.code : 'INTERNAL_ERROR',
+        errorMessage: err instanceof Error ? err.message : String(err),
+        intakePayload: body.payload ?? {},
+      }).catch(() => false);
       // Structured client errors (an unknown template_code, an endpoint_code the
       // caller may not use, a callback URL the SSRF guard refused) must come
       // back as the 4xx they are, with their code, rather than a bare 500.

@@ -24,6 +24,7 @@ import {
 import type { DynamicPrintService, DynamicPrintRequest } from '../../services/dynamic-print.service.js';
 import type { IntakeAttemptRepositoryPort } from '@printerops/domain';
 import { AppError } from '@printerops/shared';
+import type { IntakeOutcomeCallbackService } from '../../services/intake-outcome-callback.service.js';
 
 export interface PrintIntakeLogger {
   info(obj: unknown, msg?: string): void;
@@ -126,7 +127,7 @@ export interface PrintIntakeHandle {
 }
 
 export async function startPrintIntakeConsumer(
-  deps: { dynamicPrint: DynamicPrintService; logger: PrintIntakeLogger; intakeLog?: IntakeAttemptRepositoryPort },
+  deps: { dynamicPrint: DynamicPrintService; logger: PrintIntakeLogger; intakeLog?: IntakeAttemptRepositoryPort; intakeCallbacks?: IntakeOutcomeCallbackService },
   cfg: PrintIntakeConfig,
 ): Promise<PrintIntakeHandle> {
   // The stream is owned by the publisher's environment and may not exist yet on
@@ -210,7 +211,7 @@ export async function startPrintIntakeConsumer(
  */
 export async function handlePrintIntakeMessage(
   msg: JsMsg,
-  deps: { dynamicPrint: DynamicPrintService; logger: PrintIntakeLogger; intakeLog?: IntakeAttemptRepositoryPort },
+  deps: { dynamicPrint: DynamicPrintService; logger: PrintIntakeLogger; intakeLog?: IntakeAttemptRepositoryPort; intakeCallbacks?: IntakeOutcomeCallbackService },
   nc: NatsConnection,
   cfg: PrintIntakeConfig,
 ): Promise<void> {
@@ -233,6 +234,24 @@ export async function handlePrintIntakeMessage(
       subject: msg.subject,
     });
   };
+  const notifyRejected = async (
+    env: PrintIntakeEnvelope,
+    stage: string,
+    errorCode: string,
+    errorMessage: string,
+  ): Promise<void> => {
+    await deps.intakeCallbacks?.notifyRejected({
+      endpointCode: env.endpoint_code,
+      sourceSystem: env.source_system,
+      requestId: env.request_id,
+      sourceReference: env.source_reference,
+      intakeTransport: 'NATS',
+      stage,
+      errorCode,
+      errorMessage,
+      intakePayload: env.payload ?? {},
+    }).catch(() => false);
+  };
 
   let env: PrintIntakeEnvelope;
   try {
@@ -247,24 +266,28 @@ export async function handlePrintIntakeMessage(
   if (!env.request_id || !env.source_system) {
     const reason = 'request_id and source_system are required';
     recordRejected(reason, env);
+    await notifyRejected(env, 'VALIDATION', 'VALIDATION_ERROR', reason);
     await deadLetter(msg, nc, cfg, deps.logger, reason);
     return;
   }
   if (env.target_client_id !== cfg.clientId) {
     const reason = 'target_client_id does not match this PrintOps client';
     recordRejected(reason, env);
+    await notifyRejected(env, 'ROUTING', 'TARGET_CLIENT_MISMATCH', reason);
     await deadLetter(msg, nc, cfg, deps.logger, reason);
     return;
   }
   if (msg.subject !== cfg.subject) {
     const reason = 'unexpected intake subject for this PrintOps client';
     recordRejected(reason, env);
+    await notifyRejected(env, 'ROUTING', 'UNEXPECTED_SUBJECT', reason);
     await deadLetter(msg, nc, cfg, deps.logger, reason);
     return;
   }
   if (!env.printer_code && (!env.code_template || !env.code_profile)) {
     const reason = 'code_template + code_profile (or printer_code) are required';
     recordRejected(reason, env);
+    await notifyRejected(env, 'VALIDATION', 'VALIDATION_ERROR', reason);
     await deadLetter(msg, nc, cfg, deps.logger, reason);
     return;
   }
@@ -304,7 +327,14 @@ export async function handlePrintIntakeMessage(
     // never succeed on redelivery, so dead-letter it. Everything else is treated
     // as transient and NAKed for redelivery up to max_deliver.
     if (err instanceof AppError && err.statusCode >= 400 && err.statusCode < 500) {
+      await notifyRejected(env, 'INTAKE', err.code, err.message);
       await deadLetter(msg, nc, cfg, deps.logger, `${err.code}: ${err.message}`);
+      return;
+    }
+    if (msg.info.redeliveryCount + 1 >= cfg.maxDeliver) {
+      const message = errMsg(err);
+      await notifyRejected(env, 'INTAKE_RETRIES_EXHAUSTED', 'INTAKE_FAILED', message);
+      await deadLetter(msg, nc, cfg, deps.logger, `INTAKE_FAILED: ${message}`);
       return;
     }
     deps.logger.warn(

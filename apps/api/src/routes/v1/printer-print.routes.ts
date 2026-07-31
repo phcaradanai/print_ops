@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { ServiceAccount, JobPriority, IntakeAttemptRepositoryPort } from '@printerops/domain';
 import { AppError } from '@printerops/shared';
 import type { DynamicPrintService } from '../../services/dynamic-print.service.js';
+import type { IntakeOutcomeCallbackService } from '../../services/intake-outcome-callback.service.js';
 
 type ReqWithServiceAccount = { serviceAccount: ServiceAccount };
 
@@ -20,6 +21,7 @@ export async function v1PrinterPrintRoutes(
     dynamicPrint: DynamicPrintService;
     apiKeyHook: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
     intakeLog?: IntakeAttemptRepositoryPort;
+    intakeCallbacks?: IntakeOutcomeCallbackService;
   },
 ): Promise<void> {
   app.post(
@@ -57,6 +59,16 @@ export async function v1PrinterPrintRoutes(
           codeProfile: code_profile,
           printerCode: body.printer_code,
         });
+        await deps.intakeCallbacks?.notifyRejected({
+          endpointCode: body.endpoint_code,
+          sourceSystem: body.source_system ?? sa.sourceSystem,
+          sourceReference: body.source_reference,
+          intakeTransport: 'API',
+          stage: 'VALIDATION',
+          errorCode: 'VALIDATION_ERROR',
+          errorMessage: 'request_id is required',
+          intakePayload: body.payload ?? {},
+        }).catch(() => false);
         return reply.status(400).send({ error: 'request_id is required' });
       }
 
@@ -84,11 +96,23 @@ export async function v1PrinterPrintRoutes(
         const status = result.duplicate ? 200 : 201;
         return reply.status(status).send(result);
       } catch (err: unknown) {
+        const errorCode = err instanceof AppError ? err.code : 'INTERNAL_ERROR';
+        const errorMessage = err instanceof Error ? err.message : 'Internal server error';
+        await deps.intakeCallbacks?.notifyRejected({
+          endpointCode: body.endpoint_code,
+          sourceSystem: body.source_system ?? sa.sourceSystem,
+          requestId: body.request_id,
+          sourceReference: body.source_reference,
+          intakeTransport: 'API',
+          stage: 'INTAKE',
+          errorCode,
+          errorMessage,
+          intakePayload: body.payload ?? {},
+        }).catch(() => false);
         if (err instanceof AppError) {
           return reply.status(err.statusCode).send({ error: err.code, message: err.message });
         }
-        const message = err instanceof Error ? err.message : 'Internal server error';
-        return reply.status(500).send({ error: 'INTERNAL_ERROR', message });
+        return reply.status(500).send({ error: 'INTERNAL_ERROR', message: errorMessage });
       }
     },
   );
