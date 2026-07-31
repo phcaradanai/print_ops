@@ -10,6 +10,12 @@ import {
 } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  forbiddenTrackedArtifacts,
+  freshness,
+  inspectRequiredFile,
+  versionConsistency,
+} from './release-verify-lib.mjs';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const postBundle = process.argv.includes('--post-bundle');
@@ -78,16 +84,12 @@ function newestMtime(paths) {
 }
 
 function requireFile(path, label = relative(root, path)) {
-  if (!existsSync(path)) {
-    fail(`resource:${label}`, 'missing');
+  const result = inspectRequiredFile(path);
+  if (!result.ok) {
+    fail(`resource:${label}`, result.detail);
     return false;
   }
-  const size = statSync(path).size;
-  if (size === 0) {
-    fail(`resource:${label}`, 'zero bytes');
-    return false;
-  }
-  pass(`resource:${label}`, `${size} bytes`);
+  pass(`resource:${label}`, result.detail);
   return true;
 }
 
@@ -95,11 +97,9 @@ function requireFresh(output, sourcePaths, label) {
   if (!existsSync(output)) return;
   const outputTime = statSync(output).mtimeMs;
   const sourceTime = newestMtime(sourcePaths);
-  if (sourceTime > outputTime + 2_000) {
-    fail(`fresh:${label}`, 'packaged resource is older than its source');
-  } else {
-    pass(`fresh:${label}`, 'resource is current');
-  }
+  const result = freshness(outputTime, sourceTime);
+  if (!result.ok) fail(`fresh:${label}`, result.detail);
+  else pass(`fresh:${label}`, result.detail);
 }
 
 function checkToolchain() {
@@ -136,8 +136,8 @@ function checkVersions() {
   const cargo = readFileSync(join(root, 'apps/desktop/src-tauri/Cargo.toml'), 'utf8')
     .match(/^version\s*=\s*"([^"]+)"/m)?.[1];
   versions.cargo = cargo;
-  const unique = new Set(Object.values(versions));
-  if (unique.size !== 1 || unique.has(undefined)) {
+  const consistency = versionConsistency(versions);
+  if (!consistency.ok) {
     fail('version:consistency', JSON.stringify(versions));
   } else {
     pass('version:consistency', `${versions.root} across root/API/web/desktop/Cargo/Tauri`);
@@ -149,12 +149,7 @@ function checkForbiddenArtifacts() {
   const tracked = execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' })
     .split(/\r?\n/)
     .filter(Boolean);
-  const forbidden = tracked.filter((path) =>
-    /(^|\/)printops\.db$/i.test(path)
-    || /\.tmp$/i.test(path)
-    || /vitest\.config\.ts\.timestamp-.*\.mjs$/i.test(path)
-    || /apps\/desktop\/src-tauri\/resources\//i.test(path)
-    || /(^|\/)\.env(\.|$)/i.test(path) && !/\.env\.example$/i.test(path));
+  const forbidden = forbiddenTrackedArtifacts(tracked);
   if (forbidden.length) fail('repository:forbidden-artifacts', forbidden.join(', '));
   else pass('repository:forbidden-artifacts', 'none tracked');
 }
