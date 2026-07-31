@@ -1,9 +1,7 @@
 import {
-  AckPolicy,
-  connect,
+  AckPolicy, DeliverPolicy, ReplayPolicy, connect,
   nanos,
-  type JsMsg,
-  type NatsConnection,
+  type JsMsg, type Consumer, type ConsumerInfo, type JetStreamManager, type NatsConnection,
 } from 'nats';
 import type { DynamicPrintService } from '../../services/dynamic-print.service.js';
 import type { IntakeAttemptRepositoryPort } from '@printerops/domain';
@@ -31,6 +29,10 @@ export interface NatsRuntimeStatus {
   callbackPublishReady: boolean;
   streamReady: boolean;
   consumerReady: boolean;
+  consumerAction?: ConsumerAction;
+  setupGeneration: number;
+  setupInFlight: boolean;
+  consumeLoopActive: boolean;
   clientId?: string;
   subject?: string;
   stream?: string;
@@ -61,6 +63,47 @@ function errorDetails(error: unknown): { code?: string; message: string } {
   };
 }
 
+export interface ConsumerConfigDifference { field: string; expected: unknown; actual: unknown; }
+export class ConsumerConfigConflictError extends Error {
+  readonly code = 'CONSUMER_CONFIG_CONFLICT';
+  constructor(readonly stream: string, readonly durable: string, readonly differences: ConsumerConfigDifference[]) {
+    super('Consumer configuration conflicts for ' + stream + '/' + durable); this.name = 'ConsumerConfigConflictError';
+  }
+}
+export type ConsumerAction = 'CREATED' | 'REUSED' | 'UPDATED';
+const consumerDefaults = { ack_policy: AckPolicy.Explicit, deliver_policy: DeliverPolicy.All, replay_policy: ReplayPolicy.Instant, ack_wait: nanos(30_000) };
+function isMissingConsumer(error: unknown): boolean {
+  const value = error as { code?: unknown; api_error_code?: unknown; apiErrorCode?: unknown } | undefined;
+  return value?.code === 'consumer_not_found' || value?.code === '10014' || value?.api_error_code === 10014 || value?.apiErrorCode === 10014;
+}
+function consumerDifferences(info: ConsumerInfo, cfg: PrintIntakeConfig): ConsumerConfigDifference[] {
+  const actual = info.config;
+  const expected = { durable_name: cfg.durable, filter_subject: cfg.subject, ack_policy: consumerDefaults.ack_policy, deliver_policy: consumerDefaults.deliver_policy, replay_policy: consumerDefaults.replay_policy, max_deliver: cfg.maxDeliver, ack_wait: consumerDefaults.ack_wait, deliver_subject: '', deliver_group: '' };
+  const normalized = { durable_name: actual.durable_name ?? actual.name ?? cfg.durable, filter_subject: actual.filter_subject ?? '', ack_policy: actual.ack_policy ?? consumerDefaults.ack_policy, deliver_policy: actual.deliver_policy ?? consumerDefaults.deliver_policy, replay_policy: actual.replay_policy ?? consumerDefaults.replay_policy, max_deliver: actual.max_deliver ?? -1, ack_wait: actual.ack_wait === undefined ? consumerDefaults.ack_wait : Number(actual.ack_wait), deliver_subject: actual.deliver_subject ?? '', deliver_group: actual.deliver_group ?? '' };
+  return (Object.keys(expected) as Array<keyof typeof expected>).filter((field) => normalized[field] !== expected[field]).map((field) => ({ field, expected: expected[field], actual: normalized[field] }));
+}
+export async function ensurePrintIntakeConsumer(jsm: JetStreamManager, cfg: PrintIntakeConfig): Promise<{ consumer: Consumer; action: ConsumerAction }> {
+  let existing: ConsumerInfo | undefined;
+  try { existing = await jsm.consumers.info(cfg.stream, cfg.durable); } catch (error) { if (!isMissingConsumer(error)) throw error; }
+  if (!existing) {
+    try {
+      await jsm.consumers.add(cfg.stream, { durable_name: cfg.durable, ack_policy: consumerDefaults.ack_policy, deliver_policy: consumerDefaults.deliver_policy, replay_policy: consumerDefaults.replay_policy, filter_subject: cfg.subject, max_deliver: cfg.maxDeliver, ack_wait: consumerDefaults.ack_wait });
+      return { consumer: await jsm.jetstream().consumers.get(cfg.stream, cfg.durable), action: 'CREATED' };
+    } catch (error) {
+      if (!isMissingConsumer(error) && (error as { code?: string })?.code !== 'consumer_name_already_in_use') throw error;
+      existing = await jsm.consumers.info(cfg.stream, cfg.durable);
+    }
+  }
+  const differences = consumerDifferences(existing!, cfg);
+  const incompatible = differences.filter(({ field }) => ['ack_policy', 'deliver_policy', 'replay_policy', 'deliver_subject', 'deliver_group'].includes(field));
+  if (incompatible.length > 0) throw new ConsumerConfigConflictError(cfg.stream, cfg.durable, differences);
+  const mutable = differences.filter(({ field }) => ['filter_subject', 'max_deliver', 'ack_wait'].includes(field));
+  if (mutable.length > 0) {
+    await jsm.consumers.update(cfg.stream, cfg.durable, { filter_subject: cfg.subject, max_deliver: cfg.maxDeliver, ack_wait: consumerDefaults.ack_wait });
+    return { consumer: await jsm.jetstream().consumers.get(cfg.stream, cfg.durable), action: 'UPDATED' };
+  }
+  return { consumer: await jsm.jetstream().consumers.get(cfg.stream, cfg.durable), action: 'REUSED' };
+}
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -89,6 +132,9 @@ export class NatsConnectionManager {
           callbackPublishReady: false,
           streamReady: false,
           consumerReady: false,
+          setupGeneration: 0,
+          setupInFlight: false,
+          consumeLoopActive: false,
           clientId: cfg.clientId,
           subject: cfg.subject,
           stream: cfg.stream,
@@ -103,6 +149,9 @@ export class NatsConnectionManager {
           callbackPublishReady: false,
           streamReady: false,
           consumerReady: false,
+          setupGeneration: 0,
+          setupInFlight: false,
+          consumeLoopActive: false,
         };
   }
 
@@ -150,7 +199,11 @@ export class NatsConnectionManager {
         return { ok: false, stage: 'STREAM_LOOKUP', code: details.code ?? 'STREAM_NOT_FOUND', message: details.message, durationMs: Date.now() - started };
       }
       if (streamReady) {
-        await jsm.consumers.add(this.cfg.stream, { durable_name: this.cfg.durable, ack_policy: AckPolicy.Explicit, filter_subject: this.cfg.subject, max_deliver: this.cfg.maxDeliver, ack_wait: nanos(30_000) });
+        try {
+          await jsm.consumers.info(this.cfg.stream, this.cfg.durable);
+        } catch (error) {
+          if (!isMissingConsumer(error)) throw error;
+        }
       }
       return { ok: true, stage: 'READY', message: 'NATS and JetStream are ready', durationMs: Date.now() - started };
     } catch (error) {
@@ -183,6 +236,7 @@ export class NatsConnectionManager {
         await this.connection?.drain().catch(() => {});
         this.connection = undefined;
         this.messages = undefined;
+        this.status = { ...this.status, consumeLoopActive: false, setupInFlight: false };
         if (!this.stopRequested) {
           const delay = Math.min(30_000, 500 * 2 ** Math.min(retry - 1, 6)) + Math.floor(Math.random() * 250);
           this.status = { ...this.status, connected: false, callbackPublishReady: false, intakeReady: false, consumerReady: false, streamReady: false, nextRetryAt: new Date(Date.now() + delay).toISOString() };
@@ -194,17 +248,21 @@ export class NatsConnectionManager {
 
   private async setupConsumer(nc: NatsConnection): Promise<void> {
     if (!this.cfg) return;
+    const generation = this.status.setupGeneration + 1;
+    this.status = { ...this.status, setupGeneration: generation, setupInFlight: true };
     const jsm = await nc.jetstreamManager();
-    await jsm.consumers.add(this.cfg.stream, { durable_name: this.cfg.durable, ack_policy: AckPolicy.Explicit, filter_subject: this.cfg.subject, max_deliver: this.cfg.maxDeliver, ack_wait: nanos(30_000) });
+    const ensured = await ensurePrintIntakeConsumer(jsm, this.cfg);
+    this.status = { ...this.status, consumerAction: ensured.action, setupInFlight: false };
     const consumer = await nc.jetstream().consumers.get(this.cfg.stream, this.cfg.durable);
     const messages = await consumer.consume();
     this.messages = messages;
-    this.status = { ...this.status, streamReady: true, consumerReady: true, intakeReady: true };
+    this.status = { ...this.status, consumeLoopActive: true, streamReady: true, consumerReady: true, intakeReady: true };
     this.deps.logger.info({ stream: this.cfg.stream, subject: this.cfg.subject, durable: this.cfg.durable }, 'NATS print-intake consumer ready');
     void (async () => {
       try {
         for await (const msg of messages) await handlePrintIntakeMessage(msg, this.deps, nc, this.cfg!);
       } catch (error) {
+        this.status = { ...this.status, consumeLoopActive: false };
         if (!this.stopRequested) this.deps.logger.warn({ error: errorDetails(error).message }, 'NATS intake consume loop ended; reconnecting');
       }
     })();
