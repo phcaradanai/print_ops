@@ -77,6 +77,17 @@ function isMissingConsumer(error: unknown): boolean {
   const value = error as { code?: unknown; api_error_code?: unknown; apiErrorCode?: unknown } | undefined;
   return value?.code === 'consumer_not_found' || value?.code === '10014' || value?.api_error_code === 10014 || value?.apiErrorCode === 10014;
 }
+function isConsumerCreateRace(error: unknown): boolean {
+  const value = error as { code?: unknown; api_error_code?: unknown; apiErrorCode?: unknown; message?: unknown } | undefined;
+  const code = value?.code ?? value?.api_error_code ?? value?.apiErrorCode;
+  return code === 10013
+    || code === 10058
+    || code === '10013'
+    || code === '10058'
+    || code === 'consumer_name_already_in_use'
+    || code === 'CONSUMER_ALREADY_EXISTS'
+    || (typeof value?.message === 'string' && /consumer already exists|consumer name.*in use/i.test(value.message));
+}
 function consumerDifferences(info: ConsumerInfo, cfg: PrintIntakeConfig): ConsumerConfigDifference[] {
   const actual = info.config;
   const expected = { durable_name: cfg.durable, filter_subject: cfg.subject, ack_policy: consumerDefaults.ack_policy, deliver_policy: consumerDefaults.deliver_policy, replay_policy: consumerDefaults.replay_policy, max_deliver: cfg.maxDeliver, ack_wait: consumerDefaults.ack_wait, deliver_subject: '', deliver_group: '' };
@@ -91,16 +102,16 @@ export async function ensurePrintIntakeConsumer(jsm: JetStreamManager, cfg: Prin
       await jsm.consumers.add(cfg.stream, { durable_name: cfg.durable, ack_policy: consumerDefaults.ack_policy, deliver_policy: consumerDefaults.deliver_policy, replay_policy: consumerDefaults.replay_policy, filter_subject: cfg.subject, max_deliver: cfg.maxDeliver, ack_wait: consumerDefaults.ack_wait });
       return { consumer: await jsm.jetstream().consumers.get(cfg.stream, cfg.durable), action: 'CREATED' };
     } catch (error) {
-      if (!isMissingConsumer(error) && (error as { code?: string })?.code !== 'consumer_name_already_in_use') throw error;
+      if (!isConsumerCreateRace(error)) throw error;
       existing = await jsm.consumers.info(cfg.stream, cfg.durable);
     }
   }
   const differences = consumerDifferences(existing!, cfg);
-  const incompatible = differences.filter(({ field }) => ['ack_policy', 'deliver_policy', 'replay_policy', 'deliver_subject', 'deliver_group'].includes(field));
+  const incompatible = differences.filter(({ field }) => ['durable_name', 'filter_subject', 'ack_policy', 'deliver_policy', 'replay_policy', 'deliver_subject', 'deliver_group'].includes(field));
   if (incompatible.length > 0) throw new ConsumerConfigConflictError(cfg.stream, cfg.durable, differences);
-  const mutable = differences.filter(({ field }) => ['filter_subject', 'max_deliver', 'ack_wait'].includes(field));
+  const mutable = differences.filter(({ field }) => ['max_deliver', 'ack_wait'].includes(field));
   if (mutable.length > 0) {
-    await jsm.consumers.update(cfg.stream, cfg.durable, { filter_subject: cfg.subject, max_deliver: cfg.maxDeliver, ack_wait: consumerDefaults.ack_wait });
+    await jsm.consumers.update(cfg.stream, cfg.durable, { max_deliver: cfg.maxDeliver, ack_wait: consumerDefaults.ack_wait });
     return { consumer: await jsm.jetstream().consumers.get(cfg.stream, cfg.durable), action: 'UPDATED' };
   }
   return { consumer: await jsm.jetstream().consumers.get(cfg.stream, cfg.durable), action: 'REUSED' };
