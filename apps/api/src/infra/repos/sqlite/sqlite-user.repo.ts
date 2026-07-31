@@ -1,7 +1,7 @@
 import type { SqlValue } from 'sql.js';
 import type { User, UserRepositoryPort, ListOptions } from '@printerops/domain';
 import { generateId } from '@printerops/shared';
-import { getDb } from '../../db/sqlite.js';
+import { getDb, saveDb } from '../../db/sqlite.js';
 import { toDate, dateStr } from '../../db/json.js';
 
 function rowToUser(row: Record<string, unknown>): User {
@@ -69,6 +69,11 @@ export class SqliteUserRepository implements UserRepositoryPort {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, input.email, input.name, input.passwordHash ?? null, input.role, input.allowedPages ? JSON.stringify(input.allowedPages) : null, input.isActive ? 1 : 0, now, now],
     );
+    // Credentials and access-control changes must be durable before the API
+    // reports success. The generic DB facade also queues a save, but an
+    // explicit flush here prevents a desktop shutdown or write failure from
+    // leaving a successful password/access response backed only by memory.
+    saveDb();
 
     const stmt = db.prepare('SELECT * FROM users WHERE id = ?');
     stmt.bind([id]);
@@ -103,6 +108,7 @@ export class SqliteUserRepository implements UserRepositoryPort {
     const sql = `UPDATE users SET ${fields.join(', ')} WHERE id = ?`;
     values.push(id as SqlValue);
     db.run(sql, values);
+    saveDb();
 
     return (await this.findById(id))!;
   }
@@ -114,5 +120,6 @@ export class SqliteUserRepository implements UserRepositoryPort {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [user.id, user.email, user.name, user.passwordHash ?? null, user.role, user.allowedPages ? JSON.stringify(user.allowedPages) : null, user.isActive ? 1 : 0, dateStr(user.createdAt), dateStr(user.updatedAt)],
     );
+    saveDb();
   }
 }

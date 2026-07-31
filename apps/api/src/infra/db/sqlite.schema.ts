@@ -1,6 +1,6 @@
 import type { Database } from 'sql.js';
 
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 export function schemaVersion(db: Database): number {
   const result = db.exec('PRAGMA user_version');
@@ -30,7 +30,7 @@ function ensureColumn(db: Database, table: string, column: string, definition: s
  *
  * Version 0 is the legacy unversioned schema. Its migration deliberately runs
  * the complete idempotent schema below so databases from any earlier desktop
- * build converge to the same version-1 shape.
+ * build converge to the same shape before incremental migrations run.
  */
 export function runSchemaMigration(db: Database): void {
   const fromVersion = schemaVersion(db);
@@ -45,13 +45,23 @@ export function runSchemaMigration(db: Database): void {
   db.run('PRAGMA foreign_keys=ON');
   db.run('BEGIN IMMEDIATE TRANSACTION');
   try {
-    migrateVersionZeroToOne(db);
+    if (fromVersion < 1) migrateVersionZeroToOne(db);
+    if (fromVersion < 2) migrateVersionOneToTwo(db);
     db.run(`PRAGMA user_version=${CURRENT_SCHEMA_VERSION}`);
     db.run('COMMIT');
   } catch (error) {
     try { db.run('ROLLBACK'); } catch { /* retain the original migration error */ }
     throw error;
   }
+}
+
+/**
+ * Per-user page access shipped after version 1 had already been released.
+ * Keep this as a real versioned migration: placing the column only in the
+ * version-0 bootstrap leaves existing version-1 installations unchanged.
+ */
+function migrateVersionOneToTwo(db: Database): void {
+  ensureColumn(db, 'users', 'allowed_pages_json', 'TEXT');
 }
 
 function migrateVersionZeroToOne(db: Database): void {

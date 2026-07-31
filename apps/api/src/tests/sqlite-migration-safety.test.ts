@@ -16,6 +16,8 @@ import {
   runSchemaMigration,
   schemaVersion,
 } from '../infra/db/sqlite.schema.js';
+import { SqliteUserRepository } from '../infra/repos/sqlite/sqlite-user.repo.js';
+import { hashPassword, verifyPassword } from '../infra/auth/password.js';
 
 const tempDirectories: string[] = [];
 const originalDbPath = process.env['PRINTOPS_DB_PATH'];
@@ -54,6 +56,33 @@ describe('versioned SQLite migration', () => {
     expect(db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'")[0]?.values).toHaveLength(1);
     runSchemaMigration(db);
     expect(schemaVersion(db)).toBe(CURRENT_SCHEMA_VERSION);
+    db.close();
+  });
+
+  it('adds per-user access storage to an existing version-1 database', async () => {
+    const SQL = await initSqlJs();
+    const db = new SQL.Database();
+    db.run(`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        password_hash TEXT,
+        role TEXT NOT NULL DEFAULT 'VIEWER',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    db.run("INSERT INTO users VALUES ('owner', 'owner@example.test', 'Owner', 'existing-hash', 'OWNER', 1, '2026-01-01', '2026-01-01')");
+    db.run('PRAGMA user_version=1');
+
+    runSchemaMigration(db);
+
+    expect(schemaVersion(db)).toBe(CURRENT_SCHEMA_VERSION);
+    const columns = db.exec('PRAGMA table_info(users)')[0]?.values.map((row) => row[1]);
+    expect(columns).toContain('allowed_pages_json');
+    expect(db.exec("SELECT password_hash FROM users WHERE id = 'owner'")[0]?.values[0]?.[0]).toBe('existing-hash');
     db.close();
   });
 
@@ -98,6 +127,32 @@ describe('versioned SQLite migration', () => {
     const backups = readdirSync(databaseBackupDirectory(target));
     expect(backups).toHaveLength(1);
     expect(readFileSync(join(databaseBackupDirectory(target), backups[0]!))).toEqual(legacyBytes);
+  });
+
+  it('keeps password and page-access updates after an immediate database restart', async () => {
+    const directory = temporaryDirectory();
+    process.env['PRINTOPS_DB_PATH'] = join(directory, 'printops.db');
+    process.env['SQL_WASM_PATH'] = SQL_WASM_PATH;
+    await initDatabase();
+    const users = new SqliteUserRepository();
+    const originalHash = await hashPassword('Original-password1!');
+    const user = await users.create({
+      email: 'operator@example.test',
+      name: 'Operator',
+      passwordHash: originalHash,
+      role: 'OPERATOR',
+      isActive: true,
+    });
+    const replacementHash = await hashPassword('Replacement-password2!');
+    await users.update(user.id, { passwordHash: replacementHash, allowedPages: ['/', '/jobs'] });
+
+    closeDatabase({ save: false });
+    await initDatabase();
+
+    const reopened = await new SqliteUserRepository().findById(user.id);
+    expect(await verifyPassword('Replacement-password2!', reopened?.passwordHash)).toBe(true);
+    expect(await verifyPassword('Original-password1!', reopened?.passwordHash)).toBe(false);
+    expect(reopened?.allowedPages).toEqual(['/', '/jobs']);
   });
 
   it('preserves a corrupt database and returns an actionable startup error', async () => {
