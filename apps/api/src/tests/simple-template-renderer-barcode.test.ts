@@ -61,7 +61,9 @@ describe('SimpleTemplateRenderer — barcode/QR support', () => {
     const renderer = new SimpleTemplateRenderer();
     const template = makeTemplate({ engine: 'HTML', content: '<div>{{qrcode:hn}}</div>' });
     const print = await renderer.renderPrintPayload(template, { hn: 'HN-0001' }, makePaper());
-    expect(print.renderedPrintPayload).toContain('<img src="data:image/png;base64,');
+    expect(print.renderedPrintPayload).toContain('<img src="data:image/svg+xml;base64,');
+    expect(print.renderedPrintPayload).toContain('padding:3.8095');
+    expect(print.renderedPrintPayload).toContain('height:20mm;width:20mm');
   });
 
   it('ZPL engine emits a native ^BC barcode command in the print payload, positioned by the author\'s own ^FO', async () => {
@@ -72,11 +74,12 @@ describe('SimpleTemplateRenderer — barcode/QR support', () => {
     expect(print.renderedPrintPayload).not.toContain('<img');
   });
 
-  it('ZPL engine emits a native ^BQ QR command for {{qrcode:key}}', async () => {
+  it('ZPL engine emits an exact-size device-DPI ^GF QR graphic for {{qrcode:key}}', async () => {
     const renderer = new SimpleTemplateRenderer();
     const template = makeTemplate({ engine: 'ZPL', content: '^XA\n^FO50,50{{qrcode:hn}}\n^XZ' });
     const print = await renderer.renderPrintPayload(template, { hn: 'HN-0001' }, makePaper());
-    expect(print.renderedPrintPayload).toContain('^BQN,2,5^FDMM,AHN-0001^FS');
+    expect(print.renderedPrintPayload).toContain('^GFA,');
+    expect(print.renderedPrintPayload).not.toContain('^BQN');
   });
 
   it('RAW_TEXT engine keeps the plain value in the print payload (unchanged behaviour) but shows a real image in the preview', async () => {
@@ -126,7 +129,7 @@ describe('SimpleTemplateRenderer — barcode/QR support', () => {
       ],
     });
     const print = await renderer.renderPrintPayload(template, { hn: 'HN-0001' }, paper);
-    expect(print.renderedPrintPayload).toContain('<img src="data:image/png;base64,');
+    expect(print.renderedPrintPayload).toContain('<img src="data:image/svg+xml;base64,');
   });
 
   it('defaults to 12mm bar height / 20mm QR size in the img CSS when no paper-profile field size is configured', async () => {

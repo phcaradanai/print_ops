@@ -15,12 +15,13 @@ import (
 // Metric names measured by the runner. Kept as constants to avoid typos and to
 // keep the README/documentation in sync with the code.
 const (
-	MetricJobPickupLatencyMs = "job_pickup_latency_ms"
-	MetricRunnerExecMs       = "runner_exec_ms"
-	MetricResultReportMs     = "result_report_ms"
-	MetricDiscoveryMs        = "discovery_duration_ms"
-	MetricAPIRoundtripMs     = "api_roundtrip_ms"
-	MetricHeartbeatMs        = "heartbeat_roundtrip_ms"
+	MetricJobPickupLatencyMs   = "job_pickup_latency_ms"
+	MetricRunnerExecMs         = "runner_exec_ms"
+	MetricResultReportMs       = "result_report_ms"
+	MetricDiscoveryMs          = "discovery_duration_ms"
+	MetricAPIRoundtripMs       = "api_roundtrip_ms"
+	MetricHeartbeatMs          = "heartbeat_roundtrip_ms"
+	MetricIdleGapBetweenJobsMs = "idle_gap_between_jobs_ms"
 )
 
 // Timer measures elapsed wall-clock time from its creation.

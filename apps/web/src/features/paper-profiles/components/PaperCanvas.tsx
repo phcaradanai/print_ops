@@ -1,5 +1,5 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
-import { renderBarcodeSvg } from '../../../lib/barcode.js';
+import { qrQuietZoneMm, renderBarcodeSvg } from '../../../lib/barcode.js';
 import { useLocale } from '../../../i18n/index.js';
 import { anchorTransform, anchorTransformOrigin } from '../model/fieldGeometry.js';
 import { fontPointSizeToPreviewPixels, getVisualPaperGeometry, mapPrintablePointToVisual } from '../model/geometry.js';
@@ -263,12 +263,21 @@ export function FieldBarcodePreview({ field }: { field: DynamicField }) {
   const svg = renderBarcodeSvg(sample, field.type, field.barcodeSymbology);
   const heightMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM);
   const widthMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : undefined;
+  const quietMm = field.type === 'qrcode' ? (qrQuietZoneMm(sample, heightMm) ?? 0) : 0;
   return (
     <div className="pp-barcode-preview">
       {svg ? (
         <span
           aria-label={`${field.type} preview for ${sample}`}
-          style={{ display: 'inline-block', maxWidth: '100%', height: `${heightMm}mm`, width: widthMm ? `${widthMm}mm` : 'auto', lineHeight: 0 }}
+          style={{
+            display: 'inline-block',
+            maxWidth: '100%',
+            height: `${heightMm}mm`,
+            width: widthMm ? `${widthMm}mm` : 'auto',
+            padding: quietMm ? `${quietMm}mm` : undefined,
+            background: quietMm ? '#fff' : undefined,
+            lineHeight: 0,
+          }}
           dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', `<svg style="height:100%;width:${widthMm ? '100%' : 'auto'}" `) }}
         />
       ) : (
@@ -296,10 +305,18 @@ function FieldPreviewContent({ field, scale }: { field: DynamicField; scale: num
       const realHeightMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM);
       const heightPx = Math.max(10, realHeightMm * scale);
       const square = field.type === 'qrcode';
+      const quietPx = square ? (qrQuietZoneMm(sample, realHeightMm) ?? 0) * scale : 0;
       return (
         <span
           aria-label={`${field.type} preview for ${sample}`}
-          style={{ display: 'inline-block', height: heightPx, width: square ? heightPx : 'auto', lineHeight: 0 }}
+          style={{
+            display: 'inline-block',
+            height: heightPx,
+            width: square ? heightPx : 'auto',
+            padding: quietPx || undefined,
+            background: quietPx ? '#fff' : undefined,
+            lineHeight: 0,
+          }}
           dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', `<svg style="display:block;height:100%;width:${square ? '100%' : 'auto'}" `) }}
         />
       );

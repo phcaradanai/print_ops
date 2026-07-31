@@ -190,6 +190,15 @@ const en: TranslationDict = {
   'page.jobQueue.noJobs': 'No jobs',
   'page.jobQueue.document': 'Document',
   'page.jobQueue.reprint': 'Re-print',
+  'page.jobQueue.statusFilter': 'Filter by status',
+  'page.jobQueue.statusAll': 'All',
+  'page.jobQueue.search': 'Search jobs',
+  'page.jobQueue.searchPlaceholder': 'Job, request, printer, source or template',
+  'page.jobQueue.noMatchingJobs': 'No jobs match the selected status or search.',
+  'page.jobQueue.pagination': 'Job queue pages',
+  'page.jobQueue.previous': 'Previous',
+  'page.jobQueue.next': 'Next',
+  'page.jobQueue.pageOf': 'Page {page} of {total}',
 
   // JobDetail
   'page.jobDetail.title': 'Job Detail',
@@ -1270,6 +1279,15 @@ const th: TranslationDict = {
   'page.jobQueue.noJobs': 'ไม่มีงาน',
   'page.jobQueue.document': 'เอกสาร',
   'page.jobQueue.reprint': 'พิมพ์ใหม่',
+  'page.jobQueue.statusFilter': 'กรองตามสถานะ',
+  'page.jobQueue.statusAll': 'ทั้งหมด',
+  'page.jobQueue.search': 'ค้นหางาน',
+  'page.jobQueue.searchPlaceholder': 'งาน คำขอ เครื่องพิมพ์ แหล่งที่มา หรือเทมเพลต',
+  'page.jobQueue.noMatchingJobs': 'ไม่พบงานที่ตรงกับสถานะหรือคำค้นที่เลือก',
+  'page.jobQueue.pagination': 'หน้าคิวงาน',
+  'page.jobQueue.previous': 'ก่อนหน้า',
+  'page.jobQueue.next': 'ถัดไป',
+  'page.jobQueue.pageOf': 'หน้า {page} จาก {total}',
 
   // JobDetail
   'page.jobDetail.title': 'รายละเอียดงาน',

@@ -5,7 +5,7 @@ import type {
   TemplateRendererPort,
   BarcodeSymbology,
 } from '@printerops/domain';
-import { renderBarcodeDataUri } from './barcode-renderer.js';
+import { qrGeometry, renderBarcodeDataUri, renderZplQrGraphic } from './barcode-renderer.js';
 
 type CompiledTemplate = {
   fields: string[];
@@ -126,8 +126,8 @@ function findBarcodeTokens(content: string, paperProfile?: PaperProfile): Map<st
 async function resolveBarcodeImages(
   tokens: Map<string, BarcodeToken>,
   payload: Record<string, unknown>,
-): Promise<Map<string, { dataUri?: string; warning?: string }>> {
-  const results = new Map<string, { dataUri?: string; warning?: string }>();
+): Promise<Map<string, { dataUri?: string; quietZoneMm?: number; warning?: string }>> {
+  const results = new Map<string, { dataUri?: string; quietZoneMm?: number; warning?: string }>();
   await Promise.all(
     Array.from(tokens.values()).map(async (tok) => {
       const value = valueAt(payload, tok.key);
@@ -140,7 +140,12 @@ async function resolveBarcodeImages(
           heightMm: tok.heightMm,
           qrSizeMm: tok.sizeMm,
         });
-        results.set(tok.raw, { dataUri });
+        results.set(tok.raw, {
+          dataUri,
+          ...(tok.kind === 'qrcode'
+            ? { quietZoneMm: qrGeometry(String(value), tok.sizeMm ?? 20).quietZoneMm }
+            : {}),
+        });
       } catch (err) {
         results.set(tok.raw, {
           warning: `Could not render ${tok.kind} for '${tok.key}': ${err instanceof Error ? err.message : String(err)}`,
@@ -154,14 +159,13 @@ async function resolveBarcodeImages(
 /** Native ZPL command for a barcode/QR token. No `^FO` positioning is
  * emitted — exactly like every other ZPL field, the author positions it with
  * their own preceding `^FO x,y`, so `^FO50,50{{barcode:hn}}` works as written.
- * NOTE: unlike the HTML/preview image path, this does NOT yet honor the
- * field's configured barcodeHeightMm/qrSizeMm — ^BC height and ^BQ
- * magnification are fixed. The preview accurately reflects the configured
- * mm size; a ZPL label may print at a different (fixed) size until this is
- * wired up to convert mm -> dots using the paper profile's DPI. */
-function zplBarcodeCommand(kind: 'barcode' | 'qrcode', value: string): string {
+ * QR uses a device-DPI `^GF` bitmap because native `^BQ` only supports coarse
+ * integer module magnification and cannot satisfy physical-size tolerance. */
+function zplBarcodeCommand(token: BarcodeToken, value: string, dpi: number): string {
   const escaped = value.replace(/\^/g, '\\^').replace(/~/g, '\\~');
-  if (kind === 'qrcode') return `^BQN,2,5^FDMM,A${escaped}^FS`;
+  if (token.kind === 'qrcode') {
+    return renderZplQrGraphic(value, token.sizeMm ?? 20, dpi).command;
+  }
   // ^BC (Code 128) is the one 1D symbology every ZPL-capable printer supports
   // out of the box; other symbologies chosen on the paper-profile field are
   // still honoured in the preview image, just not in the native ZPL command.
@@ -176,10 +180,19 @@ function zplBarcodeCommand(kind: 'barcode' | 'qrcode', value: string): string {
  * 1D barcodes only constrain height and let width follow the data's natural
  * aspect ratio (forcing a width would squash/stretch the bars unreadably).
  */
-function imgTag(dataUri: string, kind: 'barcode' | 'qrcode', sizeMm?: { heightMm?: number; sizeMm?: number }): string {
+function imgTag(
+  dataUri: string,
+  kind: 'barcode' | 'qrcode',
+  sizeMm?: { heightMm?: number; sizeMm?: number; quietZoneMm?: number },
+): string {
   const heightMm = kind === 'qrcode' ? (sizeMm?.sizeMm ?? 20) : (sizeMm?.heightMm ?? 12);
   const widthCss = kind === 'qrcode' ? `${heightMm}mm` : 'auto';
-  return `<img src="${dataUri}" alt="${kind}" style="display:block;height:${heightMm}mm;width:${widthCss};max-width:none" />`;
+  const image = `<img src="${dataUri}" alt="${kind}" style="display:block;height:${heightMm}mm;width:${widthCss};max-width:none" />`;
+  if (kind !== 'qrcode') return image;
+  // Four-module quiet zone lives outside the requested symbol. Putting it
+  // inside the 20mm image box would recreate the measured undersize defect.
+  const quietZoneMm = sizeMm?.quietZoneMm ?? 0;
+  return `<span style="display:inline-block;padding:${quietZoneMm}mm;background:#fff;line-height:0">${image}</span>`;
 }
 
 export class SimpleTemplateRenderer implements TemplateRendererPort {
@@ -242,7 +255,11 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
           if (img?.warning) warnings.push(img.warning);
           return '';
         }
-        return imgTag(img.dataUri, tok.kind, { heightMm: tok.heightMm, sizeMm: tok.sizeMm });
+        return imgTag(img.dataUri, tok.kind, {
+          heightMm: tok.heightMm,
+          sizeMm: tok.sizeMm,
+          quietZoneMm: img.quietZoneMm,
+        });
       });
     } else if (template.engine === 'ZPL') {
       // Zebra printers decode ^BC/^BQ natively — emit the real command so it
@@ -253,7 +270,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
           warnings.push(`Missing field: ${tok.key}`);
           return '';
         }
-        return zplBarcodeCommand(tok.kind, String(value));
+        return zplBarcodeCommand(tok, String(value), paperProfile.dpi);
       });
     } else {
       // TSPL / EPL / RAW_TEXT / PDF_LIKE_PREVIEW / JSON_LAYOUT: substitute the
@@ -306,13 +323,19 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     paperProfile: PaperProfile,
   ): Promise<string> {
     const tokens = findBarcodeTokens(template.content, paperProfile);
-    const images = tokens.size > 0 ? await resolveBarcodeImages(tokens, payload) : new Map<string, { dataUri?: string; warning?: string }>();
+    const images = tokens.size > 0
+      ? await resolveBarcodeImages(tokens, payload)
+      : new Map<string, { dataUri?: string; quietZoneMm?: number; warning?: string }>();
 
     if (template.engine === 'HTML') {
       if (tokens.size === 0) return renderContent(template.content, payload).rendered;
       return this.substituteRaw(template.content, payload, tokens, (tok) => {
         const img = images.get(tok.raw);
-        return img?.dataUri ? imgTag(img.dataUri, tok.kind, { heightMm: tok.heightMm, sizeMm: tok.sizeMm }) : '';
+        return img?.dataUri ? imgTag(img.dataUri, tok.kind, {
+          heightMm: tok.heightMm,
+          sizeMm: tok.sizeMm,
+          quietZoneMm: img.quietZoneMm,
+        }) : '';
       });
     }
 
@@ -328,7 +351,11 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
         const tok = tokens.get(m[0]);
         if (tok) {
           const img = images.get(tok.raw);
-          body += img?.dataUri ? imgTag(img.dataUri, tok.kind, { heightMm: tok.heightMm, sizeMm: tok.sizeMm }) : `<span class="tpl-preview-missing">[${escapeHtml(tok.kind)}: ${escapeHtml(tok.key)}]</span>`;
+          body += img?.dataUri ? imgTag(img.dataUri, tok.kind, {
+            heightMm: tok.heightMm,
+            sizeMm: tok.sizeMm,
+            quietZoneMm: img.quietZoneMm,
+          }) : `<span class="tpl-preview-missing">[${escapeHtml(tok.kind)}: ${escapeHtml(tok.key)}]</span>`;
         } else {
           const plainKey = m[4];
           const value = plainKey ? valueAt(payload, plainKey) : undefined;

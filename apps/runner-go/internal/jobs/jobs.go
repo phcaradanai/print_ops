@@ -14,6 +14,7 @@ package jobs
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -38,16 +39,31 @@ type Config struct {
 	Interval       time.Duration // base poll interval
 	MaxBackoff     time.Duration // ceiling for error backoff (default 10s)
 	LongPollWaitMs int           // hint to API for long-poll wait (0=disabled)
+	MaxInFlight    int           // bounded prefetched jobs across printers
 }
 
 // DefaultConfig returns sensible MVP defaults.
 func DefaultConfig(interval time.Duration) Config {
-	return Config{Interval: interval, MaxBackoff: 10 * time.Second, LongPollWaitMs: 0}
+	return Config{Interval: interval, MaxBackoff: 10 * time.Second, LongPollWaitMs: 0, MaxInFlight: 8}
+}
+
+type claimedJob struct {
+	job           *api.Job
+	printer       *api.PrinterInfo
+	pollStartedAt time.Time
+	pollLatencyMs int64
+}
+
+type RunnerClient interface {
+	NextJob(ctx context.Context, runnerID string, waitMillis int) (*api.Job, *api.PrinterInfo, error)
+	ReportEvent(ctx context.Context, runnerID string, req api.JobEventRequest) error
+	ReportResult(ctx context.Context, runnerID string, req api.JobResultRequest) error
+	ReportExecution(ctx context.Context, jobID, runnerID string) error
 }
 
 // Looper runs the poll+execute loop.
 type Looper struct {
-	Client    *api.Client
+	Client    RunnerClient
 	Executor  printer.PrintExecutor
 	Metrics   *telemetry.Metrics
 	Log       *logging.Logger
@@ -64,20 +80,28 @@ type Looper struct {
 	// atomic counters
 	completed atomic.Int64
 	failed    atomic.Int64
+
+	schedulerMu  sync.Mutex
+	printerTails map[string]chan struct{}
+	lastFinished map[string]time.Time
+	inFlight     sync.WaitGroup
+	slots        chan struct{}
 }
 
 // New returns a Looper ready to Run.
-func New(client *api.Client, exec printer.PrintExecutor, metrics *telemetry.Metrics, log *logging.Logger, runnerID, discovery, mode string, cfg Config) *Looper {
+func New(client RunnerClient, exec printer.PrintExecutor, metrics *telemetry.Metrics, log *logging.Logger, runnerID, discovery, mode string, cfg Config) *Looper {
 	l := &Looper{
-		Client:    client,
-		Executor:  exec,
-		Metrics:   metrics,
-		Log:       log,
-		RunnerID:  runnerID,
-		Discovery: discovery,
-		Mode:      mode,
-		Cfg:       cfg,
-		startedAt: time.Now(),
+		Client:       client,
+		Executor:     exec,
+		Metrics:      metrics,
+		Log:          log,
+		RunnerID:     runnerID,
+		Discovery:    discovery,
+		Mode:         mode,
+		Cfg:          cfg,
+		startedAt:    time.Now(),
+		printerTails: make(map[string]chan struct{}),
+		lastFinished: make(map[string]time.Time),
 	}
 	l.lastJobAt.Store(time.Time{})
 	l.lastError.Store("")
@@ -91,17 +115,24 @@ func (l *Looper) Run(ctx context.Context) {
 		interval = 750 * time.Millisecond
 	}
 	backoff := interval
+	maxInFlight := l.Cfg.MaxInFlight
+	if maxInFlight <= 0 {
+		maxInFlight = 8
+	}
+	l.slots = make(chan struct{}, maxInFlight)
 
 	for {
 		select {
 		case <-ctx.Done():
+			l.inFlight.Wait()
 			l.Log.Info("jobs loop stopped")
 			return
-		default:
+		case l.slots <- struct{}{}:
 		}
 
-		handled, err := l.pollOnce(ctx)
+		claimed, err := l.claimOnce(ctx)
 		if err != nil {
+			<-l.slots
 			l.lastError.Store(err.Error())
 			// Exponential backoff on error, capped.
 			backoff *= 2
@@ -110,6 +141,7 @@ func (l *Looper) Run(ctx context.Context) {
 			}
 			l.Log.Warn("poll failed; backing off", "error", err.Error(), "backoff_ms", backoff.Milliseconds())
 			if !sleepCtx(ctx, backoff) {
+				l.inFlight.Wait()
 				return
 			}
 			continue
@@ -117,19 +149,33 @@ func (l *Looper) Run(ctx context.Context) {
 
 		// Reset backoff on success/no-job.
 		backoff = interval
-		if !handled {
+		if claimed == nil {
+			<-l.slots
 			// No job available: sleep for the poll interval to avoid busy loop.
 			if !sleepCtx(ctx, interval) {
+				l.inFlight.Wait()
 				return
 			}
+			continue
 		}
-		// When handled, immediately loop to drain the queue fast (no sleep).
+		// The claimed job runs on its per-printer chain. Immediately prefetch the
+		// next item; same-printer jobs serialize, different printers overlap.
+		l.schedule(ctx, claimed)
 	}
 }
 
 // pollOnce attempts one poll+execute cycle. Returns handled=true if a job was
 // processed (regardless of success/failure), handled=false if no job was found.
 func (l *Looper) pollOnce(ctx context.Context) (bool, error) {
+	claimed, err := l.claimOnce(ctx)
+	if err != nil || claimed == nil {
+		return false, err
+	}
+	l.handleClaimed(ctx, claimed)
+	return true, nil
+}
+
+func (l *Looper) claimOnce(ctx context.Context) (*claimedJob, error) {
 	pollStartedAt := time.Now()
 
 	// Bound the poll call.
@@ -143,11 +189,19 @@ func (l *Looper) pollOnce(ctx context.Context) (bool, error) {
 	l.Metrics.Observe(telemetry.MetricJobPickupLatencyMs, pollLatency)
 
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if job == nil {
-		return false, nil
+		return nil, nil
 	}
+	return &claimedJob{job: job, printer: printerInfo, pollStartedAt: pollStartedAt, pollLatencyMs: pollLatency}, nil
+}
+
+func (l *Looper) handleClaimed(ctx context.Context, claimed *claimedJob) {
+	job := claimed.job
+	printerInfo := claimed.printer
+	pollStartedAt := claimed.pollStartedAt
+	pollLatency := claimed.pollLatencyMs
 
 	jobReceivedAt := time.Now()
 	l.lastJobAt.Store(jobReceivedAt)
@@ -212,7 +266,7 @@ func (l *Looper) pollOnce(ctx context.Context) (bool, error) {
 		l.lastError.Store(execErr.Error())
 		l.reportEvent(ctx, log, job.ID, traceID, "RUNNER_EXECUTION_FAILED", executionFinishedAt, execMs, "failed", safeErr(execErr))
 		l.reportResult(ctx, log, job.ID, traceID, "FAILED", result, execErr)
-		return true, nil
+		return
 	}
 	if result != nil && result.Status == printer.StatusFailed {
 		l.failed.Add(1)
@@ -221,7 +275,7 @@ func (l *Looper) pollOnce(ctx context.Context) (bool, error) {
 		}
 		l.reportEvent(ctx, log, job.ID, traceID, "RUNNER_EXECUTION_FAILED", executionFinishedAt, result.DurationMs, "failed", result.SafeMessage)
 		l.reportResult(ctx, log, job.ID, traceID, "FAILED", result, execErr)
-		return true, nil
+		return
 	}
 	if result != nil && result.Status == printer.StatusUnverified {
 		// Unverified is a page-may-have-come-out outcome: it must land as
@@ -236,7 +290,7 @@ func (l *Looper) pollOnce(ctx context.Context) (bool, error) {
 		}
 		l.reportEvent(ctx, log, job.ID, traceID, "RUNNER_EXECUTION_UNVERIFIED", executionFinishedAt, result.DurationMs, "unverified", result.SafeMessage)
 		l.reportResult(ctx, log, job.ID, traceID, "UNVERIFIED", result, execErr)
-		return true, nil
+		return
 	}
 
 	// Spooler sent + printer ack (fake equivalents for MVP).
@@ -258,7 +312,59 @@ func (l *Looper) pollOnce(ctx context.Context) (bool, error) {
 		log.Debug("legacy execute report skipped", "error", err.Error())
 	}
 
-	return true, nil
+	return
+}
+
+func (l *Looper) schedule(ctx context.Context, claimed *claimedJob) {
+	key := claimed.job.PrinterID
+	if key == "" {
+		key = claimed.job.PrinterCode
+	}
+	if key == "" && claimed.printer != nil {
+		key = claimed.printer.ID
+	}
+	if key == "" {
+		key = claimed.job.ID
+	}
+
+	l.schedulerMu.Lock()
+	previous := l.printerTails[key]
+	done := make(chan struct{})
+	l.printerTails[key] = done
+	l.inFlight.Add(1)
+	l.schedulerMu.Unlock()
+
+	go func() {
+		defer l.inFlight.Done()
+		defer func() { <-l.slots }()
+		if previous != nil {
+			<-previous
+		}
+		startedAt := time.Now()
+		l.schedulerMu.Lock()
+		previousFinishedAt, hasPrevious := l.lastFinished[key]
+		l.schedulerMu.Unlock()
+
+		l.handleClaimed(ctx, claimed)
+
+		finishedAt := time.Now()
+		l.schedulerMu.Lock()
+		l.lastFinished[key] = finishedAt
+		if l.printerTails[key] == done {
+			delete(l.printerTails, key)
+		}
+		l.schedulerMu.Unlock()
+		close(done)
+
+		if hasPrevious {
+			idleGapMs := startedAt.Sub(previousFinishedAt).Milliseconds()
+			if idleGapMs < 0 {
+				idleGapMs = 0
+			}
+			l.Metrics.Observe(telemetry.MetricIdleGapBetweenJobsMs, idleGapMs)
+			l.Log.Info("sequential printer handoff", "printer_id", key, "job_id", claimed.job.ID, "idle_gap_between_jobs_ms", idleGapMs)
+		}
+	}()
 }
 
 func (l *Looper) reportEvent(ctx context.Context, log *logging.Logger, jobID, traceID, eventType string, ts time.Time, durMs int64, status, msg string) {

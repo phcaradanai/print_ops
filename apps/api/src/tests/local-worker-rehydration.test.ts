@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import { buildApp } from '../app.js';
 import { closeDatabase } from '../infra/db/sqlite.js';
 import { SqliteAuditRepository } from '../infra/repos/sqlite/sqlite-audit.repo.js';
+import { CALLBACK_INTENT_METADATA_KEY } from '@printerops/domain';
 
 const SQL_WASM_PATH = createRequire(import.meta.url).resolve('sql.js/dist/sql-wasm.wasm');
 
@@ -111,7 +112,18 @@ describe('desktop local-worker restart recovery', () => {
     const unverifiedJobId = await createQueuedJob('unverified');
     await activeApp.jobRepo.update(acceptedJobId, { status: 'ACCEPTED' });
     await activeApp.jobRepo.update(validatedJobId, { status: 'VALIDATED' });
-    await activeApp.jobRepo.update(dispatchedJobId, { status: 'DISPATCHED' });
+    await activeApp.jobRepo.update(dispatchedJobId, {
+      status: 'DISPATCHED',
+      runnerId: 'desktop-before-restart',
+      metadata: {
+        [CALLBACK_INTENT_METADATA_KEY]: {
+          enabled: true,
+          trigger: 'PRINT_RESULT',
+          transports: ['NATS'],
+          natsSubject: 'results.recovered-unverified',
+        },
+      },
+    });
     await activeApp.jobRepo.update(printingJobId, { status: 'PRINTING' });
     await activeApp.jobRepo.update(unverifiedJobId, { status: 'UNVERIFIED' });
 
@@ -141,6 +153,18 @@ describe('desktop local-worker restart recovery', () => {
       });
     await expect(activeApp.jobRepo.findById(unverifiedJobId))
       .resolves.toMatchObject({ status: 'UNVERIFIED' });
+
+    await activeApp.eventBus.settled();
+    const recoveredCallbacks = await activeApp.callbackDeliveryRepo.findAll({ printJobId: dispatchedJobId });
+    expect(recoveredCallbacks).toHaveLength(1);
+    expect(recoveredCallbacks[0]).toMatchObject({
+      printStatus: 'UNVERIFIED',
+      transport: 'NATS',
+      target: 'results.recovered-unverified',
+      // No NATS connection is configured in this test, so the durable result
+      // remains retryable rather than being silently lost.
+      deliveryStatus: 'RETRY_SCHEDULED',
+    });
 
     const firstSuccess = await activeApp.jobRepo.findById(queuedJobId);
     const firstAckAt = firstSuccess?.printerAckAt?.getTime();

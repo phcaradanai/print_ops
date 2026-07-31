@@ -1,20 +1,27 @@
-export type JobStatus =
-  | 'ACCEPTED'
-  | 'VALIDATED'
-  | 'QUEUED'
-  | 'DISPATCHED'
-  | 'PRINTING'
-  | 'SUCCESS'
+/**
+ * Canonical job-status vocabulary. Runtime consumers such as the queue filter
+ * use this export so the UI cannot silently drift from the backend enum.
+ */
+export const JOB_STATUSES = [
+  'ACCEPTED',
+  'VALIDATED',
+  'QUEUED',
+  'DISPATCHED',
+  'PRINTING',
+  'SUCCESS',
   /**
    * Sent, and nothing reported a fault, but no device channel could confirm a
    * page came out. Distinct from FAILED on purpose: a page may well exist, so
    * reprinting is an operator decision rather than a safe automatic retry.
    */
-  | 'UNVERIFIED'
-  | 'FAILED'
-  | 'TIMEOUT'
-  | 'CANCELLED'
-  | 'DUPLICATE_RETURNED';
+  'UNVERIFIED',
+  'FAILED',
+  'TIMEOUT',
+  'CANCELLED',
+  'DUPLICATE_RETURNED',
+] as const;
+
+export type JobStatus = (typeof JOB_STATUSES)[number];
 
 export type JobPriority = 'urgent' | 'high' | 'normal' | 'low';
 

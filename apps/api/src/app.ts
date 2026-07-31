@@ -102,6 +102,8 @@ import { hashPassword } from './infra/auth/password.js';
 import { serviceAccountRoutes } from './routes/v1/service-accounts.routes.js';
 import { databaseBackupRoutes } from './routes/v1/database-backup.routes.js';
 import { readinessRoutes } from './routes/v1/readiness.routes.js';
+import { emitPrintJobTerminal } from './services/emit-terminal-event.js';
+import { LocalPrintScheduler } from './services/local-print-scheduler.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -434,7 +436,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // Desktop mode owns a local, in-process worker so every queued job uses the
   // same driver-rendered Windows adapter as Sandbox. The Go runner remains the
   // discovery agent; it must not RAW-send HTML/JSON to an IPP office printer.
-  let localWorkerTimer: ReturnType<typeof setInterval> | undefined;
+  let localPrintScheduler: LocalPrintScheduler | undefined;
   if (process.env['PRINTOPS_LOCAL_WORKER'] === 'true') {
     // ACCEPTED/VALIDATED are pre-dispatch states. A crash in job creation can
     // leave them behind before the durable QUEUED transition; no page can have
@@ -469,7 +471,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         const currentJob = await jobRepo.findById(staleJob.id);
         if (!currentJob || currentJob.status !== staleStatus) continue;
         const recoveredAt = new Date();
-        await jobRepo.update(currentJob.id, {
+        const recoveredJob = await jobRepo.update(currentJob.id, {
           status: 'UNVERIFIED',
           finishedAt: recoveredAt,
           completedAt: recoveredAt,
@@ -485,6 +487,16 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
               autoReplaySuppressed: true,
             },
           },
+        });
+        // This persisted transition is just as terminal as a live runner
+        // verdict. Without the event, callers wait forever specifically for
+        // the restart-recovery UNVERIFIED case.
+        emitPrintJobTerminal(eventBus, recoveredJob, {
+          status: 'UNVERIFIED',
+          runnerId: currentJob.runnerId,
+          errorCode: 'RECOVERY_PRINT_STATUS_UNKNOWN',
+          errorMessage: recoveredJob.errorMessage,
+          finishedAt: recoveredAt,
         });
       }
     }
@@ -521,35 +533,16 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       app.log.info({ rehydratedJobCount }, 'rehydrated persisted queued print jobs');
     }
 
-    let workerBusy = false;
-    const drainOne = async () => {
-      if (workerBusy) return;
-      workerBusy = true;
-      try {
-        const queuedMessage = await queue.dequeue();
-        if (!queuedMessage) return;
-        const jobId = queuedMessage.jobId;
-        const queuedJob = await jobRepo.findById(jobId);
-        if (!queuedJob || queuedJob.status !== 'QUEUED') {
-          await queue.ack(jobId);
-          return;
-        }
-        await executeJob.execute(jobId, 'desktop-local-worker');
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        // A direct Sandbox execution may win the conditional claim. That is a
-        // normal race and cannot double-print; other failures remain visible.
-        if (!message.includes('already claimed') && !message.includes('cannot be executed again')) {
-          app.log.error({ err }, 'local print worker failed');
-        }
-      } finally {
-        workerBusy = false;
-      }
-    };
-    localWorkerTimer = setInterval(() => { void drainOne(); }, 500);
-    localWorkerTimer.unref?.();
+    localPrintScheduler = new LocalPrintScheduler({
+      jobs: jobRepo,
+      queue,
+      executor: executeJob,
+      logger: app.log,
+    });
+    localPrintScheduler.start(500);
     app.addHook('onClose', async () => {
-      if (localWorkerTimer) clearInterval(localWorkerTimer);
+      localPrintScheduler?.stop();
+      await localPrintScheduler?.settled();
     });
   }
 

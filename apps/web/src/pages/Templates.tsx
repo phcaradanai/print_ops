@@ -5,7 +5,7 @@ import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { ErrorBanner, Freshness } from '../components/PageState.js';
 import { exportJsonFile } from '../tauri.js';
-import { renderBarcodeSvg, type BarcodeKind, type BarcodeSymbology } from '../lib/barcode.js';
+import { qrQuietZoneMm, renderBarcodeSvg, type BarcodeKind, type BarcodeSymbology } from '../lib/barcode.js';
 
 const WS_PATH_KEY = 'printops-workspace-path';
 
@@ -194,9 +194,10 @@ function localPreview(
         // actually print.
         const heightMm = kind === 'qrcode' ? (field?.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field?.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM);
         const widthCss = kind === 'qrcode' ? `${heightMm}mm` : 'auto';
+        const quietMm = kind === 'qrcode' ? (qrQuietZoneMm(String(value), heightMm) ?? 0) : 0;
         const sizedSvg = svg.replace('<svg ', `<svg style="height:100%;width:${kind === 'qrcode' ? '100%' : 'auto'}" `);
         return {
-          html: `<span class="tpl-preview-barcode" style="display:inline-block;height:${heightMm}mm;width:${widthCss};line-height:0;vertical-align:middle">${sizedSvg}</span>`,
+          html: `<span class="tpl-preview-barcode" style="display:inline-block;height:${heightMm}mm;width:${widthCss};padding:${quietMm}mm;background:#fff;line-height:0;vertical-align:middle">${sizedSvg}</span>`,
           raw: true,
         };
       }

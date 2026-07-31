@@ -1,4 +1,5 @@
 import type { Database } from 'sql.js';
+import { TERMINAL_PRINT_STATUSES } from '@printerops/domain';
 
 /**
  * Data-retention sweep for the SQLite store.
@@ -21,7 +22,7 @@ import type { Database } from 'sql.js';
 /** Only terminal jobs are ever eligible for deletion — in-flight jobs
  * (ACCEPTED/VALIDATED/QUEUED/DISPATCHED/PRINTING) are kept regardless of age
  * or count, since they represent unfinished work, not history. */
-const TERMINAL_JOB_STATUSES = ['SUCCESS', 'FAILED', 'CANCELLED', 'UNVERIFIED'];
+const TERMINAL_JOB_STATUSES = TERMINAL_PRINT_STATUSES;
 
 export interface RetentionOptions {
   /** Delete terminal jobs/audit rows older than this many days. 0 disables age-based pruning. */

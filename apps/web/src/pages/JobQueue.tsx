@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { JobStatus } from '@printerops/domain';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
@@ -11,8 +12,13 @@ import { Button } from '../components/Button.js';
 import { Dialog } from '../components/Dialog.js';
 import { FormField } from '../components/FormField.js';
 import { StatusBadge } from '../components/StatusBadge.js';
+import { JobQueueControls } from '../components/JobQueueControls.js';
+import {
+  buildJobQueueView,
+  type JobQueueStatusFilter,
+} from '../lib/jobQueueView.js';
 
-interface Job {
+export interface Job {
   id: string;
   printerCode?: string;
   printerId: string;
@@ -47,11 +53,12 @@ function payloadHint(snapshot?: string): string | null {
 /** Queue cadence. Suspended while the window is hidden and never overlapping —
  *  see `lib/pollController.ts`. */
 const QUEUE_POLL_MS = 1_500;
+const QUEUE_PAGE_SIZE = 20;
 
 export default function JobQueue() {
   const { t } = useLocale();
 
-  const fetchJobs = useCallback(() => apiFetch<Job[]>('/jobs?limit=100'), []);
+  const fetchJobs = useCallback(() => apiFetch<Job[]>('/jobs?limit=1000'), []);
   const queue = useApiResource(fetchJobs, { intervalMs: QUEUE_POLL_MS });
   const jobs = queue.data ?? [];
 
@@ -61,6 +68,25 @@ export default function JobQueue() {
   const [reprintReason, setReprintReason] = useState('');
   const [reprintCopies, setReprintCopies] = useState(1);
   const [duplicateRisk, setDuplicateRisk] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<JobQueueStatusFilter>('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+
+  const view = useMemo(
+    () => buildJobQueueView(jobs, {
+      status: statusFilter,
+      search: searchQuery,
+      page,
+      pageSize: QUEUE_PAGE_SIZE,
+    }),
+    [jobs, page, searchQuery, statusFilter],
+  );
+
+  // Auto-refresh may remove the last row on the current page. Clamp the page,
+  // but preserve the operator's selected filter and search query.
+  useEffect(() => {
+    if (page !== view.page) setPage(view.page);
+  }, [page, view.page]);
 
   useEffect(() => {
     if (!message) return;
@@ -155,6 +181,21 @@ export default function JobQueue() {
         <ErrorBanner error={queue.error} title={t('error.refresh.title')} onRetry={queue.refresh} />
       )}
 
+      <JobQueueControls
+        status={statusFilter}
+        search={searchQuery}
+        counts={view.counts as Record<JobStatus, number>}
+        totalCount={jobs.length}
+        labels={{
+          status: t('page.jobQueue.statusFilter'),
+          all: t('page.jobQueue.statusAll'),
+          search: t('page.jobQueue.search'),
+          searchPlaceholder: t('page.jobQueue.searchPlaceholder'),
+        }}
+        onStatusChange={(next) => { setStatusFilter(next); setPage(1); }}
+        onSearchChange={(next) => { setSearchQuery(next); setPage(1); }}
+      />
+
       {queue.loading && !queue.data ? <LoadingState /> : queue.error != null && !queue.data ? (
         <ErrorState error={queue.error} title={t('page.jobQueue.loadFailed')} onRetry={queue.refresh} />
       ) : (
@@ -176,10 +217,10 @@ export default function JobQueue() {
             </tr>
           </thead>
           <tbody>
-            {jobs.length === 0 && (
-              <tr><td colSpan={8}><EmptyState title={t('page.jobQueue.noJobs')} /></td></tr>
+            {view.rows.length === 0 && (
+              <tr><td colSpan={8}><EmptyState title={jobs.length === 0 ? t('page.jobQueue.noJobs') : t('page.jobQueue.noMatchingJobs')} /></td></tr>
             )}
-            {jobs.map((j) => {
+            {view.rows.map((j) => {
               const template = j.resolvedTemplateCode ?? j.templateCode;
               const hint = payloadHint(j.payloadSnapshot);
               return (
@@ -251,6 +292,31 @@ export default function JobQueue() {
             })}
           </tbody>
         </table>
+      )}
+      {view.filteredCount > 0 && (
+        <nav className="job-queue-pagination" aria-label={t('page.jobQueue.pagination')}>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={view.page <= 1}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+          >
+            {t('page.jobQueue.previous')}
+          </Button>
+          <span>
+            {t('page.jobQueue.pageOf')
+              .replace('{page}', String(view.page))
+              .replace('{total}', String(view.totalPages))}
+          </span>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={view.page >= view.totalPages}
+            onClick={() => setPage((current) => Math.min(view.totalPages, current + 1))}
+          >
+            {t('page.jobQueue.next')}
+          </Button>
+        </nav>
       )}
       {/* Reprint confirmation. Safety semantics are unchanged: the submit stays
           blocked without an explicit duplicate-risk acknowledgement, a reason,

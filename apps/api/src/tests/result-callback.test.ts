@@ -57,6 +57,7 @@ interface Harness {
   httpStatuses: number[];
   /** When true the HTTP sender throws (connection failure) instead of replying. */
   httpThrows: { code?: string } | undefined;
+  httpHandler?: CallbackHttpSender;
   natsThrows: boolean;
   clock: { now: Date };
   policyId: string;
@@ -142,6 +143,7 @@ async function buildHarness(): Promise<Harness> {
 
   const http: CallbackHttpSender = async (url, body, opts) => {
     harness.httpCalls.push({ url, body, headers: opts.headers });
+    if (harness.httpHandler) return harness.httpHandler(url, body, opts);
     if (harness.httpThrows) {
       const err = new Error('connect ECONNREFUSED') as Error & { code?: string };
       err.code = harness.httpThrows.code ?? 'ECONNREFUSED';
@@ -683,10 +685,104 @@ describe('callback idempotency and recovery', () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* Per-job callback timing + failure isolation                         */
+/* ------------------------------------------------------------------ */
+
+describe('per-job callback dispatch', () => {
+  let h: Harness;
+  beforeEach(async () => { h = await buildHarness(); });
+
+  it('delivers Job B while Job A callback is still blocked', async () => {
+    await makeEndpoint(h, { endpointCode: 'slow-a', callbackUrl: 'https://receiver.example/slow-a' });
+    await makeEndpoint(h, { endpointCode: 'fast-b', callbackUrl: 'https://receiver.example/fast-b' });
+
+    let releaseSlow!: () => void;
+    const slowGate = new Promise<void>((resolve) => { releaseSlow = resolve; });
+    const timeline: string[] = [];
+    h.httpHandler = async (url) => {
+      timeline.push(`${url}:started`);
+      if (url.endsWith('/slow-a')) await slowGate;
+      timeline.push(`${url}:delivered`);
+      return { status: 200 };
+    };
+
+    const jobA = await h.dynamicPrint.submit(
+      { request_id: 'TIMING-A', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE, payload: { label: 'A' }, endpoint_code: 'slow-a' },
+      'actor',
+    );
+    const jobB = await h.dynamicPrint.submit(
+      { request_id: 'TIMING-B', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE, payload: { label: 'B' }, endpoint_code: 'fast-b' },
+      'actor',
+    );
+
+    await h.executeJob.execute(jobA.print_job_id, 'runner-a');
+    await h.executeJob.execute(jobB.print_job_id, 'runner-b');
+
+    // Let both fire-and-forget event handlers reach their transport calls.
+    await vi.waitFor(() => {
+      expect(timeline).toContain('https://receiver.example/fast-b:delivered');
+    });
+
+    const [deliveryA] = await h.deliveries.findAll({ printJobId: jobA.print_job_id });
+    const [deliveryB] = await h.deliveries.findAll({ printJobId: jobB.print_job_id });
+    expect(deliveryA?.deliveryStatus).toBe('DELIVERING');
+    expect(deliveryB?.deliveryStatus).toBe('DELIVERED');
+    expect(timeline).not.toContain('https://receiver.example/slow-a:delivered');
+
+    releaseSlow();
+    await h.eventBus.settled();
+    expect((await h.deliveries.findAll({ printJobId: jobA.print_job_id }))[0]?.deliveryStatus).toBe('DELIVERED');
+  });
+
+  it('dispatches BOTH transports independently when HTTP is slow', async () => {
+    await makeEndpoint(h, {
+      endpointCode: 'both-independent',
+      callbackTransport: 'BOTH',
+      callbackUrl: 'https://receiver.example/slow',
+      callbackNatsSubject: 'results.independent',
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    h.httpHandler = async () => {
+      await gate;
+      return { status: 200 };
+    };
+    const accepted = await h.dynamicPrint.submit(
+      { request_id: 'BOTH-INDEPENDENT', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE, payload: { label: 'A' }, endpoint_code: 'both-independent' },
+      'actor',
+    );
+
+    await h.executeJob.execute(accepted.print_job_id, 'runner');
+    await vi.waitFor(() => expect(h.natsCalls).toHaveLength(1));
+    const deliveries = await h.deliveries.findAll({ printJobId: accepted.print_job_id });
+    expect(deliveries.find((item) => item.transport === 'NATS')?.deliveryStatus).toBe('DELIVERED');
+    expect(deliveries.find((item) => item.transport === 'HTTP')?.deliveryStatus).toBe('DELIVERING');
+
+    release();
+    await h.eventBus.settled();
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* Phase 6 — payload contract                                          */
 /* ------------------------------------------------------------------ */
 
 describe('result callback payload', () => {
+  it.each(['SUCCESS', 'FAILED', 'UNVERIFIED', 'TIMEOUT', 'CANCELLED'] as const)(
+    'preserves terminal status %s verbatim',
+    (status) => {
+      const payload = buildResultCallbackPayload(
+        {
+          eventId: `evt-${status}`, eventType: 'PrintJobTerminal', traceId: 't', correlationId: 'c',
+          occurredAt: new Date('2026-07-27T06:00:00Z'), jobId: 'job-status', status,
+        },
+        { id: 'job-status', metadata: {} } as never,
+        { enabled: true, trigger: 'PRINT_RESULT', transports: ['HTTP'] },
+      );
+      expect(payload['print_status']).toBe(status);
+    },
+  );
+
   it('preserves UNVERIFIED instead of flattening it into FAILED', () => {
     // "Could not confirm" is not "did not print". Telling an integrator FAILED
     // here invites a duplicate reprint of a label that may already exist.
@@ -716,6 +812,12 @@ describe('result callback payload', () => {
     expect(payload['event_type']).toBe('print.job.completed');
     expect(payload['error']).toBeNull();
     expect(payload['trace_id']).toBe('trace-1');
+    expect(payload['timeline']).toMatchObject({
+      accepted_at: null,
+      queued_at: null,
+      started_at: null,
+      terminal_at: '2026-07-27T06:00:00.000Z',
+    });
     expect(payload['delivery']).toEqual({ transports: ['NATS'], nats_mode: 'CORE' });
     // No print payload: a callback is a notification, not a copy of the label.
     expect(Object.keys(payload)).not.toContain('payload');

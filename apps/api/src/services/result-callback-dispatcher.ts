@@ -171,9 +171,12 @@ export class ResultCallbackDispatcher {
 
       const payload = buildResultCallbackPayload(event, job, intent);
 
-      for (const transport of intent.transports) {
+      // Transport attempts are independent. A slow HTTP endpoint must not hold
+      // a NATS result behind it, just as one job's callback must not hold the
+      // callback for the next terminal job.
+      await Promise.all(intent.transports.map(async (transport) => {
         const target = transport === 'HTTP' ? intent.httpUrl : intent.natsSubject;
-        if (!target) continue;
+        if (!target) return;
 
         const { delivery, created } = await this.deps.deliveries.createIfAbsent({
           eventId: event.eventId,
@@ -199,11 +202,11 @@ export class ResultCallbackDispatcher {
             { jobId: job.id, transport, deliveryId: delivery.id, deliveryStatus: delivery.deliveryStatus },
             'terminal callback already has a delivery record; not duplicating',
           );
-          continue;
+          return;
         }
 
         await this.attempt(delivery.id);
-      }
+      }));
     } catch (err) {
       // A callback failure must never surface as a print failure.
       this.deps.logger.error(
@@ -434,6 +437,12 @@ export function buildResultCallbackPayload(
       : null,
 
     trace_id: event.traceId,
+    timeline: {
+      accepted_at: job.receivedAt?.toISOString() ?? job.createdAt?.toISOString() ?? null,
+      queued_at: job.queuedAt?.toISOString() ?? null,
+      started_at: job.startedAt?.toISOString() ?? job.runnerReceivedAt?.toISOString() ?? null,
+      terminal_at: (event.finishedAt ?? event.occurredAt).toISOString(),
+    },
     // Lets a receiver tell a BEST_EFFORT NATS notification from an HTTP one it
     // actually acknowledged.
     delivery: {

@@ -1,21 +1,21 @@
 {
-  "generatedAt": "2026-07-31T10:07:45.696Z",
-  "natsUrl": "nats://127.0.0.1:63000",
+  "generatedAt": "2026-07-31T15:10:06.980Z",
+  "natsUrl": "nats://127.0.0.1:55912",
   "natsImage": "nats@sha256:b83efabe3e7def1e0a4a31ec6e078999bb17c80363f881df35edc70fcb6bb927",
   "intakeSubject": "medisync.print.intake.e2eclient",
   "callbackSubject": "e2e.callback.result.>",
   "printerUsed": "OFFICE_LASER_01 (protocol=fake)",
   "findings": [
     {
-      "at": "2026-07-31T10:06:20.410Z",
+      "at": "2026-07-31T15:08:41.718Z",
       "cell": "API->print->WEBHOOK",
-      "requestId": "e2e-api-webhook-1785492379997",
+      "requestId": "e2e-api-webhook-1785510521320",
       "acceptStatus": 202,
       "acceptBody": {
         "accepted": true,
-        "print_job_id": "9f251cc9-c30f-46b6-ba50-cc0f76e29542",
-        "request_id": "e2e-api-webhook-1785492379997",
-        "trace_id": "trace_46e79cf6-639a-4996-bc58-eb8beb46db15",
+        "print_job_id": "80405b29-aabc-4c54-9738-7c29cef613fa",
+        "request_id": "e2e-api-webhook-1785510521320",
+        "trace_id": "trace_806f2667-2565-474a-8415-20b0e186ca5c",
         "resolved_printer_code": "OFFICE_LASER_01",
         "resolved_template_code": "TEST_LABEL",
         "status": "QUEUED"
@@ -23,17 +23,23 @@
       "callbackReceived": true,
       "callbackPayload": {
         "version": 1,
-        "event_id": "58d790f4-1afd-4988-b7d3-d3c0eaf8b3d7",
+        "event_id": "0f92022e-c108-416c-8894-d0d8ca6613cf",
         "event_type": "print.job.completed",
-        "occurred_at": "2026-07-31T10:06:20.375Z",
-        "request_id": "e2e-api-webhook-1785492379997",
-        "job_id": "9f251cc9-c30f-46b6-ba50-cc0f76e29542",
+        "occurred_at": "2026-07-31T15:08:41.683Z",
+        "request_id": "e2e-api-webhook-1785510521320",
+        "job_id": "80405b29-aabc-4c54-9738-7c29cef613fa",
         "source_system": "e2e-e2e-http",
         "print_status": "SUCCESS",
         "printer_code": "OFFICE_LASER_01",
         "runner_id": "desktop-local-worker",
         "error": null,
-        "trace_id": "trace_46e79cf6-639a-4996-bc58-eb8beb46db15",
+        "trace_id": "trace_806f2667-2565-474a-8415-20b0e186ca5c",
+        "timeline": {
+          "accepted_at": "2026-07-31T15:08:41.325Z",
+          "queued_at": "2026-07-31T15:08:41.328Z",
+          "started_at": "2026-07-31T15:08:41.630Z",
+          "terminal_at": "2026-07-31T15:08:41.683Z"
+        },
         "delivery": {
           "transports": [
             "HTTP"
@@ -47,35 +53,41 @@
       "reportsTerminalStatus": true,
       "deliveries": [
         {
-          "id": "2db02506-96f1-4663-b168-3e058ff93fa4",
-          "eventId": "58d790f4-1afd-4988-b7d3-d3c0eaf8b3d7",
-          "printJobId": "9f251cc9-c30f-46b6-ba50-cc0f76e29542",
-          "requestId": "e2e-api-webhook-1785492379997",
+          "id": "53702947-8d52-4a5d-ab31-fb70598bd20c",
+          "eventId": "0f92022e-c108-416c-8894-d0d8ca6613cf",
+          "printJobId": "80405b29-aabc-4c54-9738-7c29cef613fa",
+          "requestId": "e2e-api-webhook-1785510521320",
           "sourceSystem": "e2e-e2e-http",
           "transport": "HTTP",
-          "target": "http://127.0.0.1:63002/callbacks/print",
+          "target": "http://127.0.0.1:55916/callbacks/print",
           "trigger": "PRINT_RESULT",
           "deliveryStatus": "DELIVERED",
           "guarantee": "ACKNOWLEDGED",
           "attemptCount": 1,
           "maxAttempts": 5,
-          "lastAttemptAt": "2026-07-31T10:06:20.387Z",
-          "deliveredAt": "2026-07-31T10:06:20.397Z",
+          "lastAttemptAt": "2026-07-31T15:08:41.690Z",
+          "deliveredAt": "2026-07-31T15:08:41.699Z",
           "lastHttpStatus": 200,
           "printStatus": "SUCCESS",
           "payload": {
             "version": 1,
-            "event_id": "58d790f4-1afd-4988-b7d3-d3c0eaf8b3d7",
+            "event_id": "0f92022e-c108-416c-8894-d0d8ca6613cf",
             "event_type": "print.job.completed",
-            "occurred_at": "2026-07-31T10:06:20.375Z",
-            "request_id": "e2e-api-webhook-1785492379997",
-            "job_id": "9f251cc9-c30f-46b6-ba50-cc0f76e29542",
+            "occurred_at": "2026-07-31T15:08:41.683Z",
+            "request_id": "e2e-api-webhook-1785510521320",
+            "job_id": "80405b29-aabc-4c54-9738-7c29cef613fa",
             "source_system": "e2e-e2e-http",
             "print_status": "SUCCESS",
             "printer_code": "OFFICE_LASER_01",
             "runner_id": "desktop-local-worker",
             "error": null,
-            "trace_id": "trace_46e79cf6-639a-4996-bc58-eb8beb46db15",
+            "trace_id": "trace_806f2667-2565-474a-8415-20b0e186ca5c",
+            "timeline": {
+              "accepted_at": "2026-07-31T15:08:41.325Z",
+              "queued_at": "2026-07-31T15:08:41.328Z",
+              "started_at": "2026-07-31T15:08:41.630Z",
+              "terminal_at": "2026-07-31T15:08:41.683Z"
+            },
             "delivery": {
               "transports": [
                 "HTTP"
@@ -83,44 +95,50 @@
               "nats_mode": null
             }
           },
-          "endpointId": "85f07de2-1b0e-4ea5-be65-4bc88ec99b94",
+          "endpointId": "b0e87bca-4a67-4f73-a2d6-40f9de2a925a",
           "endpointCode": "e2e-http",
-          "createdAt": "2026-07-31T10:06:20.385Z",
-          "updatedAt": "2026-07-31T10:06:20.397Z"
+          "createdAt": "2026-07-31T15:08:41.689Z",
+          "updatedAt": "2026-07-31T15:08:41.699Z"
         }
       ]
     },
     {
-      "at": "2026-07-31T10:06:20.968Z",
+      "at": "2026-07-31T15:08:42.218Z",
       "cell": "API->print->NATS",
-      "requestId": "e2e-api-nats-1785492379997",
+      "requestId": "e2e-api-nats-1785510521320",
       "acceptStatus": 202,
       "acceptBody": {
         "accepted": true,
-        "print_job_id": "5bce5209-96ef-43cb-af56-691f3dbcd964",
-        "request_id": "e2e-api-nats-1785492379997",
-        "trace_id": "trace_696e17fe-ff15-43f7-a3ef-83686ae42543",
+        "print_job_id": "38f77a3f-bbdf-4361-bab1-53d6f3b69341",
+        "request_id": "e2e-api-nats-1785510521320",
+        "trace_id": "trace_9ae1e957-8576-4a82-a9ec-c819e4dec39c",
         "resolved_printer_code": "OFFICE_LASER_01",
         "resolved_template_code": "TEST_LABEL",
         "status": "QUEUED"
       },
       "callbackReceived": true,
       "callbackPayload": {
-        "at": "2026-07-31T10:06:20.907Z",
+        "at": "2026-07-31T15:08:42.196Z",
         "subject": "e2e.callback.result.e2e-nats",
         "body": {
           "version": 1,
-          "event_id": "522eb8e0-4e14-46ab-80ac-0a5ce394ad1d",
+          "event_id": "e3977f78-22c6-48f7-a2a0-701e88b22e1e",
           "event_type": "print.job.completed",
-          "occurred_at": "2026-07-31T10:06:20.887Z",
-          "request_id": "e2e-api-nats-1785492379997",
-          "job_id": "5bce5209-96ef-43cb-af56-691f3dbcd964",
+          "occurred_at": "2026-07-31T15:08:42.186Z",
+          "request_id": "e2e-api-nats-1785510521320",
+          "job_id": "38f77a3f-bbdf-4361-bab1-53d6f3b69341",
           "source_system": "e2e-e2e-nats",
           "print_status": "SUCCESS",
           "printer_code": "OFFICE_LASER_01",
           "runner_id": "desktop-local-worker",
           "error": null,
-          "trace_id": "trace_696e17fe-ff15-43f7-a3ef-83686ae42543",
+          "trace_id": "trace_9ae1e957-8576-4a82-a9ec-c819e4dec39c",
+          "timeline": {
+            "accepted_at": "2026-07-31T15:08:41.721Z",
+            "queued_at": "2026-07-31T15:08:41.724Z",
+            "started_at": "2026-07-31T15:08:42.130Z",
+            "terminal_at": "2026-07-31T15:08:42.186Z"
+          },
           "delivery": {
             "transports": [
               "NATS"
@@ -134,10 +152,10 @@
       "reportsTerminalStatus": true,
       "deliveries": [
         {
-          "id": "f27753cc-8e31-4cc8-8ccd-d785f146f752",
-          "eventId": "522eb8e0-4e14-46ab-80ac-0a5ce394ad1d",
-          "printJobId": "5bce5209-96ef-43cb-af56-691f3dbcd964",
-          "requestId": "e2e-api-nats-1785492379997",
+          "id": "540ac5a9-2039-4e8a-ade3-87595207418b",
+          "eventId": "e3977f78-22c6-48f7-a2a0-701e88b22e1e",
+          "printJobId": "38f77a3f-bbdf-4361-bab1-53d6f3b69341",
+          "requestId": "e2e-api-nats-1785510521320",
           "sourceSystem": "e2e-e2e-nats",
           "transport": "NATS",
           "target": "e2e.callback.result.e2e-nats",
@@ -146,22 +164,28 @@
           "guarantee": "BEST_EFFORT",
           "attemptCount": 1,
           "maxAttempts": 5,
-          "lastAttemptAt": "2026-07-31T10:06:20.899Z",
-          "deliveredAt": "2026-07-31T10:06:20.904Z",
+          "lastAttemptAt": "2026-07-31T15:08:42.191Z",
+          "deliveredAt": "2026-07-31T15:08:42.193Z",
           "printStatus": "SUCCESS",
           "payload": {
             "version": 1,
-            "event_id": "522eb8e0-4e14-46ab-80ac-0a5ce394ad1d",
+            "event_id": "e3977f78-22c6-48f7-a2a0-701e88b22e1e",
             "event_type": "print.job.completed",
-            "occurred_at": "2026-07-31T10:06:20.887Z",
-            "request_id": "e2e-api-nats-1785492379997",
-            "job_id": "5bce5209-96ef-43cb-af56-691f3dbcd964",
+            "occurred_at": "2026-07-31T15:08:42.186Z",
+            "request_id": "e2e-api-nats-1785510521320",
+            "job_id": "38f77a3f-bbdf-4361-bab1-53d6f3b69341",
             "source_system": "e2e-e2e-nats",
             "print_status": "SUCCESS",
             "printer_code": "OFFICE_LASER_01",
             "runner_id": "desktop-local-worker",
             "error": null,
-            "trace_id": "trace_696e17fe-ff15-43f7-a3ef-83686ae42543",
+            "trace_id": "trace_9ae1e957-8576-4a82-a9ec-c819e4dec39c",
+            "timeline": {
+              "accepted_at": "2026-07-31T15:08:41.721Z",
+              "queued_at": "2026-07-31T15:08:41.724Z",
+              "started_at": "2026-07-31T15:08:42.130Z",
+              "terminal_at": "2026-07-31T15:08:42.186Z"
+            },
             "delivery": {
               "transports": [
                 "NATS"
@@ -169,33 +193,39 @@
               "nats_mode": "CORE"
             }
           },
-          "endpointId": "07f1d9ca-13df-4d87-8ece-d21f7b2a17b2",
+          "endpointId": "7fa0bd4c-ad87-4d9f-a23f-cfa8c3d1d245",
           "endpointCode": "e2e-nats",
-          "createdAt": "2026-07-31T10:06:20.897Z",
-          "updatedAt": "2026-07-31T10:06:20.905Z"
+          "createdAt": "2026-07-31T15:08:42.190Z",
+          "updatedAt": "2026-07-31T15:08:42.194Z"
         }
       ]
     },
     {
-      "at": "2026-07-31T10:06:23.939Z",
+      "at": "2026-07-31T15:08:45.243Z",
       "cell": "NATS->print->WEBHOOK",
-      "requestId": "e2e-nats-webhook-1785492379997",
+      "requestId": "e2e-nats-webhook-1785510521320",
       "jobCreated": true,
       "finalJobStatus": "SUCCESS",
       "webhookCallbacksSeen": 1,
       "callbackPayload": {
         "version": 1,
-        "event_id": "11407c23-fab2-424f-9c44-52491f53a29a",
+        "event_id": "e0372d9b-f6df-4415-84ce-28daf5053386",
         "event_type": "print.job.completed",
-        "occurred_at": "2026-07-31T10:06:21.388Z",
-        "request_id": "e2e-nats-webhook-1785492379997",
-        "job_id": "0dfcc9a8-a011-48ee-bd82-4705e7fb6731",
+        "occurred_at": "2026-07-31T15:08:42.687Z",
+        "request_id": "e2e-nats-webhook-1785510521320",
+        "job_id": "13eb94e3-5b91-4d2b-bcc9-e9bac9bfddc8",
         "source_system": "e2e-nats-intake",
         "print_status": "SUCCESS",
         "printer_code": "OFFICE_LASER_01",
         "runner_id": "desktop-local-worker",
         "error": null,
-        "trace_id": "trace_a78aa051-62ae-4fcb-bdc4-6b87dfec14b5",
+        "trace_id": "trace_2fe1ca61-e958-4761-a2be-3fc18d860dbf",
+        "timeline": {
+          "accepted_at": "2026-07-31T15:08:42.224Z",
+          "queued_at": "2026-07-31T15:08:42.228Z",
+          "started_at": "2026-07-31T15:08:42.631Z",
+          "terminal_at": "2026-07-31T15:08:42.687Z"
+        },
         "delivery": {
           "transports": [
             "HTTP"
@@ -205,35 +235,41 @@
       },
       "deliveries": [
         {
-          "id": "921519be-1d67-4383-89a5-b8e3592208a7",
-          "eventId": "11407c23-fab2-424f-9c44-52491f53a29a",
-          "printJobId": "0dfcc9a8-a011-48ee-bd82-4705e7fb6731",
-          "requestId": "e2e-nats-webhook-1785492379997",
+          "id": "735fb054-4e60-4776-8dc4-f2e132d2b0b2",
+          "eventId": "e0372d9b-f6df-4415-84ce-28daf5053386",
+          "printJobId": "13eb94e3-5b91-4d2b-bcc9-e9bac9bfddc8",
+          "requestId": "e2e-nats-webhook-1785510521320",
           "sourceSystem": "e2e-nats-intake",
           "transport": "HTTP",
-          "target": "http://127.0.0.1:63002/callbacks/print",
+          "target": "http://127.0.0.1:55916/callbacks/print",
           "trigger": "PRINT_RESULT",
           "deliveryStatus": "DELIVERED",
           "guarantee": "ACKNOWLEDGED",
           "attemptCount": 1,
           "maxAttempts": 5,
-          "lastAttemptAt": "2026-07-31T10:06:21.399Z",
-          "deliveredAt": "2026-07-31T10:06:21.407Z",
+          "lastAttemptAt": "2026-07-31T15:08:42.696Z",
+          "deliveredAt": "2026-07-31T15:08:42.702Z",
           "lastHttpStatus": 200,
           "printStatus": "SUCCESS",
           "payload": {
             "version": 1,
-            "event_id": "11407c23-fab2-424f-9c44-52491f53a29a",
+            "event_id": "e0372d9b-f6df-4415-84ce-28daf5053386",
             "event_type": "print.job.completed",
-            "occurred_at": "2026-07-31T10:06:21.388Z",
-            "request_id": "e2e-nats-webhook-1785492379997",
-            "job_id": "0dfcc9a8-a011-48ee-bd82-4705e7fb6731",
+            "occurred_at": "2026-07-31T15:08:42.687Z",
+            "request_id": "e2e-nats-webhook-1785510521320",
+            "job_id": "13eb94e3-5b91-4d2b-bcc9-e9bac9bfddc8",
             "source_system": "e2e-nats-intake",
             "print_status": "SUCCESS",
             "printer_code": "OFFICE_LASER_01",
             "runner_id": "desktop-local-worker",
             "error": null,
-            "trace_id": "trace_a78aa051-62ae-4fcb-bdc4-6b87dfec14b5",
+            "trace_id": "trace_2fe1ca61-e958-4761-a2be-3fc18d860dbf",
+            "timeline": {
+              "accepted_at": "2026-07-31T15:08:42.224Z",
+              "queued_at": "2026-07-31T15:08:42.228Z",
+              "started_at": "2026-07-31T15:08:42.631Z",
+              "terminal_at": "2026-07-31T15:08:42.687Z"
+            },
             "delivery": {
               "transports": [
                 "HTTP"
@@ -241,36 +277,42 @@
               "nats_mode": null
             }
           },
-          "endpointId": "92b7f55f-9ca8-40f5-aa79-045be84ea7a6",
+          "endpointId": "8227cbf3-5818-47a7-8150-352742a4a522",
           "endpointCode": "e2e-natsin-http",
-          "createdAt": "2026-07-31T10:06:21.397Z",
-          "updatedAt": "2026-07-31T10:06:21.407Z"
+          "createdAt": "2026-07-31T15:08:42.695Z",
+          "updatedAt": "2026-07-31T15:08:42.703Z"
         }
       ]
     },
     {
-      "at": "2026-07-31T10:06:27.051Z",
+      "at": "2026-07-31T15:08:48.289Z",
       "cell": "NATS->print->NATS",
-      "requestId": "e2e-nats-nats-1785492379997",
+      "requestId": "e2e-nats-nats-1785510521320",
       "jobCreated": true,
       "finalJobStatus": "SUCCESS",
       "natsCallbacksSeen": 1,
       "callbackPayload": {
-        "at": "2026-07-31T10:06:24.450Z",
+        "at": "2026-07-31T15:08:45.711Z",
         "subject": "e2e.callback.result.natsin",
         "body": {
           "version": 1,
-          "event_id": "9083dda6-e98b-4457-94da-c0f5520a3aba",
+          "event_id": "29171f2a-8e89-46ae-a828-6e3617caa603",
           "event_type": "print.job.completed",
-          "occurred_at": "2026-07-31T10:06:24.434Z",
-          "request_id": "e2e-nats-nats-1785492379997",
-          "job_id": "9bf1b500-d815-4fe7-b902-11225eab89b6",
+          "occurred_at": "2026-07-31T15:08:45.692Z",
+          "request_id": "e2e-nats-nats-1785510521320",
+          "job_id": "6c55068a-1fce-44f0-9f17-9baa38822cee",
           "source_system": "e2e-nats-intake",
           "print_status": "SUCCESS",
           "printer_code": "OFFICE_LASER_01",
           "runner_id": "desktop-local-worker",
           "error": null,
-          "trace_id": "trace_18bde029-3090-4ad6-abbb-f02fb2f1e177",
+          "trace_id": "trace_296e0e40-fbec-4e43-b45d-a9247ba6efdd",
+          "timeline": {
+            "accepted_at": "2026-07-31T15:08:45.247Z",
+            "queued_at": "2026-07-31T15:08:45.251Z",
+            "started_at": "2026-07-31T15:08:45.636Z",
+            "terminal_at": "2026-07-31T15:08:45.692Z"
+          },
           "delivery": {
             "transports": [
               "NATS"
@@ -281,10 +323,10 @@
       },
       "deliveries": [
         {
-          "id": "314c8789-7602-495f-9123-3a0c35a1bf45",
-          "eventId": "9083dda6-e98b-4457-94da-c0f5520a3aba",
-          "printJobId": "9bf1b500-d815-4fe7-b902-11225eab89b6",
-          "requestId": "e2e-nats-nats-1785492379997",
+          "id": "2d3d0d94-ce23-455f-ab75-8ecb83eae403",
+          "eventId": "29171f2a-8e89-46ae-a828-6e3617caa603",
+          "printJobId": "6c55068a-1fce-44f0-9f17-9baa38822cee",
+          "requestId": "e2e-nats-nats-1785510521320",
           "sourceSystem": "e2e-nats-intake",
           "transport": "NATS",
           "target": "e2e.callback.result.natsin",
@@ -293,22 +335,28 @@
           "guarantee": "BEST_EFFORT",
           "attemptCount": 1,
           "maxAttempts": 5,
-          "lastAttemptAt": "2026-07-31T10:06:24.444Z",
-          "deliveredAt": "2026-07-31T10:06:24.448Z",
+          "lastAttemptAt": "2026-07-31T15:08:45.702Z",
+          "deliveredAt": "2026-07-31T15:08:45.706Z",
           "printStatus": "SUCCESS",
           "payload": {
             "version": 1,
-            "event_id": "9083dda6-e98b-4457-94da-c0f5520a3aba",
+            "event_id": "29171f2a-8e89-46ae-a828-6e3617caa603",
             "event_type": "print.job.completed",
-            "occurred_at": "2026-07-31T10:06:24.434Z",
-            "request_id": "e2e-nats-nats-1785492379997",
-            "job_id": "9bf1b500-d815-4fe7-b902-11225eab89b6",
+            "occurred_at": "2026-07-31T15:08:45.692Z",
+            "request_id": "e2e-nats-nats-1785510521320",
+            "job_id": "6c55068a-1fce-44f0-9f17-9baa38822cee",
             "source_system": "e2e-nats-intake",
             "print_status": "SUCCESS",
             "printer_code": "OFFICE_LASER_01",
             "runner_id": "desktop-local-worker",
             "error": null,
-            "trace_id": "trace_18bde029-3090-4ad6-abbb-f02fb2f1e177",
+            "trace_id": "trace_296e0e40-fbec-4e43-b45d-a9247ba6efdd",
+            "timeline": {
+              "accepted_at": "2026-07-31T15:08:45.247Z",
+              "queued_at": "2026-07-31T15:08:45.251Z",
+              "started_at": "2026-07-31T15:08:45.636Z",
+              "terminal_at": "2026-07-31T15:08:45.692Z"
+            },
             "delivery": {
               "transports": [
                 "NATS"
@@ -316,75 +364,81 @@
               "nats_mode": "CORE"
             }
           },
-          "endpointId": "3e502507-428d-406f-a085-82fe47b79af9",
+          "endpointId": "fcf891e6-3480-45d7-b61c-d3f15443bc90",
           "endpointCode": "e2e-natsin-nats",
-          "createdAt": "2026-07-31T10:06:24.443Z",
-          "updatedAt": "2026-07-31T10:06:24.448Z"
+          "createdAt": "2026-07-31T15:08:45.700Z",
+          "updatedAt": "2026-07-31T15:08:45.707Z"
         }
       ]
     },
     {
-      "at": "2026-07-31T10:06:29.514Z",
+      "at": "2026-07-31T15:08:50.811Z",
       "cell": "NATS->print->NO-CALLBACK (backward compatibility)",
-      "requestId": "e2e-nats-nocb-1785492379997",
+      "requestId": "e2e-nats-nocb-1785510521320",
       "finalJobStatus": "SUCCESS",
       "webhookCallbacksSeen": 0,
       "natsCallbacksSeen": 0
     },
     {
-      "at": "2026-07-31T10:06:32.047Z",
+      "at": "2026-07-31T15:08:53.334Z",
       "cell": "NATS->REJECT (endpoint_code owned by another client)",
-      "requestId": "e2e-nats-badep-1785492379997",
+      "requestId": "e2e-nats-badep-1785510521320",
       "jobCreated": false,
       "dlqMessages": 1
     },
     {
-      "at": "2026-07-31T10:06:32.721Z",
+      "at": "2026-07-31T15:08:53.849Z",
       "cell": "CALLBACK-TIMING",
-      "requestId": "e2e-timing-1785492379997",
+      "requestId": "e2e-timing-1785510521320",
       "statusInCallbackPayload": "SUCCESS",
       "finalJobStatusAfterPrint": "SUCCESS",
       "callbackReportsTerminalState": true
     },
     {
-      "at": "2026-07-31T10:06:35.176Z",
+      "at": "2026-07-31T15:08:56.242Z",
       "cell": "CALLBACK-DISABLED (acceptance only)",
-      "requestId": "e2e-acceptonly-1785492379997",
+      "requestId": "e2e-acceptonly-1785510521320",
       "callbacksSeen": 1,
       "acceptanceEventType": "print.job.completed",
       "finalJobStatus": "SUCCESS",
       "resultCallbackSuppressed": true,
       "deliveries": [
         {
-          "id": "d8b289a7-9052-42ff-ab62-11edc0a55497",
-          "eventId": "1febdcd4-d677-4eae-aa70-f1dd7dafdb84",
-          "printJobId": "d68ef322-d876-46f6-bf47-f1d2a7bf5e38",
-          "requestId": "e2e-acceptonly-1785492379997",
+          "id": "e1b2909a-abf0-4e33-b907-27c77cfcc8d3",
+          "eventId": "9c276c54-15af-4e1b-8587-9c4d2afbd1b2",
+          "printJobId": "a44a2a79-4fdf-4649-9702-453fd1d05b36",
+          "requestId": "e2e-acceptonly-1785510521320",
           "sourceSystem": "e2e-e2e-accept-only",
           "transport": "HTTP",
-          "target": "http://127.0.0.1:63002/callbacks/print",
+          "target": "http://127.0.0.1:55916/callbacks/print",
           "trigger": "PRINT_RESULT",
           "deliveryStatus": "DELIVERED",
           "guarantee": "ACKNOWLEDGED",
           "attemptCount": 1,
           "maxAttempts": 5,
-          "lastAttemptAt": "2026-07-31T10:06:33.074Z",
-          "deliveredAt": "2026-07-31T10:06:33.084Z",
+          "lastAttemptAt": "2026-07-31T15:08:54.215Z",
+          "deliveredAt": "2026-07-31T15:08:54.223Z",
           "lastHttpStatus": 200,
           "printStatus": "SUCCESS",
           "payload": {
             "version": 1,
-            "event_id": "1febdcd4-d677-4eae-aa70-f1dd7dafdb84",
+            "event_id": "9c276c54-15af-4e1b-8587-9c4d2afbd1b2",
             "event_type": "print.job.completed",
-            "occurred_at": "2026-07-31T10:06:33.064Z",
-            "request_id": "e2e-acceptonly-1785492379997",
-            "job_id": "d68ef322-d876-46f6-bf47-f1d2a7bf5e38",
+            "occurred_at": "2026-07-31T15:08:54.205Z",
+            "request_id": "e2e-acceptonly-1785510521320",
+            "job_id": "a44a2a79-4fdf-4649-9702-453fd1d05b36",
             "source_system": "e2e-e2e-accept-only",
             "print_status": "SUCCESS",
             "printer_code": "OFFICE_LASER_01",
             "runner_id": "desktop-local-worker",
             "error": null,
-            "trace_id": "trace_28637fc8-aa1d-4feb-aec6-fda92e15594c",
+            "trace_id": "trace_d570a528-9a19-4273-b3d3-04a5ddbeef32",
+            "timeline": {
+              "accepted_at": "2026-07-31T15:08:53.852Z",
+              "queued_at": "2026-07-31T15:08:53.860Z",
+              "started_at": "2026-07-31T15:08:54.150Z",
+              "terminal_at": "2026-07-31T15:08:54.205Z"
+            },
             "delivery": {
               "transports": [
                 "HTTP"
@@ -392,23 +446,23 @@
               "nats_mode": null
             }
           },
-          "endpointId": "86c3b781-0e1c-49bb-a5ed-cbcc22efba89",
+          "endpointId": "c6d78ceb-0856-485c-b0d1-2f5e4312d810",
           "endpointCode": "e2e-accept-only",
-          "createdAt": "2026-07-31T10:06:33.072Z",
-          "updatedAt": "2026-07-31T10:06:33.084Z"
+          "createdAt": "2026-07-31T15:08:54.213Z",
+          "updatedAt": "2026-07-31T15:08:54.223Z"
         }
       ]
     },
     {
-      "at": "2026-07-31T10:06:35.639Z",
+      "at": "2026-07-31T15:08:56.737Z",
       "cell": "IDEMPOTENCY-http-twice",
-      "requestId": "e2e-dupe-http-1785492379997",
+      "requestId": "e2e-dupe-http-1785510521320",
       "firstStatus": 202,
       "firstBody": {
         "accepted": true,
-        "print_job_id": "d4ed0bde-614b-491f-b41f-be8f24088553",
-        "request_id": "e2e-dupe-http-1785492379997",
-        "trace_id": "trace_8beeb2d2-b089-4675-80ce-08b685fb1bae",
+        "print_job_id": "1d96b78f-ce41-4a33-84b8-10ddfcb90ae0",
+        "request_id": "e2e-dupe-http-1785510521320",
+        "trace_id": "trace_5113d15f-7542-4b78-9e96-2528be726872",
         "resolved_printer_code": "OFFICE_LASER_01",
         "resolved_template_code": "TEST_LABEL",
         "status": "QUEUED"
@@ -416,9 +470,9 @@
       "secondStatus": 200,
       "secondBody": {
         "accepted": true,
-        "print_job_id": "d4ed0bde-614b-491f-b41f-be8f24088553",
-        "request_id": "e2e-dupe-http-1785492379997",
-        "trace_id": "trace_8beeb2d2-b089-4675-80ce-08b685fb1bae",
+        "print_job_id": "1d96b78f-ce41-4a33-84b8-10ddfcb90ae0",
+        "request_id": "e2e-dupe-http-1785510521320",
+        "trace_id": "trace_5113d15f-7542-4b78-9e96-2528be726872",
         "resolved_printer_code": "OFFICE_LASER_01",
         "resolved_template_code": "TEST_LABEL",
         "status": "DUPLICATE_RETURNED",
@@ -427,31 +481,31 @@
       "sameJobId": true
     },
     {
-      "at": "2026-07-31T10:06:39.191Z",
+      "at": "2026-07-31T15:09:00.257Z",
       "cell": "IDEMPOTENCY-nats-twice",
-      "requestId": "e2e-dupe-nats-1785492379997",
+      "requestId": "e2e-dupe-nats-1785510521320",
       "jobsCreated": 1,
       "statuses": [
         "SUCCESS"
       ]
     },
     {
-      "at": "2026-07-31T10:06:40.736Z",
+      "at": "2026-07-31T15:09:01.766Z",
       "cell": "IDEMPOTENCY-cross-transport",
-      "requestId": "e2e-dupe-cross-1785492379997",
+      "requestId": "e2e-dupe-cross-1785510521320",
       "apiStatus": 200,
       "apiBody": {
-        "print_job_id": "4c363134-f01f-4aec-bc97-801fb7b5396d",
-        "request_id": "e2e-dupe-cross-1785492379997",
+        "print_job_id": "29aba6d6-e0c4-4db7-9120-8d9f06cd2fd3",
+        "request_id": "e2e-dupe-cross-1785510521320",
         "status": "DUPLICATE_RETURNED",
-        "trace_id": "trace_c3ddfce1-050f-4062-925c-9ee06652cec5",
-        "accepted_at": "2026-07-31T10:06:39.195Z",
+        "trace_id": "trace_82fe5801-8c7d-487f-9e73-ab76cc0cb14a",
+        "accepted_at": "2026-07-31T15:09:00.261Z",
         "duplicate": true,
-        "existing_job_id": "4c363134-f01f-4aec-bc97-801fb7b5396d"
+        "existing_job_id": "29aba6d6-e0c4-4db7-9120-8d9f06cd2fd3"
       }
     },
     {
-      "at": "2026-07-31T10:06:40.755Z",
+      "at": "2026-07-31T15:09:01.778Z",
       "cell": "NEGATIVE",
       "name": "missing request_id",
       "status": 400,
@@ -463,7 +517,7 @@
       }
     },
     {
-      "at": "2026-07-31T10:06:40.759Z",
+      "at": "2026-07-31T15:09:01.781Z",
       "cell": "NEGATIVE",
       "name": "unknown endpoint code",
       "status": 404,
@@ -475,7 +529,7 @@
       }
     },
     {
-      "at": "2026-07-31T10:06:40.761Z",
+      "at": "2026-07-31T15:09:01.788Z",
       "cell": "NEGATIVE",
       "name": "no route match",
       "status": 400,
@@ -487,7 +541,7 @@
       }
     },
     {
-      "at": "2026-07-31T10:06:40.768Z",
+      "at": "2026-07-31T15:09:01.792Z",
       "cell": "NEGATIVE",
       "name": "print-jobs unauthenticated",
       "status": 401,
@@ -496,7 +550,7 @@
       }
     },
     {
-      "at": "2026-07-31T10:06:40.781Z",
+      "at": "2026-07-31T15:09:01.795Z",
       "cell": "NEGATIVE",
       "name": "print-jobs bad api key",
       "status": 401,
@@ -505,7 +559,7 @@
       }
     },
     {
-      "at": "2026-07-31T10:06:40.796Z",
+      "at": "2026-07-31T15:09:01.800Z",
       "cell": "NEGATIVE",
       "name": "unknown printer",
       "status": 404,
@@ -515,7 +569,7 @@
       }
     },
     {
-      "at": "2026-07-31T10:06:40.809Z",
+      "at": "2026-07-31T15:09:01.802Z",
       "cell": "NEGATIVE",
       "name": "unknown template",
       "status": 422,
@@ -525,7 +579,7 @@
       }
     },
     {
-      "at": "2026-07-31T10:06:40.825Z",
+      "at": "2026-07-31T15:09:01.805Z",
       "cell": "NEGATIVE",
       "name": "negative copies",
       "status": 400,
@@ -535,7 +589,7 @@
       }
     },
     {
-      "at": "2026-07-31T10:06:40.842Z",
+      "at": "2026-07-31T15:09:01.809Z",
       "cell": "NEGATIVE",
       "name": "oversized payload",
       "status": 400,
@@ -547,56 +601,62 @@
       }
     },
     {
-      "at": "2026-07-31T10:06:42.853Z",
+      "at": "2026-07-31T15:09:03.812Z",
       "cell": "NEGATIVE-nats",
       "name": "wrong target_client_id",
       "dlqMessages": 1
     },
     {
-      "at": "2026-07-31T10:06:44.862Z",
+      "at": "2026-07-31T15:09:05.817Z",
       "cell": "NEGATIVE-nats",
       "name": "malformed json",
       "dlqMessages": 1
     },
     {
-      "at": "2026-07-31T10:07:00.322Z",
+      "at": "2026-07-31T15:09:21.353Z",
       "cell": "CALLBACK-FAILURE-500",
-      "requestId": "e2e-cb500-1785492379997",
+      "requestId": "e2e-cb500-1785510521320",
       "finalJobStatus": "SUCCESS",
       "deliveryAttemptsObserved": 2,
       "retried": true,
       "deliveries": [
         {
-          "id": "58ade596-8d0b-4e70-a708-bea9000a4988",
-          "eventId": "65200d63-3093-449a-95bf-974262a4fc9e",
-          "printJobId": "b6797a1e-dc14-4863-9ed1-0fe1fc91e66e",
-          "requestId": "e2e-cb500-1785492379997",
+          "id": "7c8353dc-3747-4031-801d-d5f3b8fb7316",
+          "eventId": "5a512ca3-7c13-4fd6-8de6-af2c9f25cd89",
+          "printJobId": "d5c32495-c661-471d-9955-701b45317354",
+          "requestId": "e2e-cb500-1785510521320",
           "sourceSystem": "e2e-e2e-http",
           "transport": "HTTP",
-          "target": "http://127.0.0.1:63002/callbacks/print",
+          "target": "http://127.0.0.1:55916/callbacks/print",
           "trigger": "PRINT_RESULT",
           "deliveryStatus": "RETRY_SCHEDULED",
           "attemptCount": 2,
           "maxAttempts": 5,
-          "lastAttemptAt": "2026-07-31T10:06:50.766Z",
-          "nextAttemptAt": "2026-07-31T10:07:16.396Z",
+          "lastAttemptAt": "2026-07-31T15:09:12.126Z",
+          "nextAttemptAt": "2026-07-31T15:09:41.127Z",
           "lastHttpStatus": 500,
           "lastErrorCode": "HTTP_500",
           "lastErrorMessage": "callback receiver responded 500: {\"received\":true}",
           "printStatus": "SUCCESS",
           "payload": {
             "version": 1,
-            "event_id": "65200d63-3093-449a-95bf-974262a4fc9e",
+            "event_id": "5a512ca3-7c13-4fd6-8de6-af2c9f25cd89",
             "event_type": "print.job.completed",
-            "occurred_at": "2026-07-31T10:06:45.230Z",
-            "request_id": "e2e-cb500-1785492379997",
-            "job_id": "b6797a1e-dc14-4863-9ed1-0fe1fc91e66e",
+            "occurred_at": "2026-07-31T15:09:06.221Z",
+            "request_id": "e2e-cb500-1785510521320",
+            "job_id": "d5c32495-c661-471d-9955-701b45317354",
             "source_system": "e2e-e2e-http",
             "print_status": "SUCCESS",
             "printer_code": "OFFICE_LASER_01",
             "runner_id": "desktop-local-worker",
             "error": null,
-            "trace_id": "trace_44c03cee-050a-4727-ac23-56be0a1f7988",
+            "trace_id": "trace_e12c97b2-d4e0-45a8-9717-776651736dd6",
+            "timeline": {
+              "accepted_at": "2026-07-31T15:09:05.826Z",
+              "queued_at": "2026-07-31T15:09:05.837Z",
+              "started_at": "2026-07-31T15:09:06.167Z",
+              "terminal_at": "2026-07-31T15:09:06.221Z"
+            },
             "delivery": {
               "transports": [
                 "HTTP"
@@ -604,80 +664,86 @@
               "nats_mode": null
             }
           },
-          "endpointId": "85f07de2-1b0e-4ea5-be65-4bc88ec99b94",
+          "endpointId": "b0e87bca-4a67-4f73-a2d6-40f9de2a925a",
           "endpointCode": "e2e-http",
-          "createdAt": "2026-07-31T10:06:45.239Z",
-          "updatedAt": "2026-07-31T10:06:50.775Z"
+          "createdAt": "2026-07-31T15:09:06.226Z",
+          "updatedAt": "2026-07-31T15:09:12.140Z"
         }
       ],
       "attemptLogFilteredByJob": [
         {
-          "endpointId": "85f07de2-1b0e-4ea5-be65-4bc88ec99b94",
+          "endpointId": "b0e87bca-4a67-4f73-a2d6-40f9de2a925a",
           "endpointCode": "e2e-http",
           "transport": "HTTP",
-          "target": "http://127.0.0.1:63002/callbacks/print",
+          "target": "http://127.0.0.1:55916/callbacks/print",
           "outcome": "failed",
           "httpStatus": 500,
           "errorMessage": "attempt 2: callback receiver responded 500: {\"received\":true}",
-          "durationMs": 9,
-          "requestId": "e2e-cb500-1785492379997",
-          "printJobId": "b6797a1e-dc14-4863-9ed1-0fe1fc91e66e",
+          "durationMs": 14,
+          "requestId": "e2e-cb500-1785510521320",
+          "printJobId": "d5c32495-c661-471d-9955-701b45317354",
           "trigger": "live",
-          "id": "18d5ef3c-db73-424a-bac7-47b9a53e9371",
-          "occurredAt": "2026-07-31T10:06:50.775Z"
+          "id": "5094e9c9-817c-4834-93a2-58c7b399278e",
+          "occurredAt": "2026-07-31T15:09:12.140Z"
         },
         {
-          "endpointId": "85f07de2-1b0e-4ea5-be65-4bc88ec99b94",
+          "endpointId": "b0e87bca-4a67-4f73-a2d6-40f9de2a925a",
           "endpointCode": "e2e-http",
           "transport": "HTTP",
-          "target": "http://127.0.0.1:63002/callbacks/print",
+          "target": "http://127.0.0.1:55916/callbacks/print",
           "outcome": "failed",
           "httpStatus": 500,
           "errorMessage": "attempt 1: callback receiver responded 500: {\"received\":true}",
-          "durationMs": 9,
-          "requestId": "e2e-cb500-1785492379997",
-          "printJobId": "b6797a1e-dc14-4863-9ed1-0fe1fc91e66e",
+          "durationMs": 13,
+          "requestId": "e2e-cb500-1785510521320",
+          "printJobId": "d5c32495-c661-471d-9955-701b45317354",
           "trigger": "live",
-          "id": "13e4e027-3634-4207-9b01-c740f83921c3",
-          "occurredAt": "2026-07-31T10:06:45.250Z"
+          "id": "e16610d2-246f-4a18-ae6a-98dd3bae84c2",
+          "occurredAt": "2026-07-31T15:09:06.240Z"
         }
       ]
     },
     {
-      "at": "2026-07-31T10:07:45.354Z",
+      "at": "2026-07-31T15:10:06.438Z",
       "cell": "CALLBACK-RECOVERY-AFTER-500",
-      "requestId": "e2e-cb500-1785492379997",
+      "requestId": "e2e-cb500-1785510521320",
       "deliveries": [
         {
-          "id": "58ade596-8d0b-4e70-a708-bea9000a4988",
-          "eventId": "65200d63-3093-449a-95bf-974262a4fc9e",
-          "printJobId": "b6797a1e-dc14-4863-9ed1-0fe1fc91e66e",
-          "requestId": "e2e-cb500-1785492379997",
+          "id": "7c8353dc-3747-4031-801d-d5f3b8fb7316",
+          "eventId": "5a512ca3-7c13-4fd6-8de6-af2c9f25cd89",
+          "printJobId": "d5c32495-c661-471d-9955-701b45317354",
+          "requestId": "e2e-cb500-1785510521320",
           "sourceSystem": "e2e-e2e-http",
           "transport": "HTTP",
-          "target": "http://127.0.0.1:63002/callbacks/print",
+          "target": "http://127.0.0.1:55916/callbacks/print",
           "trigger": "PRINT_RESULT",
           "deliveryStatus": "DELIVERED",
           "guarantee": "ACKNOWLEDGED",
           "attemptCount": 3,
           "maxAttempts": 5,
-          "lastAttemptAt": "2026-07-31T10:07:20.809Z",
-          "deliveredAt": "2026-07-31T10:07:20.818Z",
+          "lastAttemptAt": "2026-07-31T15:09:42.131Z",
+          "deliveredAt": "2026-07-31T15:09:42.152Z",
           "lastHttpStatus": 200,
           "printStatus": "SUCCESS",
           "payload": {
             "version": 1,
-            "event_id": "65200d63-3093-449a-95bf-974262a4fc9e",
+            "event_id": "5a512ca3-7c13-4fd6-8de6-af2c9f25cd89",
             "event_type": "print.job.completed",
-            "occurred_at": "2026-07-31T10:06:45.230Z",
-            "request_id": "e2e-cb500-1785492379997",
-            "job_id": "b6797a1e-dc14-4863-9ed1-0fe1fc91e66e",
+            "occurred_at": "2026-07-31T15:09:06.221Z",
+            "request_id": "e2e-cb500-1785510521320",
+            "job_id": "d5c32495-c661-471d-9955-701b45317354",
             "source_system": "e2e-e2e-http",
             "print_status": "SUCCESS",
             "printer_code": "OFFICE_LASER_01",
             "runner_id": "desktop-local-worker",
             "error": null,
-            "trace_id": "trace_44c03cee-050a-4727-ac23-56be0a1f7988",
+            "trace_id": "trace_e12c97b2-d4e0-45a8-9717-776651736dd6",
+            "timeline": {
+              "accepted_at": "2026-07-31T15:09:05.826Z",
+              "queued_at": "2026-07-31T15:09:05.837Z",
+              "started_at": "2026-07-31T15:09:06.167Z",
+              "terminal_at": "2026-07-31T15:09:06.221Z"
+            },
             "delivery": {
               "transports": [
                 "HTTP"
@@ -685,19 +751,19 @@
               "nats_mode": null
             }
           },
-          "endpointId": "85f07de2-1b0e-4ea5-be65-4bc88ec99b94",
+          "endpointId": "b0e87bca-4a67-4f73-a2d6-40f9de2a925a",
           "endpointCode": "e2e-http",
-          "createdAt": "2026-07-31T10:06:45.239Z",
-          "updatedAt": "2026-07-31T10:07:20.818Z"
+          "createdAt": "2026-07-31T15:09:06.226Z",
+          "updatedAt": "2026-07-31T15:09:42.152Z"
         }
       ],
       "totalWebhookAttempts": 3
     },
     {
-      "at": "2026-07-31T10:07:45.696Z",
+      "at": "2026-07-31T15:10:06.980Z",
       "cell": "TRACE-AUDIT",
-      "requestId": "e2e-trace-1785492379997",
-      "jobId": "8fd8bae2-2571-46f7-88bd-352afb3e2220",
+      "requestId": "e2e-trace-1785510521320",
+      "jobId": "115b74fe-b5f5-40a3-bb05-7d2f6eac255f",
       "finalStatus": "SUCCESS",
       "traceStatus": 200,
       "traceSteps": [
@@ -713,36 +779,42 @@
   ],
   "webhookCaptures": [
     {
-      "at": "2026-07-31T10:06:20.395Z",
+      "at": "2026-07-31T15:08:41.697Z",
       "method": "POST",
       "url": "/callbacks/print",
       "headers": {
-        "host": "127.0.0.1:63002",
+        "host": "127.0.0.1:55916",
         "connection": "keep-alive",
         "content-type": "application/json",
-        "x-printops-event-id": "58d790f4-1afd-4988-b7d3-d3c0eaf8b3d7",
-        "x-printops-delivery-id": "2db02506-96f1-4663-b168-3e058ff93fa4",
+        "x-printops-event-id": "0f92022e-c108-416c-8894-d0d8ca6613cf",
+        "x-printops-delivery-id": "53702947-8d52-4a5d-ab31-fb70598bd20c",
         "x-printops-event-type": "print.job.completed",
         "accept": "*/*",
         "accept-language": "*",
         "sec-fetch-mode": "cors",
         "user-agent": "node",
         "accept-encoding": "gzip, deflate",
-        "content-length": "477"
+        "content-length": "651"
       },
       "body": {
         "version": 1,
-        "event_id": "58d790f4-1afd-4988-b7d3-d3c0eaf8b3d7",
+        "event_id": "0f92022e-c108-416c-8894-d0d8ca6613cf",
         "event_type": "print.job.completed",
-        "occurred_at": "2026-07-31T10:06:20.375Z",
-        "request_id": "e2e-api-webhook-1785492379997",
-        "job_id": "9f251cc9-c30f-46b6-ba50-cc0f76e29542",
+        "occurred_at": "2026-07-31T15:08:41.683Z",
+        "request_id": "e2e-api-webhook-1785510521320",
+        "job_id": "80405b29-aabc-4c54-9738-7c29cef613fa",
         "source_system": "e2e-e2e-http",
         "print_status": "SUCCESS",
         "printer_code": "OFFICE_LASER_01",
         "runner_id": "desktop-local-worker",
         "error": null,
-        "trace_id": "trace_46e79cf6-639a-4996-bc58-eb8beb46db15",
+        "trace_id": "trace_806f2667-2565-474a-8415-20b0e186ca5c",
+        "timeline": {
+          "accepted_at": "2026-07-31T15:08:41.325Z",
+          "queued_at": "2026-07-31T15:08:41.328Z",
+          "started_at": "2026-07-31T15:08:41.630Z",
+          "terminal_at": "2026-07-31T15:08:41.683Z"
+        },
         "delivery": {
           "transports": [
             "HTTP"
@@ -753,36 +825,42 @@
       "respondedStatus": 200
     },
     {
-      "at": "2026-07-31T10:06:21.406Z",
+      "at": "2026-07-31T15:08:42.702Z",
       "method": "POST",
       "url": "/callbacks/print",
       "headers": {
-        "host": "127.0.0.1:63002",
+        "host": "127.0.0.1:55916",
         "connection": "keep-alive",
         "content-type": "application/json",
-        "x-printops-event-id": "11407c23-fab2-424f-9c44-52491f53a29a",
-        "x-printops-delivery-id": "921519be-1d67-4383-89a5-b8e3592208a7",
+        "x-printops-event-id": "e0372d9b-f6df-4415-84ce-28daf5053386",
+        "x-printops-delivery-id": "735fb054-4e60-4776-8dc4-f2e132d2b0b2",
         "x-printops-event-type": "print.job.completed",
         "accept": "*/*",
         "accept-language": "*",
         "sec-fetch-mode": "cors",
         "user-agent": "node",
         "accept-encoding": "gzip, deflate",
-        "content-length": "481"
+        "content-length": "655"
       },
       "body": {
         "version": 1,
-        "event_id": "11407c23-fab2-424f-9c44-52491f53a29a",
+        "event_id": "e0372d9b-f6df-4415-84ce-28daf5053386",
         "event_type": "print.job.completed",
-        "occurred_at": "2026-07-31T10:06:21.388Z",
-        "request_id": "e2e-nats-webhook-1785492379997",
-        "job_id": "0dfcc9a8-a011-48ee-bd82-4705e7fb6731",
+        "occurred_at": "2026-07-31T15:08:42.687Z",
+        "request_id": "e2e-nats-webhook-1785510521320",
+        "job_id": "13eb94e3-5b91-4d2b-bcc9-e9bac9bfddc8",
         "source_system": "e2e-nats-intake",
         "print_status": "SUCCESS",
         "printer_code": "OFFICE_LASER_01",
         "runner_id": "desktop-local-worker",
         "error": null,
-        "trace_id": "trace_a78aa051-62ae-4fcb-bdc4-6b87dfec14b5",
+        "trace_id": "trace_2fe1ca61-e958-4761-a2be-3fc18d860dbf",
+        "timeline": {
+          "accepted_at": "2026-07-31T15:08:42.224Z",
+          "queued_at": "2026-07-31T15:08:42.228Z",
+          "started_at": "2026-07-31T15:08:42.631Z",
+          "terminal_at": "2026-07-31T15:08:42.687Z"
+        },
         "delivery": {
           "transports": [
             "HTTP"
@@ -793,36 +871,42 @@
       "respondedStatus": 200
     },
     {
-      "at": "2026-07-31T10:06:32.578Z",
+      "at": "2026-07-31T15:08:53.724Z",
       "method": "POST",
       "url": "/callbacks/print",
       "headers": {
-        "host": "127.0.0.1:63002",
+        "host": "127.0.0.1:55916",
         "connection": "keep-alive",
         "content-type": "application/json",
-        "x-printops-event-id": "57e226ac-af96-49f1-a6a7-f78eb0ffad22",
-        "x-printops-delivery-id": "20063779-c9a1-4ab2-bca2-ad37d3113b7a",
+        "x-printops-event-id": "457947d9-c634-48af-93a2-5cf5d8c3214c",
+        "x-printops-delivery-id": "90b1faeb-9580-4a9d-aec3-a2c78ad61372",
         "x-printops-event-type": "print.job.completed",
         "accept": "*/*",
         "accept-language": "*",
         "sec-fetch-mode": "cors",
         "user-agent": "node",
         "accept-encoding": "gzip, deflate",
-        "content-length": "472"
+        "content-length": "646"
       },
       "body": {
         "version": 1,
-        "event_id": "57e226ac-af96-49f1-a6a7-f78eb0ffad22",
+        "event_id": "457947d9-c634-48af-93a2-5cf5d8c3214c",
         "event_type": "print.job.completed",
-        "occurred_at": "2026-07-31T10:06:32.557Z",
-        "request_id": "e2e-timing-1785492379997",
-        "job_id": "ef65e5cc-173c-49ca-9ba2-a35a065c43e7",
+        "occurred_at": "2026-07-31T15:08:53.704Z",
+        "request_id": "e2e-timing-1785510521320",
+        "job_id": "3ca32c66-aa08-45f2-9826-0354e110b0b5",
         "source_system": "e2e-e2e-http",
         "print_status": "SUCCESS",
         "printer_code": "OFFICE_LASER_01",
         "runner_id": "desktop-local-worker",
         "error": null,
-        "trace_id": "trace_0a50f21d-913c-401e-8c79-3caff015cb94",
+        "trace_id": "trace_c4803e85-6563-4c80-95dd-a85d5c8f5804",
+        "timeline": {
+          "accepted_at": "2026-07-31T15:08:53.338Z",
+          "queued_at": "2026-07-31T15:08:53.345Z",
+          "started_at": "2026-07-31T15:08:53.650Z",
+          "terminal_at": "2026-07-31T15:08:53.704Z"
+        },
         "delivery": {
           "transports": [
             "HTTP"
@@ -833,36 +917,42 @@
       "respondedStatus": 200
     },
     {
-      "at": "2026-07-31T10:06:33.084Z",
+      "at": "2026-07-31T15:08:54.223Z",
       "method": "POST",
       "url": "/callbacks/print",
       "headers": {
-        "host": "127.0.0.1:63002",
+        "host": "127.0.0.1:55916",
         "connection": "keep-alive",
         "content-type": "application/json",
-        "x-printops-event-id": "1febdcd4-d677-4eae-aa70-f1dd7dafdb84",
-        "x-printops-delivery-id": "d8b289a7-9052-42ff-ab62-11edc0a55497",
+        "x-printops-event-id": "9c276c54-15af-4e1b-8587-9c4d2afbd1b2",
+        "x-printops-delivery-id": "e1b2909a-abf0-4e33-b907-27c77cfcc8d3",
         "x-printops-event-type": "print.job.completed",
         "accept": "*/*",
         "accept-language": "*",
         "sec-fetch-mode": "cors",
         "user-agent": "node",
         "accept-encoding": "gzip, deflate",
-        "content-length": "483"
+        "content-length": "657"
       },
       "body": {
         "version": 1,
-        "event_id": "1febdcd4-d677-4eae-aa70-f1dd7dafdb84",
+        "event_id": "9c276c54-15af-4e1b-8587-9c4d2afbd1b2",
         "event_type": "print.job.completed",
-        "occurred_at": "2026-07-31T10:06:33.064Z",
-        "request_id": "e2e-acceptonly-1785492379997",
-        "job_id": "d68ef322-d876-46f6-bf47-f1d2a7bf5e38",
+        "occurred_at": "2026-07-31T15:08:54.205Z",
+        "request_id": "e2e-acceptonly-1785510521320",
+        "job_id": "a44a2a79-4fdf-4649-9702-453fd1d05b36",
         "source_system": "e2e-e2e-accept-only",
         "print_status": "SUCCESS",
         "printer_code": "OFFICE_LASER_01",
         "runner_id": "desktop-local-worker",
         "error": null,
-        "trace_id": "trace_28637fc8-aa1d-4feb-aec6-fda92e15594c",
+        "trace_id": "trace_d570a528-9a19-4273-b3d3-04a5ddbeef32",
+        "timeline": {
+          "accepted_at": "2026-07-31T15:08:53.852Z",
+          "queued_at": "2026-07-31T15:08:53.860Z",
+          "started_at": "2026-07-31T15:08:54.150Z",
+          "terminal_at": "2026-07-31T15:08:54.205Z"
+        },
         "delivery": {
           "transports": [
             "HTTP"
@@ -873,51 +963,11 @@
       "respondedStatus": 200
     },
     {
-      "at": "2026-07-31T10:06:35.635Z",
+      "at": "2026-07-31T15:08:56.737Z",
       "method": "POST",
       "url": "/callbacks/print",
       "headers": {
-        "host": "127.0.0.1:63002",
-        "connection": "keep-alive",
-        "content-type": "application/json",
-        "x-printops-event-id": "abc432ba-aa4c-4fca-b866-bdcfbce8251d",
-        "x-printops-delivery-id": "581014c2-9d3f-4a0a-b4bf-3f2d35940694",
-        "x-printops-event-type": "print.job.completed",
-        "accept": "*/*",
-        "accept-language": "*",
-        "sec-fetch-mode": "cors",
-        "user-agent": "node",
-        "accept-encoding": "gzip, deflate",
-        "content-length": "475"
-      },
-      "body": {
-        "version": 1,
-        "event_id": "abc432ba-aa4c-4fca-b866-bdcfbce8251d",
-        "event_type": "print.job.completed",
-        "occurred_at": "2026-07-31T10:06:35.606Z",
-        "request_id": "e2e-dupe-http-1785492379997",
-        "job_id": "d4ed0bde-614b-491f-b41f-be8f24088553",
-        "source_system": "e2e-e2e-http",
-        "print_status": "SUCCESS",
-        "printer_code": "OFFICE_LASER_01",
-        "runner_id": "desktop-local-worker",
-        "error": null,
-        "trace_id": "trace_8beeb2d2-b089-4675-80ce-08b685fb1bae",
-        "delivery": {
-          "transports": [
-            "HTTP"
-          ],
-          "nats_mode": null
-        }
-      },
-      "respondedStatus": 200
-    },
-    {
-      "at": "2026-07-31T10:06:35.641Z",
-      "method": "POST",
-      "url": "/callbacks/print",
-      "headers": {
-        "host": "127.0.0.1:63002",
+        "host": "127.0.0.1:55916",
         "connection": "keep-alive",
         "content-type": "application/json",
         "accept": "*/*",
@@ -929,125 +979,51 @@
       },
       "body": {
         "event_type": "print.job.accepted",
-        "request_id": "e2e-dupe-http-1785492379997",
-        "print_job_id": "d4ed0bde-614b-491f-b41f-be8f24088553",
+        "request_id": "e2e-dupe-http-1785510521320",
+        "print_job_id": "1d96b78f-ce41-4a33-84b8-10ddfcb90ae0",
         "status": "DUPLICATE_RETURNED",
-        "trace_id": "trace_8beeb2d2-b089-4675-80ce-08b685fb1bae",
+        "trace_id": "trace_5113d15f-7542-4b78-9e96-2528be726872",
         "duplicate": true
       },
       "respondedStatus": 200
     },
     {
-      "at": "2026-07-31T10:06:45.249Z",
+      "at": "2026-07-31T15:08:56.783Z",
       "method": "POST",
       "url": "/callbacks/print",
       "headers": {
-        "host": "127.0.0.1:63002",
+        "host": "127.0.0.1:55916",
         "connection": "keep-alive",
         "content-type": "application/json",
-        "x-printops-event-id": "65200d63-3093-449a-95bf-974262a4fc9e",
-        "x-printops-delivery-id": "58ade596-8d0b-4e70-a708-bea9000a4988",
+        "x-printops-event-id": "b9c7076f-7226-45f6-b922-554d2c8726d8",
+        "x-printops-delivery-id": "786f8960-61d3-4bc2-a1a4-f669b3f0515f",
         "x-printops-event-type": "print.job.completed",
         "accept": "*/*",
         "accept-language": "*",
         "sec-fetch-mode": "cors",
         "user-agent": "node",
         "accept-encoding": "gzip, deflate",
-        "content-length": "471"
+        "content-length": "649"
       },
       "body": {
         "version": 1,
-        "event_id": "65200d63-3093-449a-95bf-974262a4fc9e",
+        "event_id": "b9c7076f-7226-45f6-b922-554d2c8726d8",
         "event_type": "print.job.completed",
-        "occurred_at": "2026-07-31T10:06:45.230Z",
-        "request_id": "e2e-cb500-1785492379997",
-        "job_id": "b6797a1e-dc14-4863-9ed1-0fe1fc91e66e",
+        "occurred_at": "2026-07-31T15:08:56.772Z",
+        "request_id": "e2e-dupe-http-1785510521320",
+        "job_id": "1d96b78f-ce41-4a33-84b8-10ddfcb90ae0",
         "source_system": "e2e-e2e-http",
         "print_status": "SUCCESS",
         "printer_code": "OFFICE_LASER_01",
         "runner_id": "desktop-local-worker",
         "error": null,
-        "trace_id": "trace_44c03cee-050a-4727-ac23-56be0a1f7988",
-        "delivery": {
-          "transports": [
-            "HTTP"
-          ],
-          "nats_mode": null
-        }
-      },
-      "respondedStatus": 500
-    },
-    {
-      "at": "2026-07-31T10:06:50.774Z",
-      "method": "POST",
-      "url": "/callbacks/print",
-      "headers": {
-        "host": "127.0.0.1:63002",
-        "connection": "keep-alive",
-        "content-type": "application/json",
-        "x-printops-event-id": "65200d63-3093-449a-95bf-974262a4fc9e",
-        "x-printops-delivery-id": "58ade596-8d0b-4e70-a708-bea9000a4988",
-        "x-printops-event-type": "print.job.completed",
-        "accept": "*/*",
-        "accept-language": "*",
-        "sec-fetch-mode": "cors",
-        "user-agent": "node",
-        "accept-encoding": "gzip, deflate",
-        "content-length": "471"
-      },
-      "body": {
-        "version": 1,
-        "event_id": "65200d63-3093-449a-95bf-974262a4fc9e",
-        "event_type": "print.job.completed",
-        "occurred_at": "2026-07-31T10:06:45.230Z",
-        "request_id": "e2e-cb500-1785492379997",
-        "job_id": "b6797a1e-dc14-4863-9ed1-0fe1fc91e66e",
-        "source_system": "e2e-e2e-http",
-        "print_status": "SUCCESS",
-        "printer_code": "OFFICE_LASER_01",
-        "runner_id": "desktop-local-worker",
-        "error": null,
-        "trace_id": "trace_44c03cee-050a-4727-ac23-56be0a1f7988",
-        "delivery": {
-          "transports": [
-            "HTTP"
-          ],
-          "nats_mode": null
-        }
-      },
-      "respondedStatus": 500
-    },
-    {
-      "at": "2026-07-31T10:07:20.817Z",
-      "method": "POST",
-      "url": "/callbacks/print",
-      "headers": {
-        "host": "127.0.0.1:63002",
-        "connection": "keep-alive",
-        "content-type": "application/json",
-        "x-printops-event-id": "65200d63-3093-449a-95bf-974262a4fc9e",
-        "x-printops-delivery-id": "58ade596-8d0b-4e70-a708-bea9000a4988",
-        "x-printops-event-type": "print.job.completed",
-        "accept": "*/*",
-        "accept-language": "*",
-        "sec-fetch-mode": "cors",
-        "user-agent": "node",
-        "accept-encoding": "gzip, deflate",
-        "content-length": "471"
-      },
-      "body": {
-        "version": 1,
-        "event_id": "65200d63-3093-449a-95bf-974262a4fc9e",
-        "event_type": "print.job.completed",
-        "occurred_at": "2026-07-31T10:06:45.230Z",
-        "request_id": "e2e-cb500-1785492379997",
-        "job_id": "b6797a1e-dc14-4863-9ed1-0fe1fc91e66e",
-        "source_system": "e2e-e2e-http",
-        "print_status": "SUCCESS",
-        "printer_code": "OFFICE_LASER_01",
-        "runner_id": "desktop-local-worker",
-        "error": null,
-        "trace_id": "trace_44c03cee-050a-4727-ac23-56be0a1f7988",
+        "trace_id": "trace_5113d15f-7542-4b78-9e96-2528be726872",
+        "timeline": {
+          "accepted_at": "2026-07-31T15:08:56.247Z",
+          "queued_at": "2026-07-31T15:08:56.255Z",
+          "started_at": "2026-07-31T15:08:56.670Z",
+          "terminal_at": "2026-07-31T15:08:56.772Z"
+        },
         "delivery": {
           "transports": [
             "HTTP"
@@ -1058,36 +1034,180 @@
       "respondedStatus": 200
     },
     {
-      "at": "2026-07-31T10:07:45.571Z",
+      "at": "2026-07-31T15:09:06.238Z",
       "method": "POST",
       "url": "/callbacks/print",
       "headers": {
-        "host": "127.0.0.1:63002",
+        "host": "127.0.0.1:55916",
         "connection": "keep-alive",
         "content-type": "application/json",
-        "x-printops-event-id": "a6d55c00-ca9a-4afd-915b-3ae69e594c28",
-        "x-printops-delivery-id": "1b26106a-8273-49b8-bb8a-1b404c236944",
+        "x-printops-event-id": "5a512ca3-7c13-4fd6-8de6-af2c9f25cd89",
+        "x-printops-delivery-id": "7c8353dc-3747-4031-801d-d5f3b8fb7316",
         "x-printops-event-type": "print.job.completed",
         "accept": "*/*",
         "accept-language": "*",
         "sec-fetch-mode": "cors",
         "user-agent": "node",
         "accept-encoding": "gzip, deflate",
-        "content-length": "471"
+        "content-length": "645"
       },
       "body": {
         "version": 1,
-        "event_id": "a6d55c00-ca9a-4afd-915b-3ae69e594c28",
+        "event_id": "5a512ca3-7c13-4fd6-8de6-af2c9f25cd89",
         "event_type": "print.job.completed",
-        "occurred_at": "2026-07-31T10:07:45.553Z",
-        "request_id": "e2e-trace-1785492379997",
-        "job_id": "8fd8bae2-2571-46f7-88bd-352afb3e2220",
+        "occurred_at": "2026-07-31T15:09:06.221Z",
+        "request_id": "e2e-cb500-1785510521320",
+        "job_id": "d5c32495-c661-471d-9955-701b45317354",
         "source_system": "e2e-e2e-http",
         "print_status": "SUCCESS",
         "printer_code": "OFFICE_LASER_01",
         "runner_id": "desktop-local-worker",
         "error": null,
-        "trace_id": "trace_88b43b4b-f40a-4d5b-8226-972ee420815b",
+        "trace_id": "trace_e12c97b2-d4e0-45a8-9717-776651736dd6",
+        "timeline": {
+          "accepted_at": "2026-07-31T15:09:05.826Z",
+          "queued_at": "2026-07-31T15:09:05.837Z",
+          "started_at": "2026-07-31T15:09:06.167Z",
+          "terminal_at": "2026-07-31T15:09:06.221Z"
+        },
+        "delivery": {
+          "transports": [
+            "HTTP"
+          ],
+          "nats_mode": null
+        }
+      },
+      "respondedStatus": 500
+    },
+    {
+      "at": "2026-07-31T15:09:12.139Z",
+      "method": "POST",
+      "url": "/callbacks/print",
+      "headers": {
+        "host": "127.0.0.1:55916",
+        "connection": "keep-alive",
+        "content-type": "application/json",
+        "x-printops-event-id": "5a512ca3-7c13-4fd6-8de6-af2c9f25cd89",
+        "x-printops-delivery-id": "7c8353dc-3747-4031-801d-d5f3b8fb7316",
+        "x-printops-event-type": "print.job.completed",
+        "accept": "*/*",
+        "accept-language": "*",
+        "sec-fetch-mode": "cors",
+        "user-agent": "node",
+        "accept-encoding": "gzip, deflate",
+        "content-length": "645"
+      },
+      "body": {
+        "version": 1,
+        "event_id": "5a512ca3-7c13-4fd6-8de6-af2c9f25cd89",
+        "event_type": "print.job.completed",
+        "occurred_at": "2026-07-31T15:09:06.221Z",
+        "request_id": "e2e-cb500-1785510521320",
+        "job_id": "d5c32495-c661-471d-9955-701b45317354",
+        "source_system": "e2e-e2e-http",
+        "print_status": "SUCCESS",
+        "printer_code": "OFFICE_LASER_01",
+        "runner_id": "desktop-local-worker",
+        "error": null,
+        "trace_id": "trace_e12c97b2-d4e0-45a8-9717-776651736dd6",
+        "timeline": {
+          "accepted_at": "2026-07-31T15:09:05.826Z",
+          "queued_at": "2026-07-31T15:09:05.837Z",
+          "started_at": "2026-07-31T15:09:06.167Z",
+          "terminal_at": "2026-07-31T15:09:06.221Z"
+        },
+        "delivery": {
+          "transports": [
+            "HTTP"
+          ],
+          "nats_mode": null
+        }
+      },
+      "respondedStatus": 500
+    },
+    {
+      "at": "2026-07-31T15:09:42.151Z",
+      "method": "POST",
+      "url": "/callbacks/print",
+      "headers": {
+        "host": "127.0.0.1:55916",
+        "connection": "keep-alive",
+        "content-type": "application/json",
+        "x-printops-event-id": "5a512ca3-7c13-4fd6-8de6-af2c9f25cd89",
+        "x-printops-delivery-id": "7c8353dc-3747-4031-801d-d5f3b8fb7316",
+        "x-printops-event-type": "print.job.completed",
+        "accept": "*/*",
+        "accept-language": "*",
+        "sec-fetch-mode": "cors",
+        "user-agent": "node",
+        "accept-encoding": "gzip, deflate",
+        "content-length": "645"
+      },
+      "body": {
+        "version": 1,
+        "event_id": "5a512ca3-7c13-4fd6-8de6-af2c9f25cd89",
+        "event_type": "print.job.completed",
+        "occurred_at": "2026-07-31T15:09:06.221Z",
+        "request_id": "e2e-cb500-1785510521320",
+        "job_id": "d5c32495-c661-471d-9955-701b45317354",
+        "source_system": "e2e-e2e-http",
+        "print_status": "SUCCESS",
+        "printer_code": "OFFICE_LASER_01",
+        "runner_id": "desktop-local-worker",
+        "error": null,
+        "trace_id": "trace_e12c97b2-d4e0-45a8-9717-776651736dd6",
+        "timeline": {
+          "accepted_at": "2026-07-31T15:09:05.826Z",
+          "queued_at": "2026-07-31T15:09:05.837Z",
+          "started_at": "2026-07-31T15:09:06.167Z",
+          "terminal_at": "2026-07-31T15:09:06.221Z"
+        },
+        "delivery": {
+          "transports": [
+            "HTTP"
+          ],
+          "nats_mode": null
+        }
+      },
+      "respondedStatus": 200
+    },
+    {
+      "at": "2026-07-31T15:10:06.882Z",
+      "method": "POST",
+      "url": "/callbacks/print",
+      "headers": {
+        "host": "127.0.0.1:55916",
+        "connection": "keep-alive",
+        "content-type": "application/json",
+        "x-printops-event-id": "1fd31f97-5e1a-4232-9e16-50f150a6e488",
+        "x-printops-delivery-id": "ad2ac9de-aeba-4e41-a54a-9a2ece4eb1a1",
+        "x-printops-event-type": "print.job.completed",
+        "accept": "*/*",
+        "accept-language": "*",
+        "sec-fetch-mode": "cors",
+        "user-agent": "node",
+        "accept-encoding": "gzip, deflate",
+        "content-length": "645"
+      },
+      "body": {
+        "version": 1,
+        "event_id": "1fd31f97-5e1a-4232-9e16-50f150a6e488",
+        "event_type": "print.job.completed",
+        "occurred_at": "2026-07-31T15:10:06.870Z",
+        "request_id": "e2e-trace-1785510521320",
+        "job_id": "115b74fe-b5f5-40a3-bb05-7d2f6eac255f",
+        "source_system": "e2e-e2e-http",
+        "print_status": "SUCCESS",
+        "printer_code": "OFFICE_LASER_01",
+        "runner_id": "desktop-local-worker",
+        "error": null,
+        "trace_id": "trace_41384bd2-3646-4e37-81b3-da44594d1857",
+        "timeline": {
+          "accepted_at": "2026-07-31T15:10:06.443Z",
+          "queued_at": "2026-07-31T15:10:06.452Z",
+          "started_at": "2026-07-31T15:10:06.817Z",
+          "terminal_at": "2026-07-31T15:10:06.870Z"
+        },
         "delivery": {
           "transports": [
             "HTTP"
@@ -1100,21 +1220,27 @@
   ],
   "natsCaptures": [
     {
-      "at": "2026-07-31T10:06:20.907Z",
+      "at": "2026-07-31T15:08:42.196Z",
       "subject": "e2e.callback.result.e2e-nats",
       "body": {
         "version": 1,
-        "event_id": "522eb8e0-4e14-46ab-80ac-0a5ce394ad1d",
+        "event_id": "e3977f78-22c6-48f7-a2a0-701e88b22e1e",
         "event_type": "print.job.completed",
-        "occurred_at": "2026-07-31T10:06:20.887Z",
-        "request_id": "e2e-api-nats-1785492379997",
-        "job_id": "5bce5209-96ef-43cb-af56-691f3dbcd964",
+        "occurred_at": "2026-07-31T15:08:42.186Z",
+        "request_id": "e2e-api-nats-1785510521320",
+        "job_id": "38f77a3f-bbdf-4361-bab1-53d6f3b69341",
         "source_system": "e2e-e2e-nats",
         "print_status": "SUCCESS",
         "printer_code": "OFFICE_LASER_01",
         "runner_id": "desktop-local-worker",
         "error": null,
-        "trace_id": "trace_696e17fe-ff15-43f7-a3ef-83686ae42543",
+        "trace_id": "trace_9ae1e957-8576-4a82-a9ec-c819e4dec39c",
+        "timeline": {
+          "accepted_at": "2026-07-31T15:08:41.721Z",
+          "queued_at": "2026-07-31T15:08:41.724Z",
+          "started_at": "2026-07-31T15:08:42.130Z",
+          "terminal_at": "2026-07-31T15:08:42.186Z"
+        },
         "delivery": {
           "transports": [
             "NATS"
@@ -1124,21 +1250,27 @@
       }
     },
     {
-      "at": "2026-07-31T10:06:24.450Z",
+      "at": "2026-07-31T15:08:45.711Z",
       "subject": "e2e.callback.result.natsin",
       "body": {
         "version": 1,
-        "event_id": "9083dda6-e98b-4457-94da-c0f5520a3aba",
+        "event_id": "29171f2a-8e89-46ae-a828-6e3617caa603",
         "event_type": "print.job.completed",
-        "occurred_at": "2026-07-31T10:06:24.434Z",
-        "request_id": "e2e-nats-nats-1785492379997",
-        "job_id": "9bf1b500-d815-4fe7-b902-11225eab89b6",
+        "occurred_at": "2026-07-31T15:08:45.692Z",
+        "request_id": "e2e-nats-nats-1785510521320",
+        "job_id": "6c55068a-1fce-44f0-9f17-9baa38822cee",
         "source_system": "e2e-nats-intake",
         "print_status": "SUCCESS",
         "printer_code": "OFFICE_LASER_01",
         "runner_id": "desktop-local-worker",
         "error": null,
-        "trace_id": "trace_18bde029-3090-4ad6-abbb-f02fb2f1e177",
+        "trace_id": "trace_296e0e40-fbec-4e43-b45d-a9247ba6efdd",
+        "timeline": {
+          "accepted_at": "2026-07-31T15:08:45.247Z",
+          "queued_at": "2026-07-31T15:08:45.251Z",
+          "started_at": "2026-07-31T15:08:45.636Z",
+          "terminal_at": "2026-07-31T15:08:45.692Z"
+        },
         "delivery": {
           "transports": [
             "NATS"
@@ -1150,11 +1282,11 @@
   ],
   "dlqCaptures": [
     {
-      "at": "2026-07-31T10:06:29.519Z",
+      "at": "2026-07-31T15:08:50.823Z",
       "subject": "medisync.dlq.medisync.print.intake.e2eclient",
       "body": {
         "target_client_id": "e2eclient",
-        "request_id": "e2e-nats-badep-1785492379997",
+        "request_id": "e2e-nats-badep-1785510521320",
         "source_system": "e2e-nats-intake",
         "code_template": "TEST_LABEL",
         "code_profile": "ignored-when-printer-code-set",
@@ -1170,11 +1302,11 @@
       }
     },
     {
-      "at": "2026-07-31T10:06:40.846Z",
+      "at": "2026-07-31T15:09:01.813Z",
       "subject": "medisync.dlq.medisync.print.intake.e2eclient",
       "body": {
         "target_client_id": "someone-else",
-        "request_id": "n9-1785492379997",
+        "request_id": "n9-1785510521320",
         "source_system": "e2e",
         "printer_code": "OFFICE_LASER_01",
         "code_template": "TEST_LABEL",
@@ -1183,7 +1315,7 @@
       }
     },
     {
-      "at": "2026-07-31T10:06:42.856Z",
+      "at": "2026-07-31T15:09:03.817Z",
       "subject": "medisync.dlq.medisync.print.intake.e2eclient",
       "body": "this is not json"
     }

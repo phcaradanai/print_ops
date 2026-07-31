@@ -1,7 +1,8 @@
 import type { DisplayUnit } from './types.js';
+import { dotsToMillimeters, millimetersToDots } from '@printerops/shared';
 
 export function toPixels(mm: number, dpi: number): number {
-  return (mm * dpi) / 25.4;
+  return millimetersToDots(mm, dpi);
 }
 
 export function displayValue(mm: number, unit: DisplayUnit, dpi: number): string | number {
@@ -12,6 +13,6 @@ export function displayValue(mm: number, unit: DisplayUnit, dpi: number): string
 
 export function toMillimeters(value: number, fromUnit: DisplayUnit, dpi: number): number {
   if (fromUnit === 'cm') return value * 10;
-  if (fromUnit === 'px') return (value * 25.4) / dpi;
+  if (fromUnit === 'px') return dotsToMillimeters(value, dpi);
   return value;
 }

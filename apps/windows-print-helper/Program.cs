@@ -249,6 +249,10 @@ namespace PrintOps.HtmlPrint
                 settings.ShouldPrintHeaderAndFooter = false;
                 settings.PageWidth = MmToInches(request.PaperWidthMm);
                 settings.PageHeight = MmToInches(request.PaperHeightMm);
+                // Never inherit a driver/browser "fit to printable area"
+                // shrink factor. CSS mm is already the final physical unit and
+                // the printable box has already been calculated above.
+                settings.ScaleFactor = 1.0;
                 settings.MarginTop = MmToInches(request.MarginTopMm);
                 settings.MarginRight = MmToInches(request.MarginRightMm);
                 settings.MarginBottom = MmToInches(request.MarginBottomMm);

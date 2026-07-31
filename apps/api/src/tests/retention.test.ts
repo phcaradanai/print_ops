@@ -58,12 +58,13 @@ describe('pruneOldRecords — age-based cutoff', () => {
   it('deletes terminal jobs (and their traces) older than the retention window, keeps recent and in-flight ones', () => {
     insertJob('old-success', 'SUCCESS', OLD_DATE);
     insertTrace('old-success-trace', 'old-success');
+    insertJob('old-timeout', 'TIMEOUT', OLD_DATE);
     insertJob('old-queued', 'QUEUED', OLD_DATE); // in-flight — must survive regardless of age
     insertJob('recent-success', 'SUCCESS', RECENT_DATE);
 
     const result = pruneOldRecords(getDb(), { retentionDays: 7, maxRows: 0 });
 
-    expect(result.jobsDeleted).toBe(1);
+    expect(result.jobsDeleted).toBe(2);
     expect(result.tracesDeleted).toBe(1);
 
     const db = getDb();

@@ -40,3 +40,15 @@ export function renderBarcodeSvg(data: string, kind: BarcodeKind, symbology?: Ba
     return undefined;
   }
 }
+
+/** Four-module quiet zone in millimetres, outside the configured QR matrix. */
+export function qrQuietZoneMm(data: string, symbolSizeMm: number): number | undefined {
+  if (!data || !Number.isFinite(symbolSizeMm) || symbolSizeMm <= 0) return undefined;
+  try {
+    const symbol = bwipjs.raw({ bcid: 'qrcode', text: data })[0];
+    if (!symbol || !('pixs' in symbol) || symbol.pixx <= 0 || symbol.pixx !== symbol.pixy) return undefined;
+    return (symbolSizeMm * 4) / symbol.pixx;
+  } catch {
+    return undefined;
+  }
+}

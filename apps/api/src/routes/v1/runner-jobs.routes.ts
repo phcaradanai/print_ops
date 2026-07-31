@@ -53,7 +53,9 @@ export async function v1RunnerJobRoutes(
     // Fetch a handful, not one: with two runners and a full queue, losing the
     // claim race on the single candidate used to waste a whole poll interval.
     // Try each until a claim sticks (LOW-7).
-    const candidates = await deps.jobs.findAll({ status: 'QUEUED' as JobStatus, limit: 5 });
+    const candidates = orderQueuedCandidates(
+      await deps.jobs.findAll({ status: 'QUEUED' as JobStatus }),
+    ).slice(0, 5);
     if (candidates.length === 0) {
       return reply.status(200).send({ job: null });
     }
@@ -314,6 +316,19 @@ export async function v1RunnerJobRoutes(
     });
 
     return reply.status(200).send({ ok: true, status });
+  });
+}
+
+/** Priority first, FIFO within a priority. Repository list views are newest
+ * first for operators, which is the opposite of safe queue dispatch order. */
+export function orderQueuedCandidates(jobs: Job[]): Job[] {
+  return [...jobs].sort((left, right) => {
+    if (left.priority !== right.priority) return right.priority - left.priority;
+    const leftQueued = left.queuedAt ?? left.createdAt;
+    const rightQueued = right.queuedAt ?? right.createdAt;
+    const queuedDelta = leftQueued.getTime() - rightQueued.getTime();
+    if (queuedDelta !== 0) return queuedDelta;
+    return left.id.localeCompare(right.id);
   });
 }
 
