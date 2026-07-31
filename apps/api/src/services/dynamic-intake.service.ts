@@ -250,13 +250,10 @@ export class DynamicIntakeService {
   ): void {
     if (!this.callbacks) return;
     if ((endpoint.callbackTransport ?? 'NONE') === 'NONE') return;
-    // `callbackOnPrintResult` means "notify me when the print RESULT is known,
-    // INSTEAD of at acceptance" — so suppress the acceptance notification here
-    // and let ResultCallbackDispatcher send the terminal one. A duplicate is
-    // exempt: it never creates a new print, so it would otherwise produce no
-    // callback at all and leave the caller waiting on a result that can never
-    // come.
-    if (endpoint.callbackOnPrintResult && result.duplicate !== true) return;
+    // Every newly accepted command receives one FINAL outcome from the terminal
+    // dispatcher, regardless of the legacy callbackOnPrintResult toggle.
+    // Duplicates create no new print, so acceptance is their final outcome.
+    if (result.duplicate !== true) return;
     void this.callbacks
       .send({ endpoint, intakePayload, result: result as unknown as Record<string, unknown> })
       .catch((err: unknown) => {

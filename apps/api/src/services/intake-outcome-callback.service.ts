@@ -1,6 +1,7 @@
 import type { WebhookEndpointRepositoryPort } from '@printerops/domain';
 import { generateId } from '@printerops/shared';
 import type { WebhookCallbackService } from './webhook-callback.service.js';
+import { findDefaultCallbackEndpoint } from './callback-intent.service.js';
 
 export interface IntakeRejectedOutcome {
   endpointCode?: string;
@@ -26,9 +27,11 @@ export class IntakeOutcomeCallbackService {
   ) {}
 
   async notifyRejected(outcome: IntakeRejectedOutcome): Promise<boolean> {
+    if (!outcome.sourceSystem) return false;
     const endpointCode = outcome.endpointCode?.trim();
-    if (!endpointCode || !outcome.sourceSystem) return false;
-    const endpoint = await this.endpoints.findByCode(endpointCode);
+    const endpoint = endpointCode
+      ? await this.endpoints.findByCode(endpointCode)
+      : await findDefaultCallbackEndpoint(this.endpoints, outcome.sourceSystem);
     if (!endpoint || !endpoint.enabled || endpoint.sourceSystem !== outcome.sourceSystem) {
       return false;
     }

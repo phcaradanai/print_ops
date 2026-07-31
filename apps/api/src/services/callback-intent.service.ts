@@ -43,15 +43,6 @@ export function buildCallbackIntent(
   if (transport === 'NONE') {
     return { ...base, enabled: false, transports: [], disabledReason: 'endpoint callbackTransport is NONE' };
   }
-  if (!endpoint.callbackOnPrintResult) {
-    return {
-      ...base,
-      enabled: false,
-      transports: [],
-      disabledReason: 'endpoint has callbackOnPrintResult disabled',
-    };
-  }
-
   const transports: CallbackTransport[] = [];
   const intent: JobCallbackIntent = { ...base, enabled: false, transports };
   intent.callbackSigningSecretRef = endpoint.callbackSigningSecretRef;
@@ -112,8 +103,6 @@ export async function resolveEndpointCallbackIntent(
   sourceSystem: string,
   intakePayload: Record<string, unknown>,
 ): Promise<JobCallbackIntent | undefined> {
-  const code = endpointCode?.trim();
-  if (!code) return undefined;
   if (!endpoints) {
     throw new AppError(
       'CALLBACK_ENDPOINT_UNAVAILABLE',
@@ -122,7 +111,11 @@ export async function resolveEndpointCallbackIntent(
     );
   }
 
-  const endpoint = await endpoints.findByCode(code);
+  const code = endpointCode?.trim();
+  const endpoint = code
+    ? await endpoints.findByCode(code)
+    : await findDefaultCallbackEndpoint(endpoints, sourceSystem);
+  if (!endpoint && !code) return undefined;
   if (!endpoint || !endpoint.enabled) {
     throw new AppError(
       'CALLBACK_ENDPOINT_NOT_FOUND',
@@ -146,6 +139,30 @@ export async function resolveEndpointCallbackIntent(
     }
     throw err;
   }
+}
+
+/**
+ * Publishers do not need to repeat endpoint_code when their source system has
+ * one unambiguous configured callback destination. Multiple matches require an
+ * explicit endpoint_code so routing never depends on repository ordering.
+ */
+export async function findDefaultCallbackEndpoint(
+  endpoints: WebhookEndpointRepositoryPort,
+  sourceSystem: string,
+): Promise<WebhookEndpoint | undefined> {
+  const matches = (await endpoints.findAll()).filter((endpoint) =>
+    endpoint.enabled &&
+    endpoint.sourceSystem === sourceSystem &&
+    (endpoint.callbackTransport ?? 'NONE') !== 'NONE'
+  );
+  if (matches.length > 1) {
+    throw new AppError(
+      'CALLBACK_ENDPOINT_AMBIGUOUS',
+      `Multiple callback endpoints are configured for source_system '${sourceSystem}'; endpoint_code is required`,
+      422,
+    );
+  }
+  return matches[0];
 }
 
 /** Convenience wrapper: never throws, folding an SSRF rejection into a disabled

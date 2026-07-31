@@ -29,7 +29,6 @@ describe('IntakeOutcomeCallbackService', () => {
     );
 
     expect(await service.notifyRejected({
-      endpointCode: 'hook',
       sourceSystem: 'medisync',
       requestId: 'REQ-1',
       intakeTransport: 'NATS',

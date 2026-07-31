@@ -274,7 +274,7 @@ describe('callback intent persistence', () => {
     expect(intent?.transports).toEqual(['HTTP']);
   });
 
-  it('records a disabled intent with a reason when callbackOnPrintResult is off', async () => {
+  it('still sends the final result when the legacy callbackOnPrintResult flag is off', async () => {
     await makeEndpoint(h, {
       endpointCode: 'off', callbackTransport: 'HTTP',
       callbackUrl: 'https://receiver.example/r', callbackOnPrintResult: false,
@@ -285,12 +285,11 @@ describe('callback intent persistence', () => {
     );
     const job = await h.jobRepo.findById(accepted.print_job_id);
     const intent = readCallbackIntent(job?.metadata);
-    expect(intent?.enabled).toBe(false);
-    expect(intent?.disabledReason).toMatch(/callbackOnPrintResult/);
+    expect(intent?.enabled).toBe(true);
 
     await printAndSettle(h, accepted.print_job_id);
-    expect(h.httpCalls).toHaveLength(0);
-    expect(await h.deliveries.findAll({ printJobId: accepted.print_job_id })).toHaveLength(0);
+    expect(h.httpCalls).toHaveLength(1);
+    expect(await h.deliveries.findAll({ printJobId: accepted.print_job_id })).toHaveLength(1);
   });
 
   it('rejects an endpoint_code belonging to another source system, before printing', async () => {
@@ -336,6 +335,28 @@ describe('callback intent persistence', () => {
     expect(readCallbackIntent(job?.metadata)).toBeUndefined();
     await printAndSettle(h, accepted.print_job_id);
     expect(h.httpCalls).toHaveLength(0);
+  });
+
+  it('automatically uses the single callback endpoint for the source system', async () => {
+    await makeEndpoint(h, {
+      endpointCode: 'source-default',
+      callbackTransport: 'NATS',
+      callbackNatsSubject: 'results.default',
+    });
+    const accepted = await h.dynamicPrint.submit(
+      {
+        request_id: 'AUTO-ENDPOINT',
+        source_system: SOURCE,
+        code_template: TEMPLATE,
+        code_profile: PROFILE,
+        payload: { label: 'A' },
+      },
+      'actor',
+    );
+    await printAndSettle(h, accepted.print_job_id);
+    expect(h.natsCalls).toEqual([
+      expect.objectContaining({ subject: 'results.default' }),
+    ]);
   });
 });
 
@@ -825,7 +846,7 @@ describe('webhook intake path', () => {
     expect(h.httpCalls[0]!.body['print_status']).toBe('SUCCESS');
   });
 
-  it('still sends the acceptance notification when callbackOnPrintResult is off', async () => {
+  it('sends one final result when the legacy callbackOnPrintResult flag is off', async () => {
     const sent: Array<Record<string, unknown>> = [];
     h.dynamicIntake.setCallbackService({
       send: async (ctx: { result: Record<string, unknown> }) => { sent.push(ctx.result); return { transport: 'HTTP' }; },
@@ -839,10 +860,10 @@ describe('webhook intake path', () => {
       headers: {},
       body: { request_id: 'WI-2', type: 'test_label', label: 'A' },
     });
-    await vi.waitFor(() => expect(sent).toHaveLength(1));
-    expect(sent[0]!['status']).toBe('QUEUED');
+    expect(sent).toHaveLength(0);
 
     await printAndSettle(h, res.print_job_id);
-    expect(h.httpCalls).toHaveLength(0);
+    expect(h.httpCalls).toHaveLength(1);
+    expect(h.httpCalls[0]!.body['print_status']).toBe('SUCCESS');
   });
 });
