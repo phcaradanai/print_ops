@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/errors.js';
-import { apiFetch, apiFetchVoid, login, onUnauthorized } from '../api/client.js';
+import { apiFetch, apiFetchVoid, getBootstrapState, login, onUnauthorized } from '../api/client.js';
 import { clearRecentErrors, logError, recentErrors } from '../lib/logError.js';
 
 const realFetch = globalThis.fetch;
@@ -65,6 +65,20 @@ describe('apiFetch', () => {
     expect(logged).toHaveLength(1);
     expect(logged[0]?.scope).toBe('apiFetch');
     expect(logged[0]?.technical).toContain('INTERNAL_ERROR');
+  });
+});
+
+describe('owner bootstrap discovery', () => {
+  it('preserves masked legacy-owner hints for the migration screen', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse(200, {
+      state: 'MIGRATION_REQUIRED',
+      ownerEmailHints: ['s*******@printerops.local'],
+    })) as typeof fetch;
+
+    await expect(getBootstrapState()).resolves.toEqual({
+      state: 'MIGRATION_REQUIRED',
+      ownerEmailHints: ['s*******@printerops.local'],
+    });
   });
 });
 

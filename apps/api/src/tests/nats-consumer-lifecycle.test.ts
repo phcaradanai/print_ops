@@ -2,6 +2,7 @@ import { AckPolicy, DeliverPolicy, ReplayPolicy, nanos } from 'nats';
 import { describe, expect, it, vi } from 'vitest';
 import {
   ConsumerConfigConflictError,
+  assertPrintIntakeConsumerCompatible,
   ensurePrintIntakeConsumer,
 } from '../infra/nats/nats-connection-manager.js';
 import type { PrintIntakeConfig } from '../infra/nats/print-intake.js';
@@ -84,8 +85,30 @@ describe('active NATS durable-consumer lifecycle', () => {
     });
 
     await expect(ensurePrintIntakeConsumer(fixture.jsm as never, config))
-      .rejects.toBeInstanceOf(ConsumerConfigConflictError);
+      .rejects.toMatchObject({
+        code: 'CONSUMER_CONFIG_CONFLICT',
+        message: expect.stringContaining(
+          'filter_subject: expected "medisync.print.intake.station-a", actual "medisync.print.intake.station-b"',
+        ),
+      });
     expect(fixture.jsm.consumers.update).not.toHaveBeenCalled();
+  });
+
+  it('reports only unsafe compatibility differences with an operator-safe remedy', () => {
+    expect(() => assertPrintIntakeConsumerCompatible(consumerInfo({
+      filter_subject: 'medisync.printer.station-a',
+      max_deliver: 2,
+    }) as never, config)).toThrowError(
+      expect.objectContaining({
+        code: 'CONSUMER_CONFIG_CONFLICT',
+        differences: [{
+          field: 'filter_subject',
+          expected: config.subject,
+          actual: 'medisync.printer.station-a',
+        }],
+        message: expect.stringContaining('use a new client ID'),
+      }),
+    );
   });
 
   it('recovers a cross-process create race by re-reading and reusing the winner', async () => {

@@ -69,7 +69,15 @@ export interface ConsumerConfigDifference { field: string; expected: unknown; ac
 export class ConsumerConfigConflictError extends Error {
   readonly code = 'CONSUMER_CONFIG_CONFLICT';
   constructor(readonly stream: string, readonly durable: string, readonly differences: ConsumerConfigDifference[]) {
-    super('Consumer configuration conflicts for ' + stream + '/' + durable); this.name = 'ConsumerConfigConflictError';
+    const detail = differences
+      .map(({ field, expected, actual }) => `${field}: expected ${JSON.stringify(expected)}, actual ${JSON.stringify(actual)}`)
+      .join('; ');
+    super(
+      `Consumer configuration conflicts for ${stream}/${durable}: ${detail}. `
+      + 'Align the configured subject prefix with the existing durable, or use a new client ID. '
+      + 'PrinterOps will not delete or retarget an existing consumer automatically.',
+    );
+    this.name = 'ConsumerConfigConflictError';
   }
 }
 export type ConsumerAction = 'CREATED' | 'REUSED' | 'UPDATED';
@@ -100,6 +108,12 @@ function consumerDifferences(info: ConsumerInfo, cfg: PrintIntakeConfig): Consum
   const normalized = { durable_name: actual.durable_name ?? actual.name ?? cfg.durable, filter_subject: actual.filter_subject ?? '', ack_policy: actual.ack_policy ?? consumerDefaults.ack_policy, deliver_policy: actual.deliver_policy ?? consumerDefaults.deliver_policy, replay_policy: actual.replay_policy ?? consumerDefaults.replay_policy, max_deliver: actual.max_deliver ?? -1, ack_wait: actual.ack_wait === undefined ? consumerDefaults.ack_wait : Number(actual.ack_wait), deliver_subject: actual.deliver_subject ?? '', deliver_group: actual.deliver_group ?? '' };
   return (Object.keys(expected) as Array<keyof typeof expected>).filter((field) => normalized[field] !== expected[field]).map((field) => ({ field, expected: expected[field], actual: normalized[field] }));
 }
+export function assertPrintIntakeConsumerCompatible(info: ConsumerInfo, cfg: PrintIntakeConfig): ConsumerConfigDifference[] {
+  const differences = consumerDifferences(info, cfg);
+  const incompatible = differences.filter(({ field }) => ['durable_name', 'filter_subject', 'ack_policy', 'deliver_policy', 'replay_policy', 'deliver_subject', 'deliver_group'].includes(field));
+  if (incompatible.length > 0) throw new ConsumerConfigConflictError(cfg.stream, cfg.durable, incompatible);
+  return differences;
+}
 export async function ensurePrintIntakeConsumer(jsm: JetStreamManager, cfg: PrintIntakeConfig): Promise<{ consumer: Consumer; action: ConsumerAction }> {
   let existing: ConsumerInfo | undefined;
   try { existing = await jsm.consumers.info(cfg.stream, cfg.durable); } catch (error) { if (!isMissingConsumer(error)) throw error; }
@@ -112,9 +126,7 @@ export async function ensurePrintIntakeConsumer(jsm: JetStreamManager, cfg: Prin
       existing = await jsm.consumers.info(cfg.stream, cfg.durable);
     }
   }
-  const differences = consumerDifferences(existing!, cfg);
-  const incompatible = differences.filter(({ field }) => ['durable_name', 'filter_subject', 'ack_policy', 'deliver_policy', 'replay_policy', 'deliver_subject', 'deliver_group'].includes(field));
-  if (incompatible.length > 0) throw new ConsumerConfigConflictError(cfg.stream, cfg.durable, differences);
+  const differences = assertPrintIntakeConsumerCompatible(existing!, cfg);
   const mutable = differences.filter(({ field }) => ['max_deliver', 'ack_wait'].includes(field));
   if (mutable.length > 0) {
     await jsm.consumers.update(cfg.stream, cfg.durable, { max_deliver: cfg.maxDeliver, ack_wait: consumerDefaults.ack_wait });
@@ -224,9 +236,19 @@ export class NatsConnectionManager {
       }
       if (streamReady) {
         try {
-          await jsm.consumers.info(this.cfg.stream, this.cfg.durable);
+          const info = await jsm.consumers.info(this.cfg.stream, this.cfg.durable);
+          assertPrintIntakeConsumerCompatible(info, this.cfg);
         } catch (error) {
-          if (!isMissingConsumer(error)) throw error;
+          if (!isMissingConsumer(error)) {
+            const details = errorDetails(error);
+            return {
+              ok: false,
+              stage: 'CONSUMER_COMPATIBILITY',
+              code: details.code ?? 'CONSUMER_CONFIG_CONFLICT',
+              message: details.message,
+              durationMs: Date.now() - started,
+            };
+          }
         }
       }
       return { ok: true, stage: 'READY', message: 'NATS and JetStream are ready', durationMs: Date.now() - started };

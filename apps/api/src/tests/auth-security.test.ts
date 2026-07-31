@@ -38,7 +38,7 @@ describe('owner bootstrap', () => {
   it('creates exactly one owner and disables bootstrap', async () => {
     const { app, users } = await authApp();
     const before = await app.inject({ method: 'GET', url: '/auth/bootstrap' });
-    expect(before.json()).toEqual({ state: 'REQUIRED_NEW' });
+    expect(before.json()).toEqual({ state: 'REQUIRED_NEW', ownerEmailHints: [] });
 
     const payload = {
       name: 'Pilot Owner',
@@ -52,7 +52,7 @@ describe('owner bootstrap', () => {
     ]);
     expect([first.statusCode, second.statusCode].sort()).toEqual([200, 409]);
     expect((await users.findAll()).filter((user) => user.role === 'OWNER')).toHaveLength(1);
-    expect((await app.inject({ method: 'GET', url: '/auth/bootstrap' })).json()).toEqual({ state: 'READY' });
+    expect((await app.inject({ method: 'GET', url: '/auth/bootstrap' })).json()).toEqual({ state: 'READY', ownerEmailHints: [] });
   });
 
   it('requires the existing owner email when migrating a passwordless database', async () => {
@@ -67,6 +67,10 @@ describe('owner bootstrap', () => {
       updatedAt: new Date(),
     });
     const { app } = await authApp(users);
+    expect((await app.inject({ method: 'GET', url: '/auth/bootstrap' })).json()).toEqual({
+      state: 'MIGRATION_REQUIRED',
+      ownerEmailHints: ['l*****@example.test'],
+    });
     const response = await app.inject({
       method: 'POST',
       url: '/auth/bootstrap',
@@ -78,6 +82,7 @@ describe('owner bootstrap', () => {
       },
     });
     expect(response.statusCode).toBe(409);
+    expect(response.json().message ?? response.json().error).toMatch(/l\*+@example\.test/);
     expect(await users.findByEmail('other@example.test')).toBeUndefined();
   });
 

@@ -9,13 +9,22 @@ export async function authRoutes(
 ): Promise<void> {
   let bootstrapInFlight: Promise<unknown> | undefined;
 
+  const maskEmail = (email: string) => {
+    const [local = '', domain = ''] = email.split('@');
+    return `${local.slice(0, 1)}${'*'.repeat(Math.max(3, local.length - 1))}@${domain}`;
+  };
+
   const bootstrapState = async () => {
     const users = await deps.users.findAll();
     const owner = users.find((user) => user.role === 'OWNER' && user.isActive && user.passwordHash?.startsWith('scrypt$'));
-    return owner ? 'READY' as const : users.length > 0 ? 'MIGRATION_REQUIRED' as const : 'REQUIRED_NEW' as const;
+    const state = owner ? 'READY' as const : users.length > 0 ? 'MIGRATION_REQUIRED' as const : 'REQUIRED_NEW' as const;
+    const ownerEmailHints = state === 'MIGRATION_REQUIRED'
+      ? users.filter((user) => user.role === 'OWNER' && user.isActive && !user.passwordHash).map((user) => maskEmail(user.email))
+      : [];
+    return { state, ownerEmailHints };
   };
 
-  app.get('/auth/bootstrap', async () => ({ state: await bootstrapState() }));
+  app.get('/auth/bootstrap', async () => bootstrapState());
 
   app.post('/auth/bootstrap', async (req, reply) => {
     if (bootstrapInFlight) {
@@ -32,11 +41,12 @@ export async function authRoutes(
     if (!validation.valid) return reply.status(400).send({ error: validation.error });
 
     const operation = (async () => {
-      if (await bootstrapState() === 'READY') throw Object.assign(new Error('Owner setup has already completed'), { statusCode: 409 });
+      if ((await bootstrapState()).state === 'READY') throw Object.assign(new Error('Owner setup has already completed'), { statusCode: 409 });
       const users = await deps.users.findAll();
       const existingLegacyOwners = users.filter((user) => user.role === 'OWNER' && !user.passwordHash);
       if (existingLegacyOwners.length > 0 && !existingLegacyOwners.some((owner) => owner.email.toLowerCase() === email)) {
-        throw Object.assign(new Error('Use the email address of an existing owner to migrate this installation'), { statusCode: 409 });
+        const hints = existingLegacyOwners.map((owner) => maskEmail(owner.email)).join(', ');
+        throw Object.assign(new Error(`Use the email address of an existing owner to migrate this installation (${hints})`), { statusCode: 409 });
       }
       const legacyOwner = users.find((user) => user.role === 'OWNER' && user.email.toLowerCase() === email);
       const passwordHash = await hashPassword(password);

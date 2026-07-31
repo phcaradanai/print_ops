@@ -279,11 +279,13 @@ export async function login(email: string, password: string): Promise<SessionUse
 }
 
 export type BootstrapState = 'READY' | 'REQUIRED_NEW' | 'MIGRATION_REQUIRED';
+export interface BootstrapInfo { state: BootstrapState; ownerEmailHints: string[] }
 
-export async function getBootstrapState(): Promise<BootstrapState> {
+export async function getBootstrapState(): Promise<BootstrapInfo> {
   const res = await fetch(apiBase() + '/auth/bootstrap');
   if (!res.ok) throw await apiErrorFromResponse(res, '/auth/bootstrap');
-  return ((await res.json()) as { state: BootstrapState }).state;
+  const data = (await res.json()) as { state: BootstrapState; ownerEmailHints?: string[] };
+  return { state: data.state, ownerEmailHints: data.ownerEmailHints ?? [] };
 }
 
 export async function bootstrapOwner(input: {
