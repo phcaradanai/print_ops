@@ -7,7 +7,8 @@ export { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '..
 export { StatusBadge, type StatusBadgeSize } from '../StatusBadge.js';
 export { Input, Select, Textarea, Checkbox, Chip, Label, type ChipProps, type ControlSize } from './inputs.js';
 export { Stack, Inline, Grid, Spacer, Divider, type Align, type Space, type StackProps, type GridProps } from './layout.js';
-export { Panel, Card, Fieldset, Toolbar, type PanelProps, type CardProps, type FieldsetProps } from './surfaces.js';
+export { Panel, Fieldset, Toolbar, type PanelProps, type FieldsetProps } from './surfaces.js';
+export { Card, type CardProps, type CardPadding, type CardTone } from './Card.js';
 export { TabList, Tab, TabPanel, type TabProps } from './tabs.js';
 export {
   DataTable,

@@ -11,6 +11,7 @@ import {
   Alert,
   Badge,
   Button,
+  Card,
   Chip,
   DataCell,
   DataHead,
@@ -875,7 +876,7 @@ export default function Templates() {
           <Text weight="semibold">{editingId ? form.templateCode : t('page.templates.newTemplate')}</Text>
         </div>
         <div className="tpl-layout">
-        <section className="tpl-card tpl-editor" ref={formRef}>
+        <Card className="tpl-editor" ref={formRef}>
           <Heading level={2}>
             {editingId ? t('page.templates.editTemplate') : t('page.templates.createTemplate')}
           </Heading>
@@ -1024,9 +1025,9 @@ export default function Templates() {
               </Button>
             </Inline>
           </div>
-        </section>
+        </Card>
 
-        <section className="tpl-card tpl-preview" ref={previewRef}>
+        <Card className="tpl-preview" ref={previewRef}>
           <div className="tpl-preview-header">
             <Heading level={2}>{t('page.templates.previewTitle')}</Heading>
             <div className="tpl-preview-controls">
@@ -1077,11 +1078,11 @@ export default function Templates() {
               <div><dt>{t('page.templates.updatedAt')}</dt><dd>{formatDate(selected?.updatedAt, locale)}</dd></div>
             </dl>
           </div>
-        </section>
+        </Card>
         </div>
       </> : (
 
-      <section className="tpl-card tpl-list" ref={libraryRef}>
+      <Card className="tpl-list" ref={libraryRef}>
         <div className="tpl-list-header">
           <Heading level={2}>{t('page.templates.listTitle')}</Heading>
           <div className="tpl-list-tools">
@@ -1259,7 +1260,7 @@ export default function Templates() {
           </Select>
           </div>
         </>}
-      </section>
+      </Card>
       )}
 
       {/* Three more hand-rolled `ds-modal` overlays, each re-implementing the

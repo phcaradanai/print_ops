@@ -48,24 +48,18 @@
 .ui-spacer--3xl { height: var(--spacing-3xl); }
 .ui-divider { width: 100%; height: 1px; margin: 0; border: 0; background: var(--neutral-border); }
 
-.ui-panel,
-.ui-card {
+.ui-panel {
   min-width: 0;
   border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-lg);
   background: var(--neutral-surface);
   color: var(--neutral-text);
 }
-.ui-panel--subtle,
-.ui-card--subtle { background: var(--neutral-subtle); }
-.ui-panel--pad-none,
-.ui-card--pad-none { padding: 0; }
-.ui-panel--pad-md,
-.ui-card--pad-md { padding: var(--spacing-md); }
-.ui-panel--pad-lg,
-.ui-card--pad-lg { padding: var(--spacing-lg); }
-.ui-panel--pad-xl,
-.ui-card--pad-xl { padding: var(--spacing-xl); }
+.ui-panel--subtle { background: var(--neutral-subtle); }
+.ui-panel--pad-none { padding: 0; }
+.ui-panel--pad-md { padding: var(--spacing-md); }
+.ui-panel--pad-lg { padding: var(--spacing-lg); }
+.ui-panel--pad-xl { padding: var(--spacing-xl); }
 .ui-panel__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--spacing-lg); margin-bottom: var(--spacing-lg); }
 .ui-panel__heading { min-width: 0; }
 .ui-panel__title { margin: 0; color: var(--neutral-deep); font-size: var(--font-subheading-size); line-height: 1.4; }

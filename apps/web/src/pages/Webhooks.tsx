@@ -11,6 +11,7 @@ import {
   Alert,
   Badge,
   Button,
+  Card,
   Checkbox,
   Chip,
   CodeBlock,
@@ -799,7 +800,7 @@ export default function Webhooks() {
       )}
 
       {/* Main Card 1: Form Section */}
-      <div className="wh-card" ref={formCardRef}>
+      <Card ref={formCardRef}>
         <div className="wh-card-title">
           <span>{editingId ? t('page.webhooks.editingTitle').replace('{code}', form.endpointCode) : t('page.webhooks.createCardTitle')}</span>
           {editingId && (
@@ -1062,10 +1063,10 @@ export default function Webhooks() {
             </Panel>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Main Card 2: Endpoints Table List */}
-      <div className="wh-card">
+      <Card>
         <div className="wh-table-header">
           <Inline gap="lg">
             <Heading level={2}>{t('page.webhooks.allEndpoints')}</Heading>
@@ -1267,12 +1268,12 @@ export default function Webhooks() {
             </Select>
           </Inline>
         </div>
-      </div>
+      </Card>
 
       {/* Main Card 3: Callback delivery log — real success/failure history,
           not just "we called send()". Covers both live traffic and every
           "ทดสอบ callback" fire above. */}
-      <div className="wh-card">
+      <Card>
         <div className="wh-table-header">
           <Inline gap="lg">
             <Heading level={2}>{t('page.webhooks.callbackLogTitle')}</Heading>
@@ -1337,7 +1338,7 @@ export default function Webhooks() {
               )}
             </tbody>
         </DataTable>
-      </div>
+      </Card>
 
       {/* All three overlays were hand-rolled `ds-modal` divs: no focus trap, no
           Escape, no focus restoration, and a backdrop that closed on any click

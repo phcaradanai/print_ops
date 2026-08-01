@@ -3,7 +3,7 @@ import { apiFetch, getCurrentUser } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useLocale } from '../i18n/index.js';
-import { Button, Input } from './ui/index.js';
+import { Button, Input, Card } from './ui/index.js';
 
 type ServiceAccount = {
   id: string;
@@ -80,7 +80,7 @@ export function ServiceAccountSettings() {
   }
 
   return (
-    <section className="settings-section" aria-labelledby="settings-service-accounts-heading">
+    <Card className="settings-section" aria-labelledby="settings-service-accounts-heading">
       <h2 id="settings-service-accounts-heading">{t('settings.serviceAccounts.title')}</h2>
       <p className="settings-hint">{t('settings.serviceAccounts.description')}</p>
       {issuedKey && (
@@ -128,6 +128,6 @@ export function ServiceAccountSettings() {
           )}
         </div>
       ))}
-    </section>
+    </Card>
   );
 }

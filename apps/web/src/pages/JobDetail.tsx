@@ -41,6 +41,7 @@ import {
   Stack,
   StatusBadge,
   Text,
+  Card,
   type BadgeTone,
 } from '../components/ui/index.js';
 
@@ -863,14 +864,14 @@ export default function JobDetail() {
                   {trace.steps.map((step, i) => (
                     <li className={`job-trace__step job-trace__step--${STEP_TONE[step.status] ?? 'unknown'}`} key={i}>
                       <div className="job-trace__marker" aria-hidden="true" />
-                      <div className="job-trace__card">
+                      <Card className="job-trace__card" tone="subtle">
                         <div className="job-trace__name">{step.stepName}</div>
                         <div className="job-trace__meta">
                           {step.durationMs != null ? `${step.durationMs}ms` : '—'} · {step.status}
                         </div>
                         {step.outputSummary && <div className="job-trace__summary">{step.outputSummary}</div>}
                         {step.error && <div className="job-trace__error">{step.error}</div>}
-                      </div>
+                      </Card>
                     </li>
                   ))}
                 </ol>

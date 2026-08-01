@@ -47,20 +47,6 @@ export function Panel({
   );
 }
 
-export interface CardProps extends HTMLAttributes<HTMLElement> {
-  children: ReactNode;
-  tone?: SurfaceTone;
-  padding?: SurfacePadding;
-}
-
-export function Card({ tone = 'default', padding = 'lg', className = '', children, ...props }: CardProps) {
-  return (
-    <article {...props} className={`ui-card ui-card--${tone} ui-card--pad-${padding}${className ? ` ${className}` : ''}`}>
-      {children}
-    </article>
-  );
-}
-
 export interface FieldsetProps extends FieldsetHTMLAttributes<HTMLFieldSetElement> {
   legend: ReactNode;
   description?: ReactNode;
