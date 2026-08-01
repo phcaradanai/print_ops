@@ -560,6 +560,7 @@ function AppNav({
           <span className="nav-toggle-bar" />
           <span className="nav-toggle-bar" />
         </button>
+        <span className="app-header-brand">PrintOps</span>
       </header>
 
       {/* Overlay for mobile */}

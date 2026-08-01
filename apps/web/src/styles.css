@@ -417,24 +417,35 @@ body {
   transform: translateY(0.5px) scale(0.98);
 }
 
-/* ---- mobile nav toggle ---- */
+/* ---- mobile app header & toggle ---- */
+
+.app-header {
+  display: none;
+}
+
+.app-header-brand {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #ffffff;
+}
 
 .nav-toggle {
   display: none;
-  position: fixed;
-  top: max(0.75rem, env(safe-area-inset-top));
-  left: max(0.75rem, env(safe-area-inset-left));
-  z-index: 100;
   width: 44px;
   height: 44px;
   padding: 8px;
-  border: 1px solid #d1d5db;
+  border: none;
   border-radius: 6px;
-  background: #fff;
+  background: transparent;
+  color: #cdd6f4;
   cursor: pointer;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
+  align-items: center;
+  gap: 5px;
+  margin-left: -8px;
 }
 
 .nav-toggle:focus-visible {
@@ -444,8 +455,9 @@ body {
 
 .nav-toggle-bar {
   display: block;
+  width: 22px;
   height: 2px;
-  background: #374151;
+  background: currentColor;
   border-radius: 1px;
 }
 
@@ -2056,7 +2068,23 @@ body {
 @media (max-width: 1024px) {
   .app-shell {
     flex-direction: column;
-    padding-top: max(50px, calc(44px + env(safe-area-inset-top)));
+    padding-top: max(56px, calc(44px + env(safe-area-inset-top)));
+  }
+
+  .app-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: max(56px, calc(44px + env(safe-area-inset-top)));
+    padding-top: env(safe-area-inset-top);
+    padding-inline: 0.75rem;
+    background: #1e1e2e;
+    z-index: 100;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
 
   .nav-toggle {
@@ -2067,13 +2095,17 @@ body {
     display: block;
   }
 
+  .app-nav-brand {
+    display: none;
+  }
+
   .app-nav {
     position: fixed;
     top: 0;
     left: 0;
     width: 260px;
     height: 100dvh;
-    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-top: max(72px, calc(60px + env(safe-area-inset-top)));
     z-index: 50;
     transform: translateX(-100%);
     box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);

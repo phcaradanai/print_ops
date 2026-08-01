@@ -142,7 +142,7 @@ export default function Dashboard() {
                 <tr>
                   <DataHead>{t('page.dashboard.jobId')}</DataHead>
                   <DataHead>{t('page.dashboard.status')}</DataHead>
-                  <DataHead>{t('page.dashboard.totalLatencyMs')}</DataHead>
+                  <DataHead align="right">{t('page.dashboard.totalLatencyMs')}</DataHead>
                 </tr>
               </thead>
               <tbody>
@@ -156,7 +156,7 @@ export default function Dashboard() {
                     <DataCell label={t('page.dashboard.status')}>
                       <StatusBadge status={j.status} size="sm" />
                     </DataCell>
-                    <DataCell label={t('page.dashboard.totalLatencyMs')}>
+                    <DataCell label={t('page.dashboard.totalLatencyMs')} align="right">
                       <Text tone="muted" mono>
                         {j.latency?.totalLatencyMs ?? t('common.noData')}
                       </Text>
