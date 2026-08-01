@@ -4,18 +4,23 @@ import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
-import { EmptyState, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 import {
   Alert,
   Badge,
   Button,
+  EmptyState,
+  ErrorState,
   FormField,
+  Freshness,
   Grid,
   Inline,
+  LoadingState,
+  Mono,
   PageLayout,
   Panel,
   RecordCard,
   RecordList,
+  Text,
   Textarea,
 } from '../components/ui/index.js';
 
@@ -96,7 +101,7 @@ export default function RoutePolicies() {
                 value={raw}
                 onChange={(e) => setRaw(e.target.value)}
                 rows={16}
-                className="code-input"
+                mono
               />
             )}
           </FormField>
@@ -121,9 +126,9 @@ export default function RoutePolicies() {
             <RecordList>
               {policies.map((policy) => (
                 <RecordCard key={policy.id}>
-                  <Inline>
-                    <code>{policy.policyCode}</code>
-                    <strong>{policy.name}</strong>
+                  <Inline gap="md">
+                    <Mono>{policy.policyCode}</Mono>
+                    <Text weight="semibold" tone="strong">{policy.name}</Text>
                     <Badge tone={policy.enabled ? 'success' : 'neutral'}>
                       {policy.enabled ? t('status.enabled') : t('status.disabled')}
                     </Badge>

@@ -3,13 +3,36 @@ import { apiFetch } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
-import { EmptyState, ErrorBanner, Freshness, LoadingState } from '../components/PageState.js';
 import { exportJsonFile } from '../tauri.js';
 import { qrQuietZoneMm, renderBarcodeSvg, type BarcodeKind, type BarcodeSymbology } from '../lib/barcode.js';
 import { sanitizePreviewHtml } from '../lib/previewHtml.js';
-import { useModalFocusTrap } from '../components/Dialog.js';
 import { TransferIcon } from '../components/TransferIcon.js';
-import { PageLayout } from '../components/PageLayout.js';
+import {
+  Alert,
+  Badge,
+  Button,
+  Chip,
+  DataCell,
+  DataHead,
+  DataTable,
+  Dialog,
+  EmptyState,
+  ErrorBanner,
+  FormField,
+  Freshness,
+  Heading,
+  IconButton,
+  Inline,
+  Input,
+  LoadingState,
+  Mono,
+  PageLayout,
+  Select,
+  Stack,
+  TableEmpty,
+  Text,
+  type BadgeTone,
+} from '../components/ui/index.js';
 
 const WS_PATH_KEY = 'printops-workspace-path';
 
@@ -130,11 +153,13 @@ function TemplateIcon({ name, spin = false }: { name: TemplateIconName; spin?: b
   );
 }
 
-const STATUS_TONE: Record<string, string> = {
-  PUBLISHED: 'tpl-badge--published',
-  DRAFT: 'tpl-badge--draft',
-  DISABLED: 'tpl-badge--disabled',
-  ARCHIVED: 'tpl-badge--archived',
+/** Template lifecycle mapped onto the shared badge tones. A draft is not a
+ *  fault — it is simply not published yet — so it stays neutral. */
+const STATUS_BADGE_TONE: Record<string, BadgeTone> = {
+  PUBLISHED: 'success',
+  DRAFT: 'neutral',
+  DISABLED: 'warning',
+  ARCHIVED: 'neutral',
 };
 
 const VARIABLES: { token: string; labelKey: string }[] = [
@@ -310,18 +335,14 @@ export default function Templates() {
   const [pendingDelete, setPendingDelete] = useState<Template | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
-  const deleteModalRef = useRef<HTMLDivElement | null>(null);
-  const discardModalRef = useRef<HTMLDivElement | null>(null);
-  const fullPreviewModalRef = useRef<HTMLDivElement | null>(null);
-
+  // The three modal refs and their `useModalFocusTrap` calls are gone with the
+  // hand-rolled overlays: `Dialog` traps focus, handles Escape and restores
+  // focus on close for all three.
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLElement | null>(null);
   const libraryRef = useRef<HTMLElement | null>(null);
-  useModalFocusTrap(Boolean(pendingDelete), deleteModalRef, () => setPendingDelete(null));
-  useModalFocusTrap(confirmDiscard, discardModalRef, () => setConfirmDiscard(false));
-  useModalFocusTrap(fullPage, fullPreviewModalRef, () => setFullPage(false));
 
   // Both lists were `.catch(() => {})`: with the API down the page rendered as
   // "no templates configured", which is indistinguishable from a fresh install
@@ -770,28 +791,26 @@ export default function Templates() {
           <p>{t('page.templates.subtitle')}</p>
         </div>
         {!workspaceOpen && <div className="tpl-page-tools">
-          <label className="tpl-search">
-            <TemplateIcon name="search" />
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('page.templates.searchPlaceholder')}
-              aria-label={t('page.templates.searchPlaceholder')}
-            />
-          </label>
-          <button type="button" className="tpl-btn tpl-btn--ghost" onClick={exportTemplates}>
+          <Input
+            type="search"
+            controlSize="sm"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('page.templates.searchPlaceholder')}
+            aria-label={t('page.templates.searchPlaceholder')}
+            leading={<TemplateIcon name="search" />}
+          />
+          <Button variant="ghost" onClick={exportTemplates}>
             <TransferIcon action="export" /> {t('page.templates.exportBtn')}
-          </button>
-          <button
-            type="button"
-            className="tpl-btn tpl-btn--ghost"
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => importInputRef.current?.click()}
-            disabled={busy}
-            aria-busy={busy || undefined}
+            busy={busy}
+            busyLabel={t('page.templates.importing')}
           >
-            {busy ? <TemplateIcon name="refresh" spin /> : <TransferIcon action="import" />} {busy ? t('page.templates.importing') : t('page.templates.importBtn')}
-          </button>
+            <TransferIcon action="import" /> {t('page.templates.importBtn')}
+          </Button>
           <input
             ref={importInputRef}
             type="file"
@@ -803,18 +822,21 @@ export default function Templates() {
               if (file) void importTemplates(file);
             }}
           />
-          <button type="button" className="tpl-btn tpl-btn--primary" onClick={newTemplate}>
+          <Button onClick={newTemplate}>
             <TemplateIcon name="plus" /> {t('page.templates.newTemplate')}
-          </button>
+          </Button>
         </div>}
       </div>
     }>
 
       {message && (
-        <div className={`ds-toast ds-toast--${message.tone === 'ok' ? 'success' : 'error'}`} role="status">
-          <span>{message.text}</span>
-          <button type="button" className="ds-toast__close" onClick={() => setMessage(null)} aria-label={t('common.close')}><TemplateIcon name="close" /></button>
-        </div>
+        <Alert
+          tone={message.tone === 'ok' ? 'success' : 'error'}
+          onDismiss={() => setMessage(null)}
+          dismissLabel={t('common.close')}
+        >
+          {message.text}
+        </Alert>
       )}
 
       {/* An empty template list must never be mistaken for "none configured". */}
@@ -846,45 +868,62 @@ export default function Templates() {
 
       {workspaceOpen ? <>
         <div className="tpl-workspace-bar">
-          <button type="button" className="tpl-btn tpl-btn--ghost" onClick={requestCloseWorkspace}>
+          <Button variant="ghost" onClick={requestCloseWorkspace}>
             <TemplateIcon name="back" /> {t('page.templates.backToLibrary')}
-          </button>
-          <span>{editingId ? form.templateCode : t('page.templates.newTemplate')}</span>
+          </Button>
+          <Text weight="semibold">{editingId ? form.templateCode : t('page.templates.newTemplate')}</Text>
         </div>
         <div className="tpl-layout">
         <section className="tpl-card tpl-editor" ref={formRef}>
-          <h2 className="tpl-card-title">
+          <Heading level={2}>
             {editingId ? t('page.templates.editTemplate') : t('page.templates.createTemplate')}
-          </h2>
+          </Heading>
 
           <div className="tpl-editor-top">
+            {/* Each of these was a `<label>` wrapping its control with a `<b>*</b>`
+                that assistive tech never announced. `FormField` carries the
+                required marker with a real accessible name. */}
             <div className="tpl-field-grid">
-              <label className="tpl-field">
-                <span>{t('page.templates.templateCode')} <b aria-hidden="true">*</b></span>
-                <input
-                  value={form.templateCode}
-                  onChange={(e) => setForm({ ...form, templateCode: e.target.value })}
-                  placeholder={t('page.templates.templateCodePlaceholder')}
-                />
-              </label>
-              <label className="tpl-field">
-                <span>{t('page.templates.templateName')} <b aria-hidden="true">*</b></span>
-                <input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder={t('page.templates.templateNamePlaceholder')}
-                />
-              </label>
-              <label className="tpl-field">
-                <span>{t('page.templates.paperProfile')}</span>
-                <select
-                  value={form.paperProfileId}
-                  onChange={(e) => setForm({ ...form, paperProfileId: e.target.value })}
-                >
-                  <option value="">{t('page.templates.selectPaperProfile')}</option>
-                  {profiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}
-                </select>
-              </label>
+              <FormField
+                label={t('page.templates.templateCode')}
+                required
+                requiredLabel={t('common.required')}
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    value={form.templateCode}
+                    onChange={(e) => setForm({ ...form, templateCode: e.target.value })}
+                    placeholder={t('page.templates.templateCodePlaceholder')}
+                  />
+                )}
+              </FormField>
+              <FormField
+                label={t('page.templates.templateName')}
+                required
+                requiredLabel={t('common.required')}
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder={t('page.templates.templateNamePlaceholder')}
+                  />
+                )}
+              </FormField>
+              <FormField label={t('page.templates.paperProfile')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={form.paperProfileId}
+                    onChange={(e) => setForm({ ...form, paperProfileId: e.target.value })}
+                  >
+                    <option value="">{t('page.templates.selectPaperProfile')}</option>
+                    {profiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}
+                  </Select>
+                )}
+              </FormField>
             </div>
 
             <fieldset className="tpl-engine-picker">
@@ -962,48 +1001,52 @@ export default function Templates() {
           </div>
 
           <div className="tpl-editor-actions">
-            <button type="button" className="tpl-btn tpl-btn--ghost" onClick={showLocalPreview}>
+            {/* Generating a proof must stay visibly separate from anything that
+                commits — this button renders, it never prints. */}
+            <Button variant="ghost" onClick={showLocalPreview}>
               <TemplateIcon name="preview" /> {t('page.templates.previewBtn')}
-            </button>
-            <div className="tpl-editor-actions__right">
-              <button type="button" className="tpl-btn tpl-btn--primary" onClick={() => void submit()} disabled={busy} aria-busy={busy || undefined}>
-                <TemplateIcon name={busy ? 'refresh' : 'save'} spin={busy} /> {busy ? t('page.templates.saving') : editingId ? t('page.templates.saveBtn') : t('page.templates.createTemplate')}
-              </button>
-              <button
-                type="button"
-                className="tpl-btn tpl-btn--link"
-                onClick={requestCloseWorkspace}
+            </Button>
+            <Inline gap="sm" className="tpl-editor-actions__right">
+              <Button
+                onClick={() => void submit()}
+                busy={busy}
+                busyLabel={t('page.templates.saving')}
               >
+                <TemplateIcon name="save" />{' '}
+                {editingId ? t('page.templates.saveBtn') : t('page.templates.createTemplate')}
+              </Button>
+              <Button variant="ghost" onClick={requestCloseWorkspace}>
                 {t('page.templates.cancelEdit')}
-              </button>
-            </div>
+              </Button>
+            </Inline>
           </div>
         </section>
 
         <section className="tpl-card tpl-preview" ref={previewRef}>
           <div className="tpl-preview-header">
-            <h2 className="tpl-card-title">{t('page.templates.previewTitle')}</h2>
+            <Heading level={2}>{t('page.templates.previewTitle')}</Heading>
             <div className="tpl-preview-controls">
-              <select
+              <Select
                 aria-label={t('page.templates.sampleInput')}
+                controlSize="sm"
                 value={sampleMode}
                 onChange={(e) => refreshPreview(e.target.value as SampleMode)}
               >
                 <option value="default">{t('page.templates.sampleDefault')}</option>
                 <option value="profile">{t('page.templates.sampleProfile')}</option>
                 <option value="empty">{t('page.templates.sampleEmpty')}</option>
-              </select>
-              <button type="button" className="tpl-btn tpl-btn--ghost" onClick={() => refreshPreview(sampleMode)}>
+              </Select>
+              <Button variant="ghost" size="sm" onClick={() => refreshPreview(sampleMode)}>
                 <TemplateIcon name="refresh" /> {t('common.refresh')}
-              </button>
-              <button
-                type="button"
-                className="tpl-btn tpl-btn--ghost"
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setFullPage(true)}
                 disabled={!previewHtml}
               >
                 <TemplateIcon name="expand" /> {t('page.templates.fullPage')}
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -1036,19 +1079,23 @@ export default function Templates() {
 
       <section className="tpl-card tpl-list" ref={libraryRef}>
         <div className="tpl-list-header">
-          <h2 className="tpl-card-title">{t('page.templates.listTitle')}</h2>
+          <Heading level={2}>{t('page.templates.listTitle')}</Heading>
           <div className="tpl-list-tools">
-            <button type="button" className="tpl-icon-btn tpl-icon-btn--surface" onClick={() => void load()} disabled={templatesResource.refreshing} aria-busy={templatesResource.refreshing || undefined} title={t('common.refresh')} aria-label={t('common.refresh')}><TemplateIcon name="refresh" spin={templatesResource.refreshing} /></button>
-            <button
-              type="button"
-              className="tpl-icon-btn tpl-icon-btn--surface"
-              onClick={() => setSortDesc((v) => !v)}
+            <IconButton
+              label={t('common.refresh')}
+              onClick={() => void load()}
+              busy={templatesResource.refreshing}
+            >
+              <TemplateIcon name="refresh" spin={templatesResource.refreshing} />
+            </IconButton>
+            <IconButton
+              label={t('page.templates.sortByUpdated')}
               title={t('page.templates.updated')}
-              aria-label={t('page.templates.sortByUpdated')}
+              onClick={() => setSortDesc((v) => !v)}
               aria-pressed={sortDesc}
             >
               <TemplateIcon name={sortDesc ? 'sortDesc' : 'sortAsc'} />
-            </button>
+            </IconButton>
           </div>
         </div>
 
@@ -1058,97 +1105,83 @@ export default function Templates() {
           <EmptyState
             title={t('page.templates.emptyTitle')}
             hint={t('page.templates.emptyHint')}
-            action={<button type="button" className="tpl-btn tpl-btn--primary" onClick={newTemplate}><TemplateIcon name="plus" /> {t('page.templates.newTemplate')}</button>}
+            action={<Button onClick={newTemplate}><TemplateIcon name="plus" /> {t('page.templates.newTemplate')}</Button>}
           />
         ) : <>
-          <div className="tpl-chips" aria-label={t('page.templates.filters')}>
-          <button
-            type="button"
-            className={`tpl-chip${chip === 'ALL' ? ' is-active' : ''}`}
-            aria-pressed={chip === 'ALL'}
-            onClick={() => setChip('ALL')}
-          >
-            {t('page.templates.filterAll')} <b>{templates.length}</b>
-          </button>
-          {Object.entries(statusCounts).map(([status, count]) => (
-            <button
-              type="button"
-              key={status}
-              className={`tpl-chip${chip === status ? ' is-active' : ''}`}
-              aria-pressed={chip === status}
-              onClick={() => setChip(status)}
-            >
-              {status} <b>{count}</b>
-            </button>
-          ))}
-          {Object.entries(engineCounts).map(([engine, count]) => (
-            <button
-              type="button"
-              key={engine}
-              className={`tpl-chip${chip === engine ? ' is-active' : ''}`}
-              aria-pressed={chip === engine}
-              onClick={() => setChip(engine)}
-            >
-              {engine} <b>{count}</b>
-            </button>
-          ))}
-          </div>
+          {/* These were `tpl-chip` buttons — a third pill implementation after
+              `wh-var-pill` and `print-flow-pill`. All three are now `Chip`. */}
+          <Inline gap="xs" className="tpl-chips" aria-label={t('page.templates.filters')}>
+            <Chip selected={chip === 'ALL'} onClick={() => setChip('ALL')}>
+              {t('page.templates.filterAll')} <Text size="label" weight="bold">{templates.length}</Text>
+            </Chip>
+            {Object.entries(statusCounts).map(([status, count]) => (
+              <Chip key={status} selected={chip === status} onClick={() => setChip(status)}>
+                {status} <Text size="label" weight="bold">{count}</Text>
+              </Chip>
+            ))}
+            {Object.entries(engineCounts).map(([engine, count]) => (
+              <Chip key={engine} selected={chip === engine} onClick={() => setChip(engine)}>
+                {engine} <Text size="label" weight="bold">{count}</Text>
+              </Chip>
+            ))}
+          </Inline>
 
-          <div className="tpl-table-wrap">
-          <table className="tpl-table">
+          <DataTable label={t('page.templates.listTitle')} responsive>
             <thead>
               <tr>
-                <th>{t('page.templates.code')}</th>
-                <th>{t('page.templates.name')}</th>
-                <th>{t('page.templates.engine')}</th>
-                <th>{t('page.templates.version')}</th>
-                <th>{t('page.templates.status')}</th>
-                <th>{t('page.templates.updated')}</th>
-                <th className="tpl-table__actions-col">{t('page.templates.actions')}</th>
+                <DataHead>{t('page.templates.code')}</DataHead>
+                <DataHead>{t('page.templates.name')}</DataHead>
+                <DataHead>{t('page.templates.engine')}</DataHead>
+                <DataHead>{t('page.templates.version')}</DataHead>
+                <DataHead>{t('page.templates.status')}</DataHead>
+                <DataHead>{t('page.templates.updated')}</DataHead>
+                <DataHead>{t('page.templates.actions')}</DataHead>
               </tr>
             </thead>
             <tbody>
               {pageRows.map((tpl) => (
                 <tr key={tpl.id} className={tpl.id === selectedId ? 'is-selected' : undefined}>
-                  <td data-label={t('page.templates.code')}><code>{tpl.templateCode}</code></td>
-                  <td data-label={t('page.templates.name')} className="tpl-cell-name"><span className="truncate">{tpl.name}</span></td>
-                  <td data-label={t('page.templates.engine')}><span className="tpl-engine-pill">{tpl.engine}</span></td>
-                  <td data-label={t('page.templates.version')}>{tpl.version}</td>
-                  <td data-label={t('page.templates.status')}><span className={`tpl-badge ${STATUS_TONE[tpl.status] ?? ''}`}>{tpl.status}</span></td>
-                  <td data-label={t('page.templates.updated')} className="tpl-cell-time">{formatDate(tpl.updatedAt ?? tpl.createdAt, locale)}</td>
-                  <td data-label={t('page.templates.actions')}>
-                    <div className="tpl-row-actions">
-                      <button
-                        type="button"
-                        className="tpl-icon-btn"
+                  <DataCell label={t('page.templates.code')}><Mono>{tpl.templateCode}</Mono></DataCell>
+                  <DataCell label={t('page.templates.name')}>
+                    <Text truncate title={tpl.name}>{tpl.name}</Text>
+                  </DataCell>
+                  <DataCell label={t('page.templates.engine')}><Badge>{tpl.engine}</Badge></DataCell>
+                  <DataCell label={t('page.templates.version')}><Mono>{tpl.version}</Mono></DataCell>
+                  <DataCell label={t('page.templates.status')}>
+                    <Badge tone={STATUS_BADGE_TONE[tpl.status] ?? 'neutral'}>{tpl.status}</Badge>
+                  </DataCell>
+                  <DataCell label={t('page.templates.updated')}>
+                    <Text size="label" tone="muted" nowrap>{formatDate(tpl.updatedAt ?? tpl.createdAt, locale)}</Text>
+                  </DataCell>
+                  <DataCell label={t('page.templates.actions')} actions>
+                    <Inline gap="xs" className="tpl-row-actions">
+                      <IconButton
+                        size="sm"
+                        label={t('page.templates.previewTemplate').replace('{name}', tpl.name)}
                         title={t('common.preview')}
-                        aria-label={t('page.templates.previewTemplate').replace('{name}', tpl.name)}
                         onClick={() => void renderServerPreview(tpl)}
-                      ><TemplateIcon name="preview" /></button>
-                      <button
-                        type="button"
-                        className="tpl-icon-btn"
+                      ><TemplateIcon name="preview" /></IconButton>
+                      <IconButton
+                        size="sm"
+                        label={t('page.templates.duplicateTemplate').replace('{name}', tpl.name)}
                         title={t('page.templates.duplicate')}
-                        aria-label={t('page.templates.duplicateTemplate').replace('{name}', tpl.name)}
                         onClick={() => void duplicate(tpl)}
-                      ><TemplateIcon name="duplicate" /></button>
-                      <button
-                        type="button"
-                        className="tpl-icon-btn"
+                      ><TemplateIcon name="duplicate" /></IconButton>
+                      <IconButton
+                        size="sm"
+                        label={t('page.templates.editTemplateNamed').replace('{name}', tpl.name)}
                         title={t('page.templates.edit')}
-                        aria-label={t('page.templates.editTemplateNamed').replace('{name}', tpl.name)}
                         onClick={() => startEdit(tpl)}
-                      ><TemplateIcon name="edit" /></button>
+                      ><TemplateIcon name="edit" /></IconButton>
                       <div className="tpl-menu-wrap" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          className="tpl-icon-btn"
+                        <IconButton
+                          size="sm"
+                          label={t('page.templates.moreTemplateActions').replace('{name}', tpl.name)}
                           title={t('page.templates.more')}
-                          aria-label={t('page.templates.moreTemplateActions').replace('{name}', tpl.name)}
                           aria-expanded={menuFor === tpl.id}
                           aria-haspopup="menu"
                           onClick={() => setMenuFor(menuFor === tpl.id ? null : tpl.id)}
-                        ><TemplateIcon name="more" /></button>
+                        ><TemplateIcon name="more" /></IconButton>
                         {menuFor === tpl.id && (
                           <div className="tpl-menu" role="menu">
                             <button type="button" role="menuitem" onClick={() => void publish(tpl.id)}>
@@ -1165,55 +1198,53 @@ export default function Templates() {
                           </div>
                         )}
                       </div>
-                    </div>
-                  </td>
+                    </Inline>
+                  </DataCell>
                 </tr>
               ))}
               {pageRows.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="tpl-table-empty">{t('page.templates.noResults')}</td>
-                </tr>
+                <TableEmpty columns={7}>
+                  <EmptyState title={t('page.templates.noResults')} />
+                </TableEmpty>
               )}
             </tbody>
-          </table>
-          </div>
+          </DataTable>
 
         <div className="tpl-pagination">
-          <span className="tpl-pagination__count">
+          <Text size="label" tone="muted" className="tpl-pagination__count">
             {t('page.templates.showing')
               .replace('{from}', String(from))
               .replace('{to}', String(to))
               .replace('{total}', String(filtered.length))}
-          </span>
-          <div className="tpl-pagination__pages">
-            <button
-              type="button"
-              className="tpl-icon-btn tpl-icon-btn--surface"
+          </Text>
+          <Inline gap="xs" className="tpl-pagination__pages">
+            <IconButton
+              size="sm"
+              label={t('page.templates.previousPage')}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={currentPage <= 1}
-              aria-label={t('page.templates.previousPage')}
-            ><TemplateIcon name="back" /></button>
+            ><TemplateIcon name="back" /></IconButton>
+            {/* Page numbers are a selection, so they take the chip — the same
+                pressed-state contract as every other filter in the product. */}
             {visiblePages.map((item) => typeof item === 'number' ? (
-                <button
-                  type="button"
+                <Chip
                   key={item}
-                  className={`tpl-page-btn${item === currentPage ? ' is-active' : ''}`}
+                  selected={item === currentPage}
                   aria-current={item === currentPage ? 'page' : undefined}
                   aria-label={t('page.templates.pageNumber').replace('{n}', String(item))}
                   onClick={() => setPage(item)}
-                >{item}</button>
-              ) : <span key={item} className="tpl-pagination__gap" aria-hidden="true">…</span>
+                >{item}</Chip>
+              ) : <Text key={item} tone="muted" aria-hidden="true">…</Text>
             )}
-            <button
-              type="button"
-              className="tpl-icon-btn tpl-icon-btn--surface"
+            <IconButton
+              size="sm"
+              label={t('page.templates.nextPage')}
               onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
               disabled={currentPage >= pageCount}
-              aria-label={t('page.templates.nextPage')}
-            ><TemplateIcon name="next" /></button>
-          </div>
-          <select
-            className="tpl-page-size"
+            ><TemplateIcon name="next" /></IconButton>
+          </Inline>
+          <Select
+            controlSize="sm"
             value={pageSize}
             onChange={(e) => setPageSize(Number(e.target.value))}
             aria-label={t('page.templates.rowsPerPage').replace('{n}', String(pageSize))}
@@ -1221,82 +1252,66 @@ export default function Templates() {
             {[10, 25, 50].map((n) => (
               <option key={n} value={n}>{t('page.templates.rowsPerPage').replace('{n}', String(n))}</option>
             ))}
-          </select>
+          </Select>
           </div>
         </>}
       </section>
       )}
 
-      {confirmDiscard && (
-        <div className="ds-modal" role="dialog" aria-modal="true" aria-labelledby="template-discard-title" aria-describedby="template-discard-body" onClick={() => setConfirmDiscard(false)}>
-          <div ref={discardModalRef} tabIndex={-1} className="ds-modal__panel ds-modal__panel--sm" onClick={(e) => e.stopPropagation()}>
-            <div className="ds-modal__header">
-              <h2 id="template-discard-title">{t('page.templates.discardTitle')}</h2>
-              <button type="button" className="ds-btn ds-btn--icon" onClick={() => setConfirmDiscard(false)} aria-label={t('common.close')}>
-                <TemplateIcon name="close" />
-              </button>
-            </div>
-            <div className="ds-confirm__body">
-              <p id="template-discard-body">{t('page.templates.discardBody')}</p>
-            </div>
-            <div className="ds-modal__actions">
-              <button type="button" className="ds-btn ds-btn--ghost" onClick={() => setConfirmDiscard(false)}>
-                {t('page.templates.keepEditing')}
-              </button>
-              <button type="button" className="ds-btn ds-btn--danger" onClick={() => { setConfirmDiscard(false); closeWorkspace(); }}>
-                <TemplateIcon name="delete" /> {t('page.templates.discardChanges')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Three more hand-rolled `ds-modal` overlays, each re-implementing the
+          focus trap this page was already importing `useModalFocusTrap` for.
+          `Dialog` owns all of it now. */}
+      <Dialog
+        open={confirmDiscard}
+        onClose={() => setConfirmDiscard(false)}
+        title={t('page.templates.discardTitle')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmDiscard(false)}>
+              {t('page.templates.keepEditing')}
+            </Button>
+            <Button variant="danger" onClick={() => { setConfirmDiscard(false); closeWorkspace(); }}>
+              <TemplateIcon name="delete" /> {t('page.templates.discardChanges')}
+            </Button>
+          </>
+        }
+      >
+        <Text as="p">{t('page.templates.discardBody')}</Text>
+      </Dialog>
 
-      {pendingDelete && (
-        <div className="ds-modal" role="dialog" aria-modal="true" aria-labelledby="template-delete-title" onClick={() => setPendingDelete(null)}>
-          <div ref={deleteModalRef} tabIndex={-1} className="ds-modal__panel ds-modal__panel--sm" onClick={(e) => e.stopPropagation()}>
-            <div className="ds-modal__header">
-              <h2 id="template-delete-title">{t('page.templates.deleteTitle')}</h2>
-              <button
-                type="button"
-                className="ds-btn ds-btn--icon"
-                onClick={() => setPendingDelete(null)}
-                aria-label={t('common.cancel')}
-              ><TemplateIcon name="close" /></button>
-            </div>
-            <div className="ds-confirm__body">
-              <p>{t('page.templates.deleteBody').replace('{name}', pendingDelete.name)}</p>
-              <code>{pendingDelete.templateCode}</code>
-            </div>
-            <div className="ds-modal__actions">
-              <button type="button" className="ds-btn ds-btn--ghost" onClick={() => setPendingDelete(null)}>
-                {t('common.cancel')}
-              </button>
-              <button type="button" className="ds-btn ds-btn--danger" onClick={() => void confirmDelete()}>
-                <TemplateIcon name="delete" /> {t('page.templates.delete')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Dialog
+        open={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        title={t('page.templates.deleteTitle')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPendingDelete(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="danger" onClick={() => void confirmDelete()}>
+              <TemplateIcon name="delete" /> {t('page.templates.delete')}
+            </Button>
+          </>
+        }
+      >
+        {pendingDelete && (
+          <Stack gap="sm">
+            <Text as="p">{t('page.templates.deleteBody').replace('{name}', pendingDelete.name)}</Text>
+            <Mono weight="semibold">{pendingDelete.templateCode}</Mono>
+          </Stack>
+        )}
+      </Dialog>
 
-      {fullPage && (
-        <div className="ds-modal" role="dialog" aria-modal="true" aria-labelledby="template-preview-title" onClick={() => setFullPage(false)}>
-          <div ref={fullPreviewModalRef} tabIndex={-1} className="ds-modal__panel" style={{ width: 'min(900px, 100%)' }} onClick={(e) => e.stopPropagation()}>
-            <div className="ds-modal__header">
-              <h2 id="template-preview-title">{t('page.templates.previewTitle')}</h2>
-              <button
-                type="button"
-                className="ds-btn ds-btn--icon"
-                onClick={() => setFullPage(false)}
-                aria-label={t('page.templates.closePreview')}
-              ><TemplateIcon name="close" /></button>
-            </div>
-            <div className="ds-modal__body" style={{ display: 'grid', placeItems: 'center', background: 'var(--neutral-page)' }}>
-              <div className="tpl-preview-paper" dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(previewHtml) }} />
-            </div>
-          </div>
+      {/* A proof, not a print. Nothing in this dialog reaches a device. */}
+      <Dialog
+        open={fullPage}
+        onClose={() => setFullPage(false)}
+        title={t('page.templates.previewTitle')}
+      >
+        <div className="tpl-preview-stage">
+          <div className="tpl-preview-paper" dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(previewHtml) }} />
         </div>
-      )}
+      </Dialog>
     </PageLayout>
   );
 }

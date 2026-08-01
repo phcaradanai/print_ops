@@ -4,7 +4,6 @@ import { apiFetch, getCurrentUser, type SessionUser } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
-import { ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 import {
   Badge,
   Button,
@@ -12,13 +11,17 @@ import {
   DataCell,
   DataHead,
   DataTable,
+  ErrorState,
+  Fieldset,
+  Freshness,
   Grid,
   Inline,
   Input,
+  LoadingState,
   PageLayout,
   Stack,
+  Text,
 } from '../components/ui/index.js';
-import './UsersRoles.css';
 
 interface UserItem {
   id: string;
@@ -119,11 +122,10 @@ export default function UsersRoles() {
   };
 
   const renderUserActions = (user: UserItem) => (
-    <Stack gap="sm" className="users-actions">
+    <Stack gap="sm">
       {accessUserId === user.id ? (
-        <fieldset className="users-access-editor">
-          <legend>{t('page.usersRoles.pageAccess')}</legend>
-          <Grid columns="auto" gap="sm" className="users-access-grid">
+        <Fieldset legend={t('page.usersRoles.pageAccess')}>
+          <Grid columns="auto" gap="sm" dense>
             {PAGE_OPTIONS.map((page) => (
               <Checkbox
                 key={page}
@@ -133,7 +135,7 @@ export default function UsersRoles() {
               />
             ))}
           </Grid>
-          <Inline gap="sm" className="users-action-row">
+          <Inline gap="sm">
             <Button
               size="sm"
               busy={changeAccess.pending}
@@ -151,7 +153,7 @@ export default function UsersRoles() {
               {t('common.cancel')}
             </Button>
           </Inline>
-        </fieldset>
+        </Fieldset>
       ) : canEditAccess(user) ? (
         <div>
           <Button
@@ -169,11 +171,11 @@ export default function UsersRoles() {
       ) : null}
 
       {changeAccess.error != null && accessUserId === user.id && (
-        <span className="ui-inline-error" role="alert">{errorMessage(changeAccess.error, t('page.usersRoles.accessError'))}</span>
+        <Text tone="danger" size="label" role="alert">{errorMessage(changeAccess.error, t('page.usersRoles.accessError'))}</Text>
       )}
 
       {editingUserId === user.id ? (
-        <form className="users-password-form" onSubmit={(event) => void handlePasswordSubmit(event, user.id)}>
+        <Inline as="form" gap="sm" onSubmit={(event) => void handlePasswordSubmit(event, user.id)}>
           <Input
             type={showPassword ? 'text' : 'password'}
             controlSize="sm"
@@ -193,7 +195,7 @@ export default function UsersRoles() {
           <Button size="sm" variant="secondary" disabled={submitting} onClick={cancelPasswordEdit}>
             {t('common.cancel')}
           </Button>
-        </form>
+        </Inline>
       ) : canEditPassword(user) ? (
         <div>
           <Button
@@ -210,10 +212,10 @@ export default function UsersRoles() {
           </Button>
         </div>
       ) : (
-        <span className="ui-muted-copy">{t('page.usersRoles.readOnly')}</span>
+        <Text tone="muted" size="label">{t('page.usersRoles.readOnly')}</Text>
       )}
 
-      {editError && editingUserId === user.id && <span className="ui-inline-error" role="alert">{editError}</span>}
+      {editError && editingUserId === user.id && <Text tone="danger" size="label" role="alert">{editError}</Text>}
 
       {canEditStatus(user) && (
         <div>
@@ -230,7 +232,7 @@ export default function UsersRoles() {
         </div>
       )}
       {changeStatus.error != null && statusUserId === user.id && (
-        <span className="ui-inline-error" role="alert">{errorMessage(changeStatus.error, t('page.usersRoles.statusError'))}</span>
+        <Text tone="danger" size="label" role="alert">{errorMessage(changeStatus.error, t('page.usersRoles.statusError'))}</Text>
       )}
     </Stack>
   );
@@ -274,7 +276,12 @@ export default function UsersRoles() {
             {users.map((user) => (
               <tr key={user.id}>
                 <DataCell label={t('page.usersRoles.name')}>
-                  <strong>{user.name}</strong>{currentUser?.id === user.id && <span className="users-current-user">{t('page.usersRoles.you')}</span>}
+                  <Inline gap="xs">
+                    <Text weight="semibold" tone="strong">{user.name}</Text>
+                    {currentUser?.id === user.id && (
+                      <Text size="label" tone="muted" weight="medium">{t('page.usersRoles.you')}</Text>
+                    )}
+                  </Inline>
                 </DataCell>
                 <DataCell label={t('page.usersRoles.email')}>{user.email}</DataCell>
                 <DataCell label={t('page.usersRoles.role')}><Badge>{user.role}</Badge></DataCell>

@@ -3,9 +3,21 @@ import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 import { formatRelativeTime } from '../lib/relativeTime.js';
 import { useApiResource } from '../hooks/useApiResource.js';
-import { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 import { RunnerStatusBadge } from '../components/RunnerStatusBadge.js';
-import { PageLayout } from '../components/PageLayout.js';
+import {
+  DataCell,
+  DataHead,
+  DataTable,
+  EmptyState,
+  ErrorBanner,
+  ErrorState,
+  Freshness,
+  LoadingState,
+  Mono,
+  PageLayout,
+  TableEmpty,
+  Text,
+} from '../components/ui/index.js';
 
 interface Runner {
   id: string; name: string; hostname: string; ipAddress?: string;
@@ -24,6 +36,15 @@ export default function Runners() {
   const runners = runnersResource.data ?? [];
 
   const heartbeatAge = (ts?: string): string => formatRelativeTime(t, ts);
+
+  const columns = {
+    name: t('page.runners.name'),
+    hostname: t('page.runners.hostname'),
+    protocols: t('page.runners.protocols'),
+    status: t('page.runners.status'),
+    heartbeat: t('page.runners.lastHeartbeat'),
+    registered: t('page.runners.registered'),
+  };
 
   return (
     <PageLayout
@@ -51,50 +72,51 @@ export default function Runners() {
       ) : runnersResource.error != null && !runnersResource.data ? (
         <ErrorState error={runnersResource.error} onRetry={runnersResource.refresh} />
       ) : (
-        <>
-        <table className="data-table runner-table">
+        // One semantic table that becomes labelled cards under 760px. This page
+        // used to mount a `<table>` AND a parallel `<ul>` of the same runners,
+        // so every row existed twice in the accessibility tree and the two
+        // copies had already drifted apart in what they showed.
+        <DataTable label={t('page.runners.title')} responsive>
           <thead>
             <tr>
-              {[t('page.runners.name'), t('page.runners.hostname'), t('page.runners.protocols'), t('page.runners.status'), t('page.runners.lastHeartbeat'), t('page.runners.registered')].map((h) => (
-                <th key={h}>{h}</th>
-              ))}
+              <DataHead>{columns.name}</DataHead>
+              <DataHead>{columns.hostname}</DataHead>
+              <DataHead>{columns.protocols}</DataHead>
+              <DataHead>{columns.status}</DataHead>
+              <DataHead>{columns.heartbeat}</DataHead>
+              <DataHead>{columns.registered}</DataHead>
             </tr>
           </thead>
           <tbody>
-            {runners.length === 0 && (
-              <tr><td colSpan={6}><EmptyState title={t('page.runners.noRunners')} /></td></tr>
-            )}
             {runners.map((runner) => (
               <tr key={runner.id}>
-                <td style={{ padding: '0.75rem', fontWeight: 600 }}>{runner.name}</td>
-                <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.85rem' }}>{runner.hostname}</td>
-                <td style={{ color: 'var(--neutral-text-muted)' }}>{runner.supportedProtocols.join(', ')}</td>
-                <td><RunnerStatusBadge status={runner.status} /></td>
-                <td style={{ color: 'var(--neutral-text-muted)' }}>{heartbeatAge(runner.lastHeartbeatAt)}</td>
-                <td style={{ color: 'var(--neutral-text-muted)' }}>{new Date(runner.registeredAt).toLocaleString()}</td>
+                <DataCell label={columns.name}>
+                  <Text weight="semibold" tone="strong">{runner.name}</Text>
+                </DataCell>
+                <DataCell label={columns.hostname}>
+                  <Mono>{runner.hostname}</Mono>
+                </DataCell>
+                <DataCell label={columns.protocols}>
+                  <Text tone="muted">{runner.supportedProtocols.join(', ')}</Text>
+                </DataCell>
+                <DataCell label={columns.status}>
+                  <RunnerStatusBadge status={runner.status} />
+                </DataCell>
+                <DataCell label={columns.heartbeat}>
+                  <Text tone="muted">{heartbeatAge(runner.lastHeartbeatAt)}</Text>
+                </DataCell>
+                <DataCell label={columns.registered}>
+                  <Text tone="muted">{new Date(runner.registeredAt).toLocaleString()}</Text>
+                </DataCell>
               </tr>
             ))}
+            {runners.length === 0 && (
+              <TableEmpty columns={6}>
+                <EmptyState title={t('page.runners.noRunners')} />
+              </TableEmpty>
+            )}
           </tbody>
-        </table>
-        <ul className="resource-record-list runner-record-list" aria-label={t('page.runners.title')}>
-          {runners.length === 0 ? (
-            <li><EmptyState title={t('page.runners.noRunners')} /></li>
-          ) : runners.map((runner) => (
-            <li key={runner.id} className="resource-record">
-              <div className="resource-record__heading">
-                <strong>{runner.name}</strong>
-                <RunnerStatusBadge status={runner.status} />
-              </div>
-              <dl className="resource-record__facts">
-                <div><dt>{t('page.runners.hostname')}</dt><dd><code>{runner.hostname}</code></dd></div>
-                <div><dt>{t('page.runners.protocols')}</dt><dd>{runner.supportedProtocols.join(', ')}</dd></div>
-                <div><dt>{t('page.runners.lastHeartbeat')}</dt><dd>{heartbeatAge(runner.lastHeartbeatAt)}</dd></div>
-                <div><dt>{t('page.runners.registered')}</dt><dd>{new Date(runner.registeredAt).toLocaleString()}</dd></div>
-              </dl>
-            </li>
-          ))}
-        </ul>
-        </>
+        </DataTable>
       )}
     </PageLayout>
   );

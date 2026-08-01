@@ -5,11 +5,26 @@ import { useLocale } from '../i18n/index.js';
 import { formatRelativeTime } from '../lib/relativeTime.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
-import { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
-import { Alert } from '../components/Alert.js';
-import { Button } from '../components/Button.js';
 import { RunnerStatusBadge } from '../components/RunnerStatusBadge.js';
-import { PageLayout } from '../components/PageLayout.js';
+import {
+  Alert,
+  Badge,
+  Button,
+  DataCell,
+  DataHead,
+  DataTable,
+  EmptyState,
+  ErrorBanner,
+  ErrorState,
+  Freshness,
+  Inline,
+  LoadingState,
+  Mono,
+  PageLayout,
+  Panel,
+  Stack,
+  Text,
+} from '../components/ui/index.js';
 
 interface Runner {
   id: string;
@@ -32,35 +47,6 @@ interface DiscoveredPrinter {
   osName?: string;
   lastSeenAt: string;
   registeredPrinterId?: string;
-}
-
-const CONN_COLOR: Record<string, string> = {
-  usb: '#89dceb', tcp_ip: '#a6e3a1', wsd: '#f9e2af', network_share: '#cba6f7',
-  lpt_com: '#fab387', unknown: '#9399b2',
-};
-
-function Truncate({ value, display, className = '' }: { value?: string; display?: string; className?: string }) {
-  const fullText = value && value.length > 0 ? value : '—';
-  const displayText = display ?? fullText;
-  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
-
-  return (
-    <span
-      className="truncate-wrap"
-      onMouseEnter={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        setPosition({ left: Math.min(rect.left, window.innerWidth - 580), top: rect.bottom + 8 });
-      }}
-      onMouseLeave={() => setPosition(null)}
-    >
-      <span className={`truncate ${className}`} title={fullText}>{displayText}</span>
-      {position && fullText !== '—' && (
-        <span className="hover-popover" style={{ left: Math.max(16, position.left), top: position.top }}>
-          {fullText}
-        </span>
-      )}
-    </span>
-  );
 }
 
 /** Diagnostics refresh. Suspended while hidden and never overlapping. */
@@ -147,6 +133,16 @@ export default function LocalDiagnostics() {
     .filter((value): value is number => value !== null)
     .reduce<number | null>((oldest, value) => (oldest === null || value < oldest ? value : oldest), null);
 
+  const columns = {
+    name: t('page.diagnostics.printerName'),
+    driver: t('page.diagnostics.driver'),
+    port: t('page.diagnostics.portUri'),
+    type: t('page.diagnostics.type'),
+    default: t('page.diagnostics.default'),
+    lastSeen: t('page.diagnostics.lastSeen'),
+    registered: t('page.diagnostics.registered'),
+  };
+
   if (firstLoad) return <PageLayout title={t('page.diagnostics.title')}><LoadingState /></PageLayout>;
 
   if (!runnersResource.data && !printersResource.data && failed.length > 0) {
@@ -186,115 +182,122 @@ export default function LocalDiagnostics() {
         <EmptyState title={t('page.diagnostics.noRunners')} />
       )}
       {runnersResource.data === undefined && (
-        <p style={{ color: 'var(--neutral-text-muted)', fontSize: '0.85rem' }}>{t('page.diagnostics.runnersUnavailable')}</p>
+        <Text as="p" tone="muted">{t('page.diagnostics.runnersUnavailable')}</Text>
       )}
 
-      {runners.map((runner) => {
-        const runnerPrinters = printers.filter((printer) => printer.runnerId === runner.id);
-        const meta = runnerPrinters[0];
-        const computerName = meta?.computerName ?? runner.hostname;
-        const osName = meta?.osName;
-        const result = refreshResult[runner.id];
+      <Stack gap="xl">
+        {runners.map((runner) => {
+          const runnerPrinters = printers.filter((printer) => printer.runnerId === runner.id);
+          const meta = runnerPrinters[0];
+          const computerName = meta?.computerName ?? runner.hostname;
+          const osName = meta?.osName;
+          const result = refreshResult[runner.id];
 
-        return (
-          <section key={runner.id} className="ops-surface">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', gap: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-                <span style={{ fontWeight: 700, fontSize: '1rem' }}>{runner.name}</span>
-                <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--neutral-text-muted)' }}>
-                  <Truncate value={computerName} className="cell-driver" />
-                </span>
-                {osName && (
-                  <span style={{ fontSize: '0.75rem', background: 'var(--state-info-surface)', color: 'var(--state-info-text)', padding: '2px 8px', borderRadius: 'var(--rounded-sm)' }}>{osName}</span>
+          return (
+            <Panel
+              key={runner.id}
+              title={
+                <Inline gap="md">
+                  <Text size="title" tone="strong" weight="bold">{runner.name}</Text>
+                  <Mono tone="muted" truncate title={computerName}>{computerName}</Mono>
+                  {osName && <Badge tone="info">{osName}</Badge>}
+                  <RunnerStatusBadge status={runner.status} />
+                </Inline>
+              }
+              actions={
+                <Button
+                  size="sm"
+                  onClick={() => void triggerDiscover(runner.id)}
+                  busy={refreshingRunnerId === runner.id}
+                  busyLabel={t('page.diagnostics.requesting')}
+                  disabled={refreshingRunnerId !== null && refreshingRunnerId !== runner.id}
+                >
+                  {t('page.diagnostics.refreshDiscovery')}
+                </Button>
+              }
+            >
+              <Stack gap="md">
+                {result && (
+                  <Alert
+                    tone={result.tone === 'ok' ? 'success' : 'error'}
+                    onDismiss={() => setRefreshResult((prev) => {
+                      const next = { ...prev };
+                      delete next[runner.id];
+                      return next;
+                    })}
+                    dismissLabel={t('error.dismiss')}
+                  >
+                    {result.text}
+                  </Alert>
                 )}
-                <RunnerStatusBadge status={runner.status} />
-              </div>
-              <Button
-                size="sm"
-                onClick={() => void triggerDiscover(runner.id)}
-                busy={refreshingRunnerId === runner.id}
-                busyLabel={t('page.diagnostics.requesting')}
-                disabled={refreshingRunnerId !== null && refreshingRunnerId !== runner.id}
-              >
-                {t('page.diagnostics.refreshDiscovery')}
-              </Button>
-            </div>
 
-            {result && (
-              <Alert
-                tone={result.tone === 'ok' ? 'success' : 'error'}
-                onDismiss={() => setRefreshResult((prev) => {
-                  const next = { ...prev };
-                  delete next[runner.id];
-                  return next;
-                })}
-                dismissLabel={t('error.dismiss')}
-              >
-                {result.text}
-              </Alert>
-            )}
-
-            {runnerPrinters.length === 0 ? (
-              /* Same rule per runner: with no successful discovered-printer
-                 response, an empty filter result says nothing about this
-                 runner's printers, so it must not be reported as "none found". */
-              <p style={{ color: 'var(--neutral-text-muted)', fontSize: '0.85rem' }}>
-                {printersResource.data === undefined
-                  ? t('page.diagnostics.printersUnavailable')
-                  : t('page.diagnostics.noPrinters')}
-              </p>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <colgroup>
-                  <col style={{ width: '24%' }} />
-                  <col style={{ width: '19%' }} />
-                  <col style={{ width: '25%' }} />
-                  <col style={{ width: '10%' }} />
-                  <col style={{ width: '7%' }} />
-                  <col style={{ width: '8%' }} />
-                  <col style={{ width: '10%' }} />
-                </colgroup>
-                <thead>
-                  <tr style={{ background: 'var(--neutral-page)' }}>
-                    {[t('page.diagnostics.printerName'), t('page.diagnostics.driver'), t('page.diagnostics.portUri'), t('page.diagnostics.type'), t('page.diagnostics.default'), t('page.diagnostics.lastSeen'), t('page.diagnostics.registered')].map((heading) => (
-                      <th key={heading} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontSize: '0.75rem', color: 'var(--neutral-text)' }}>{heading}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {runnerPrinters.map((printer) => (
-                    <tr key={printer.id} style={{ borderTop: '1px solid var(--neutral-subtle)' }}>
-                      <td style={{ padding: '0.5rem 0.75rem', fontWeight: 600, fontSize: '0.85rem' }}>
-                        <Truncate value={printer.localPrinterName} className="cell-name" />
-                      </td>
-                      <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: 'var(--neutral-text)' }}>
-                        <Truncate value={printer.driverName} className="cell-driver" />
-                      </td>
-                      <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--neutral-text-muted)' }}>
-                        <Truncate value={printer.portName} className="cell-uri" />
-                      </td>
-                      <td style={{ padding: '0.5rem 0.75rem' }}>
-                        <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: 'var(--rounded-sm)', background: CONN_COLOR[printer.connectionType] ?? 'var(--neutral-border)', color: 'var(--neutral-deep)' }}>
-                          {printer.connectionType}
-                        </span>
-                      </td>
-                      <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', textAlign: 'center' }}>{printer.isDefault ? '✓' : ''}</td>
-                      <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: 'var(--neutral-text-muted)' }}>{relativeTime(printer.lastSeenAt)}</td>
-                      <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem' }}>
-                        {printer.registeredPrinterId ? (
-                          <span style={{ color: 'var(--state-success-text)' }}>{t('status.registered')}</span>
-                        ) : (
-                          <span style={{ color: 'var(--neutral-text-muted)' }}>{t('common.noData')}</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </section>
-        );
-      })}
+                {runnerPrinters.length === 0 ? (
+                  /* Same rule per runner: with no successful discovered-printer
+                     response, an empty filter result says nothing about this
+                     runner's printers, so it must not be reported as "none found". */
+                  <Text as="p" tone="muted">
+                    {printersResource.data === undefined
+                      ? t('page.diagnostics.printersUnavailable')
+                      : t('page.diagnostics.noPrinters')}
+                  </Text>
+                ) : (
+                  <DataTable label={`${t('page.diagnostics.title')} — ${runner.name}`} responsive>
+                    <thead>
+                      <tr>
+                        <DataHead>{columns.name}</DataHead>
+                        <DataHead>{columns.driver}</DataHead>
+                        <DataHead>{columns.port}</DataHead>
+                        <DataHead>{columns.type}</DataHead>
+                        <DataHead>{columns.default}</DataHead>
+                        <DataHead>{columns.lastSeen}</DataHead>
+                        <DataHead>{columns.registered}</DataHead>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {runnerPrinters.map((printer) => (
+                        <tr key={printer.id}>
+                          <DataCell label={columns.name}>
+                            <Text weight="semibold" tone="strong" truncate title={printer.localPrinterName}>
+                              {printer.localPrinterName}
+                            </Text>
+                          </DataCell>
+                          <DataCell label={columns.driver}>
+                            <Text truncate title={printer.driverName ?? '—'}>{printer.driverName ?? '—'}</Text>
+                          </DataCell>
+                          <DataCell label={columns.port}>
+                            <Mono tone="muted" truncate title={printer.portName ?? '—'}>{printer.portName ?? '—'}</Mono>
+                          </DataCell>
+                          {/* Connection type carried a pastel fill from a page-local
+                              map that disagreed with the one on Discovered Printers.
+                              It is metadata, so it takes the neutral metadata tag. */}
+                          <DataCell label={columns.type}>
+                            <Badge>{printer.connectionType}</Badge>
+                          </DataCell>
+                          {/* Was a bare '✓' glyph, which no screen reader announces
+                              and which carries no label in the mobile card view. */}
+                          <DataCell label={columns.default}>
+                            {printer.isDefault
+                              ? <Badge tone="info">{columns.default}</Badge>
+                              : <Text tone="muted">{t('common.noData')}</Text>}
+                          </DataCell>
+                          <DataCell label={columns.lastSeen}>
+                            <Text size="label" tone="muted" nowrap>{relativeTime(printer.lastSeenAt)}</Text>
+                          </DataCell>
+                          <DataCell label={columns.registered}>
+                            {printer.registeredPrinterId
+                              ? <Badge tone="success">{t('status.registered')}</Badge>
+                              : <Text tone="muted">{t('common.noData')}</Text>}
+                          </DataCell>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </DataTable>
+                )}
+              </Stack>
+            </Panel>
+          );
+        })}
+      </Stack>
     </PageLayout>
   );
 }

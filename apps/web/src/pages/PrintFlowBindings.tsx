@@ -4,10 +4,32 @@ import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
-import { ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
-import { Alert } from '../components/Alert.js';
-import { PageLayout } from '../components/PageLayout.js';
-import { Button } from '../components/Button.js';
+import {
+  Alert,
+  Badge,
+  Button,
+  Checkbox,
+  Chip,
+  CodeBlock,
+  DataCell,
+  DataHead,
+  DataTable,
+  ErrorBanner,
+  ErrorState,
+  Fact,
+  FactList,
+  FormField,
+  Freshness,
+  Inline,
+  LoadingState,
+  Mono,
+  PageLayout,
+  Panel,
+  Select,
+  Stack,
+  TableEmpty,
+  Text,
+} from '../components/ui/index.js';
 
 // Manages the (code_template + code_profile) -> printer bindings that the
 // dynamic print endpoint POST /api/v1/printer/{{code_template}}/{{code_profile}}
@@ -193,9 +215,31 @@ export default function PrintFlowBindings() {
     2,
   );
 
+  const intakeColumns = {
+    time: t('page.printFlow.colTime'),
+    source: t('page.printFlow.colSource'),
+    requestId: t('page.printFlow.colRequestId'),
+    outcome: t('page.printFlow.colOutcome'),
+    reason: t('page.printFlow.colReason'),
+  };
+
+  const bindingColumns = {
+    template: t('page.printFlow.template'),
+    profile: t('page.printFlow.profile'),
+    printer: t('page.printFlow.printer'),
+    default: t('page.printFlow.default'),
+    enabled: t('page.printFlow.enabled'),
+  };
+
+  const outcomeLabel = (outcome: IntakeAttempt['outcome']) =>
+    outcome === 'accepted'
+      ? t('page.printFlow.outcomeAccepted')
+      : outcome === 'duplicate'
+        ? t('page.printFlow.outcomeDuplicate')
+        : t('page.printFlow.outcomeRejected');
+
   return (
     <PageLayout
-      className="settings-page print-flow-page"
       width="standard"
       title={t('page.printFlow.title')}
       description={t('page.printFlow.description')}
@@ -227,271 +271,266 @@ export default function PrintFlowBindings() {
         <ErrorBanner error={flow.error} title={t('error.refresh.title')} onRetry={flow.refresh} />
       )}
 
-      <div className="print-flow-endpoint" aria-label={t('page.printFlow.endpoint')}>
-        <span className="print-flow-method">POST</span>
-        <code className="print-flow-path">/api/v1/printer/{previewTemplate}/{previewProfile}</code>
-      </div>
+      <Stack gap="xl">
+        <Panel padding="lg" tone="subtle" aria-label={t('page.printFlow.endpoint')}>
+          <Inline gap="sm">
+            <Badge tone="info">POST</Badge>
+            <Mono weight="semibold">/api/v1/printer/{previewTemplate}/{previewProfile}</Mono>
+          </Inline>
+        </Panel>
 
-      {/* ----- HTTP transport ----- */}
-      <section className="settings-section" aria-labelledby="print-flow-http">
-        <h2 id="print-flow-http">{t('page.printFlow.httpTransport')}</h2>
-        <dl className="print-flow-kv">
-          <dt>{t('page.printFlow.path')}</dt>
-          <dd><code>{flowConfig?.http.path ?? '/api/v1/printer/{code_template}/{code_profile}'}</code></dd>
-          <dt>{t('page.printFlow.auth')}</dt>
-          <dd><code>{flowConfig?.http.authHeader ?? 'X-Api-Key'}</code> {t('page.printFlow.authRequired')}</dd>
-        </dl>
-        <div className="print-flow-example">
-          <div className="print-flow-example-label">{t('page.printFlow.examplePayload')}</div>
-          <pre><code>{httpExample}</code></pre>
-        </div>
-      </section>
+        {/* ----- HTTP transport ----- */}
+        <Panel title={t('page.printFlow.httpTransport')}>
+          <Stack gap="lg">
+            <FactList>
+              <Fact label={t('page.printFlow.path')}>
+                <Mono>{flowConfig?.http.path ?? '/api/v1/printer/{code_template}/{code_profile}'}</Mono>
+              </Fact>
+              <Fact label={t('page.printFlow.auth')}>
+                <Inline gap="xs">
+                  <Mono>{flowConfig?.http.authHeader ?? 'X-Api-Key'}</Mono>
+                  <Text tone="muted">{t('page.printFlow.authRequired')}</Text>
+                </Inline>
+              </Fact>
+            </FactList>
+            <Stack gap="xs">
+              <Text size="label" tone="muted">{t('page.printFlow.examplePayload')}</Text>
+              <CodeBlock label={t('page.printFlow.examplePayload')}>{httpExample}</CodeBlock>
+            </Stack>
+          </Stack>
+        </Panel>
 
-      {/* ----- NATS transport ----- */}
-      <section className="settings-section" aria-labelledby="print-flow-nats">
-        <h2 id="print-flow-nats">
-          {t('page.printFlow.natsTransport')}
+        {/* ----- NATS transport ----- */}
+        <Panel
+          title={t('page.printFlow.natsTransport')}
+          actions={
+            natsEnabled && nats.enabled ? (
+              <Badge tone={nats.connected ? 'success' : 'warning'}>
+                {nats.connected ? t('page.printFlow.natsConnected') : t('page.printFlow.natsDisconnected')}
+              </Badge>
+            ) : undefined
+          }
+        >
+          {!natsEnabled && <Text as="p" tone="muted">{t('page.printFlow.natsDisabled')}</Text>}
+
           {natsEnabled && nats.enabled && (
-            <span className={'print-flow-pill' + (nats.connected ? ' print-flow-pill--on' : '')}>
-              {nats.connected ? t('page.printFlow.natsConnected') : t('page.printFlow.natsDisconnected')}
-            </span>
+            <Stack gap="lg">
+              <Alert tone="info">{t('page.printFlow.natsNoAuth')}</Alert>
+
+              <FactList>
+                <Fact label={t('page.printFlow.subject')}>
+                  <Mono weight="semibold" tone="strong">{nats.subject}</Mono>
+                </Fact>
+                <Fact label={t('page.printFlow.stream')}><Mono>{nats.stream}</Mono></Fact>
+                <Fact label={t('page.printFlow.durable')}><Mono>{nats.durable}</Mono></Fact>
+                <Fact label={t('page.printFlow.server')}><Mono>{nats.url}</Mono></Fact>
+                <Fact label={t('page.printFlow.dlq')}>
+                  <Stack gap="xs">
+                    <Mono>{nats.dlqPrefix}{nats.subject}</Mono>
+                    <Text size="label" tone="muted">{t('page.printFlow.maxDeliver')} {nats.maxDeliver}</Text>
+                  </Stack>
+                </Fact>
+              </FactList>
+
+              <Stack gap="xs">
+                <Text size="label" tone="muted">{t('page.printFlow.examplePayload')}</Text>
+                <CodeBlock label={t('page.printFlow.examplePayload')}>{natsExample}</CodeBlock>
+              </Stack>
+            </Stack>
           )}
-        </h2>
+        </Panel>
 
-        {!natsEnabled && (
-          <p className="print-flow-lead">{t('page.printFlow.natsDisabled')}</p>
-        )}
+        {/* ----- Intake log: every attempt, including rejected ones ----- */}
+        <Panel title={t('page.printFlow.intakeLog')} description={t('page.printFlow.intakeLogDesc')}>
+          <Stack gap="lg">
+            <Inline gap="lg">
+              <Checkbox
+                label={t('page.printFlow.intakeLogFailedOnly')}
+                checked={failedOnly}
+                onChange={(e) => setFailedOnly(e.target.checked)}
+              />
+              <Button
+                variant="secondary"
+                onClick={intake.refresh}
+                busy={intakeLoading}
+                busyLabel={t('common.loading')}
+              >
+                {t('page.printFlow.intakeLogRefresh')}
+              </Button>
+            </Inline>
 
-        {natsEnabled && nats.enabled && (
-          <>
-            <div className="print-flow-notice" role="note">
-              {t('page.printFlow.natsNoAuth')}
-            </div>
+            {/* The intake log is optional context, so its failure is a strip rather
+                than a page-level error — but it is no longer silent. */}
+            {intake.error != null && (
+              <ErrorBanner
+                error={intake.error}
+                title={t('page.printFlow.intakeLogFailed')}
+                onRetry={intake.refresh}
+              />
+            )}
 
-            <dl className="print-flow-kv">
-              <dt>{t('page.printFlow.subject')}</dt>
-              <dd><code className="print-flow-strong">{nats.subject}</code></dd>
-              <dt>{t('page.printFlow.stream')}</dt>
-              <dd><code>{nats.stream}</code></dd>
-              <dt>{t('page.printFlow.durable')}</dt>
-              <dd><code>{nats.durable}</code></dd>
-              <dt>{t('page.printFlow.server')}</dt>
-              <dd><code>{nats.url}</code></dd>
-              <dt>{t('page.printFlow.dlq')}</dt>
-              <dd><code>{nats.dlqPrefix}{nats.subject}</code> · {t('page.printFlow.maxDeliver')} {nats.maxDeliver}</dd>
-            </dl>
-
-            <div className="print-flow-example">
-              <div className="print-flow-example-label">{t('page.printFlow.examplePayload')}</div>
-              <pre><code>{natsExample}</code></pre>
-            </div>
-          </>
-        )}
-      </section>
-
-      {/* ----- Intake log: every attempt, including rejected ones ----- */}
-      <section className="settings-section" aria-labelledby="print-flow-intake-log">
-        <h2 id="print-flow-intake-log">{t('page.printFlow.intakeLog')}</h2>
-        <p className="print-flow-lead">{t('page.printFlow.intakeLogDesc')}</p>
-
-        <div className="settings-actions" style={{ alignItems: 'center', gap: '1rem' }}>
-          <label className="print-flow-checkbox">
-            <input
-              type="checkbox"
-              checked={failedOnly}
-              onChange={(e) => setFailedOnly(e.target.checked)}
-            />
-            {t('page.printFlow.intakeLogFailedOnly')}
-          </label>
-          <Button onClick={intake.refresh} busy={intakeLoading} busyLabel={t('common.loading')}>
-            {t('page.printFlow.intakeLogRefresh')}
-          </Button>
-        </div>
-
-        {/* The intake log is optional context, so its failure is a strip rather
-            than a page-level error — but it is no longer silent. */}
-        {intake.error != null && (
-          <ErrorBanner
-            error={intake.error}
-            title={t('page.printFlow.intakeLogFailed')}
-            onRetry={intake.refresh}
-          />
-        )}
-
-        <div className="print-flow-table-wrap">
-          <table className="print-flow-table">
-            <thead>
-              <tr>
-                <th>{t('page.printFlow.colTime')}</th>
-                <th>{t('page.printFlow.colSource')}</th>
-                <th>{t('page.printFlow.colRequestId')}</th>
-                <th>{t('page.printFlow.colOutcome')}</th>
-                <th>{t('page.printFlow.colReason')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {intakeLog.length === 0 && (
-                <tr><td colSpan={5} className="print-flow-empty">{t('page.printFlow.intakeLogEmpty')}</td></tr>
-              )}
-              {intakeLog.map((a) => (
-                <tr key={a.id} title={[a.sourceSystem, a.sourceReference, a.codeTemplate, a.codeProfile, a.printerCode, a.clientId, a.subject].filter(Boolean).join(' · ')}>
-                  <td style={{ padding: '0.75rem', fontSize: '0.75rem', color: 'var(--neutral-text-muted)', whiteSpace: 'nowrap' }}>
-                    {new Date(a.occurredAt).toLocaleString()}
-                  </td>
-                  <td>
-                    <span className={'print-flow-pill' + (a.source === 'nats' ? ' print-flow-pill--on' : '')}>
-                      {a.source === 'nats' ? 'NATS' : 'HTTP API'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                    {a.requestId ?? '—'}
-                  </td>
-                  <td>
-                    <span
-                      className="print-flow-pill"
-                      style={
-                        a.outcome === 'accepted'
-                          ? { background: 'var(--state-success-surface)', color: 'var(--state-success-text)' }
-                          : a.outcome === 'rejected'
-                            ? { background: 'var(--state-danger-surface)', color: 'var(--state-danger-text)' }
-                            : undefined
-                      }
-                    >
-                      {a.outcome === 'accepted'
-                        ? t('page.printFlow.outcomeAccepted')
-                        : a.outcome === 'duplicate'
-                          ? t('page.printFlow.outcomeDuplicate')
-                          : t('page.printFlow.outcomeRejected')}
-                    </span>
-                  </td>
-                  <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'var(--neutral-text-muted)' }}>
-                    {a.reason ?? '—'}
-                  </td>
+            <DataTable label={t('page.printFlow.intakeLog')} responsive>
+              <thead>
+                <tr>
+                  <DataHead>{intakeColumns.time}</DataHead>
+                  <DataHead>{intakeColumns.source}</DataHead>
+                  <DataHead>{intakeColumns.requestId}</DataHead>
+                  <DataHead>{intakeColumns.outcome}</DataHead>
+                  <DataHead>{intakeColumns.reason}</DataHead>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+              </thead>
+              <tbody>
+                {intakeLog.map((a) => (
+                  <tr key={a.id} title={[a.sourceSystem, a.sourceReference, a.codeTemplate, a.codeProfile, a.printerCode, a.clientId, a.subject].filter(Boolean).join(' · ')}>
+                    <DataCell label={intakeColumns.time}>
+                      <Text size="label" tone="muted" nowrap>{new Date(a.occurredAt).toLocaleString()}</Text>
+                    </DataCell>
+                    <DataCell label={intakeColumns.source}>
+                      <Badge tone={a.source === 'nats' ? 'info' : 'neutral'}>
+                        {a.source === 'nats' ? 'NATS' : 'HTTP API'}
+                      </Badge>
+                    </DataCell>
+                    <DataCell label={intakeColumns.requestId}>
+                      <Mono>{a.requestId ?? '—'}</Mono>
+                    </DataCell>
+                    <DataCell label={intakeColumns.outcome}>
+                      <Badge tone={a.outcome === 'accepted' ? 'success' : a.outcome === 'rejected' ? 'danger' : 'neutral'}>
+                        {outcomeLabel(a.outcome)}
+                      </Badge>
+                    </DataCell>
+                    <DataCell label={intakeColumns.reason}>
+                      <Text tone="muted">{a.reason ?? '—'}</Text>
+                    </DataCell>
+                  </tr>
+                ))}
+                {intakeLog.length === 0 && (
+                  <TableEmpty columns={5}>
+                    <Text tone="muted">{t('page.printFlow.intakeLogEmpty')}</Text>
+                  </TableEmpty>
+                )}
+              </tbody>
+            </DataTable>
+          </Stack>
+        </Panel>
 
-      <section className="settings-section" aria-labelledby="print-flow-new">
-        <h2 id="print-flow-new">{t('page.printFlow.newBinding')}</h2>
+        <Panel
+          title={t('page.printFlow.newBinding')}
+          footer={
+            <Button disabled={!canCreate} busy={busy} busyLabel={t('common.loading')} onClick={() => void create()}>
+              {t('common.bind')}
+            </Button>
+          }
+        >
+          <Stack gap="lg">
+            <FormField label={t('page.printFlow.template')}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={form.templateCode}
+                  onChange={(e) => setForm({ ...form, templateCode: e.target.value })}
+                  disabled={busy}
+                >
+                  <option value="">{t('page.printFlow.select')}</option>
+                  {templates.map((tpl) => (
+                    <option key={tpl.templateCode} value={tpl.templateCode}>{tpl.templateCode} — {tpl.name}</option>
+                  ))}
+                </Select>
+              )}
+            </FormField>
 
-        <div className="settings-field">
-          <label htmlFor="pf-template">{t('page.printFlow.template')}</label>
-          <select
-            id="pf-template"
-            value={form.templateCode}
-            onChange={(e) => setForm({ ...form, templateCode: e.target.value })}
-            disabled={busy}
-          >
-            <option value="">{t('page.printFlow.select')}</option>
-            {templates.map((tpl) => (
-              <option key={tpl.templateCode} value={tpl.templateCode}>{tpl.templateCode} — {tpl.name}</option>
-            ))}
-          </select>
-        </div>
+            <FormField label={t('page.printFlow.profile')}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={form.paperProfileId}
+                  onChange={(e) => setForm({ ...form, paperProfileId: e.target.value })}
+                  disabled={busy}
+                >
+                  <option value="">{t('page.printFlow.select')}</option>
+                  {papers.map((p) => (
+                    <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
+                  ))}
+                </Select>
+              )}
+            </FormField>
 
-        <div className="settings-field">
-          <label htmlFor="pf-profile">{t('page.printFlow.profile')}</label>
-          <select
-            id="pf-profile"
-            value={form.paperProfileId}
-            onChange={(e) => setForm({ ...form, paperProfileId: e.target.value })}
-            disabled={busy}
-          >
-            <option value="">{t('page.printFlow.select')}</option>
-            {papers.map((p) => (
-              <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
-            ))}
-          </select>
-        </div>
+            <FormField label={t('page.printFlow.printer')}>
+              {(control) => (
+                <Select
+                  {...control}
+                  value={form.printerCode}
+                  onChange={(e) => setForm({ ...form, printerCode: e.target.value })}
+                  disabled={busy}
+                >
+                  <option value="">{t('page.printFlow.select')}</option>
+                  {printers.map((p) => (
+                    <option key={p.code} value={p.code}>{p.code} — {p.name}</option>
+                  ))}
+                </Select>
+              )}
+            </FormField>
 
-        <div className="settings-field">
-          <label htmlFor="pf-printer">{t('page.printFlow.printer')}</label>
-          <select
-            id="pf-printer"
-            value={form.printerCode}
-            onChange={(e) => setForm({ ...form, printerCode: e.target.value })}
-            disabled={busy}
-          >
-            <option value="">{t('page.printFlow.select')}</option>
-            {printers.map((p) => (
-              <option key={p.code} value={p.code}>{p.code} — {p.name}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="settings-field">
-          <label htmlFor="pf-default" className="print-flow-checkbox">
-            <input
-              id="pf-default"
-              type="checkbox"
+            <Checkbox
+              label={t('page.printFlow.default')}
               checked={form.isDefault}
               onChange={(e) => setForm({ ...form, isDefault: e.target.checked })}
               disabled={busy}
             />
-            {t('page.printFlow.default')}
-          </label>
-        </div>
+          </Stack>
+        </Panel>
 
-        <div className="settings-actions">
-          <button type="button" className="settings-btn-primary" disabled={!canCreate} onClick={() => void create()}>
-            {busy ? t('common.loading') : t('common.bind')}
-          </button>
-        </div>
-      </section>
-
-      <section className="settings-section" aria-labelledby="print-flow-list">
-        <h2 id="print-flow-list">{t('page.printFlow.existing')}</h2>
-        <div className="print-flow-table-wrap">
-          <table className="print-flow-table">
+        <Panel title={t('page.printFlow.existing')} padding="none">
+          <DataTable label={t('page.printFlow.existing')} responsive>
             <thead>
               <tr>
-                <th>{t('page.printFlow.template')}</th>
-                <th>{t('page.printFlow.profile')}</th>
-                <th>{t('page.printFlow.printer')}</th>
-                <th>{t('page.printFlow.default')}</th>
-                <th>{t('page.printFlow.enabled')}</th>
+                <DataHead>{bindingColumns.template}</DataHead>
+                <DataHead>{bindingColumns.profile}</DataHead>
+                <DataHead>{bindingColumns.printer}</DataHead>
+                <DataHead>{bindingColumns.default}</DataHead>
+                <DataHead>{bindingColumns.enabled}</DataHead>
               </tr>
             </thead>
             <tbody>
-              {bindings.length === 0 && (
-                <tr><td colSpan={5} className="print-flow-empty">{t('common.noData')}</td></tr>
-              )}
               {bindings.map((b) => (
                 <tr key={b.id}>
-                  <td><code>{b.templateCode}</code></td>
-                  <td><code>{paperCodeById.get(b.paperProfileId) ?? b.paperProfileId.slice(0, 8)}</code></td>
-                  <td><code>{b.printerCode}</code></td>
-                  <td>
-                    <button
-                      type="button"
-                      className={'print-flow-pill' + (b.isDefault ? ' print-flow-pill--on' : '')}
+                  <DataCell label={bindingColumns.template}><Mono>{b.templateCode}</Mono></DataCell>
+                  <DataCell label={bindingColumns.profile}>
+                    <Mono>{paperCodeById.get(b.paperProfileId) ?? b.paperProfileId.slice(0, 8)}</Mono>
+                  </DataCell>
+                  <DataCell label={bindingColumns.printer}><Mono>{b.printerCode}</Mono></DataCell>
+                  {/* These were `<button className="print-flow-pill">` — real
+                      controls whose pressed state existed only as a colour. */}
+                  <DataCell label={bindingColumns.default} actions>
+                    <Chip
+                      selected={b.isDefault}
                       disabled={busy || b.isDefault}
                       onClick={() => void patch(b, { isDefault: true })}
                       title={t('page.printFlow.makeDefault')}
                     >
                       {b.isDefault ? t('status.enabled') : t('page.printFlow.makeDefault')}
-                    </button>
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className={'print-flow-pill' + (b.enabled ? ' print-flow-pill--on' : '')}
+                    </Chip>
+                  </DataCell>
+                  <DataCell label={bindingColumns.enabled} actions>
+                    <Chip
+                      selected={b.enabled}
                       disabled={busy}
                       onClick={() => void patch(b, { enabled: !b.enabled })}
                       title={b.enabled ? t('status.disabled') : t('status.enabled')}
                     >
                       {b.enabled ? t('status.enabled') : t('status.disabled')}
-                    </button>
-                  </td>
+                    </Chip>
+                  </DataCell>
                 </tr>
               ))}
+              {bindings.length === 0 && (
+                <TableEmpty columns={5}>
+                  <Text tone="muted">{t('common.noData')}</Text>
+                </TableEmpty>
+              )}
             </tbody>
-          </table>
-        </div>
-      </section>
+          </DataTable>
+        </Panel>
+      </Stack>
     </PageLayout>
   );
 }

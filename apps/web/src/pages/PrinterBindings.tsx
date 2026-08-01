@@ -4,11 +4,28 @@ import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
-import { EmptyState, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
-import { Alert } from '../components/Alert.js';
-import { Button } from '../components/Button.js';
-import { FormField } from '../components/FormField.js';
-import { PageLayout, PageSection } from '../components/PageLayout.js';
+import {
+  Alert,
+  Badge,
+  Button,
+  Checkbox,
+  DataCell,
+  DataHead,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  FormField,
+  Freshness,
+  Grid,
+  Input,
+  LoadingState,
+  Mono,
+  PageLayout,
+  Panel,
+  Stack,
+  TableEmpty,
+  Text,
+} from '../components/ui/index.js';
 
 interface Binding { id: string; printerCode: string; templateCode: string; paperProfileId: string; isDefault: boolean; enabled: boolean }
 
@@ -37,6 +54,14 @@ export default function PrinterBindings() {
     bindingsResource.refresh();
     return created;
   });
+
+  const columns = {
+    printer: t('page.bindings.printer'),
+    template: t('page.bindings.template'),
+    paper: t('page.bindings.paper'),
+    default: t('page.bindings.default'),
+    enabled: t('page.bindings.enabled'),
+  };
 
   return (
     <PageLayout
@@ -67,64 +92,87 @@ export default function PrinterBindings() {
         </Alert>
       )}
 
-      <PageSection>
-        <div className="binding-form-grid">
-          {(['printerCode', 'templateCode', 'paperProfileId'] as const).map((key) => (
-            <FormField key={key} label={t(`page.bindings.${key}`)}>
-              {(control) => (
-                <input
-                  {...control}
-                  value={form[key]}
-                  onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                />
-              )}
-            </FormField>
-          ))}
-          <label>
-            <input
-              type="checkbox"
+      <Stack gap="xl">
+        <Panel
+          title={t('page.bindings.title')}
+          footer={
+            <Button onClick={() => void createBinding.run(form)} busy={createBinding.pending}>
+              {t('common.bind')}
+            </Button>
+          }
+        >
+          <Stack gap="lg">
+            <Grid columns={3}>
+              {(['printerCode', 'templateCode', 'paperProfileId'] as const).map((key) => (
+                <FormField key={key} label={t(`page.bindings.${key}`)}>
+                  {(control) => (
+                    <Input
+                      {...control}
+                      value={form[key]}
+                      onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                    />
+                  )}
+                </FormField>
+              ))}
+            </Grid>
+            {/* Was a bare `<label><input type=checkbox>` with a text node beside
+                it — no shared control, no description slot, no touch sizing. */}
+            <Checkbox
+              label={t('page.bindings.default')}
               checked={form.isDefault}
               onChange={(e) => setForm({ ...form, isDefault: e.target.checked })}
-            />{' '}
-            {t('page.bindings.default')}
-          </label>
-          <Button onClick={() => void createBinding.run(form)} busy={createBinding.pending}>
-            {t('common.bind')}
-          </Button>
-        </div>
-      </PageSection>
+            />
+          </Stack>
+        </Panel>
 
-      <div className="ops-surface ops-surface--flush">
         {bindingsResource.loading && !bindingsResource.data ? (
           <LoadingState />
         ) : bindingsResource.error != null && !bindingsResource.data ? (
           <ErrorState error={bindingsResource.error} onRetry={bindingsResource.refresh} />
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <DataTable label={t('page.bindings.title')} responsive>
             <thead>
               <tr>
-                {[t('page.bindings.printer'), t('page.bindings.template'), t('page.bindings.paper'), t('page.bindings.default'), t('page.bindings.enabled')].map((h) => (
-                  <th key={h} scope="col">{h}</th>
-                ))}
+                <DataHead>{columns.printer}</DataHead>
+                <DataHead>{columns.template}</DataHead>
+                <DataHead>{columns.paper}</DataHead>
+                <DataHead>{columns.default}</DataHead>
+                <DataHead>{columns.enabled}</DataHead>
               </tr>
             </thead>
             <tbody>
-              {bindings.length === 0 && (
-                <tr><td colSpan={5}><EmptyState title={t('page.bindings.noBindings')} /></td></tr>
-              )}
               {bindings.map((b) => (
                 <tr key={b.id}>
-                  <td>{b.printerCode}</td>
-                  <td>{b.templateCode}</td>
-                  <td>{b.paperProfileId.slice(0, 8)}</td>
-                  <td>{b.isDefault ? t('page.bindings.isDefault') : t('page.bindings.notDefault')}</td>
-                  <td>{b.enabled ? t('status.enabled') : t('status.disabled')}</td>
+                  <DataCell label={columns.printer}>
+                    <Mono weight="semibold">{b.printerCode}</Mono>
+                  </DataCell>
+                  <DataCell label={columns.template}>
+                    <Mono>{b.templateCode}</Mono>
+                  </DataCell>
+                  <DataCell label={columns.paper}>
+                    <Mono tone="muted" title={b.paperProfileId}>{b.paperProfileId.slice(0, 8)}</Mono>
+                  </DataCell>
+                  <DataCell label={columns.default}>
+                    {b.isDefault
+                      ? <Badge tone="info">{t('page.bindings.isDefault')}</Badge>
+                      : <Text tone="muted">{t('page.bindings.notDefault')}</Text>}
+                  </DataCell>
+                  <DataCell label={columns.enabled}>
+                    <Badge tone={b.enabled ? 'success' : 'neutral'}>
+                      {b.enabled ? t('status.enabled') : t('status.disabled')}
+                    </Badge>
+                  </DataCell>
                 </tr>
               ))}
+              {bindings.length === 0 && (
+                <TableEmpty columns={5}>
+                  <EmptyState title={t('page.bindings.noBindings')} />
+                </TableEmpty>
+              )}
             </tbody>
-          </table>
+          </DataTable>
         )}
-      </div>
+      </Stack>
     </PageLayout>
   );
 }

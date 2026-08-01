@@ -4,11 +4,23 @@ import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
-import { EmptyState, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
-import { Alert } from '../components/Alert.js';
-import { Button } from '../components/Button.js';
-import { Dialog } from '../components/Dialog.js';
-import { PageLayout } from '../components/PageLayout.js';
+import {
+  Alert,
+  Badge,
+  Button,
+  DataCell,
+  DataHead,
+  DataTable,
+  Dialog,
+  EmptyState,
+  ErrorState,
+  Freshness,
+  Inline,
+  LoadingState,
+  Mono,
+  PageLayout,
+  Text,
+} from '../components/ui/index.js';
 
 interface DiscoveredPrinter {
   id: string;
@@ -24,38 +36,20 @@ interface DiscoveredPrinter {
   registeredPrinterId?: string;
 }
 
-const CONNECTION_BADGE: Record<string, { label: string; color: string }> = {
-  usb: { label: 'USB', color: '#6d28d9' },
-  tcp_ip: { label: 'TCP/IP', color: '#0e7490' },
-  wsd: { label: 'WSD', color: '#0891b2' },
-  lpt_com: { label: 'LPT/COM', color: '#92400e' },
-  network_share: { label: 'Network Share', color: '#166534' },
-  unknown: { label: 'Unknown', color: '#6b7280' },
+/**
+ * Connection type is metadata, not operational status, so it takes the neutral
+ * metadata tag rather than a colour of its own. The previous version assigned
+ * each type a hex and rendered it at `color + '20'` — six accent colours that
+ * appear nowhere else in the product, carrying no state an operator can act on.
+ */
+const CONNECTION_LABEL: Record<string, string> = {
+  usb: 'USB',
+  tcp_ip: 'TCP/IP',
+  wsd: 'WSD',
+  lpt_com: 'LPT/COM',
+  network_share: 'Network Share',
+  unknown: 'Unknown',
 };
-
-function Truncate({ value, display, className = '' }: { value?: string; display?: string; className?: string }) {
-  const fullText = value && value.length > 0 ? value : '—';
-  const displayText = display ?? fullText;
-  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
-
-  return (
-    <span
-      className="truncate-wrap"
-      onMouseEnter={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        setPosition({ left: Math.min(rect.left, window.innerWidth - 580), top: rect.bottom + 8 });
-      }}
-      onMouseLeave={() => setPosition(null)}
-    >
-      <span className={`truncate ${className}`} title={fullText}>{displayText}</span>
-      {position && fullText !== '—' && (
-        <span className="hover-popover" style={{ left: Math.max(16, position.left), top: position.top }}>
-          {fullText}
-        </span>
-      )}
-    </span>
-  );
-}
 
 export default function DiscoveredPrinters() {
   const { t } = useLocale();
@@ -90,9 +84,17 @@ export default function DiscoveredPrinters() {
     );
   };
 
-  const formatTime = (iso: string) => {
-    const d = new Date(iso);
-    return d.toLocaleString();
+  const formatTime = (iso: string) => new Date(iso).toLocaleString();
+
+  const columns = {
+    name: t('page.discovery.printerName'),
+    driver: t('page.discovery.driver'),
+    port: t('page.discovery.port'),
+    connection: t('page.discovery.connection'),
+    runner: t('page.discovery.runner'),
+    lastSeen: t('page.discovery.lastSeen'),
+    status: t('page.discovery.status'),
+    action: t('page.discovery.action'),
   };
 
   return (
@@ -135,76 +137,69 @@ export default function DiscoveredPrinters() {
       )}
 
       {printers.length > 0 && (
-        <div className="ops-surface ops-surface--flush">
-          <table className="data-table">
-            <colgroup>
-              <col style={{ width: '21%' }} />
-              <col style={{ width: '17%' }} />
-              <col style={{ width: '22%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '9%' }} />
-              <col style={{ width: '11%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '10%' }} />
-            </colgroup>
-            <thead>
-              <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                {[t('page.discovery.printerName'), t('page.discovery.driver'), t('page.discovery.port'), t('page.discovery.connection'), t('page.discovery.runner'), t('page.discovery.lastSeen'), t('page.discovery.status'), t('page.discovery.action')].map((h) => (
-                  <th key={h} style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>{h}</th>
-                ))}
+        <DataTable label={t('page.discovery.title')} responsive>
+          <thead>
+            <tr>
+              <DataHead>{columns.name}</DataHead>
+              <DataHead>{columns.driver}</DataHead>
+              <DataHead>{columns.port}</DataHead>
+              <DataHead>{columns.connection}</DataHead>
+              <DataHead>{columns.runner}</DataHead>
+              <DataHead>{columns.lastSeen}</DataHead>
+              <DataHead>{columns.status}</DataHead>
+              <DataHead>{columns.action}</DataHead>
+            </tr>
+          </thead>
+          <tbody>
+            {printers.map((p) => (
+              <tr key={p.id}>
+                {/* Long device names are clipped on desktop but carry the full
+                    string in `title`, and the responsive card view shows them
+                    in full — so the value is never unrecoverable. */}
+                <DataCell label={columns.name}>
+                  <Inline gap="xs">
+                    <Text weight="medium" tone="strong" truncate title={p.localPrinterName}>
+                      {p.localPrinterName}
+                    </Text>
+                    {p.isDefault && <Text size="label" tone="muted">{t('page.discovery.default')}</Text>}
+                  </Inline>
+                </DataCell>
+                <DataCell label={columns.driver}>
+                  <Text tone="muted" truncate title={p.driverName ?? '—'}>{p.driverName ?? '—'}</Text>
+                </DataCell>
+                <DataCell label={columns.port}>
+                  <Mono tone="muted" truncate title={p.portName ?? '—'}>{p.portName ?? '—'}</Mono>
+                </DataCell>
+                <DataCell label={columns.connection}>
+                  <Badge>{CONNECTION_LABEL[p.connectionType] ?? CONNECTION_LABEL['unknown']!}</Badge>
+                </DataCell>
+                <DataCell label={columns.runner}>
+                  <Mono tone="muted" title={p.runnerId}>{p.runnerId.slice(0, 8)}…</Mono>
+                </DataCell>
+                <DataCell label={columns.lastSeen}>
+                  <Text tone="muted" nowrap>{formatTime(p.lastSeenAt)}</Text>
+                </DataCell>
+                <DataCell label={columns.status}>
+                  <Badge tone={p.registeredPrinterId ? 'success' : 'warning'}>
+                    {p.registeredPrinterId ? t('status.registered') : t('status.unregistered')}
+                  </Badge>
+                </DataCell>
+                <DataCell label={columns.action} actions>
+                  {!p.registeredPrinterId && (
+                    <Button
+                      size="sm"
+                      busy={register.pending}
+                      busyLabel={t('page.discovery.registering')}
+                      onClick={() => setPendingRegister(p)}
+                    >
+                      {t('page.discovery.register')}
+                    </Button>
+                  )}
+                </DataCell>
               </tr>
-            </thead>
-            <tbody>
-              {printers.map((p, i) => {
-                const badge = CONNECTION_BADGE[p.connectionType] ?? CONNECTION_BADGE['unknown']!;
-                return (
-                  <tr key={p.id} style={{ borderBottom: i < printers.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
-                    <td style={{ padding: '0.75rem 1rem', fontWeight: 500, color: '#111827' }}>
-                      <Truncate value={p.localPrinterName} className="cell-name" />
-                      {p.isDefault && <span style={{ marginLeft: 6, fontSize: '0.75rem', color: '#6b7280' }}>{t('page.discovery.default')}</span>}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', color: '#6b7280' }}>
-                      <Truncate value={p.driverName} className="cell-driver" />
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', color: '#6b7280', fontFamily: 'monospace' }}>
-                      <Truncate value={p.portName} className="cell-uri" />
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem' }}>
-                      <span style={{ padding: '0.25rem 0.5rem', borderRadius: 4, background: badge.color + '20', color: badge.color, fontSize: '0.75rem', fontWeight: 600 }}>
-                        {badge.label}
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                      <Truncate value={p.runnerId} display={`${p.runnerId.slice(0, 8)}...`} className="cell-id" />
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', color: '#6b7280', whiteSpace: 'nowrap' }}>
-                      <Truncate value={formatTime(p.lastSeenAt)} className="cell-time" />
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem' }}>
-                      {p.registeredPrinterId ? (
-                        <span style={{ color: '#166534', fontSize: '0.75rem', fontWeight: 600 }}>{t('status.registered')}</span>
-                      ) : (
-                        <span style={{ color: '#92400e', fontSize: '0.75rem', fontWeight: 600 }}>{t('status.unregistered')}</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem' }}>
-                      {!p.registeredPrinterId && (
-                        <Button
-                          size="sm"
-                          busy={register.pending}
-                          busyLabel={t('page.discovery.registering')}
-                          onClick={() => setPendingRegister(p)}
-                        >
-                          {t('page.discovery.register')}
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </DataTable>
       )}
 
       {/* Replaces window.confirm(): a native modal blocks the whole WebView,
@@ -226,7 +221,7 @@ export default function DiscoveredPrinters() {
         }
       >
         {pendingRegister && (
-          <p>{t('page.discovery.confirmRegister').replace('{name}', pendingRegister.localPrinterName)}</p>
+          <Text as="p">{t('page.discovery.confirmRegister').replace('{name}', pendingRegister.localPrinterName)}</Text>
         )}
       </Dialog>
     </PageLayout>

@@ -15,13 +15,34 @@ import {
   type JobVerdict,
 } from '../lib/jobVerdict.js';
 import { getErrorAdvice } from '../lib/jobErrorAdvice.js';
-import { Alert } from '../components/Alert.js';
-import { Button } from '../components/Button.js';
-import { PageLayout } from '../components/PageLayout.js';
-import { ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 import { JobVerdictBand } from '../components/JobVerdict.js';
 import { ReprintDialog } from '../components/ReprintDialog.js';
-import { StatusBadge } from '../components/StatusBadge.js';
+import {
+  Alert,
+  Badge,
+  Button,
+  DataCell,
+  DataHead,
+  DataTable,
+  ErrorBanner,
+  ErrorState,
+  Fact,
+  FactList,
+  Freshness,
+  Grid,
+  Inline,
+  LoadingState,
+  Mono,
+  PageLayout,
+  Panel,
+  RecordCard,
+  RecordList,
+  RecordHeader,
+  Stack,
+  StatusBadge,
+  Text,
+  type BadgeTone,
+} from '../components/ui/index.js';
 
 interface TraceStep {
   stepName: string;
@@ -215,19 +236,20 @@ function fmtTime(s?: string): string {
 }
 
 /**
- * Delivery-state presentation. Every state carries a text label AND a symbol —
- * never colour alone, which a colour-blind operator (or a printed screenshot in
- * an incident report) cannot read.
+ * Delivery state as a shared badge tone.
+ *
+ * This was a map of tone names to Unicode glyphs — `•`, `↻`, `✓`, `⏱`, `✕` —
+ * rendered `aria-hidden` beside the label. The glyphs were never an icon system:
+ * they render at different weights and baselines per platform and carried no
+ * meaning the adjacent text did not already carry. The badge keeps the two
+ * channels the rule actually requires: a literal label plus a contrast-safe tone.
  */
-const DELIVERY_PRESENTATION: Record<
-  CallbackDelivery['deliveryStatus'],
-  { tone: string; symbol: string }
-> = {
-  PENDING: { tone: 'pending', symbol: '•' },
-  DELIVERING: { tone: 'active', symbol: '↻' },
-  DELIVERED: { tone: 'ok', symbol: '✓' },
-  RETRY_SCHEDULED: { tone: 'waiting', symbol: '⏱' },
-  FAILED: { tone: 'failed', symbol: '✕' },
+const DELIVERY_TONE: Record<CallbackDelivery['deliveryStatus'], BadgeTone> = {
+  PENDING: 'neutral',
+  DELIVERING: 'info',
+  DELIVERED: 'success',
+  RETRY_SCHEDULED: 'warning',
+  FAILED: 'danger',
 };
 
 /**
@@ -256,109 +278,104 @@ function ResultDelivery({
   const configured = intent !== undefined;
 
   return (
-    <section className="job-panel" aria-labelledby="result-delivery-heading">
-      <h2 className="job-panel__heading" id="result-delivery-heading">
-        {t('page.jobDetail.resultDelivery')}
-      </h2>
-
-      {/* The two statuses, side by side and explicitly labelled. */}
-      <div className="job-facts job-facts--wide">
-        <Fact label={t('page.jobDetail.printResult')} value={printStatus} />
-        <Fact
-          label={t('page.jobDetail.deliveryState')}
-          value={
-            deliveries.length === 0
+    <Panel title={t('page.jobDetail.resultDelivery')}>
+      <Stack gap="lg">
+        {/* The two statuses, side by side and explicitly labelled. */}
+        <FactList>
+          <Fact label={t('page.jobDetail.printResult')}>{printStatus}</Fact>
+          <Fact label={t('page.jobDetail.deliveryState')}>
+            {deliveries.length === 0
               ? (configured && intent?.enabled === false
                   ? t('page.jobDetail.callbackDisabled')
                   : t('page.jobDetail.noDelivery'))
-              : deliveries
-                  .map((d) => `${DELIVERY_PRESENTATION[d.deliveryStatus].symbol} ${d.transport} ${d.deliveryStatus}`)
-                  .join(' · ')
-          }
-        />
-      </div>
+              : (
+                <Inline gap="xs">
+                  {deliveries.map((d) => (
+                    <Badge key={d.id} tone={DELIVERY_TONE[d.deliveryStatus]}>
+                      {d.transport} {d.deliveryStatus}
+                    </Badge>
+                  ))}
+                </Inline>
+              )}
+          </Fact>
+        </FactList>
 
-      {/* Configuration, so "nothing was delivered" always has a stated reason. */}
-      <div className="job-facts">
-        <Fact
-          label={t('page.jobDetail.callbackEnabled')}
-          value={!configured ? t('page.jobDetail.callbackNotConfigured') : intent?.enabled ? t('status.enabled') : t('status.disabled')}
-        />
-        <Fact label={t('page.jobDetail.callbackTrigger')} value={intent?.trigger ?? '—'} />
-        <Fact label={t('page.jobDetail.callbackTransport')} value={intent?.transports?.join(' + ') || '—'} />
-        <Fact label={t('page.jobDetail.callbackEndpoint')} value={intent?.endpointCode ?? '—'} mono />
-      </div>
+        {/* Configuration, so "nothing was delivered" always has a stated reason. */}
+        <FactList>
+          <Fact label={t('page.jobDetail.callbackEnabled')}>
+            {!configured ? t('page.jobDetail.callbackNotConfigured') : intent?.enabled ? t('status.enabled') : t('status.disabled')}
+          </Fact>
+          <Fact label={t('page.jobDetail.callbackTrigger')}>{intent?.trigger ?? '—'}</Fact>
+          <Fact label={t('page.jobDetail.callbackTransport')}>{intent?.transports?.join(' + ') || '—'}</Fact>
+          <Fact label={t('page.jobDetail.callbackEndpoint')}>
+            <Mono>{intent?.endpointCode ?? '—'}</Mono>
+          </Fact>
+        </FactList>
 
-      {intent?.enabled === false && intent.disabledReason && (
-        <p className="job-panel__aside">
-          {t('page.jobDetail.callbackDisabledReason')}: {intent.disabledReason}
-        </p>
-      )}
+        {intent?.enabled === false && intent.disabledReason && (
+          <Text as="p" tone="muted">
+            {t('page.jobDetail.callbackDisabledReason')}: {intent.disabledReason}
+          </Text>
+        )}
 
-      {deliveries.length > 0 && (
-        <div className="job-delivery-list">
-          {deliveries.map((d) => {
-            const presentation = DELIVERY_PRESENTATION[d.deliveryStatus];
-            return (
-              <div key={d.id} className={`job-delivery job-delivery--${presentation.tone}`}>
-                <div className="job-delivery__head">
-                  {/* The symbol is decorative; the adjacent text carries the meaning. */}
-                  <span className="job-delivery__symbol" aria-hidden="true">
-                    {presentation.symbol}
-                  </span>
-                  <strong className="job-delivery__title">
-                    {d.transport} — {d.deliveryStatus}
-                  </strong>
-                  <span className="job-delivery__attempts">
-                    {t('page.jobDetail.attempts')}: {d.attemptCount}/{d.maxAttempts}
-                  </span>
-                  {d.guarantee === 'BEST_EFFORT' && (
-                    <span className="job-delivery__flag" title={t('page.jobDetail.bestEffortHelp')}>
-                      {t('page.jobDetail.bestEffort')}
-                    </span>
-                  )}
-                </div>
-                <div className="job-delivery__target">
-                  {/* Destination only — never a signing secret. */}
-                  {t('page.jobDetail.destination')}: <code>{d.target}</code>
-                </div>
-                <div className="job-delivery__times">
-                  <span>{t('page.jobDetail.lastAttempt')}: {fmtTime(d.lastAttemptAt)}</span>
-                  <span>{t('page.jobDetail.nextRetry')}: {fmtTime(d.nextAttemptAt)}</span>
-                  <span>{t('page.jobDetail.deliveredAt')}: {fmtTime(d.deliveredAt)}</span>
-                </div>
-                <div className="job-delivery__ids">
-                  <span>{t('page.jobDetail.eventId')}: <code>{d.eventId}</code></span>
-                  {d.requestId && <span>{t('page.jobDetail.requestId')}: <code>{d.requestId}</code></span>}
-                </div>
-                {d.lastErrorCode && (
-                  <div className="job-delivery__error">
-                    {d.lastErrorCode}
-                    {d.lastHttpStatus ? ` (HTTP ${d.lastHttpStatus})` : ''}
-                    {d.lastErrorMessage ? ` — ${d.lastErrorMessage}` : ''}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          <Link className="job-panel__link" to="/webhooks">
-            {t('page.jobDetail.viewCallbackLog')} →
-          </Link>
-        </div>
-      )}
-    </section>
-  );
-}
+        {deliveries.length > 0 && (
+          <Stack gap="md">
+            <RecordList>
+              {deliveries.map((d) => (
+                <RecordCard key={d.id}>
+                  <Stack gap="md">
+                    <RecordHeader>
+                      <Inline gap="sm">
+                        <Badge tone={DELIVERY_TONE[d.deliveryStatus]}>
+                          {d.transport} — {d.deliveryStatus}
+                        </Badge>
+                        {d.guarantee === 'BEST_EFFORT' && (
+                          <Badge tone="warning" title={t('page.jobDetail.bestEffortHelp')}>
+                            {t('page.jobDetail.bestEffort')}
+                          </Badge>
+                        )}
+                      </Inline>
+                      <Text size="label" tone="muted" nowrap>
+                        {t('page.jobDetail.attempts')}: {d.attemptCount}/{d.maxAttempts}
+                      </Text>
+                    </RecordHeader>
 
-/** Card for a single key-value fact. */
-function Fact({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
-  return (
-    <div className="job-fact">
-      <div className="job-fact__label">{label}</div>
-      <div className={'job-fact__value' + (mono ? ' job-fact__value--mono' : '')}>
-        {value ?? '—'}
-      </div>
-    </div>
+                    <FactList>
+                      {/* Destination only — never a signing secret. */}
+                      <Fact label={t('page.jobDetail.destination')}>
+                        <Mono>{d.target}</Mono>
+                      </Fact>
+                      <Fact label={t('page.jobDetail.eventId')}>
+                        <Mono>{d.eventId}</Mono>
+                      </Fact>
+                      <Fact label={t('page.jobDetail.lastAttempt')}>{fmtTime(d.lastAttemptAt)}</Fact>
+                      <Fact label={t('page.jobDetail.nextRetry')}>{fmtTime(d.nextAttemptAt)}</Fact>
+                      <Fact label={t('page.jobDetail.deliveredAt')}>{fmtTime(d.deliveredAt)}</Fact>
+                      {d.requestId && (
+                        <Fact label={t('page.jobDetail.requestId')}>
+                          <Mono>{d.requestId}</Mono>
+                        </Fact>
+                      )}
+                    </FactList>
+
+                    {d.lastErrorCode && (
+                      <Alert tone="error">
+                        {d.lastErrorCode}
+                        {d.lastHttpStatus ? ` (HTTP ${d.lastHttpStatus})` : ''}
+                        {d.lastErrorMessage ? ` — ${d.lastErrorMessage}` : ''}
+                      </Alert>
+                    )}
+                  </Stack>
+                </RecordCard>
+              ))}
+            </RecordList>
+            <Link className="ui-link" to="/webhooks">
+              {t('page.jobDetail.viewCallbackLog')} →
+            </Link>
+          </Stack>
+        )}
+      </Stack>
+    </Panel>
   );
 }
 
@@ -377,83 +394,82 @@ export function PrinterEvidence({
     ? `${t('page.jobDetail.ippJob')} (ipp-job)`
     : evidence.deviceConfirmation ?? noData;
 
+  const columns = {
+    id: t('page.jobDetail.ippJobId'),
+    uri: t('page.jobDetail.ippJobUri'),
+    state: t('page.jobDetail.ippState'),
+    reasons: t('page.jobDetail.ippReasons'),
+    impressions: t('page.jobDetail.impressionsCompleted'),
+  };
+
   return (
-    <section className="print-evidence" aria-labelledby="print-evidence-heading">
-      <div className="print-evidence__header">
-        <h2 id="print-evidence-heading">{t('page.jobDetail.printerEvidence')}</h2>
-        <span className={`print-evidence__outcome ${ippConfirmed ? 'print-evidence__outcome--confirmed' : ''}`}>
-          {outcome}
-        </span>
-      </div>
+    <Panel
+      title={t('page.jobDetail.printerEvidence')}
+      actions={<Badge tone={ippConfirmed ? 'success' : 'neutral'}>{outcome}</Badge>}
+    >
+      <Stack gap="lg">
+        <FactList>
+          <Fact label={t('page.jobDetail.confirmationChannel')}>{confirmationChannel}</Fact>
+          <Fact label={t('page.jobDetail.ippEndpoint')}>
+            <Mono>{evidence.ippEndpoint ?? noData}</Mono>
+          </Fact>
+          <Fact label={t('page.jobDetail.ippExpectedJobName')}>
+            <Mono>{evidence.ippExpectedJobName ?? noData}</Mono>
+          </Fact>
+          <Fact label={t('page.jobDetail.windowsJobIds')}>
+            <Mono>{evidence.spoolerJobIds?.join(', ') || noData}</Mono>
+          </Fact>
+          <Fact label={t('page.jobDetail.spoolerStatus')}>{evidence.spoolerStatus ?? noData}</Fact>
+          <Fact label={t('page.jobDetail.deviceCounter')}>
+            <Mono>{evidence.pagesBefore ?? '—'} → {evidence.pagesAfter ?? '—'}</Mono>
+          </Fact>
+          <Fact label={t('page.jobDetail.ippStatus')}>{evidence.ippJobStatus ?? noData}</Fact>
+        </FactList>
 
-      <dl className="print-evidence__facts">
-        <div className="print-evidence__fact">
-          <dt>{t('page.jobDetail.confirmationChannel')}</dt>
-          <dd>{confirmationChannel}</dd>
-        </div>
-        <div className="print-evidence__fact">
-          <dt>{t('page.jobDetail.ippEndpoint')}</dt>
-          <dd><code>{evidence.ippEndpoint ?? noData}</code></dd>
-        </div>
-        <div className="print-evidence__fact">
-          <dt>{t('page.jobDetail.ippExpectedJobName')}</dt>
-          <dd><code>{evidence.ippExpectedJobName ?? noData}</code></dd>
-        </div>
-        <div className="print-evidence__fact">
-          <dt>{t('page.jobDetail.windowsJobIds')}</dt>
-          <dd><code>{evidence.spoolerJobIds?.join(', ') || noData}</code></dd>
-        </div>
-        <div className="print-evidence__fact">
-          <dt>{t('page.jobDetail.spoolerStatus')}</dt>
-          <dd>{evidence.spoolerStatus ?? noData}</dd>
-        </div>
-        <div className="print-evidence__fact">
-          <dt>{t('page.jobDetail.deviceCounter')}</dt>
-          <dd>{evidence.pagesBefore ?? '—'} → {evidence.pagesAfter ?? '—'}</dd>
-        </div>
-        <div className="print-evidence__fact print-evidence__fact--wide">
-          <dt>{t('page.jobDetail.ippStatus')}</dt>
-          <dd>{evidence.ippJobStatus ?? noData}</dd>
-        </div>
-      </dl>
-
-      <div className="print-evidence__jobs-heading">
-        {t('page.jobDetail.ippJobs')} <span>({ippJobs.length})</span>
-      </div>
-      {ippJobs.length > 0 ? (
-        <div
-          className="print-evidence__table-wrap"
-          tabIndex={0}
-          role="region"
-          aria-label={t('page.jobDetail.ippJobs')}
-        >
-          <table className="print-evidence__table">
-            <thead>
-              <tr>
-                <th scope="col">{t('page.jobDetail.ippJobId')}</th>
-                <th scope="col">{t('page.jobDetail.ippJobUri')}</th>
-                <th scope="col">{t('page.jobDetail.ippState')}</th>
-                <th scope="col">{t('page.jobDetail.ippReasons')}</th>
-                <th scope="col">{t('page.jobDetail.impressionsCompleted')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ippJobs.map((ippJob, index) => (
-                <tr key={`${ippJob.key ?? ippJob.uri ?? ippJob.id ?? 'ipp-job'}-${index}`}>
-                  <th scope="row"><code>{ippJob.id != null ? `#${ippJob.id}` : noData}</code></th>
-                  <td><code>{ippJob.uri ?? noData}</code></td>
-                  <td>{ippJob.stateName ?? (ippJob.state != null ? String(ippJob.state) : noData)}</td>
-                  <td>{formatStateReasons(ippJob.stateReasons, noData)}</td>
-                  <td>{ippJob.impressionsCompleted ?? noData}</td>
+        <Stack gap="sm">
+          <Inline gap="xs">
+            <Text size="label" tone="muted">{t('page.jobDetail.ippJobs')}</Text>
+            <Text size="label" tone="muted">({ippJobs.length})</Text>
+          </Inline>
+          {ippJobs.length > 0 ? (
+            <DataTable label={t('page.jobDetail.ippJobs')} responsive>
+              <thead>
+                <tr>
+                  <DataHead>{columns.id}</DataHead>
+                  <DataHead>{columns.uri}</DataHead>
+                  <DataHead>{columns.state}</DataHead>
+                  <DataHead>{columns.reasons}</DataHead>
+                  <DataHead>{columns.impressions}</DataHead>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="print-evidence__empty">{t('page.jobDetail.noIppJobs')}</p>
-      )}
-    </section>
+              </thead>
+              <tbody>
+                {ippJobs.map((ippJob, index) => (
+                  <tr key={`${ippJob.key ?? ippJob.uri ?? ippJob.id ?? 'ipp-job'}-${index}`}>
+                    <DataCell label={columns.id}>
+                      <Mono weight="semibold">{ippJob.id != null ? `#${ippJob.id}` : noData}</Mono>
+                    </DataCell>
+                    <DataCell label={columns.uri}>
+                      <Mono tone="muted">{ippJob.uri ?? noData}</Mono>
+                    </DataCell>
+                    <DataCell label={columns.state}>
+                      {ippJob.stateName ?? (ippJob.state != null ? String(ippJob.state) : noData)}
+                    </DataCell>
+                    <DataCell label={columns.reasons}>
+                      {formatStateReasons(ippJob.stateReasons, noData)}
+                    </DataCell>
+                    <DataCell label={columns.impressions}>
+                      <Mono>{ippJob.impressionsCompleted ?? noData}</Mono>
+                    </DataCell>
+                  </tr>
+                ))}
+              </tbody>
+            </DataTable>
+          ) : (
+            <Text as="p" tone="muted">{t('page.jobDetail.noIppJobs')}</Text>
+          )}
+        </Stack>
+      </Stack>
+    </Panel>
   );
 }
 
@@ -624,6 +640,7 @@ export default function JobDetail() {
   // The server refuses a reprint without both. Surface that here rather than
   // letting the operator write a reason into a form that cannot submit.
   const identityComplete = Boolean(job.requestId) && Boolean(job.runnerId);
+  const errorAdvice = job.errorCode ? getErrorAdvice(job.errorCode) : null;
 
   return (
     <PageLayout
@@ -631,7 +648,7 @@ export default function JobDetail() {
       title={t('page.jobDetail.title')}
       density="compact"
       actions={<>
-        <code className="job-detail__id">{job.id}</code>
+        <Mono tone="muted" truncate title={job.id}>{job.id}</Mono>
         <Freshness
           lastSuccessAt={jobResource.lastSuccessAt}
           stale={jobResource.stale}
@@ -664,226 +681,218 @@ export default function JobDetail() {
         </Alert>
       )}
 
-      {/* ── Tier 0: the verdict, and the decision that follows from it ── */}
-      <JobVerdictBand
-        verdict={verdict}
-        headline={t(verdictCopy.headline)}
-        detail={t(verdictCopy.detail)}
-        badge={<StatusBadge status={job.status} size="lg" />}
-        note={
-          reprintOfJobId ? (
-            <p className="job-verdict__provenance">
-              {t('page.jobDetail.reprintOf')}{' '}
-              <Link to={`/jobs/${reprintOfJobId}`}>{reprintOfJobId.slice(0, 12)}…</Link>
-              {job.metadata?.reprintReason && (
-                <>
-                  {' — '}
-                  <span className="job-verdict__provenance-reason">
-                    {job.metadata.reprintReason}
-                  </span>
-                </>
-              )}
-            </p>
-          ) : undefined
-        }
-        actions={
-          offersReprint(verdict) ? (
-            mayReprint ? (
-              identityComplete ? (
-                <Button
-                  variant={reprintButtonVariant(verdict)}
-                  onClick={() => setReprintOpen(true)}
-                >
-                  {reprintOfJobId ? t('page.jobDetail.reprintAgain') : t('page.jobDetail.reprint')}
-                </Button>
+      <Stack gap="xl">
+        {/* ── Tier 0: the verdict, and the decision that follows from it ── */}
+        <JobVerdictBand
+          verdict={verdict}
+          headline={t(verdictCopy.headline)}
+          detail={t(verdictCopy.detail)}
+          badge={<StatusBadge status={job.status} size="lg" />}
+          note={
+            reprintOfJobId ? (
+              <Text as="p" tone="muted">
+                {t('page.jobDetail.reprintOf')}{' '}
+                <Link className="ui-link" to={`/jobs/${reprintOfJobId}`}>{reprintOfJobId.slice(0, 12)}…</Link>
+                {job.metadata?.reprintReason && <>{' — '}{job.metadata.reprintReason}</>}
+              </Text>
+            ) : undefined
+          }
+          actions={
+            offersReprint(verdict) ? (
+              mayReprint ? (
+                identityComplete ? (
+                  <Button
+                    variant={reprintButtonVariant(verdict)}
+                    onClick={() => setReprintOpen(true)}
+                  >
+                    {reprintOfJobId ? t('page.jobDetail.reprintAgain') : t('page.jobDetail.reprint')}
+                  </Button>
+                ) : (
+                  <Text as="p" size="label" tone="muted">{t('page.jobDetail.reprintBlockedIdentity')}</Text>
+                )
               ) : (
-                <p className="job-verdict__blocked">{t('page.jobDetail.reprintBlockedIdentity')}</p>
+                <Text as="p" size="label" tone="muted">{t('page.jobDetail.reprintNotPermitted')}</Text>
               )
-            ) : (
-              <p className="job-verdict__blocked">{t('page.jobDetail.reprintNotPermitted')}</p>
-            )
-          ) : job.status === 'DUPLICATE_RETURNED' && job.requestId ? (
-            <Link className="job-verdict__link" to={`/jobs?search=${encodeURIComponent(job.requestId)}`}>
-              {t('page.jobDetail.reprintOpenOriginal')} →
-            </Link>
-          ) : undefined
-        }
-      />
+            ) : job.status === 'DUPLICATE_RETURNED' && job.requestId ? (
+              <Link className="ui-link" to={`/jobs?search=${encodeURIComponent(job.requestId)}`}>
+                {t('page.jobDetail.reprintOpenOriginal')} →
+              </Link>
+            ) : undefined
+          }
+        />
 
-      {/* The failure's own words + operator physical troubleshooting advice */}
-      {job.errorCode && (() => {
-        const advice = getErrorAdvice(job.errorCode);
-        return (
-          <div className="job-error" role="alert">
-            <div className="job-error__header">
-              <span className="job-error__code">{job.errorCode}</span>
-              {advice && <span className="job-error__title">{t(advice.titleKey)}</span>}
-            </div>
-            {job.errorMessage && <p className="job-error__message">{job.errorMessage}</p>}
-            {advice && (
-              <div className="job-error__action">
-                <div className="job-error__action-title">{t('page.jobDetail.operatorActionTitle')}</div>
-                <p className="job-error__action-text">{t(advice.actionStepKey)}</p>
-              </div>
+        {/* The failure's own words + operator physical troubleshooting advice */}
+        {job.errorCode && (
+          <Alert
+            tone="error"
+            title={errorAdvice ? `${job.errorCode} — ${t(errorAdvice.titleKey)}` : job.errorCode}
+            footer={
+              errorAdvice ? (
+                <Stack gap="xs">
+                  <Text size="label" weight="semibold">{t('page.jobDetail.operatorActionTitle')}</Text>
+                  <Text>{t(errorAdvice.actionStepKey)}</Text>
+                </Stack>
+              ) : undefined
+            }
+          >
+            {job.errorMessage}
+          </Alert>
+        )}
+
+        {/* ── Tier 0b: what was printed ── */}
+        <Panel title={t('page.jobDetail.documentInfo')}>
+          <FactList>
+            <Fact label={t('page.jobDetail.template')}><Mono>{template ?? '—'}</Mono></Fact>
+            <Fact label={t('page.jobDetail.sourceReference')}><Mono>{job.sourceReference ?? '—'}</Mono></Fact>
+            <Fact label={t('page.jobDetail.sourceSystem')}>{job.sourceSystem ?? '—'}</Fact>
+            <Fact label={t('page.jobDetail.copies')}>{job.copies}</Fact>
+            {job.metadata?.code_profile && (
+              <Fact label={t('page.jobDetail.paperProfile')}>
+                <Mono>{job.metadata.code_profile}</Mono>
+              </Fact>
             )}
-          </div>
-        );
-      })()}
-
-      {/* ── Tier 0b: what was printed ── */}
-      <section className="job-panel" aria-labelledby="job-document-heading">
-        <h2 className="job-panel__heading" id="job-document-heading">
-          {t('page.jobDetail.documentInfo')}
-        </h2>
-        <div className="job-facts">
-          <Fact label={t('page.jobDetail.template')} value={template ?? '—'} mono />
-          <Fact label={t('page.jobDetail.sourceReference')} value={job.sourceReference ?? '—'} mono />
-          <Fact label={t('page.jobDetail.sourceSystem')} value={job.sourceSystem ?? '—'} />
-          <Fact label={t('page.jobDetail.copies')} value={job.copies} />
-          {job.metadata?.code_profile && (
-            <Fact label={t('page.jobDetail.paperProfile')} value={job.metadata.code_profile} mono />
-          )}
-          <Fact
-            label={t('page.jobDetail.printer')}
-            value={
-              <Link to={`/printers/${job.printerId}`}>
+            <Fact label={t('page.jobDetail.printer')}>
+              <Link className="ui-link" to={`/printers/${job.printerId}`}>
                 {job.printerCode ?? job.printerId.slice(0, 8)}
               </Link>
-            }
+            </Fact>
+            <Fact label={t('page.jobDetail.priority')}>{job.priorityLabel ?? '—'}</Fact>
+            <Fact label={t('page.jobDetail.finished')}>{fmtTime(job.finishedAt)}</Fact>
+          </FactList>
+        </Panel>
+
+        {/* Never let a failed deliveries fetch render as "no delivery": an
+            operator reading that would conclude the callback never fired. */}
+        {deliveriesResource.error != null && deliveriesResource.data === undefined && (
+          <ErrorBanner
+            error={deliveriesResource.error}
+            title={t('page.jobDetail.deliveryLoadFailed')}
+            onRetry={deliveriesResource.refresh}
           />
-          <Fact label={t('page.jobDetail.priority')} value={job.priorityLabel ?? '—'} />
-          <Fact label={t('page.jobDetail.finished')} value={fmtTime(job.finishedAt)} />
-        </div>
-      </section>
-
-      {/* Never let a failed deliveries fetch render as "no delivery": an
-          operator reading that would conclude the callback never fired. */}
-      {deliveriesResource.error != null && deliveriesResource.data === undefined && (
-        <ErrorBanner
-          error={deliveriesResource.error}
-          title={t('page.jobDetail.deliveryLoadFailed')}
-          onRetry={deliveriesResource.refresh}
-        />
-      )}
-
-      {/* ── Tier 1: why the verdict says what it says ── */}
-      <div className="job-evidence-row">
-        {job.metadata?.printEvidence && (
-          <PrinterEvidence evidence={job.metadata.printEvidence} t={t} />
         )}
-        <ResultDelivery
-          intent={job.metadata?.callbackIntent}
-          deliveries={deliveries}
-          printStatus={job.status}
-          t={t}
-        />
-      </div>
 
-      {/* ── Tier 2: forensics. Present, findable, no longer competing. ── */}
-      <details className="job-technical" open={debugMode ? true : undefined}>
-        <summary className="job-technical__summary">
-          <span>{t('page.jobDetail.technicalDetail')}</span>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleCopyDebugJson();
-            }}
-          >
-            {copiedDebug ? t('page.jobDetail.debugCopied') : t('page.jobDetail.copyDebugJson')}
-          </Button>
-        </summary>
+        {/* ── Tier 1: why the verdict says what it says ── */}
+        <Grid columns={job.metadata?.printEvidence ? 2 : 1}>
+          {job.metadata?.printEvidence && (
+            <PrinterEvidence evidence={job.metadata.printEvidence} t={t} />
+          )}
+          <ResultDelivery
+            intent={job.metadata?.callbackIntent}
+            deliveries={deliveries}
+            printStatus={job.status}
+            t={t}
+          />
+        </Grid>
 
-        <div className="job-technical__body">
-          <section aria-labelledby="job-timing-heading">
-            <h3 className="job-panel__heading" id="job-timing-heading">
-              {t('page.jobDetail.timing')}
-            </h3>
-            <div className="job-facts job-facts--dense">
-              <Fact label={t('page.jobDetail.totalLatency')} value={job.latency?.totalLatencyMs != null ? `${job.latency.totalLatencyMs}ms` : '—'} />
-              <Fact label={t('page.jobDetail.queueWait')} value={job.latency?.queueWaitMs != null ? `${job.latency.queueWaitMs}ms` : '—'} />
-              <Fact label={t('page.jobDetail.dispatch')} value={job.latency?.dispatchMs != null ? `${job.latency.dispatchMs}ms` : '—'} />
-              <Fact label={t('page.jobDetail.runnerExec')} value={job.latency?.runnerExecMs != null ? `${job.latency.runnerExecMs}ms` : '—'} />
-              <Fact label={t('page.jobDetail.spoolerMs')} value={job.latency?.spoolerMs != null ? `${job.latency.spoolerMs}ms` : '—'} />
-              <Fact label={t('page.jobDetail.printerAckMs')} value={job.latency?.printerAckMs != null ? `${job.latency.printerAckMs}ms` : '—'} />
-            </div>
-            <div className="job-technical__times">
-              <span>{t('page.jobDetail.received')}: {fmtTime(job.receivedAt)}</span>
-              <span>{t('page.jobDetail.spooled')}: {fmtTime(job.spoolerSentAt)}</span>
-              <span>{t('page.jobDetail.printerAck')}: {fmtTime(job.printerAckAt)}</span>
-              <span>{t('page.jobDetail.finished')}: {fmtTime(job.finishedAt)}</span>
-            </div>
-          </section>
+        {/* ── Tier 2: forensics. Present, findable, no longer competing. ── */}
+        <details className="job-technical" open={debugMode ? true : undefined}>
+          <summary className="job-technical__summary">
+            <span>{t('page.jobDetail.technicalDetail')}</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCopyDebugJson();
+              }}
+            >
+              {copiedDebug ? t('page.jobDetail.debugCopied') : t('page.jobDetail.copyDebugJson')}
+            </Button>
+          </summary>
 
-          <section aria-labelledby="job-provenance-heading">
-            <h3 className="job-panel__heading" id="job-provenance-heading">
-              {t('page.jobDetail.provenance')}
-            </h3>
-            <div className="job-facts">
-              {job.requestId && <Fact label={t('page.jobDetail.requestId')} value={job.requestId} mono />}
-              {job.metadata?.reprintOfRequestId && (
-                <Fact
-                  label={t('page.jobDetail.originalRequestId')}
-                  value={job.metadata.reprintOfRequestId}
-                  mono
-                />
-              )}
-              <Fact label={t('page.jobDetail.mimeType')} value={job.mimeType ?? '—'} />
-            </div>
-            {job.payloadSnapshot && (
-              <p className="job-panel__aside">
-                <span className="job-panel__aside-label">{t('page.jobDetail.payloadFields')}:</span>{' '}
-                <code>{job.payloadSnapshot}</code>
-              </p>
-            )}
-            {natsInfo && (
-              <p className="job-panel__aside">
-                NATS: client={natsInfo.clientId ?? '—'} · subject={natsInfo.subject ?? '—'} · seq={natsInfo.streamSequence ?? '—'}
-              </p>
-            )}
-          </section>
+          <Stack gap="xl" className="job-technical__body">
+            <Panel title={t('page.jobDetail.timing')} tone="subtle">
+              <Stack gap="lg">
+                <FactList>
+                  <Fact label={t('page.jobDetail.totalLatency')}>{job.latency?.totalLatencyMs != null ? `${job.latency.totalLatencyMs}ms` : '—'}</Fact>
+                  <Fact label={t('page.jobDetail.queueWait')}>{job.latency?.queueWaitMs != null ? `${job.latency.queueWaitMs}ms` : '—'}</Fact>
+                  <Fact label={t('page.jobDetail.dispatch')}>{job.latency?.dispatchMs != null ? `${job.latency.dispatchMs}ms` : '—'}</Fact>
+                  <Fact label={t('page.jobDetail.runnerExec')}>{job.latency?.runnerExecMs != null ? `${job.latency.runnerExecMs}ms` : '—'}</Fact>
+                  <Fact label={t('page.jobDetail.spoolerMs')}>{job.latency?.spoolerMs != null ? `${job.latency.spoolerMs}ms` : '—'}</Fact>
+                  <Fact label={t('page.jobDetail.printerAckMs')}>{job.latency?.printerAckMs != null ? `${job.latency.printerAckMs}ms` : '—'}</Fact>
+                </FactList>
+                <FactList>
+                  <Fact label={t('page.jobDetail.received')}>{fmtTime(job.receivedAt)}</Fact>
+                  <Fact label={t('page.jobDetail.spooled')}>{fmtTime(job.spoolerSentAt)}</Fact>
+                  <Fact label={t('page.jobDetail.printerAck')}>{fmtTime(job.printerAckAt)}</Fact>
+                  <Fact label={t('page.jobDetail.finished')}>{fmtTime(job.finishedAt)}</Fact>
+                </FactList>
+              </Stack>
+            </Panel>
 
-          {/* ── Trace timeline ── */}
-          {trace && (
-            <section aria-labelledby="job-trace-heading">
-              <h3 className="job-panel__heading" id="job-trace-heading">
-                {t('page.jobDetail.traceTimeline')}
-              </h3>
-              <ol className="job-trace">
-                {trace.steps.map((step, i) => (
-                  <li className={`job-trace__step job-trace__step--${STEP_TONE[step.status] ?? 'unknown'}`} key={i}>
-                    <div className="job-trace__marker" aria-hidden="true" />
-                    <div className="job-trace__card">
-                      <div className="job-trace__name">{step.stepName}</div>
-                      <div className="job-trace__meta">
-                        {step.durationMs != null ? `${step.durationMs}ms` : '—'} · {step.status}
+            <Panel title={t('page.jobDetail.provenance')} tone="subtle">
+              <Stack gap="lg">
+                <FactList>
+                  {job.requestId && (
+                    <Fact label={t('page.jobDetail.requestId')}><Mono>{job.requestId}</Mono></Fact>
+                  )}
+                  {job.metadata?.reprintOfRequestId && (
+                    <Fact label={t('page.jobDetail.originalRequestId')}>
+                      <Mono>{job.metadata.reprintOfRequestId}</Mono>
+                    </Fact>
+                  )}
+                  <Fact label={t('page.jobDetail.mimeType')}>{job.mimeType ?? '—'}</Fact>
+                </FactList>
+                {job.payloadSnapshot && (
+                  <Stack gap="xs">
+                    <Text size="label" tone="muted">{t('page.jobDetail.payloadFields')}</Text>
+                    <Mono>{job.payloadSnapshot}</Mono>
+                  </Stack>
+                )}
+                {natsInfo && (
+                  <FactList>
+                    <Fact label="NATS client"><Mono>{natsInfo.clientId ?? '—'}</Mono></Fact>
+                    <Fact label="NATS subject"><Mono>{natsInfo.subject ?? '—'}</Mono></Fact>
+                    <Fact label="NATS seq"><Mono>{natsInfo.streamSequence ?? '—'}</Mono></Fact>
+                  </FactList>
+                )}
+              </Stack>
+            </Panel>
+
+            {/* ── Trace timeline ──
+                Deliberately not rebuilt from shared primitives: a vertical
+                timeline with connected step markers is genuine bespoke geometry,
+                not a list wearing a costume, and it appears nowhere else. */}
+            {trace && (
+              <section aria-labelledby="job-trace-heading">
+                <h3 className="ui-heading ui-heading--section" id="job-trace-heading">
+                  {t('page.jobDetail.traceTimeline')}
+                </h3>
+                <ol className="job-trace">
+                  {trace.steps.map((step, i) => (
+                    <li className={`job-trace__step job-trace__step--${STEP_TONE[step.status] ?? 'unknown'}`} key={i}>
+                      <div className="job-trace__marker" aria-hidden="true" />
+                      <div className="job-trace__card">
+                        <div className="job-trace__name">{step.stepName}</div>
+                        <div className="job-trace__meta">
+                          {step.durationMs != null ? `${step.durationMs}ms` : '—'} · {step.status}
+                        </div>
+                        {step.outputSummary && <div className="job-trace__summary">{step.outputSummary}</div>}
+                        {step.error && <div className="job-trace__error">{step.error}</div>}
                       </div>
-                      {step.outputSummary && <div className="job-trace__summary">{step.outputSummary}</div>}
-                      {step.error && <div className="job-trace__error">{step.error}</div>}
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          )}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
 
-          {/* "No trace recorded" and "the trace could not be loaded" are different
-              facts — the first is evidence about the job, the second is evidence
-              about the network. They used to render identically. */}
-          {!trace && traceResource.error == null && (
-            <p className="job-panel__aside">{t('page.jobDetail.noTrace')}</p>
-          )}
-          {!trace && traceResource.error != null && (
-            <ErrorBanner
-              error={traceResource.error}
-              title={t('page.jobDetail.traceLoadFailed')}
-              onRetry={traceResource.refresh}
-            />
-          )}
-        </div>
-      </details>
+            {/* "No trace recorded" and "the trace could not be loaded" are different
+                facts — the first is evidence about the job, the second is evidence
+                about the network. They used to render identically. */}
+            {!trace && traceResource.error == null && (
+              <Text as="p" tone="muted">{t('page.jobDetail.noTrace')}</Text>
+            )}
+            {!trace && traceResource.error != null && (
+              <ErrorBanner
+                error={traceResource.error}
+                title={t('page.jobDetail.traceLoadFailed')}
+                onRetry={traceResource.refresh}
+              />
+            )}
+          </Stack>
+        </details>
+      </Stack>
 
       <ReprintDialog
         job={job}

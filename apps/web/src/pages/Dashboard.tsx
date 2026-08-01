@@ -1,31 +1,31 @@
 import { useCallback } from 'react';
-import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
-import { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
-import { StatusBadge } from '../components/StatusBadge.js';
-import { PageLayout } from '../components/PageLayout.js';
+import {
+  DataCell,
+  DataHead,
+  DataTable,
+  EmptyState,
+  ErrorBanner,
+  ErrorState,
+  Freshness,
+  LoadingState,
+  MetricGrid,
+  MetricTile,
+  Mono,
+  PageLayout,
+  SectionHeading,
+  Stack,
+  StatusBadge,
+  TableEmpty,
+  Text,
+} from '../components/ui/index.js';
 
 interface Job { id: string; status: string; latency?: { totalLatencyMs?: number } }
 interface Printer { id: string; isActive: boolean }
 interface Runner { id: string; status: string }
-
-function StatCard({ label, value, color, statusDot }: { label: string; value: string | number; color?: string; statusDot?: string }) {
-  return (
-    <div
-      className="stat-card"
-      style={color ? ({ "--stat-accent": color } as unknown as CSSProperties) : undefined}
-    >
-      <span className="stat-card-value">{value}</span>
-      <span className="stat-card-label">
-        {statusDot && <span className="stat-card-dot" style={{ backgroundColor: statusDot }} />}
-        {label}
-      </span>
-    </div>
-  );
-}
 
 export default function Dashboard() {
   const { t } = useLocale();
@@ -82,6 +82,8 @@ export default function Dashboard() {
   const sorted = [...latencies].sort((a, b) => a - b);
   const p95Ms = sorted.length > 0 ? sorted[Math.floor(sorted.length * 0.95)] ?? null : null;
 
+  const recentJobs = jobs.slice(0, 10);
+
   return (
     <PageLayout
       title={t('page.dashboard.title')}
@@ -107,50 +109,69 @@ export default function Dashboard() {
       {firstLoad ? <LoadingState /> : failed.length === resources.length && jobs.length === 0 ? (
         <ErrorState error={failed[0]!.error} title={t('page.dashboard.loadFailed')} onRetry={refreshAll} />
       ) : (
-        <>
-          <div className="stat-grid-primary">
-            <StatCard label={t('page.dashboard.activePrinters')} value={activePrinters} color="#1e66f5" statusDot="#1e66f5" />
-            <StatCard label={t('page.dashboard.runnersOnline')} value={onlineRunners} color="#40a02b" statusDot="#40a02b" />
-            <StatCard label={t('page.dashboard.jobsQueued')} value={queued} color="#1e66f5" statusDot="#1e66f5" />
-            <StatCard label={t('page.dashboard.unverifiedJobs')} value={unverified} color={unverified > 0 ? '#f5c97b' : undefined} statusDot={unverified > 0 ? '#f5c97b' : undefined} />
-            <StatCard label={t('page.dashboard.failedJobs')} value={failedJobs} color={failedJobs > 0 ? '#f38ba8' : undefined} statusDot={failedJobs > 0 ? '#f38ba8' : undefined} />
-          </div>
-          <div className="stat-grid-secondary">
-            <StatCard label={t('page.dashboard.totalJobs')} value={jobs.length} />
-            <StatCard label={t('page.dashboard.currentlyPrinting')} value={printing} color="#fab387" statusDot="#fab387" />
-            <StatCard label={t('page.dashboard.avgLatencyMs')} value={avgMs ?? t('common.noData')} />
-            <StatCard label={t('page.dashboard.p95LatencyMs')} value={p95Ms ?? t('common.noData')} />
-          </div>
+        <Stack gap="2xl">
+          <MetricGrid label={t('page.dashboard.title')}>
+            <MetricTile label={t('page.dashboard.activePrinters')} value={activePrinters} tone="accent" />
+            <MetricTile label={t('page.dashboard.runnersOnline')} value={onlineRunners} tone="ok" />
+            <MetricTile label={t('page.dashboard.jobsQueued')} value={queued} tone="accent" />
+            {/* Tone is driven by the count, not the concept: a zero UNVERIFIED
+                count is good news and must not sit there looking like an alarm. */}
+            <MetricTile
+              label={t('page.dashboard.unverifiedJobs')}
+              value={unverified}
+              tone={unverified > 0 ? 'attention' : 'neutral'}
+            />
+            <MetricTile
+              label={t('page.dashboard.failedJobs')}
+              value={failedJobs}
+              tone={failedJobs > 0 ? 'critical' : 'neutral'}
+            />
+          </MetricGrid>
 
-          <h2 className="section-heading">{t('page.dashboard.recentJobs')}</h2>
-          <table className="data-table">
-            <thead>
-              <tr>
-                {[t('page.dashboard.jobId'), t('page.dashboard.status'), t('page.dashboard.totalLatencyMs')].map((h) => (
-                  <th key={h} scope="col" style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.8rem' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {jobs.slice(0, 10).map((j) => (
-                <tr key={j.id}>
-                  <td style={{ fontFamily: "monospace" }}>
-                    <Link to={`/jobs/${j.id}`} style={{ color: '#1e66f5' }}>{j.id.slice(0, 12)}…</Link>
-                  </td>
-                  <td>
-                    <StatusBadge status={j.status} size="sm" />
-                  </td>
-                  <td style={{ color: "var(--neutral-text-muted)" }}>
-                    {j.latency?.totalLatencyMs != null ? j.latency.totalLatencyMs : t('common.noData')}
-                  </td>
+          <MetricGrid emphasis="secondary">
+            <MetricTile label={t('page.dashboard.totalJobs')} value={jobs.length} />
+            <MetricTile label={t('page.dashboard.currentlyPrinting')} value={printing} tone={printing > 0 ? 'accent' : 'neutral'} />
+            <MetricTile label={t('page.dashboard.avgLatencyMs')} value={avgMs ?? t('common.noData')} />
+            <MetricTile label={t('page.dashboard.p95LatencyMs')} value={p95Ms ?? t('common.noData')} />
+          </MetricGrid>
+
+          <Stack gap="md">
+            <SectionHeading title={t('page.dashboard.recentJobs')} />
+            <DataTable label={t('page.dashboard.recentJobs')} responsive>
+              <thead>
+                <tr>
+                  <DataHead>{t('page.dashboard.jobId')}</DataHead>
+                  <DataHead>{t('page.dashboard.status')}</DataHead>
+                  <DataHead>{t('page.dashboard.totalLatencyMs')}</DataHead>
                 </tr>
-              ))}
-              {jobs.length === 0 && (
-                <tr><td colSpan={3}><EmptyState title={t('page.dashboard.emptyJobs')} /></td></tr>
-              )}
-            </tbody>
-          </table>
-        </>
+              </thead>
+              <tbody>
+                {recentJobs.map((j) => (
+                  <tr key={j.id}>
+                    <DataCell label={t('page.dashboard.jobId')}>
+                      <Link to={`/jobs/${j.id}`} className="ui-link" title={j.id}>
+                        <Mono>{j.id.slice(0, 12)}…</Mono>
+                      </Link>
+                    </DataCell>
+                    <DataCell label={t('page.dashboard.status')}>
+                      <StatusBadge status={j.status} size="sm" />
+                    </DataCell>
+                    <DataCell label={t('page.dashboard.totalLatencyMs')}>
+                      <Text tone="muted" mono>
+                        {j.latency?.totalLatencyMs ?? t('common.noData')}
+                      </Text>
+                    </DataCell>
+                  </tr>
+                ))}
+                {recentJobs.length === 0 && (
+                  <TableEmpty columns={3}>
+                    <EmptyState title={t('page.dashboard.emptyJobs')} />
+                  </TableEmpty>
+                )}
+              </tbody>
+            </DataTable>
+          </Stack>
+        </Stack>
       )}
     </PageLayout>
   );

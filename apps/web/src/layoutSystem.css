@@ -12,8 +12,7 @@
   margin-inline: auto;
 }
 
-.ops-page--standard,
-.ops-page.settings-page {
+.ops-page--standard {
   width: min(100%, var(--page-content-standard));
   max-width: var(--page-content-standard);
 }
@@ -75,7 +74,6 @@
 .ops-page .wh-panel,
 .ops-page .settings-section,
 .ops-page .job-panel,
-.ops-page .stat-card,
 .ops-page .pp-library,
 .ops-page .pp-form-panel,
 .ops-page .pp-preview-panel,
@@ -86,16 +84,13 @@
   box-shadow: none;
 }
 
-.ops-page .stat-card:hover,
 .ops-page .job-trace__card:hover {
   transform: none;
 }
 
 .ui-button,
 .ds-btn,
-.tpl-btn,
 .wh-action-btn,
-.wh-btn-outline,
 .settings-actions button,
 .btn-primary,
 .btn-secondary {
@@ -103,7 +98,6 @@
 }
 
 .ds-btn--primary,
-.tpl-btn--primary,
 .settings-btn-primary,
 .btn-primary {
   border-color: var(--primary);
@@ -112,7 +106,6 @@
 }
 
 .ds-btn--primary:hover:not(:disabled),
-.tpl-btn--primary:hover:not(:disabled),
 .settings-btn-primary:hover:not(:disabled),
 .btn-primary:hover:not(:disabled) {
   border-color: var(--primary-hover);
@@ -122,8 +115,6 @@
 
 .ds-btn--ghost,
 .ds-btn--secondary,
-.tpl-btn--ghost,
-.wh-btn-outline,
 .settings-btn-secondary,
 .btn-secondary {
   border-color: var(--neutral-border-strong);
@@ -140,36 +131,15 @@
 
 .ops-page input:not([type='checkbox']):not([type='radio']),
 .ops-page select,
-.ops-page textarea,
-.ops-page .wh-input,
-.ops-page .tpl-input,
-.ops-page .tpl-select {
+.ops-page textarea {
   border-color: var(--neutral-border-strong);
   border-radius: var(--rounded-md);
   background: var(--neutral-surface);
   color: var(--neutral-text);
 }
 
-.ops-page .data-table,
-.ops-page .wh-table-wrap,
-.ops-page .tpl-table-wrap,
-.ops-page .print-flow-table-wrap {
+.ops-page .data-table {
   border-radius: var(--rounded-lg);
-}
-
-.wh-header-icon {
-  display: grid;
-  width: 2.5rem;
-  height: 2.5rem;
-  place-items: center;
-  border-radius: var(--rounded-md);
-  background: var(--state-info-surface);
-  color: var(--primary);
-}
-
-.wh-header-icon .nav-icon {
-  width: 1.125rem;
-  height: 1.125rem;
 }
 
 .template-sandbox-layout {
@@ -202,18 +172,11 @@
   }
 
   .ops-page__header button,
-  .ops-page__header a,
-  .ops-page__footer button,
-  .ops-page__footer a,
-  .ops-page .ds-btn,
-  .ops-page .tpl-btn,
-  .ops-page .wh-action-btn {
+.ops-page__header a,
+.ops-page__footer button,
+.ops-page__footer a,
+.ops-page .ds-btn,
+.ops-page .wh-action-btn {
     min-height: 44px;
-  }
-
-  .wh-search-box,
-  .tpl-search {
-    flex: 1 1 100%;
-    width: 100%;
   }
 }

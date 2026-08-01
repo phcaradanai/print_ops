@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type LabelHTMLAttributes,
   type ReactNode,
@@ -85,34 +86,71 @@ export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
   controlSize?: ControlSize;
   invalid?: boolean;
   resize?: 'none' | 'vertical' | 'both';
+  /** Monospace editing surface for JSON policies, payloads, and template source. */
+  mono?: boolean;
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea({
-  controlSize = 'md', invalid = false, resize = 'vertical', className, 'aria-invalid': ariaInvalid, ...props
+  controlSize = 'md', invalid = false, resize = 'vertical', mono = false, className, 'aria-invalid': ariaInvalid, ...props
 }, ref) {
   return (
     <textarea
       {...props}
       ref={ref}
-      className={controlClass('ui-textarea', controlSize, invalid, className)}
+      className={controlClass('ui-textarea', controlSize, invalid, mono ? `ui-textarea--mono${className ? ` ${className}` : ''}` : className)}
       data-resize={resize}
       aria-invalid={ariaInvalid ?? (invalid || undefined)}
+      spellCheck={props.spellCheck ?? (mono ? false : undefined)}
     />
   );
 });
 
+export interface ChipProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-pressed'> {
+  /** Reflected as `aria-pressed`, so the state is never carried by colour alone. */
+  selected?: boolean;
+  children: ReactNode;
+}
+
+/**
+ * The filter/toggle chip DESIGN.md specifies and nothing implemented.
+ *
+ * Pages were building it by hand from a `<button className="print-flow-pill">`
+ * or a `<span>` that only looked clickable, with no pressed state exposed to
+ * assistive technology. Pills are reserved for exactly this and for status —
+ * never for primary actions.
+ */
+export function Chip({ selected = false, className = '', children, type = 'button', ...props }: ChipProps) {
+  return (
+    <button
+      {...props}
+      type={type}
+      className={`ui-chip${selected ? ' is-selected' : ''}${className ? ` ${className}` : ''}`}
+      aria-pressed={selected}
+    >
+      {children}
+    </button>
+  );
+}
+
 export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> {
   label: ReactNode;
   description?: ReactNode;
+  /**
+   * Keeps the label in the accessibility tree but out of the layout — for row
+   * selection in a table, where the visible column header is the only sensible
+   * place for the name but each row still needs its own. Prefer this to a bare
+   * `aria-label`: the label element stays associated with the input.
+   */
+  hideLabel?: boolean;
 }
 
 export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Checkbox({
-  label, description, className = '', ...props
+  label, description, hideLabel = false, className = '', ...props
 }, ref) {
   return (
-    <label className={`ui-check${className ? ` ${className}` : ''}`}>
+    <label className={`ui-check${hideLabel ? ' ui-check--bare' : ''}${className ? ` ${className}` : ''}`}>
       <input {...props} ref={ref} type="checkbox" />
-      <span className="ui-check__copy">
+      <span className={`ui-check__copy${hideLabel ? ' ui-visually-hidden' : ''}`}>
         <span className="ui-check__label">{label}</span>
         {description != null && <span className="ui-check__description">{description}</span>}
       </span>

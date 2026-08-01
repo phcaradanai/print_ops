@@ -62,7 +62,14 @@ describe('JobDetail printer-side evidence', () => {
     expect(html).toContain('ipp://printer.local:631/ipp/print/jobs/731');
     expect(html).toContain('completed');
     expect(html).toContain('job-completed-successfully, none');
-    expect(html).toContain('>1</td>');
+    // The impression count is the evidence that a page actually came out, so
+    // assert it against its own column rather than against the markup that
+    // happens to wrap it — the shared table cell carries the column name.
+    const impressionsCell = html.match(
+      /<td[^>]*data-label="Impressions Completed"[^>]*>(.*?)<\/td>/,
+    )?.[1];
+    expect(impressionsCell).toBeDefined();
+    expect(impressionsCell).toContain('1');
   });
 
   it('shows a clear empty state when no exact IPP job was observed', () => {

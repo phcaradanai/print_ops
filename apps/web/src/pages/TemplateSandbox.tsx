@@ -3,10 +3,31 @@ import { apiFetch } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
-import { ErrorBanner } from '../components/PageState.js';
-import { Dialog } from '../components/Dialog.js';
-import { PageLayout } from '../components/PageLayout.js';
 import { sanitizePreviewHtml } from '../lib/previewHtml.js';
+import {
+  Alert,
+  Badge,
+  Button,
+  Checkbox,
+  Chip,
+  CodeBlock,
+  Dialog,
+  EmptyState,
+  ErrorBanner,
+  Fact,
+  FactList,
+  FormField,
+  Inline,
+  Input,
+  LoadingState,
+  PageLayout,
+  SectionHeading,
+  Select,
+  Stack,
+  StatusIndicator,
+  Text,
+  Textarea,
+} from '../components/ui/index.js';
 
 interface Printer {
   id: string;
@@ -94,46 +115,27 @@ export function resolvePaperProfileId(currentPaperProfileId: string, template?: 
   return currentPaperProfileId || template?.paperProfileId || '';
 }
 
-const STATUS_DOT: Record<string, string> = {
-  idle: 'var(--semantic-success)', online: 'var(--semantic-success)', busy: 'var(--semantic-progress)',
-  offline: 'var(--semantic-error)', error: 'var(--semantic-error)', unknown: 'var(--semantic-neutral)',
-};
-
 const DEFAULT_PAYLOAD = '{"label":"Test Label","barcode":"ABC123","hn_masked":"HN***"}';
 
-// ---- shared styles (consistent with PaperProfiles page) ----
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: 'var(--spacing-sm) 0.6rem', border: '1px solid var(--neutral-border-strong)',
-  borderRadius: 'var(--rounded-md)', font: 'inherit', fontSize: 'var(--font-body-size)',
-};
-const labelStyle: React.CSSProperties = {
-  display: 'block', marginBottom: '0.25rem', fontSize: 'var(--font-label-size)',
-  fontWeight: 'var(--font-label-weight)', color: 'var(--neutral-text)',
-};
+/**
+ * What is left of this page's local styling.
+ *
+ * It used to carry a full parallel design system as inline objects — its own
+ * input, label, primary/secondary button, toggle button and status-dot palette,
+ * with `primaryBtn` painting the main action Deep Navy while every other page
+ * used Action Blue. Those all resolve to shared components now. Only the
+ * page's own section rhythm remains, because the sandbox column really is a
+ * stack of rule-separated regions and nothing else in the product is.
+ */
 const sectionStyle: React.CSSProperties = { borderBottom: '1px solid var(--neutral-border)', padding: '0.85rem 0' };
 const sectionLastStyle: React.CSSProperties = { padding: '0.85rem 0' };
 const sectionTitleStyle: React.CSSProperties = {
-  fontSize: 'var(--font-mono-size)', fontWeight: 700, color: 'var(--neutral-deep)',
-  textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.6rem',
-};
-const primaryBtn: React.CSSProperties = {
-  padding: '0.6rem 1.2rem', border: 0, borderRadius: 'var(--rounded-md)', background: 'var(--neutral-deep)',
-  color: 'var(--neutral-surface)', cursor: 'pointer', fontWeight: 600, fontSize: 'var(--font-body-size)',
-};
-const secondaryBtn: React.CSSProperties = {
-  padding: '0.6rem 1.2rem', border: '1px solid var(--neutral-border-strong)', borderRadius: 'var(--rounded-md)',
-  background: 'var(--neutral-surface)', color: 'var(--neutral-text)', cursor: 'pointer', fontWeight: 600, fontSize: 'var(--font-body-size)',
-};
-const fieldBtn: React.CSSProperties = {
-  padding: '0.45rem 0.6rem', border: '1px solid var(--neutral-border-strong)', borderRadius: 'var(--rounded-md)',
-  background: 'var(--neutral-surface)', cursor: 'pointer', fontSize: 'var(--font-mono-size)', flex: 1,
-  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem',
-};
-const activeFieldBtn: React.CSSProperties = {
-  background: 'var(--neutral-deep)', color: 'var(--neutral-surface)', borderColor: 'var(--neutral-deep)',
+  fontSize: 'var(--font-label-size)', fontWeight: 700, color: 'var(--neutral-deep)',
+  letterSpacing: '0.04em', marginBottom: '0.6rem',
 };
 const cardStyle: React.CSSProperties = {
-  background: 'var(--neutral-surface)', padding: '0 var(--spacing-xl)', borderRadius: 'var(--rounded-lg)', boxShadow: 'var(--shadow-subtle)',
+  background: 'var(--neutral-surface)', padding: '0 var(--spacing-xl)',
+  border: '1px solid var(--neutral-border)', borderRadius: 'var(--rounded-lg)',
 };
 
 export default function TemplateSandbox() {
@@ -342,43 +344,49 @@ export default function TemplateSandbox() {
         />
       )}
 
-      {/* ===== Toast ===== */}
+      {/* ===== Result ===== */}
       {toast && (
-        <div style={{
-          position: 'fixed', top: 16, right: 16, zIndex: 2000,
-          padding: '0.7rem var(--spacing-lg)', borderRadius: 'var(--rounded-lg)',
-          background: toast.type === 'success' ? 'var(--state-success-surface)' : 'var(--state-danger-surface)',
-          color: toast.type === 'success' ? 'var(--state-success-text)' : 'var(--state-danger-text)',
-          fontWeight: 600, fontSize: 'var(--font-body-size)', boxShadow: 'var(--shadow-floating)',
-        }}>
+        <Alert tone={toast.type === 'success' ? 'success' : 'error'} onDismiss={() => setToast(null)} dismissLabel={t('common.close')}>
           {toast.msg}
-        </div>
+        </Alert>
       )}
+
+      {/* Physical output. The confirmation restates printer, template and copy
+          count, and the acknowledgement stays a hard gate on the submit. */}
       <Dialog
         open={confirmPrintOpen}
         onClose={() => setConfirmPrintOpen(false)}
         title="Confirm physical test print"
         warning="This action will produce physical output. Generating a proof does not print."
         footer={<>
-          <button type="button" style={secondaryBtn} onClick={() => setConfirmPrintOpen(false)}>Cancel</button>
-          <button type="button" style={{ ...primaryBtn, ...(printAcknowledged && !loading.print ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }} disabled={!printAcknowledged || loading.print} onClick={() => { setConfirmPrintOpen(false); void testPrint(); }}>
-            {loading.print ? t('page.sandbox.sending') : 'Send physical test print'}
-          </button>
+          <Button variant="secondary" onClick={() => setConfirmPrintOpen(false)}>Cancel</Button>
+          <Button
+            variant="danger"
+            disabled={!printAcknowledged}
+            busy={loading.print}
+            busyLabel={t('page.sandbox.sending')}
+            onClick={() => { setConfirmPrintOpen(false); void testPrint(); }}
+          >
+            Send physical test print
+          </Button>
         </>}
       >
-        <dl className="sandbox-confirmation-summary">
-          <dt>Printer</dt><dd>{selectedPrinter?.name ?? '—'}</dd>
-          <dt>Template</dt><dd>{selectedTemplate?.templateCode ?? '—'}</dd>
-          <dt>Copies</dt><dd>{copies}</dd>
-        </dl>
-        <label className="sandbox-confirmation-ack">
-          <input type="checkbox" checked={printAcknowledged} onChange={(event) => setPrintAcknowledged(event.target.checked)} />
-          I understand this will produce physical output.
-        </label>
+        <Stack gap="lg">
+          <FactList>
+            <Fact label="Printer">{selectedPrinter?.name ?? '—'}</Fact>
+            <Fact label="Template">{selectedTemplate?.templateCode ?? '—'}</Fact>
+            <Fact label="Copies">{copies}</Fact>
+          </FactList>
+          <Checkbox
+            label="I understand this will produce physical output."
+            checked={printAcknowledged}
+            onChange={(event) => setPrintAcknowledged(event.target.checked)}
+          />
+        </Stack>
       </Dialog>
 
       {loading.init ? (
-        <p className="loading-text">{t('page.sandbox.loading')}</p>
+        <LoadingState label={t('page.sandbox.loading')} />
       ) : (
         <div className="template-sandbox-layout">
           {/* ===================== Config Panel ===================== */}
@@ -386,246 +394,257 @@ export default function TemplateSandbox() {
             {/* --- Printer --- */}
             <div style={{ ...sectionStyle, paddingTop: '1.1rem' }}>
               <div style={sectionTitleStyle}>{t('page.sandbox.printer')}</div>
-              <label style={labelStyle}>{t('page.sandbox.selectPrinter')}</label>
-              <select aria-label={t('page.sandbox.selectPrinter')} style={inputStyle} value={printerId} onChange={(e) => setPrinterId(e.target.value)}>
-                <option value="">{t('page.sandbox.selectPrinterPlaceholder')}</option>
-                {printers.filter((p) => p.isActive).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.code}){p.location ? ` · ${p.location}` : ''}
-                    {p.status ? ` · ${p.status.code}` : ''}
-                  </option>
-                ))}
-              </select>
-              <p id="sandbox-capability-status" role="status" aria-live="polite" style={{ margin: 'var(--spacing-xs) 0 0', color: 'var(--neutral-text-muted)', fontSize: 'var(--font-label-size)' }}>
+              <FormField label={t('page.sandbox.selectPrinter')}>
+                {(control) => (
+                  <Select {...control} value={printerId} onChange={(e) => setPrinterId(e.target.value)}>
+                    <option value="">{t('page.sandbox.selectPrinterPlaceholder')}</option>
+                    {printers.filter((p) => p.isActive).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.code}){p.location ? ` · ${p.location}` : ''}
+                        {p.status ? ` · ${p.status.code}` : ''}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </FormField>
+              <Text
+                as="p"
+                id="sandbox-capability-status"
+                role="status"
+                aria-live="polite"
+                size="label"
+                tone="muted"
+              >
                 {!selectedPrinter
                   ? t('page.sandbox.selectPrinterForOptions')
                   : [!duplexAvailable && t('page.sandbox.duplexUnavailable'), !colorAvailable && t('page.sandbox.colorUnavailable')].filter(Boolean).join(' ')}
-              </p>
+              </Text>
+              {/* Five identical inline-styled `<span>` pills, one of them
+                  carrying a fourth copy of the device-status colour map. */}
               {selectedPrinter && (
-                <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                  {selectedPrinter.status && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-label-size)', padding: '0.15rem var(--spacing-sm)', background: 'var(--neutral-subtle)', borderRadius: 'var(--rounded-sm)' }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_DOT[selectedPrinter.status.code] ?? 'var(--semantic-neutral)', display: 'inline-block' }} />
-                      {selectedPrinter.status.code}
-                    </span>
-                  )}
-                  <span style={{ fontSize: 'var(--font-label-size)', padding: '0.15rem var(--spacing-sm)', background: 'var(--neutral-subtle)', borderRadius: 'var(--rounded-sm)' }}>{selectedPrinter.protocol}</span>
-                  {selectedPrinter.capabilities?.duplexSupported && <span style={{ fontSize: 'var(--font-label-size)', padding: '0.15rem var(--spacing-sm)', background: 'var(--neutral-subtle)', borderRadius: 'var(--rounded-sm)' }}>{t('page.sandbox.duplexLabel')}</span>}
-                  {selectedPrinter.capabilities?.colorSupported && <span style={{ fontSize: 'var(--font-label-size)', padding: '0.15rem var(--spacing-sm)', background: 'var(--neutral-subtle)', borderRadius: 'var(--rounded-sm)' }}>{t('page.sandbox.colorLabel')}</span>}
-                  {printerMaxCopies != null && <span style={{ fontSize: 'var(--font-label-size)', padding: '0.15rem var(--spacing-sm)', background: 'var(--neutral-subtle)', borderRadius: 'var(--rounded-sm)' }}>{t('page.sandbox.maxCopiesLabel').replace('{n}', String(printerMaxCopies))}</span>}
-                </div>
+                <Inline gap="xs">
+                  {selectedPrinter.status && <StatusIndicator condition={selectedPrinter.status.code} />}
+                  <Badge>{selectedPrinter.protocol}</Badge>
+                  {selectedPrinter.capabilities?.duplexSupported && <Badge>{t('page.sandbox.duplexLabel')}</Badge>}
+                  {selectedPrinter.capabilities?.colorSupported && <Badge>{t('page.sandbox.colorLabel')}</Badge>}
+                  {printerMaxCopies != null && <Badge>{t('page.sandbox.maxCopiesLabel').replace('{n}', String(printerMaxCopies))}</Badge>}
+                </Inline>
               )}
+              {/* Was an emoji standing in for an icon; the alert carries the
+                  severity in its own role and tone. */}
               {!templateAllowed && (
-                <div style={{ marginTop: '0.4rem', padding: '0.4rem 0.55rem', background: 'var(--state-warning-surface)', color: 'var(--state-warning-text)', borderRadius: 'var(--rounded-sm)', fontSize: 'var(--font-label-size)' }}>
-                  ⚠️ {t('page.sandbox.templateNotAllowed').replace('{code}', selectedTemplate?.templateCode ?? '')}
-                </div>
+                <Alert tone="warning">
+                  {t('page.sandbox.templateNotAllowed').replace('{code}', selectedTemplate?.templateCode ?? '')}
+                </Alert>
               )}
             </div>
 
             {/* --- Paper & Template --- */}
             <div style={sectionStyle}>
               <div style={sectionTitleStyle}>{t('page.sandbox.templatePaper')}</div>
-              <div style={{ marginBottom: '0.5rem' }}>
-                <label style={labelStyle}>{t('page.sandbox.paperProfile')}</label>
-                <select aria-label={t('page.sandbox.paperProfile')} style={inputStyle} value={paperProfileId} onChange={(e) => handlePaperProfileChange(e.target.value)}>
-                  <option value="">{t('page.sandbox.paperProfileDefault')}</option>
-                  {papers.map((p) => (
-                    <option key={p.id} value={p.id}>{p.code} ({p.widthMm}×{p.heightMm}mm, {p.dpi}dpi)</option>
-                  ))}
-                </select>
-                {paperProfileId && (
-                  <p style={{ margin: '0.3rem 0 0', color: 'var(--neutral-text-muted)', fontSize: 'var(--font-label-size)' }}>
-                    {t('page.sandbox.paperProfilePriorityHint')}
-                  </p>
+              <FormField
+                label={t('page.sandbox.paperProfile')}
+                hint={paperProfileId ? t('page.sandbox.paperProfilePriorityHint') : undefined}
+              >
+                {(control) => (
+                  <Select {...control} value={paperProfileId} onChange={(e) => handlePaperProfileChange(e.target.value)}>
+                    <option value="">{t('page.sandbox.paperProfileDefault')}</option>
+                    {papers.map((p) => (
+                      <option key={p.id} value={p.id}>{p.code} ({p.widthMm}×{p.heightMm}mm, {p.dpi}dpi)</option>
+                    ))}
+                  </Select>
                 )}
-              </div>
-              <div>
-                <label style={labelStyle}>{t('page.sandbox.template')}</label>
-                <select aria-label={t('page.sandbox.template')} style={inputStyle} value={templateId} onChange={(e) => handleTemplateChange(e.target.value)}>
-                  <option value="">{t('page.sandbox.selectTemplatePlaceholder')}</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>{t.templateCode} — {t.name}</option>
-                  ))}
-                </select>
+              </FormField>
+              <Stack gap="xs">
+                <FormField label={t('page.sandbox.template')}>
+                  {(control) => (
+                    <Select {...control} value={templateId} onChange={(e) => handleTemplateChange(e.target.value)}>
+                      <option value="">{t('page.sandbox.selectTemplatePlaceholder')}</option>
+                      {templates.map((tpl) => (
+                        <option key={tpl.id} value={tpl.id}>{tpl.templateCode} — {tpl.name}</option>
+                      ))}
+                    </Select>
+                  )}
+                </FormField>
                 {selectedTemplate && (
-                  <div style={{ marginTop: '0.3rem', display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 'var(--font-label-size)', padding: '0.15rem var(--spacing-sm)', background: 'var(--neutral-subtle)', borderRadius: 'var(--rounded-sm)' }}>{selectedTemplate.engine}</span>
-                    <span style={{ fontSize: 'var(--font-label-size)', padding: '0.15rem var(--spacing-sm)', background: 'var(--neutral-subtle)', borderRadius: 'var(--rounded-sm)' }}>{selectedTemplate.status}</span>
-                  </div>
+                  <Inline gap="xs">
+                    <Badge>{selectedTemplate.engine}</Badge>
+                    <Badge>{selectedTemplate.status}</Badge>
+                  </Inline>
                 )}
-              </div>
+              </Stack>
             </div>
 
             {/* --- Print Options --- */}
             <div style={sectionStyle}>
               <div style={sectionTitleStyle}>{t('page.sandbox.printOptions')}</div>
-              <div style={{ marginBottom: '0.6rem' }}>
-                <label style={labelStyle}>{t('page.sandbox.copies')}</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <button
-                    type="button"
-                    style={{ ...secondaryBtn, padding: '0.35rem 0.7rem', fontSize: '0.9rem' }}
-                    onClick={() => setCopies(Math.max(1, copies - 1))}
-                  >
-                    −
-                  </button>
-                  <input
-                    aria-label={t('page.sandbox.copies')}
-                    type="number"
-                    min={1}
-                    style={{ ...inputStyle, width: 64, textAlign: 'center' }}
-                    value={copies}
-                    onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
-                  />
-                  <button
-                    type="button"
-                    style={{ ...secondaryBtn, padding: '0.35rem 0.7rem', fontSize: '0.9rem' }}
-                    onClick={() => setCopies(copies + 1)}
-                  >
-                    +
-                  </button>
-                </div>
-                {copiesExceeded && (
-                  <div style={{ marginTop: '0.3rem', padding: 'var(--spacing-xs) var(--spacing-sm)', background: 'var(--state-danger-surface)', color: 'var(--state-danger-text)', borderRadius: 'var(--rounded-sm)', fontSize: 'var(--font-label-size)' }}>
-                    {t('page.sandbox.copiesExceeded').replace('{max}', String(printerMaxCopies))}
-                  </div>
-                )}
-              </div>
+              {/* Copy count drives how many physical labels come out, so it
+                  keeps its stepper — but on shared controls. */}
+              <Stack gap="xs">
+                <FormField label={t('page.sandbox.copies')} error={copiesExceeded ? t('page.sandbox.copiesExceeded').replace('{max}', String(printerMaxCopies)) : undefined}>
+                  {(control) => (
+                    <Inline gap="xs" className="sandbox-copies">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        aria-label={t('page.sandbox.copies')}
+                        onClick={() => setCopies(Math.max(1, copies - 1))}
+                      >
+                        −
+                      </Button>
+                      <Input
+                        {...control}
+                        type="number"
+                        min={1}
+                        controlSize="sm"
+                        invalid={copiesExceeded}
+                        value={copies}
+                        onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
+                      />
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        aria-label={t('page.sandbox.copies')}
+                        onClick={() => setCopies(copies + 1)}
+                      >
+                        +
+                      </Button>
+                    </Inline>
+                  )}
+                </FormField>
+              </Stack>
 
-              {/* Duplex */}
-              <div style={{ marginBottom: '0.6rem' }}>
-                <label style={labelStyle}>{t('page.sandbox.duplex')}</label>
-                <div style={{ display: 'flex', gap: '0.4rem' }}>
-                  <button type="button" style={{ ...fieldBtn, ...(!duplex ? activeFieldBtn : {}) }} onClick={() => setDuplex(false)}>
+              {/* Duplex — a two-state selection, so chips with a real pressed
+                  state rather than two buttons tinted by an inline style. */}
+              <Stack gap="xs">
+                <Text size="label" tone="muted">{t('page.sandbox.duplex')}</Text>
+                <Inline gap="xs">
+                  <Chip selected={!duplex} onClick={() => setDuplex(false)}>
                     {t('page.sandbox.singleSided')}
-                  </button>
-                  <button
-                    type="button"
-                    style={{ ...fieldBtn, ...(duplex ? activeFieldBtn : {}), ...(!duplexAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+                  </Chip>
+                  <Chip
+                    selected={duplex}
                     onClick={() => setDuplex(true)}
                     disabled={!duplexAvailable}
                     aria-describedby={!duplexAvailable ? 'sandbox-capability-status' : undefined}
                   >
-                    ⇄ {t('page.sandbox.doubleSidedShort')}
-                  </button>
-                </div>
-              </div>
+                    {t('page.sandbox.doubleSidedShort')}
+                  </Chip>
+                </Inline>
+              </Stack>
 
               {/* Color Mode */}
-              <div style={{ marginBottom: '0.6rem' }}>
-                <label style={labelStyle}>{t('page.sandbox.colorMode')}</label>
-                <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <Stack gap="xs">
+                <Text size="label" tone="muted">{t('page.sandbox.colorMode')}</Text>
+                <Inline gap="xs">
                   {(['auto', 'color', 'monochrome'] as const).map((m) => (
-                    <button
+                    <Chip
                       key={m}
-                      type="button"
-                      style={{ ...fieldBtn, ...(colorMode === m ? activeFieldBtn : {}), ...(m === 'color' && !colorAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+                      selected={colorMode === m}
                       onClick={() => setColorMode(m)}
                       disabled={m === 'color' && !colorAvailable}
                       aria-describedby={m === 'color' && !colorAvailable ? 'sandbox-capability-status' : undefined}
                     >
                       {m === 'auto' ? t('page.sandbox.auto') : m === 'color' ? t('page.sandbox.color') : t('page.sandbox.monochrome')}
-                    </button>
+                    </Chip>
                   ))}
-                </div>
-              </div>
+                </Inline>
+              </Stack>
 
-              {/* Priority */}
-              <div>
-                <label style={labelStyle}>{t('page.sandbox.priority')}</label>
-                <div style={{ display: 'flex', gap: '0.4rem' }}>
+              {/* Priority. The coloured-circle emoji that used to prefix each
+                  label were not an icon system — they render differently on
+                  every platform and the word beside them already said it. */}
+              <Stack gap="xs">
+                <Text size="label" tone="muted">{t('page.sandbox.priority')}</Text>
+                <Inline gap="xs">
                   {(['low', 'normal', 'high', 'urgent'] as const).map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      style={{ ...fieldBtn, ...(priority === p ? activeFieldBtn : {}) }}
-                      onClick={() => setPriority(p)}
-                    >
-                      {p === 'urgent' ? '🔴' : p === 'high' ? '🟠' : p === 'normal' ? '🟢' : '⚪'} {p.charAt(0).toUpperCase() + p.slice(1)}
-                    </button>
+                    <Chip key={p} selected={priority === p} onClick={() => setPriority(p)}>
+                      {p.charAt(0).toUpperCase() + p.slice(1)}
+                    </Chip>
                   ))}
-                </div>
-              </div>
+                </Inline>
+              </Stack>
             </div>
 
             {/* --- Payload --- */}
             <details style={sectionLastStyle}>
               <summary style={{ ...sectionTitleStyle, cursor: 'pointer' }}>Expert payload</summary>
-              <p style={{ margin: '0 0 var(--spacing-sm)', color: 'var(--neutral-text-muted)', fontSize: 'var(--font-label-size)' }}>Edit JSON only when troubleshooting a template proof.</p>
-              <textarea
-                aria-label={t('page.sandbox.samplePayload')}
-                value={payload}
-                onChange={(e) => setPayload(e.target.value)}
-                rows={6}
-                style={{
-                  ...inputStyle, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                  fontSize: '0.78rem', resize: 'vertical',
-                  ...(payloadError ? { borderColor: 'var(--semantic-error)', background: 'var(--state-danger-surface)' } : {}),
-                }}
-              />
-              {payloadError && (
-                <div style={{ marginTop: '0.3rem', color: 'var(--semantic-error)', fontSize: 'var(--font-label-size)' }}>{payloadError}</div>
-              )}
+              <Stack gap="sm">
+                <Text size="label" tone="muted">Edit JSON only when troubleshooting a template proof.</Text>
+                <FormField label={t('page.sandbox.samplePayload')} error={payloadError ?? undefined}>
+                  {(control) => (
+                    <Textarea
+                      {...control}
+                      mono
+                      rows={6}
+                      invalid={Boolean(payloadError)}
+                      value={payload}
+                      onChange={(e) => setPayload(e.target.value)}
+                    />
+                  )}
+                </FormField>
+              </Stack>
             </details>
 
-            {/* --- Actions --- */}
-            {error && (
-              <div style={{ padding: '0.55rem 0.7rem', background: 'var(--state-danger-surface)', color: 'var(--state-danger-text)', borderRadius: 'var(--rounded-md)', fontSize: 'var(--font-mono-size)', marginBottom: '0.6rem' }}>
-                {error}
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: '0.5rem', paddingBottom: '1.1rem' }}>
-              <button type="button" style={primaryBtn} onClick={() => void renderPreview()} disabled={loading.render}>
-                {loading.render ? t('page.sandbox.rendering') : t('page.sandbox.renderPreview')}
-              </button>
-              <button
-                type="button"
-                style={{ ...primaryBtn, ...(canPrint && !loading.print ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
+            {/* --- Actions ---
+                Render and Print are deliberately different weights: rendering a
+                proof is reversible and free, sending one puts paper through a
+                device, so it carries the consequence variant and a confirmation. */}
+            {error && <Alert tone="error">{error}</Alert>}
+            <Inline gap="sm" className="sandbox-actions">
+              <Button
+                variant="secondary"
+                onClick={() => void renderPreview()}
+                busy={loading.render}
+                busyLabel={t('page.sandbox.rendering')}
+              >
+                {t('page.sandbox.renderPreview')}
+              </Button>
+              <Button
+                variant="danger"
                 onClick={requestTestPrint}
-                disabled={!canPrint || loading.print}
+                disabled={!canPrint}
+                busy={loading.print}
+                busyLabel={t('page.sandbox.sending')}
                 aria-describedby={!canPrint ? 'sandbox-test-print-status' : undefined}
               >
-                {loading.print ? t('page.sandbox.sending') : t('page.sandbox.testPrint')}
-              </button>
-            </div>
+                {t('page.sandbox.testPrint')}
+              </Button>
+            </Inline>
             {submittedJobId && (
-              <p role="status" aria-live="polite" style={{ margin: '0 0 1.1rem', color: 'var(--neutral-text-muted)', fontSize: 'var(--font-label-size)' }}>
-                Physical test print submitted. <a href={`/jobs/${submittedJobId}`}>Open job {submittedJobId.slice(0, 8)}</a> to check its latest status.
-              </p>
+              <Text as="p" role="status" aria-live="polite" size="label" tone="muted">
+                Physical test print submitted.{' '}
+                <a className="ui-link" href={`/jobs/${submittedJobId}`}>Open job {submittedJobId.slice(0, 8)}</a>{' '}
+                to check its latest status.
+              </Text>
             )}
             {!canPrint && (
-              <p id="sandbox-test-print-status" role="status" aria-live="polite" style={{ margin: '0 0 1.1rem', color: 'var(--neutral-text-muted)', fontSize: 'var(--font-label-size)' }}>
+              <Text as="p" id="sandbox-test-print-status" role="status" aria-live="polite" size="label" tone="muted">
                 {t('page.sandbox.testPrintBlocked').replace('{reason}', testPrintBlockedReason)}
-              </p>
+              </Text>
             )}
           </section>
 
           {/* ===================== Preview Panel ===================== */}
           <section style={{ ...cardStyle, padding: '1.25rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <h2 style={{ fontSize: 'var(--font-subheading-size)', margin: 0, color: 'var(--neutral-deep)' }}>{t('page.sandbox.preview')}</h2>
-              {preview && (
-                <span style={{ fontSize: 'var(--font-label-size)', color: 'var(--neutral-text-muted)' }}>render {preview.renderTimeMs}ms</span>
-              )}
-            </div>
+            <SectionHeading
+              title={t('page.sandbox.preview')}
+              actions={preview ? <Text size="label" tone="muted">render {preview.renderTimeMs}ms</Text> : undefined}
+            />
 
             {!preview ? (
-              <div style={{
-                minHeight: 320, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                background: 'var(--neutral-page)', borderRadius: 'var(--rounded-lg)', color: 'var(--neutral-text-muted)', textAlign: 'center', padding: 'var(--spacing-3xl)',
-              }}>
-                <span style={{ fontSize: 'calc(var(--font-stat-size) + var(--spacing-sm))', marginBottom: 'var(--spacing-sm)' }}>🖨️</span>
-                <p style={{ fontSize: '0.85rem' }}>{t('page.sandbox.previewEmpty')}</p>
-              </div>
+              /* Was a giant printer emoji over a caption. The shared empty state
+                 says the same thing without pretending to have an icon system. */
+              <EmptyState title={t('page.sandbox.previewEmpty')} />
             ) : (
               <>
                 {/* Preview canvas (Variant 1: Print Proof Workbench) */}
                 <div className="sandbox-proof-workbench">
                   <div className="sandbox-proof-toolbar">
-                    <span className="sandbox-proof-dim">
-                      📐 {papers.find((p) => p.id === paperProfileId)?.code ?? 'Print Canvas'} ({papers.find((p) => p.id === paperProfileId) ? `${papers.find((p) => p.id === paperProfileId)!.widthMm}×${papers.find((p) => p.id === paperProfileId)!.heightMm}mm, ${papers.find((p) => p.id === paperProfileId)!.dpi} DPI` : 'Standard Proof'})
-                    </span>
-                    <span className="sandbox-proof-latency">⚡ {preview.renderTimeMs}ms</span>
+                    <Text size="label" tone="muted" className="sandbox-proof-dim">
+                      {papers.find((p) => p.id === paperProfileId)?.code ?? 'Print Canvas'} ({papers.find((p) => p.id === paperProfileId) ? `${papers.find((p) => p.id === paperProfileId)!.widthMm}×${papers.find((p) => p.id === paperProfileId)!.heightMm}mm, ${papers.find((p) => p.id === paperProfileId)!.dpi} DPI` : 'Standard Proof'})
+                    </Text>
+                    <Text size="label" tone="muted" className="sandbox-proof-latency">{preview.renderTimeMs}ms</Text>
                   </div>
                   <div className="sandbox-paper-sheet">
                     <div dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(preview.renderedPreview) }} />
@@ -634,43 +653,41 @@ export default function TemplateSandbox() {
 
                 {/* Warnings */}
                 {preview.warnings.length > 0 && (
-                  <div style={{ marginTop: '0.6rem', padding: '0.55rem 0.7rem', background: 'var(--state-warning-surface)', color: 'var(--state-warning-text)', borderRadius: 'var(--rounded-md)', fontSize: 'var(--font-label-size)' }}>
-                    <strong>{t('page.sandbox.warnings')}:</strong>
-                    <ul style={{ margin: '0.3rem 0 0 1rem', padding: 0 }}>
+                  <Alert tone="warning" title={t('page.sandbox.warnings')}>
+                    <ul className="sandbox-warning-list">
                       {preview.warnings.map((w, i) => <li key={i}>{w}</li>)}
                     </ul>
-                  </div>
+                  </Alert>
                 )}
 
                 {/* Generated payload */}
-                <div style={{ marginTop: '0.8rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
-                    <h3 style={{ fontSize: 'var(--font-mono-size)', fontWeight: 700, color: 'var(--neutral-deep)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
-                      {t('page.sandbox.generatedPayload')}
-                    </h3>
-                    <button
-                      type="button"
-                      style={{ ...secondaryBtn, padding: '0.25rem 0.55rem', fontSize: '0.72rem' }}
-                      onClick={() => navigator.clipboard.writeText(preview.renderedPrintPayload)}
-                    >
-                      {t('common.copy')}
-                    </button>
-                  </div>
-                  <pre style={{
-                    whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 240, overflow: 'auto',
-                    margin: 0, padding: '0.7rem', background: 'var(--neutral-deep)', color: 'var(--nav-text)', borderRadius: 'var(--rounded-md)',
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', fontSize: '0.75rem',
-                  }}>
+                <Stack gap="xs">
+                  <SectionHeading
+                    level={3}
+                    title={t('page.sandbox.generatedPayload')}
+                    actions={
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => navigator.clipboard.writeText(preview.renderedPrintPayload)}
+                      >
+                        {t('common.copy')}
+                      </Button>
+                    }
+                  />
+                  {/* Was a dark inverted block — the only dark surface in a
+                      light-first product, on a page that also shows proof paper. */}
+                  <CodeBlock label={t('page.sandbox.generatedPayload')}>
                     {preview.renderedPrintPayload}
-                  </pre>
-                </div>
+                  </CodeBlock>
+                </Stack>
               </>
             )}
 
-            {/* Print summary */}
+            {/* Print summary: what the next print would actually do, in one line. */}
             {(selectedPrinter || selectedTemplate) && (
-              <div style={{ marginTop: '0.8rem', padding: '0.6rem var(--spacing-md)', background: 'var(--state-info-surface)', border: '1px solid var(--semantic-info)', borderRadius: 'var(--rounded-md)', fontSize: 'var(--font-label-size)', color: 'var(--state-info-text)' }}>
-                <strong>{t('page.sandbox.printSummary')}:</strong>{' '}
+              <Alert tone="info">
+                <Text weight="semibold">{t('page.sandbox.printSummary')}:</Text>{' '}
                 {selectedPrinter?.name ?? t('page.sandbox.summaryNoPrinter')}
                 {' · '}
                 {t('page.sandbox.copiesUnit').replace('{n}', String(copies))}
@@ -681,7 +698,7 @@ export default function TemplateSandbox() {
                 {' · '}
                 {priority}
                 {selectedTemplate && ` · ${selectedTemplate.templateCode}`}
-              </div>
+              </Alert>
             )}
           </section>
         </div>

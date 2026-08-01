@@ -6,14 +6,19 @@ Import public components from `components/ui/index.ts`. Keep feature-specific be
 
 ## Composition levels
 
-### Primitives
+### Atoms
 
 - Actions: `Button`, `IconButton`, `ActionIcon`, `TransferIcon`
-- Form controls: `Label`, `Input`, `Select`, `Textarea`, `Checkbox`
+- Form controls: `Label`, `Input`, `Select`, `Textarea`, `Checkbox`, `Chip`
 - Layout: `Stack`, `Inline`, `Grid`, `Spacer`, `Divider`
-- State: `Badge`, `StatusBadge`
+- Text: `Text`, `Mono`, `Heading`
+- State: `Badge`, `StatusBadge`, `StatusDot`
 
-Primitives own size, focus, disabled, invalid, and coarse-pointer behavior. Avoid raw form controls unless the browser-native behavior is the feature itself.
+Atoms own size, focus, disabled, invalid, and coarse-pointer behavior. Avoid raw form controls unless the browser-native behavior is the feature itself.
+
+`Text` replaces the inline-style habit — `tone`, `size`, `weight`, `mono`, `truncate`, `nowrap` cover what pages used to spell as `style={{ color: 'var(--neutral-text-muted)' }}`. Its `caps` prop is opt-in and Latin-only: never apply it to localized copy, because Thai glyph clusters must not be transformed.
+
+`Chip` is the pill the system reserves for filtering and toggling; it exposes `aria-pressed`. Pills are never primary buttons.
 
 ### Molecules
 
@@ -22,15 +27,28 @@ Primitives own size, focus, disabled, invalid, and coarse-pointer behavior. Avoi
 - `Toolbar` groups related search, filter, refresh, and bulk controls.
 - `TabList`, `Tab`, and `TabPanel` provide the tab roles and selection state.
 - `FactList` and `Fact` provide compact label/value evidence.
+- `SectionHeading` is a heading plus optional description and actions on one baseline.
+- `StatusIndicator` pairs a device-condition dot with the condition as text.
+- `MetricTile` / `MetricGrid` render at-a-glance counts; tone comes from the value, not the concept, so a zero UNVERIFIED count never looks like an alarm.
+- `CodeBlock` is the multi-line evidence surface — payloads, curl examples, rendered template source.
 
 ### Composites
 
 - Structure: `PageLayout`, `PageSection`, `Panel`, `Card`, `Fieldset`
-- Data: `DataTable`, `RecordList`, `RecordCard`
+- Data: `DataTable`, `TableEmpty`, `RecordList`, `RecordCard`
 - Overlays: `Dialog`, `Drawer`
 - Feedback: `Alert` and the shared page loading, empty, and error states
 
-Use `DataTable responsive` when the same record can become a labelled card on narrow screens. It keeps one DOM tree, so controls and focus state are never duplicated between desktop and mobile.
+Use `DataTable responsive` when the same record can become a labelled card on narrow screens. It keeps one DOM tree, so controls and focus state are never duplicated between desktop and mobile. Several pages previously mounted a `<table>` **and** a parallel `<ul>` of the same rows, which put every checkbox and every action button in the accessibility tree twice.
+
+`TableEmpty` takes the column count so it stays next to the header row it has to span.
+
+### Device condition vs job status
+
+Two different things, deliberately kept apart:
+
+- `StatusBadge` renders a **print job** status and always shows the server's literal string, from the audited palette in `statusColors.ts`.
+- `StatusIndicator` / `StatusDot` render a **device or service** condition (idle / busy / offline / unknown) via the `--device-*` tokens. An unrecognised condition resolves to `unknown` rather than being guessed — a state we cannot interpret must never be painted as healthy.
 
 ## Rules
 

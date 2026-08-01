@@ -5,10 +5,24 @@ import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
-import { ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
-import { Alert } from '../components/Alert.js';
-import { Button } from '../components/Button.js';
-import { PageLayout } from '../components/PageLayout.js';
+import {
+  Alert,
+  Button,
+  ErrorBanner,
+  ErrorState,
+  Fact,
+  FactList,
+  Freshness,
+  Grid,
+  Inline,
+  LoadingState,
+  Mono,
+  PageLayout,
+  Panel,
+  Stack,
+  StatusIndicator,
+  Text,
+} from '../components/ui/index.js';
 
 interface PrinterStatus {
   code: string;
@@ -27,12 +41,6 @@ interface Printer {
   department?: string;
   status: PrinterStatus;
 }
-
-/** Dot fill colors — darker ink tones that work against the transparent-background pill */
-const PRINTER_STATUS_DOT: Record<string, string> = {
-  idle: '#2f732a', online: '#2f732a', busy: '#c2410c',
-  offline: '#9f1239', error: '#9f1239', unknown: '#374151',
-};
 
 export default function PrinterDetail() {
   const { t } = useLocale();
@@ -102,6 +110,8 @@ export default function PrinterDetail() {
     );
   }
 
+  const statusCode = printer.status?.code ?? 'unknown';
+
   return (
     <PageLayout
       title={`${t('page.printerDetail.title')}: ${printer.name}`}
@@ -142,50 +152,44 @@ export default function PrinterDetail() {
         </Alert>
       )}
 
-      <div className="ops-grid">
-        <div className="card" style={{ padding: '1.5rem' }}>
-          <h2 style={{ fontSize: '1rem', marginTop: 0, marginBottom: '1rem' }}>
-            {t('page.printerDetail.configuration')}
-          </h2>
-          <dl style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.75rem', margin: 0, fontSize: '0.875rem' }}>
-            <dt style={{ color: 'var(--neutral-text-muted)' }}>{t('page.printers.code')}</dt>
-            <dd style={{ margin: 0, fontWeight: 600, fontFamily: 'monospace' }}>{printer.code}</dd>
-            <dt style={{ color: 'var(--neutral-text-muted)' }}>{t('page.printers.protocol')}</dt>
-            <dd style={{ margin: 0 }}>{printer.protocol}</dd>
-            <dt style={{ color: 'var(--neutral-text-muted)' }}>{t('page.printerDetail.connectionUri')}</dt>
-            <dd style={{ margin: 0, fontFamily: 'monospace', wordBreak: 'break-all' }}>{printer.connectionUri}</dd>
-            <dt style={{ color: 'var(--neutral-text-muted)' }}>{t('page.printerDetail.department')}</dt>
-            <dd style={{ margin: 0 }}>{printer.department ?? t('common.noData')}</dd>
-            <dt style={{ color: 'var(--neutral-text-muted)' }}>{t('page.printers.location')}</dt>
-            <dd style={{ margin: 0 }}>{printer.location ?? t('common.noData')}</dd>
-          </dl>
-        </div>
+      <Grid columns={2}>
+        <Panel title={t('page.printerDetail.configuration')}>
+          <FactList>
+            <Fact label={t('page.printers.code')}>
+              <Mono weight="semibold">{printer.code}</Mono>
+            </Fact>
+            <Fact label={t('page.printers.protocol')}>{printer.protocol}</Fact>
+            <Fact label={t('page.printerDetail.connectionUri')}>
+              <Mono>{printer.connectionUri}</Mono>
+            </Fact>
+            <Fact label={t('page.printerDetail.department')}>
+              {printer.department ?? t('common.noData')}
+            </Fact>
+            <Fact label={t('page.printers.location')}>
+              {printer.location ?? t('common.noData')}
+            </Fact>
+          </FactList>
+        </Panel>
 
-        <div className="card" style={{ padding: '1.5rem' }}>
-          <h2 style={{ fontSize: '1rem', marginTop: 0, marginBottom: '1rem' }}>
-            {t('page.printerDetail.liveStatus')}
-          </h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-            <span className={`status-indicator status-indicator--${(printer.status?.code ?? 'unknown').toLowerCase()}`}>
-              <span
-                className="status-dot"
-                style={{ background: PRINTER_STATUS_DOT[(printer.status?.code ?? 'unknown').toLowerCase()] ?? '#6b7280' }}
-              />
-              {printer.status?.code ?? 'unknown'}
-            </span>
-            <span style={{ fontSize: '0.875rem', color: 'var(--neutral-text-muted)' }}>
-              {t('page.printerDetail.lastSeen')}:{' '}
-              {printer.status?.lastSeenAt
-                ? new Date(printer.status.lastSeenAt).toLocaleString()
-                : t('status.never')}
-            </span>
-          </div>
-          <p style={{ fontSize: '0.875rem', color: 'var(--neutral-text)' }}>
-            {printer.status?.text ?? t('page.printerDetail.noExtendedStatus')}
-          </p>
-        </div>
-      </div>
-
+        <Panel title={t('page.printerDetail.liveStatus')}>
+          <Stack gap="md">
+            {/* This page carried a third copy of the device-status colour map,
+                disagreeing with the two on Printers and LocalDiagnostics. */}
+            <Inline gap="lg">
+              <StatusIndicator condition={statusCode} />
+              <Text tone="muted">
+                {t('page.printerDetail.lastSeen')}:{' '}
+                {printer.status?.lastSeenAt
+                  ? new Date(printer.status.lastSeenAt).toLocaleString()
+                  : t('status.never')}
+              </Text>
+            </Inline>
+            <Text as="p">
+              {printer.status?.text ?? t('page.printerDetail.noExtendedStatus')}
+            </Text>
+          </Stack>
+        </Panel>
+      </Grid>
     </PageLayout>
   );
 }

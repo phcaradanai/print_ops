@@ -3,13 +3,45 @@ import { apiFetch } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
-import { ErrorBanner, Freshness } from '../components/PageState.js';
 import { saveOrDownloadJsonFile } from '../utils/fileExport.js';
 import { parseWebhookImportJson } from '../features/webhooks/parseImportJson.js';
 import { TransferIcon } from '../components/TransferIcon.js';
-import { PageLayout } from '../components/PageLayout.js';
 import { ActionIcon } from '../components/ActionIcon.js';
-import { Button, Checkbox, IconButton, Inline, Input, Select, Tab, TabList, Toolbar } from '../components/ui/index.js';
+import {
+  Alert,
+  Badge,
+  Button,
+  Checkbox,
+  Chip,
+  CodeBlock,
+  DataCell,
+  DataHead,
+  DataTable,
+  Dialog,
+  EmptyState,
+  ErrorBanner,
+  Fact,
+  FactList,
+  FormField,
+  Freshness,
+  Heading,
+  IconButton,
+  Inline,
+  Input,
+  LoadingState,
+  Mono,
+  PageLayout,
+  Panel,
+  SectionHeading,
+  Select,
+  Stack,
+  Tab,
+  TableEmpty,
+  TabList,
+  Text,
+  Textarea,
+  Toolbar,
+} from '../components/ui/index.js';
 
 interface Endpoint {
   id: string;
@@ -669,34 +701,30 @@ export default function Webhooks() {
           </div>
         </div>
 
-        <div className="wh-header-actions">
-          <button type="button" className="ds-btn ds-btn--ghost" onClick={() => handleExportJSON()} title={t('page.webhooks.exportTitle')}>
+        <Toolbar label={t('page.webhooks.title')} align="end" className="wh-header-actions">
+          <Button variant="ghost" onClick={() => handleExportJSON()} title={t('page.webhooks.exportTitle')}>
             <TransferIcon action="export" /> {t('page.webhooks.export')}
-          </button>
-          <button type="button" className="ds-btn ds-btn--ghost" onClick={() => fileInputRef.current?.click()} title={t('page.webhooks.importTitle')}>
+          </Button>
+          <Button variant="ghost" onClick={() => fileInputRef.current?.click()} title={t('page.webhooks.importTitle')}>
             <TransferIcon action="import" /> {t('page.webhooks.import')}
-          </button>
+          </Button>
 
-          <div className="wh-search-box">
-            <span className="wh-search-icon-left" aria-hidden="true">
-              <ActionIcon name="search" />
-            </span>
-            <input
-              aria-label={t('page.webhooks.searchPlaceholder')}
-              ref={searchInputRef}
-              type="text"
-              className="wh-search-input"
-              placeholder={t('page.webhooks.searchPlaceholder')}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <span className="wh-search-badge">Ctrl + K</span>
-          </div>
+          {/* The shared input group owns the affix slots, so the search icon and
+              the shortcut hint no longer need three page-local classes and a
+              hand-placed absolute position. */}
+          <Input
+            aria-label={t('page.webhooks.searchPlaceholder')}
+            ref={searchInputRef}
+            type="search"
+            placeholder={t('page.webhooks.searchPlaceholder')}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            leading={<ActionIcon name="search" />}
+            trailing={<Text size="label" tone="muted" nowrap>Ctrl + K</Text>}
+          />
 
-          <button className="ds-btn ds-btn--primary" onClick={scrollToFormAndFocus}>
-            <span aria-hidden="true">+</span> {t('page.webhooks.create')}
-          </button>
-        </div>
+          <Button onClick={scrollToFormAndFocus}>{t('page.webhooks.create')}</Button>
+        </Toolbar>
       </div>
     }>
       {/* Hidden File Input for Import */}
@@ -708,18 +736,17 @@ export default function Webhooks() {
         onChange={handleFileChange}
       />
 
-      {/* Toast Notification Banner */}
+      {/* Was a page-local toast with its own colours and a close button that no
+          screen reader announced. `Alert` is assertive for errors and polite for
+          confirmations, which is the behaviour this page always wanted. */}
       {toast && (
-        <div className={`ds-toast ds-toast--${toast.type}`}>
-          <span>{toast.message}</span>
-          <button
-            className="ds-toast__close"
-            onClick={() => setToast(null)}
-            aria-label={t('common.close')}
-          >
-            <ActionIcon name="close" />
-          </button>
-        </div>
+        <Alert
+          tone={toast.type === 'error' ? 'error' : toast.type === 'info' ? 'info' : 'success'}
+          onDismiss={() => setToast(null)}
+          dismissLabel={t('common.close')}
+        >
+          {toast.message}
+        </Alert>
       )}
 
       {/* An endpoint list that failed to load must not read as "no webhooks
@@ -751,20 +778,23 @@ export default function Webhooks() {
       {/* Bulk Selection Action Bar */}
       {selectedIds.length > 0 && (
         <div className="wh-bulk-bar">
-          <div>
-            <ActionIcon name="check" /> {t('page.webhooks.selectCount').replace('{n}', String(selectedIds.length))}
-          </div>
-          <div className="wh-bulk-actions">
-            <button type="button" className="ds-btn ds-btn--ghost" onClick={() => handleExportJSON(endpoints.filter((e) => selectedIds.includes(e.id)))}>
+          <Inline gap="xs">
+            <ActionIcon name="check" />
+            <Text weight="semibold">
+              {t('page.webhooks.selectCount').replace('{n}', String(selectedIds.length))}
+            </Text>
+          </Inline>
+          <Inline gap="sm">
+            <Button variant="ghost" onClick={() => handleExportJSON(endpoints.filter((e) => selectedIds.includes(e.id)))}>
               <TransferIcon action="export" /> {t('page.webhooks.exportSelected')}
-            </button>
-            <button className="ds-btn ds-btn--danger" onClick={() => void handleBatchDelete()}>
+            </Button>
+            <Button variant="danger" onClick={() => void handleBatchDelete()}>
               <ActionIcon name="delete" /> {t('page.webhooks.deleteSelected').replace('{n}', String(selectedIds.length))}
-            </button>
-            <button className="ds-btn ds-btn--ghost" onClick={() => setSelectedIds([])}>
-              <ActionIcon name="close" /> {t('page.webhooks.clearSelection')}
-            </button>
-          </div>
+            </Button>
+            <Button variant="ghost" onClick={() => setSelectedIds([])}>
+              {t('page.webhooks.clearSelection')}
+            </Button>
+          </Inline>
         </div>
       )}
 
@@ -773,13 +803,9 @@ export default function Webhooks() {
         <div className="wh-card-title">
           <span>{editingId ? t('page.webhooks.editingTitle').replace('{code}', form.endpointCode) : t('page.webhooks.createCardTitle')}</span>
           {editingId && (
-            <button
-              className="wh-action-btn"
-              onClick={resetForm}
-              style={{ fontSize: '0.8rem', fontWeight: 500 }}
-            >
+            <Button variant="ghost" size="sm" onClick={resetForm}>
               <ActionIcon name="close" /> {t('page.webhooks.cancelEdit')}
-            </button>
+            </Button>
           )}
         </div>
 
@@ -787,227 +813,218 @@ export default function Webhooks() {
           {/* Left Column: Form Fields */}
           <div className="wh-form-main">
             {/* 1. Basic Info */}
-            <div className="wh-form-section-title">{t('page.webhooks.basicInfo')}</div>
+            <SectionHeading level={3} title={t('page.webhooks.basicInfo')} />
+            {/* Each field was a hand-built `wh-field` stack: a `<label>` with no
+                `htmlFor`, a duplicate `aria-label` compensating for it, and a
+                loose hint span nothing pointed at. `FormField` generates the ids
+                and wires `htmlFor` + `aria-describedby` so that cannot drift. */}
             <div className="wh-grid-4">
-              <div className="wh-field">
-                <label className="wh-field-label">
-                  {t('page.webhooks.endpointCode')} <span className="required">*</span>
-                </label>
-                <input
-                  aria-label={t('page.webhooks.endpointCode')}
-                  ref={endpointCodeInputRef}
-                  className="wh-input"
-                  placeholder={t('page.webhooks.endpointCodePlaceholder')}
-                  value={form.endpointCode}
-                  disabled={!!editingId}
-                  onChange={(e) => setForm({ ...form, endpointCode: e.target.value })}
-                />
-                <span className="wh-field-hint">{t('page.webhooks.endpointCodeHint')}</span>
-              </div>
+              <FormField
+                label={t('page.webhooks.endpointCode')}
+                hint={t('page.webhooks.endpointCodeHint')}
+                required
+                requiredLabel={t('common.required')}
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    ref={endpointCodeInputRef}
+                    placeholder={t('page.webhooks.endpointCodePlaceholder')}
+                    value={form.endpointCode}
+                    disabled={!!editingId}
+                    onChange={(e) => setForm({ ...form, endpointCode: e.target.value })}
+                  />
+                )}
+              </FormField>
 
-              <div className="wh-field">
-                <label className="wh-field-label">
-                  {t('page.webhooks.name')} <span className="required">*</span>
-                </label>
-                <input
-                  aria-label={t('page.webhooks.name')}
-                  className="wh-input"
-                  placeholder={t('page.webhooks.namePlaceholder')}
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                />
-                <span className="wh-field-hint">{t('page.webhooks.nameHint')}</span>
-              </div>
+              <FormField
+                label={t('page.webhooks.name')}
+                hint={t('page.webhooks.nameHint')}
+                required
+                requiredLabel={t('common.required')}
+              >
+                {(control) => (
+                  <Input
+                    {...control}
+                    placeholder={t('page.webhooks.namePlaceholder')}
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  />
+                )}
+              </FormField>
 
-              <div className="wh-field">
-                <label className="wh-field-label">{t('page.webhooks.source')}</label>
-                <input
-                  aria-label={t('page.webhooks.source')}
-                  className="wh-input"
-                  list="source-systems-list"
-                  placeholder={t('page.webhooks.sourcePlaceholder')}
-                  value={form.sourceSystem}
-                  onChange={(e) => setForm({ ...form, sourceSystem: e.target.value })}
-                />
-                <datalist id="source-systems-list">
-                  {SOURCE_SYSTEM_PRESETS.map((sys) => (
-                    <option key={sys} value={sys} />
-                  ))}
-                </datalist>
-                <span className="wh-field-hint">{t('page.webhooks.sourceHint')}</span>
-              </div>
+              <FormField label={t('page.webhooks.source')} hint={t('page.webhooks.sourceHint')}>
+                {(control) => (
+                  <>
+                    <Input
+                      {...control}
+                      list="source-systems-list"
+                      placeholder={t('page.webhooks.sourcePlaceholder')}
+                      value={form.sourceSystem}
+                      onChange={(e) => setForm({ ...form, sourceSystem: e.target.value })}
+                    />
+                    <datalist id="source-systems-list">
+                      {SOURCE_SYSTEM_PRESETS.map((sys) => (
+                        <option key={sys} value={sys} />
+                      ))}
+                    </datalist>
+                  </>
+                )}
+              </FormField>
 
-              <div className="wh-field">
-                <label className="wh-field-label">{t('page.webhooks.authPolicyLabel')}</label>
-                <select
-                  aria-label={t('page.webhooks.authPolicyLabel')}
-                  className="wh-select"
-                  value={form.routePolicyId || form.authMode}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    const matchedPolicy = policies.find((p) => p.id === val);
-                    if (matchedPolicy) {
-                      setForm({ ...form, routePolicyId: val });
-                    } else {
-                      setForm({ ...form, routePolicyId: '', authMode: val });
-                    }
-                  }}
-                >
-                  <option value="NONE">NONE</option>
-                  <option value="API_KEY">API_KEY</option>
-                  {policies.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.policyCode} ({p.name})
-                    </option>
-                  ))}
-                </select>
-                <span className="wh-field-hint">{t('page.webhooks.authPolicyHint')}</span>
-              </div>
+              <FormField label={t('page.webhooks.authPolicyLabel')} hint={t('page.webhooks.authPolicyHint')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={form.routePolicyId || form.authMode}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const matchedPolicy = policies.find((p) => p.id === val);
+                      if (matchedPolicy) {
+                        setForm({ ...form, routePolicyId: val });
+                      } else {
+                        setForm({ ...form, routePolicyId: '', authMode: val });
+                      }
+                    }}
+                  >
+                    <option value="NONE">NONE</option>
+                    <option value="API_KEY">API_KEY</option>
+                    {policies.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.policyCode} ({p.name})
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </FormField>
             </div>
 
             {/* 2. Callback Section */}
-            <div className="wh-form-section-title" style={{ marginTop: '1.25rem' }}>
-              {t('page.webhooks.callback')}
-            </div>
+            <SectionHeading level={3} title={t('page.webhooks.callback')} />
             <div className="wh-grid-3">
-              <div className="wh-field">
-                <label className="wh-field-label">{t('page.webhooks.callbackModeLabel')}</label>
-                <select
-                  aria-label={t('page.webhooks.callbackModeLabel')}
-                  className="wh-select"
-                  value={form.callbackTransport}
-                  onChange={(e) =>
-                    setForm({ ...form, callbackTransport: e.target.value as Endpoint['callbackTransport'] })
-                  }
-                >
-                  <option value="NONE">{t('page.webhooks.transport.none')}</option>
-                  <option value="HTTP">HTTP</option>
-                  <option value="NATS">NATS</option>
-                  <option value="BOTH">BOTH (HTTP + NATS)</option>
-                </select>
-                <span className="wh-field-hint">{t('page.webhooks.callbackModeHint')}</span>
-              </div>
+              <FormField label={t('page.webhooks.callbackModeLabel')} hint={t('page.webhooks.callbackModeHint')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={form.callbackTransport}
+                    onChange={(e) =>
+                      setForm({ ...form, callbackTransport: e.target.value as Endpoint['callbackTransport'] })
+                    }
+                  >
+                    <option value="NONE">{t('page.webhooks.transport.none')}</option>
+                    <option value="HTTP">HTTP</option>
+                    <option value="NATS">NATS</option>
+                    <option value="BOTH">BOTH (HTTP + NATS)</option>
+                  </Select>
+                )}
+              </FormField>
 
-              <div className="wh-field">
-                <label className="wh-field-label">
-                  Callback URL <ActionIcon name="link" />
-                </label>
-                <input
-                  aria-label="Callback URL"
-                  className="wh-input"
-                  placeholder="https://example.com/webhook"
-                  value={form.callbackUrl}
-                  disabled={form.callbackTransport === 'NONE' || form.callbackTransport === 'NATS'}
-                  onChange={(e) => setForm({ ...form, callbackUrl: e.target.value })}
-                />
-                <span className="wh-field-hint">{t('page.webhooks.callbackUrlHint')}</span>
-              </div>
+              <FormField label="Callback URL" hint={t('page.webhooks.callbackUrlHint')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="url"
+                    placeholder="https://example.com/webhook"
+                    value={form.callbackUrl}
+                    disabled={form.callbackTransport === 'NONE' || form.callbackTransport === 'NATS'}
+                    onChange={(e) => setForm({ ...form, callbackUrl: e.target.value })}
+                  />
+                )}
+              </FormField>
 
-              <div className="wh-field">
-                <label className="wh-field-label">{t('page.webhooks.natsSubjectLabel')}</label>
-                <input
-                  aria-label={t('page.webhooks.natsSubjectLabel')}
-                  className="wh-input"
-                  placeholder={t('page.webhooks.natsSubjectPlaceholder')}
-                  value={form.callbackNatsSubject}
-                  disabled={form.callbackTransport === 'NONE' || form.callbackTransport === 'HTTP'}
-                  onChange={(e) => setForm({ ...form, callbackNatsSubject: e.target.value })}
-                />
-                <span className="wh-field-hint">{t('page.webhooks.natsSubjectHint')}</span>
-              </div>
+              <FormField label={t('page.webhooks.natsSubjectLabel')} hint={t('page.webhooks.natsSubjectHint')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    placeholder={t('page.webhooks.natsSubjectPlaceholder')}
+                    value={form.callbackNatsSubject}
+                    disabled={form.callbackTransport === 'NONE' || form.callbackTransport === 'HTTP'}
+                    onChange={(e) => setForm({ ...form, callbackNatsSubject: e.target.value })}
+                  />
+                )}
+              </FormField>
             </div>
 
             {/* 3. JSON Payload Template Editor */}
-            <div className="wh-field" style={{ marginTop: '1rem' }}>
-              <label className="wh-field-label">
-                {t('page.webhooks.payloadTemplate')}
-              </label>
-              {/* The template shapes the ACCEPTANCE callback only. Terminal
-                  result callbacks use a fixed, versioned envelope so every
-                  receiver can rely on the same schema — say so here rather than
-                  letting an operator configure a template that is then silently
-                  ignored the moment they enable result callbacks. */}
-              {form.callbackOnPrintResult && (
-                <span className="wh-field-hint" style={{ color: 'var(--state-warning-text)' }}>
-                  {t('page.webhooks.payloadTemplateIgnoredOnResult')}
-                </span>
-              )}
+            <Stack gap="sm" className="wh-template-block">
+              <FormField
+                label={t('page.webhooks.payloadTemplate')}
+                /* The template shapes the ACCEPTANCE callback only. Terminal
+                   result callbacks use a fixed, versioned envelope so every
+                   receiver can rely on the same schema — say so here rather than
+                   letting an operator configure a template that is then silently
+                   ignored the moment they enable result callbacks. */
+                hint={form.callbackOnPrintResult ? t('page.webhooks.payloadTemplateIgnoredOnResult') : undefined}
+              >
+                {(control) => (
+                  <div className="wh-template-grid">
+                    {/* The line-number gutter is real editing affordance, so it
+                        stays; the editing surface itself is now the shared
+                        control, which carries focus, invalid and touch sizing. */}
+                    <div className="wh-code-editor">
+                      <div className="wh-line-numbers" aria-hidden="true">
+                        {lineNumbers.map((num) => (
+                          <div key={num}>{num}</div>
+                        ))}
+                      </div>
+                      <Textarea
+                        {...control}
+                        ref={textareaRef}
+                        mono
+                        resize="vertical"
+                        rows={7}
+                        value={form.callbackPayloadTemplate}
+                        onChange={(e) => setForm({ ...form, callbackPayloadTemplate: e.target.value })}
+                      />
+                    </div>
 
-              <div className="wh-template-grid">
-                {/* Code Editor Container */}
-                <div className="wh-code-editor">
-                  <div className="wh-line-numbers">
-                    {lineNumbers.map((num) => (
-                      <div key={num}>{num}</div>
-                    ))}
-                  </div>
-                  <textarea
-                    aria-label={t('page.webhooks.payloadTemplate')}
-                    ref={textareaRef}
-                    className="wh-code-textarea"
-                    rows={7}
-                    value={form.callbackPayloadTemplate}
-                    onChange={(e) => setForm({ ...form, callbackPayloadTemplate: e.target.value })}
-                  />
-                </div>
-
-                {/* Right Switch Toggle Box */}
-                <div className="wh-toggle-box">
-                  <div className="wh-toggle-row">
-                    <span className="wh-toggle-label">{t('page.webhooks.sendOnPrintDone')}</span>
-                    <label className="wh-switch">
-                      <input
-                        type="checkbox"
+                    <Stack gap="sm" className="wh-toggle-box">
+                      {/* This toggle used to be wired to nothing: it persisted, and
+                          no dispatch code read it. Spell out what each position now
+                          actually does so the difference is testable by an
+                          operator, not just by a developer. */}
+                      <Checkbox
+                        label={t('page.webhooks.sendOnPrintDone')}
+                        description={t('page.webhooks.onPrintResult')}
                         checked={form.callbackOnPrintResult}
                         onChange={(e) => setForm({ ...form, callbackOnPrintResult: e.target.checked })}
                       />
-                      <span className="wh-slider"></span>
-                    </label>
+                      <Text size="label" tone="muted">
+                        {form.callbackOnPrintResult
+                          ? t('page.webhooks.onPrintResultOnHelp')
+                          : t('page.webhooks.onPrintResultOffHelp')}
+                      </Text>
+                      {form.callbackOnPrintResult &&
+                        (form.callbackTransport === 'NATS' || form.callbackTransport === 'BOTH') && (
+                          <Text size="label" tone="warning">
+                            {t('page.webhooks.natsBestEffortWarning')}
+                          </Text>
+                        )}
+                    </Stack>
                   </div>
-                  <span className="wh-field-hint" style={{ marginTop: 0 }}>
-                    {t('page.webhooks.onPrintResult')}
-                  </span>
-                  {/* This toggle used to be wired to nothing: it persisted, and
-                      no dispatch code read it. Spell out what each position now
-                      actually does so the difference is testable by an
-                      operator, not just by a developer. */}
-                  <span className="wh-field-hint">
-                    {form.callbackOnPrintResult
-                      ? t('page.webhooks.onPrintResultOnHelp')
-                      : t('page.webhooks.onPrintResultOffHelp')}
-                  </span>
-                  {form.callbackOnPrintResult &&
-                    (form.callbackTransport === 'NATS' || form.callbackTransport === 'BOTH') && (
-                      <span className="wh-field-hint" style={{ color: 'var(--state-warning-text)' }}>
-                        {t('page.webhooks.natsBestEffortWarning')}
-                      </span>
-                    )}
-                </div>
-              </div>
-            </div>
+                )}
+              </FormField>
+            </Stack>
 
             {/* Form Buttons */}
-            <div className="wh-form-actions">
-              <button className="ds-btn ds-btn--ghost" onClick={() => void handleSave(false)}>
+            <Inline gap="sm" className="wh-form-actions">
+              <Button variant="ghost" onClick={() => void handleSave(false)}>
                 {t('page.webhooks.saveDraft')}
-              </button>
-              <button className="ds-btn ds-btn--ghost" onClick={() => void testCallback()}>
+              </Button>
+              <Button variant="secondary" onClick={() => void testCallback()}>
                 {t('page.webhooks.testShort')}
-              </button>
-              <button className="ds-btn ds-btn--primary" onClick={() => void handleSave(true)}>
+              </Button>
+              <Button onClick={() => void handleSave(true)}>
                 {editingId ? t('page.webhooks.saveEndpoint') : t('page.webhooks.createEndpoint')}
-              </button>
-            </div>
+              </Button>
+            </Inline>
           </div>
 
           {/* Right Column: Sidebar Info Panel */}
           <div className="wh-sidebar">
             {/* Box 1: Sample Payload */}
-            <div className="wh-panel">
-              <div className="wh-panel-header">
-                <span>{t('page.webhooks.samplePayload')}</span>
-              </div>
-              <pre className="wh-json-preview">
+            <Panel title={t('page.webhooks.samplePayload')} padding="lg">
+              <CodeBlock label={t('page.webhooks.samplePayload')} scroll={false}>
 {`{
   "event": "PRINT_COMPLETED",
   "printerId": "PRN-001",
@@ -1015,47 +1032,34 @@ export default function Webhooks() {
   "status": "COMPLETED",
   "timestamp": "2025-05-22T10:30:00Z"
 }`}
-              </pre>
-            </div>
+              </CodeBlock>
+            </Panel>
 
-            {/* Box 2: Available Variables Pills */}
-            <div className="wh-panel">
-              <div className="wh-panel-header">
-                <span>{t('page.webhooks.availableVariables')}</span>
-              </div>
-              <div className="wh-var-pills">
+            {/* Box 2: Available Variables. These insert into the template, so
+                they are chips — the shape the system reserves for exactly this. */}
+            <Panel title={t('page.webhooks.availableVariables')} padding="lg">
+              <Inline gap="xs">
                 {AVAILABLE_VARIABLES.map((v) => (
-                  <button
+                  <Chip
                     key={v}
-                    type="button"
-                    className="wh-var-pill"
                     title={t('page.webhooks.insertVariableTitle').replace('{v}', v.replace('$.', ''))}
                     onClick={() => insertVariableIntoTemplate(v)}
                   >
                     {v}
-                  </button>
+                  </Chip>
                 ))}
-              </div>
-            </div>
+              </Inline>
+            </Panel>
 
             {/* Box 3: Usage Instructions */}
-            <div className="wh-panel">
-              <div className="wh-panel-header">
-                <span>{t('page.webhooks.howToUse')}</span>
-              </div>
+            <Panel title={t('page.webhooks.howToUse')} padding="lg">
               <ul className="wh-guide-list">
-                <li className="wh-guide-item"><span>{t('page.webhooks.guide1')}</span></li>
-                <li className="wh-guide-item">
-                  <span>{t('page.webhooks.guide2')}</span>
-                </li>
-                <li className="wh-guide-item">
-                  <span>{t('page.webhooks.guide3')}</span>
-                </li>
-                <li className="wh-guide-item">
-                  <span>{t('page.webhooks.guide4')}</span>
-                </li>
+                <li className="wh-guide-item"><Text>{t('page.webhooks.guide1')}</Text></li>
+                <li className="wh-guide-item"><Text>{t('page.webhooks.guide2')}</Text></li>
+                <li className="wh-guide-item"><Text>{t('page.webhooks.guide3')}</Text></li>
+                <li className="wh-guide-item"><Text>{t('page.webhooks.guide4')}</Text></li>
               </ul>
-            </div>
+            </Panel>
           </div>
         </div>
       </div>
@@ -1064,9 +1068,7 @@ export default function Webhooks() {
       <div className="wh-card">
         <div className="wh-table-header">
           <Inline gap="lg">
-            <h2 className="section-title">
-              {t('page.webhooks.allEndpoints')}
-            </h2>
+            <Heading level={2}>{t('page.webhooks.allEndpoints')}</Heading>
 
             {/* Filter Tabs */}
             <TabList label={t('page.webhooks.allEndpoints')}>
@@ -1114,78 +1116,72 @@ export default function Webhooks() {
         </div>
 
         {/* Table Content */}
-        <div className="wh-table-wrapper">
-          <table className="wh-table">
+        <DataTable label={t('page.webhooks.allEndpoints')} responsive>
             <thead>
               <tr>
-                <th style={{ width: 36, textAlign: 'center' }}>
-                  <input
-                    aria-label={t('page.webhooks.selectAllOnPage')}
-                    type="checkbox"
+                <DataHead>
+                  <Checkbox
+                    hideLabel
+                    label={t('page.webhooks.selectAllOnPage')}
                     checked={isAllPaginatedSelected}
                     onChange={toggleSelectAllPaginated}
                     disabled={paginatedEndpoints.length === 0}
                     title={t('page.webhooks.selectAllOnPage')}
                   />
-                </th>
-                <th>{t('page.webhooks.endpoint')}</th>
-                <th>{t('page.webhooks.source')}</th>
-                <th>{t('page.webhooks.auth')}</th>
-                <th>{t('page.webhooks.enabled')}</th>
-                <th>{t('page.webhooks.callback')}</th>
-                <th>{t('page.webhooks.updatedAt')}</th>
-                <th style={{ textAlign: 'right' }}>{t('page.webhooks.actions')}</th>
+                </DataHead>
+                <DataHead>{t('page.webhooks.endpoint')}</DataHead>
+                <DataHead>{t('page.webhooks.source')}</DataHead>
+                <DataHead>{t('page.webhooks.auth')}</DataHead>
+                <DataHead>{t('page.webhooks.enabled')}</DataHead>
+                <DataHead>{t('page.webhooks.callback')}</DataHead>
+                <DataHead>{t('page.webhooks.updatedAt')}</DataHead>
+                <DataHead>{t('page.webhooks.actions')}</DataHead>
               </tr>
             </thead>
             <tbody>
               {paginatedEndpoints.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--semantic-neutral)' }}>
-                    {t('page.webhooks.noResults')}
-                  </td>
-                </tr>
+                <TableEmpty columns={8}>
+                  <EmptyState title={t('page.webhooks.noResults')} />
+                </TableEmpty>
               ) : (
                 paginatedEndpoints.map((e) => (
-                  <tr key={e.id} style={{ background: selectedIds.includes(e.id) ? 'var(--state-info-surface)' : undefined }}>
-                    <td style={{ textAlign: 'center' }}>
-                      <input
-                        aria-label={`${t('page.webhooks.endpoint')} ${e.endpointCode}`}
-                        type="checkbox"
+                  <tr key={e.id} data-selected={selectedIds.includes(e.id) || undefined}>
+                    <DataCell label={t('page.webhooks.selectAllOnPage')}>
+                      <Checkbox
+                        hideLabel
+                        label={`${t('page.webhooks.endpoint')} ${e.endpointCode}`}
                         checked={selectedIds.includes(e.id)}
                         onChange={() => toggleSelectRow(e.id)}
                       />
-                    </td>
-                    <td>
-                      <button
-                        className="wh-endpoint-link"
+                    </DataCell>
+                    <DataCell label={t('page.webhooks.endpoint')}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setSelectedEndpointModal(e)}
                         title={t('page.webhooks.viewIntakeUrlTitle')}
                       >
-                        {e.endpointCode} <ActionIcon name="link" />
-                      </button>
-                    </td>
-                    <td>{e.sourceSystem || 'integration-service'}</td>
-                    <td>{e.authMode || 'NONE'}</td>
-                    <td>
-                      {e.enabled ? (
-                        <span className="ds-status-badge ds-status-badge--active">
-                          {t('page.webhooks.statusEnabled')}
-                        </span>
-                      ) : (
-                        <span className="ds-status-badge ds-status-badge--draft">
-                          {t('page.webhooks.statusDraft')}
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <span className="wh-badge-transport">
+                        <Mono>{e.endpointCode}</Mono> <ActionIcon name="link" />
+                      </Button>
+                    </DataCell>
+                    <DataCell label={t('page.webhooks.source')}>{e.sourceSystem || 'integration-service'}</DataCell>
+                    <DataCell label={t('page.webhooks.auth')}><Mono>{e.authMode || 'NONE'}</Mono></DataCell>
+                    <DataCell label={t('page.webhooks.enabled')}>
+                      <Badge tone={e.enabled ? 'success' : 'neutral'}>
+                        {e.enabled ? t('page.webhooks.statusEnabled') : t('page.webhooks.statusDraft')}
+                      </Badge>
+                    </DataCell>
+                    <DataCell label={t('page.webhooks.callback')}>
+                      <Badge tone={e.callbackTransport === 'NONE' ? 'neutral' : 'info'}>
                         {e.callbackTransport === 'NONE'
                           ? t('page.webhooks.transport.none')
                           : e.callbackTransport}
-                      </span>
-                    </td>
-                    <td>{formatDate(e.updatedAt || e.createdAt)}</td>
-                    <td>
+                      </Badge>
+                    </DataCell>
+                    <DataCell label={t('page.webhooks.updatedAt')}>
+                      <Text size="label" tone="muted" nowrap>{formatDate(e.updatedAt || e.createdAt)}</Text>
+                    </DataCell>
+                    <DataCell label={t('page.webhooks.actions')} actions>
                       <Toolbar label={t('page.webhooks.actions')} align="end">
                         <Button
                           size="sm"
@@ -1218,44 +1214,46 @@ export default function Webhooks() {
                           <ActionIcon name="delete" />
                         </IconButton>
                       </Toolbar>
-                    </td>
+                    </DataCell>
                   </tr>
                 ))
               )}
             </tbody>
-          </table>
-        </div>
+        </DataTable>
 
         {/* Pagination Footer */}
         <div className="wh-pagination">
-          <div>
+          <Text size="label" tone="muted">
             {t('page.webhooks.paginationSummary')
               .replace('{from}', String(filteredEndpoints.length === 0 ? 0 : (page - 1) * pageSize + 1))
               .replace('{to}', String(Math.min(page * pageSize, filteredEndpoints.length)))
               .replace('{total}', String(filteredEndpoints.length))}
-          </div>
+          </Text>
 
-          <div className="wh-page-controls">
-            <button
-              className="wh-page-btn"
+          {/* The page steppers were `‹` and `›` glyphs on a bare button with no
+              accessible name — the arrow was the entire label. */}
+          <Inline gap="sm">
+            <Button
+              variant="secondary"
+              size="sm"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
-              ‹
-            </button>
-            <span style={{ padding: '0 0.4rem', fontWeight: 600 }}>{page}</span>
-            <button
-              className="wh-page-btn"
+              {t('page.jobQueue.previous')}
+            </Button>
+            <Text size="label" weight="semibold" nowrap>{page}</Text>
+            <Button
+              variant="secondary"
+              size="sm"
               disabled={page >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             >
-              ›
-            </button>
+              {t('page.jobQueue.next')}
+            </Button>
 
-            <select
+            <Select
               aria-label={t('page.webhooks.perPage').replace('{n}', String(pageSize))}
-              className="wh-select"
-              style={{ height: 32, padding: '0 0.5rem', fontSize: '0.8rem', marginLeft: '0.5rem' }}
+              controlSize="sm"
               value={pageSize}
               onChange={(e) => {
                 setPageSize(Number(e.target.value));
@@ -1266,8 +1264,8 @@ export default function Webhooks() {
               <option value={10}>{t('page.webhooks.perPage').replace('{n}', '10')}</option>
               <option value={20}>{t('page.webhooks.perPage').replace('{n}', '20')}</option>
               <option value={50}>{t('page.webhooks.perPage').replace('{n}', '50')}</option>
-            </select>
-          </div>
+            </Select>
+          </Inline>
         </div>
       </div>
 
@@ -1277,9 +1275,7 @@ export default function Webhooks() {
       <div className="wh-card">
         <div className="wh-table-header">
           <Inline gap="lg">
-            <h2 className="section-title">
-              {t('page.webhooks.callbackLogTitle')}
-            </h2>
+            <Heading level={2}>{t('page.webhooks.callbackLogTitle')}</Heading>
             <Checkbox
               label={t('page.webhooks.callbackLogFailedOnly')}
               checked={callbackLogFailedOnly}
@@ -1290,175 +1286,153 @@ export default function Webhooks() {
             <ActionIcon name="refresh" />
           </IconButton>
         </div>
-        <p className="section-description">
-          {t('page.webhooks.callbackLogDescription')}
-        </p>
-        <div className="wh-table-wrapper">
-          <table className="wh-table">
+        <Text as="p" tone="muted">{t('page.webhooks.callbackLogDescription')}</Text>
+        <DataTable label={t('page.webhooks.callbackLogTitle')} responsive>
             <thead>
               <tr>
-                <th>{t('page.webhooks.colTime')}</th>
-                <th>{t('page.webhooks.endpoint')}</th>
-                <th>{t('page.webhooks.colChannel')}</th>
-                <th>{t('page.webhooks.colTrigger')}</th>
-                <th>{t('page.webhooks.colOutcome')}</th>
-                <th>{t('page.webhooks.colHttpStatus')}</th>
-                <th>{t('page.webhooks.colDuration')}</th>
-                <th>{t('page.webhooks.colDetail')}</th>
+                <DataHead>{t('page.webhooks.colTime')}</DataHead>
+                <DataHead>{t('page.webhooks.endpoint')}</DataHead>
+                <DataHead>{t('page.webhooks.colChannel')}</DataHead>
+                <DataHead>{t('page.webhooks.colTrigger')}</DataHead>
+                <DataHead>{t('page.webhooks.colOutcome')}</DataHead>
+                <DataHead>{t('page.webhooks.colHttpStatus')}</DataHead>
+                <DataHead>{t('page.webhooks.colDuration')}</DataHead>
+                <DataHead>{t('page.webhooks.colDetail')}</DataHead>
               </tr>
             </thead>
             <tbody>
               {callbackLog.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--semantic-neutral)' }}>
-                    {callbackLogLoading ? t('common.loading') : t('page.webhooks.noCallbackHistory')}
-                  </td>
-                </tr>
+                <TableEmpty columns={8}>
+                  {callbackLogLoading
+                    ? <LoadingState />
+                    : <EmptyState title={t('page.webhooks.noCallbackHistory')} />}
+                </TableEmpty>
               ) : (
                 callbackLog.map((a) => (
                   <tr key={a.id}>
-                    <td>{formatDate(a.occurredAt)}</td>
-                    <td><code>{a.endpointCode}</code></td>
-                    <td>{a.transport}</td>
-                    <td>{a.trigger === 'test' ? t('page.webhooks.triggerTest') : t('page.webhooks.triggerLive')}</td>
-                    <td>
-                      {a.outcome === 'success' ? (
-                        <span className="ds-status-badge ds-status-badge--success">{t('page.webhooks.outcomeSuccess')}</span>
-                      ) : a.outcome === 'failed' ? (
-                        <span className="ds-status-badge ds-status-badge--error">{t('page.webhooks.outcomeFailed')}</span>
-                      ) : (
-                        <span className="ds-status-badge ds-status-badge--neutral">{t('page.webhooks.outcomeSkipped')}</span>
-                      )}
-                    </td>
-                    <td>{a.httpStatus ?? '—'}</td>
-                    <td>{a.durationMs} ms</td>
-                    <td style={{ maxWidth: 280, whiteSpace: 'normal', wordBreak: 'break-word', fontSize: '0.8rem', color: 'var(--neutral-text-muted)' }}>
-                      {a.errorMessage || a.target || '—'}
-                    </td>
+                    <DataCell label={t('page.webhooks.colTime')}>
+                      <Text size="label" tone="muted" nowrap>{formatDate(a.occurredAt)}</Text>
+                    </DataCell>
+                    <DataCell label={t('page.webhooks.endpoint')}><Mono>{a.endpointCode}</Mono></DataCell>
+                    <DataCell label={t('page.webhooks.colChannel')}><Badge>{a.transport}</Badge></DataCell>
+                    <DataCell label={t('page.webhooks.colTrigger')}>
+                      {a.trigger === 'test' ? t('page.webhooks.triggerTest') : t('page.webhooks.triggerLive')}
+                    </DataCell>
+                    <DataCell label={t('page.webhooks.colOutcome')}>
+                      <Badge tone={a.outcome === 'success' ? 'success' : a.outcome === 'failed' ? 'danger' : 'neutral'}>
+                        {a.outcome === 'success'
+                          ? t('page.webhooks.outcomeSuccess')
+                          : a.outcome === 'failed'
+                            ? t('page.webhooks.outcomeFailed')
+                            : t('page.webhooks.outcomeSkipped')}
+                      </Badge>
+                    </DataCell>
+                    <DataCell label={t('page.webhooks.colHttpStatus')}><Mono>{a.httpStatus ?? '—'}</Mono></DataCell>
+                    <DataCell label={t('page.webhooks.colDuration')}><Mono>{a.durationMs} ms</Mono></DataCell>
+                    <DataCell label={t('page.webhooks.colDetail')}>
+                      <Text size="label" tone="muted">{a.errorMessage || a.target || '—'}</Text>
+                    </DataCell>
                   </tr>
                 ))
               )}
             </tbody>
-          </table>
-        </div>
+        </DataTable>
       </div>
 
+      {/* All three overlays were hand-rolled `ds-modal` divs: no focus trap, no
+          Escape, no focus restoration, and a backdrop that closed on any click
+          that reached it. The shared `Dialog` provides all of that — which
+          matters most for the delete confirmation, the one that destroys an
+          endpoint an integration may still be posting to. */}
+
       {/* Modal 1: Import Preview Confirmation */}
-      {importModalEndpoints && (
-        <div
-          className="ds-modal"
-          onClick={() => setImportModalEndpoints(null)}
-        >
-          <div
-            className="ds-modal__panel ds-modal__panel--lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="ds-modal__header">
-              <h2 className="wh-modal-title"><TransferIcon action="import" /> {t('page.webhooks.importModalTitle').replace('{n}', String(importModalEndpoints.length))}</h2>
-              <button
-                className="ds-btn ds-btn--icon"
-                onClick={() => setImportModalEndpoints(null)}
-                aria-label={t('common.close')}
-              ><ActionIcon name="close" /></button>
-            </div>
+      <Dialog
+        open={importModalEndpoints !== null}
+        onClose={() => setImportModalEndpoints(null)}
+        title={t('page.webhooks.importModalTitle').replace('{n}', String(importModalEndpoints?.length ?? 0))}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setImportModalEndpoints(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={() => void confirmImport()}>
+              <TransferIcon action="import" />{' '}
+              {t('page.webhooks.confirmImport').replace('{n}', String(importModalEndpoints?.length ?? 0))}
+            </Button>
+          </>
+        }
+      >
+        {importModalEndpoints && (
+          <Stack gap="lg">
+            <Text as="p" tone="muted">{t('page.webhooks.importPreviewIntro')}</Text>
 
-            <div className="ds-modal__body" style={{ padding: '1rem' }}>
-              <p style={{ fontSize: '0.875rem', color: 'var(--neutral-text-muted)', margin: '0 0 1rem' }}>
-                {t('page.webhooks.importPreviewIntro')}
-              </p>
-
-              <div
-                style={{
-                  maxHeight: 240,
-                  overflowY: 'auto',
-                  border: '1px solid var(--neutral-border)',
-                  borderRadius: 'var(--rounded-md)',
-                  marginBottom: '1rem',
-                }}
-              >
-                <table className="wh-table" style={{ fontSize: '0.8rem' }}>
-                  <thead>
-                    <tr>
-                      <th>{t('page.webhooks.colEndpointCode')}</th>
-                      <th>{t('page.webhooks.name')}</th>
-                      <th>{t('page.webhooks.source')}</th>
-                      <th>{t('page.webhooks.colExistingStatus')}</th>
+            <DataTable label={t('page.webhooks.importModalTitle').replace('{n}', String(importModalEndpoints.length))} responsive>
+              <thead>
+                <tr>
+                  <DataHead>{t('page.webhooks.colEndpointCode')}</DataHead>
+                  <DataHead>{t('page.webhooks.name')}</DataHead>
+                  <DataHead>{t('page.webhooks.source')}</DataHead>
+                  <DataHead>{t('page.webhooks.colExistingStatus')}</DataHead>
+                </tr>
+              </thead>
+              <tbody>
+                {importModalEndpoints.map((item, idx) => {
+                  const exists = endpoints.some((e) => e.endpointCode === item.endpointCode);
+                  return (
+                    <tr key={idx}>
+                      <DataCell label={t('page.webhooks.colEndpointCode')}>
+                        <Mono>{item.endpointCode}</Mono>
+                      </DataCell>
+                      <DataCell label={t('page.webhooks.name')}>{item.name}</DataCell>
+                      <DataCell label={t('page.webhooks.source')}>
+                        {item.sourceSystem || 'integration-service'}
+                      </DataCell>
+                      <DataCell label={t('page.webhooks.colExistingStatus')}>
+                        <Badge tone={exists ? 'warning' : 'success'}>
+                          {exists ? t('page.webhooks.existsAlready') : t('page.webhooks.newItem')}
+                        </Badge>
+                      </DataCell>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {importModalEndpoints.map((item, idx) => {
-                      const exists = endpoints.some((e) => e.endpointCode === item.endpointCode);
-                      return (
-                        <tr key={idx}>
-                          <td><code>{item.endpointCode}</code></td>
-                          <td>{item.name}</td>
-                          <td>{item.sourceSystem || 'integration-service'}</td>
-                          <td>
-                            {exists ? (
-                              <span className="ds-status-badge ds-status-badge--warning">{t('page.webhooks.existsAlready')}</span>
-                            ) : (
-                              <span className="ds-status-badge ds-status-badge--success">{t('page.webhooks.newItem')}</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                  );
+                })}
+              </tbody>
+            </DataTable>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--neutral-text)', marginBottom: '0.5rem' }}>
-                <input
-                  type="checkbox"
-                  checked={overwriteExistingOnImport}
-                  onChange={(e) => setOverwriteExistingOnImport(e.target.checked)}
-                />
-                <span>{t('page.webhooks.overwriteExisting')}</span>
-              </label>
-            </div>
-
-            <div className="ds-modal__actions">
-              <button className="ds-btn ds-btn--ghost" onClick={() => setImportModalEndpoints(null)}>
-                {t('common.cancel')}
-              </button>
-              <button className="ds-btn ds-btn--primary" onClick={() => void confirmImport()}>
-                <TransferIcon action="import" /> {t('page.webhooks.confirmImport').replace('{n}', String(importModalEndpoints.length))}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            <Checkbox
+              label={t('page.webhooks.overwriteExisting')}
+              checked={overwriteExistingOnImport}
+              onChange={(e) => setOverwriteExistingOnImport(e.target.checked)}
+            />
+          </Stack>
+        )}
+      </Dialog>
 
       {/* Modal 2: Endpoint Details */}
-      {selectedEndpointModal && (
-        <div
-          className="ds-modal"
-          onClick={() => setSelectedEndpointModal(null)}
-        >
-          <div
-            className="ds-modal__panel"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="ds-modal__header">
-              <h2>{t('page.webhooks.endpointDetailTitle').replace('{code}', selectedEndpointModal.endpointCode)}</h2>
-              <button
-                className="ds-btn ds-btn--icon"
-                onClick={() => setSelectedEndpointModal(null)}
-                aria-label={t('common.close')}
-              ><ActionIcon name="close" /></button>
-            </div>
+      <Dialog
+        open={selectedEndpointModal !== null}
+        onClose={() => setSelectedEndpointModal(null)}
+        title={t('page.webhooks.endpointDetailTitle').replace('{code}', selectedEndpointModal?.endpointCode ?? '')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => selectedEndpointModal && void testCallback(selectedEndpointModal)}>
+              <ActionIcon name="play" /> {t('page.webhooks.testCallbackTitle')}
+            </Button>
+            <Button onClick={() => setSelectedEndpointModal(null)}>{t('page.webhooks.ok')}</Button>
+          </>
+        }
+      >
+        {selectedEndpointModal && (
+          <Stack gap="lg">
+            <Stack gap="xs">
+              <Text size="label" tone="muted">HTTP Intake URL (POST)</Text>
+              <CodeBlock label="HTTP Intake URL" scroll={false}>
+                {`${window.location.origin}/v1/intake/${selectedEndpointModal.endpointCode}`}
+              </CodeBlock>
+            </Stack>
 
-            <div className="ds-modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.85rem', color: 'var(--neutral-text)' }}>
-              <div>
-                <strong>HTTP Intake URL (POST):</strong>
-                <pre className="wh-json-preview" style={{ marginTop: '0.35rem' }}>
-                  {`${window.location.origin}/v1/intake/${selectedEndpointModal.endpointCode}`}
-                </pre>
-              </div>
-
-              <div>
-                <strong>{t('page.webhooks.curlExampleLabel')}</strong>
-                <pre className="wh-json-preview" style={{ marginTop: '0.35rem', whiteSpace: 'pre-wrap' }}>
+            <Stack gap="xs">
+              <Text size="label" tone="muted">{t('page.webhooks.curlExampleLabel')}</Text>
+              <CodeBlock label={t('page.webhooks.curlExampleLabel')}>
 {`curl -X POST "${window.location.origin}/v1/intake/${selectedEndpointModal.endpointCode}" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -1466,63 +1440,62 @@ export default function Webhooks() {
     "hn": "HN-998877",
     "patient_name": "สมชาย ใจดี"
   }'`}
-                </pre>
-              </div>
+              </CodeBlock>
+            </Stack>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                <div><strong>{t('page.webhooks.sourceLabelColon')}</strong> {selectedEndpointModal.sourceSystem}</div>
-                <div><strong>{t('page.webhooks.authLabelColon')}</strong> {selectedEndpointModal.authMode}</div>
-                <div><strong>{t('page.webhooks.statusLabelColon')}</strong> {selectedEndpointModal.enabled
-                  ? <span className="ds-status-badge ds-status-badge--active">{t('page.webhooks.statusEnabled')}</span>
-                  : <span className="ds-status-badge ds-status-badge--draft">{t('page.webhooks.statusDraft')}</span>}</div>
-                <div><strong>Callback:</strong> {selectedEndpointModal.callbackTransport}</div>
-              </div>
-
+            <FactList>
+              <Fact label={t('page.webhooks.sourceLabelColon')}>{selectedEndpointModal.sourceSystem}</Fact>
+              <Fact label={t('page.webhooks.authLabelColon')}>
+                <Mono>{selectedEndpointModal.authMode}</Mono>
+              </Fact>
+              <Fact label={t('page.webhooks.statusLabelColon')}>
+                <Badge tone={selectedEndpointModal.enabled ? 'success' : 'neutral'}>
+                  {selectedEndpointModal.enabled ? t('page.webhooks.statusEnabled') : t('page.webhooks.statusDraft')}
+                </Badge>
+              </Fact>
+              <Fact label="Callback">
+                <Badge tone={selectedEndpointModal.callbackTransport === 'NONE' ? 'neutral' : 'info'}>
+                  {selectedEndpointModal.callbackTransport}
+                </Badge>
+              </Fact>
               {selectedEndpointModal.callbackUrl && (
-                <div><strong>Callback Target URL:</strong> {selectedEndpointModal.callbackUrl}</div>
+                <Fact label="Callback Target URL">
+                  <Mono>{selectedEndpointModal.callbackUrl}</Mono>
+                </Fact>
               )}
               {selectedEndpointModal.callbackNatsSubject && (
-                <div><strong>NATS Subject:</strong> {selectedEndpointModal.callbackNatsSubject}</div>
+                <Fact label="NATS Subject">
+                  <Mono>{selectedEndpointModal.callbackNatsSubject}</Mono>
+                </Fact>
               )}
-            </div>
-
-            <div className="ds-modal__actions">
-              <button
-                className="ds-btn ds-btn--ghost"
-                onClick={() => void testCallback(selectedEndpointModal)}
-              >
-                <ActionIcon name="play" /> {t('page.webhooks.testCallbackTitle')}
-              </button>
-              <button
-                className="ds-btn ds-btn--primary"
-                onClick={() => setSelectedEndpointModal(null)}
-              >
-                {t('page.webhooks.ok')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </FactList>
+          </Stack>
+        )}
+      </Dialog>
 
       {/* Modal 3: Confirm Delete Endpoint */}
-      {pendingDeleteEndpoint && (
-        <div className="ds-modal" role="dialog" aria-modal="true" onClick={() => setPendingDeleteEndpoint(null)}>
-          <div className="ds-modal__panel ds-modal__panel--sm" onClick={(e) => e.stopPropagation()}>
-            <div className="ds-modal__header">
-              <h2>{t('page.webhooks.deleteTitle')}</h2>
-              <button className="ds-btn ds-btn--icon" onClick={() => setPendingDeleteEndpoint(null)} aria-label={t('common.close')}><ActionIcon name="close" /></button>
-            </div>
-            <div className="ds-confirm__body">
-              <p>{t('page.webhooks.confirmDeleteBody')}</p>
-              <code>{pendingDeleteEndpoint.endpointCode}</code>
-            </div>
-            <div className="ds-modal__actions">
-              <button className="ds-btn ds-btn--ghost" onClick={() => setPendingDeleteEndpoint(null)}>{t('common.cancel')}</button>
-              <button className="ds-btn ds-btn--danger" onClick={() => void confirmDeleteEndpoint()}><ActionIcon name="delete" /> {t('page.webhooks.deleteTitle')}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Dialog
+        open={pendingDeleteEndpoint !== null}
+        onClose={() => setPendingDeleteEndpoint(null)}
+        title={t('page.webhooks.deleteTitle')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPendingDeleteEndpoint(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="danger" onClick={() => void confirmDeleteEndpoint()}>
+              <ActionIcon name="delete" /> {t('page.webhooks.deleteTitle')}
+            </Button>
+          </>
+        }
+      >
+        {pendingDeleteEndpoint && (
+          <Stack gap="sm">
+            <Text as="p">{t('page.webhooks.confirmDeleteBody')}</Text>
+            <Mono weight="semibold">{pendingDeleteEndpoint.endpointCode}</Mono>
+          </Stack>
+        )}
+      </Dialog>
     </PageLayout>
   );
 }

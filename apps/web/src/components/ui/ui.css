@@ -31,6 +31,7 @@
 .ui-input--sm,
 .ui-select--sm { min-height: var(--control-height-compact); padding: 0.38rem 0.6rem; }
 .ui-textarea { min-height: 7rem; padding: 0.65rem 0.7rem; }
+.ui-textarea--mono { font-family: var(--font-mono-family); font-size: var(--font-mono-size); line-height: var(--font-mono-line-height); tab-size: 2; }
 .ui-textarea[data-resize='none'] { resize: none; }
 .ui-textarea[data-resize='vertical'] { resize: vertical; }
 .ui-textarea[data-resize='both'] { resize: both; }
@@ -72,11 +73,47 @@
 .ui-input-group__affix { display: grid; place-items: center; padding-inline-start: var(--spacing-md); }
 .ui-input-group__affix--end { padding-inline: 0 var(--spacing-md); }
 
+.ui-chip {
+  display: inline-flex;
+  min-height: var(--control-height-compact);
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--neutral-border-strong);
+  border-radius: var(--rounded-pill, 9999px);
+  background: var(--neutral-surface);
+  color: var(--neutral-text-muted);
+  font: inherit;
+  font-size: var(--font-label-size);
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+.ui-chip:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.ui-chip.is-selected { border-color: color-mix(in srgb, var(--primary) 40%, var(--neutral-border)); background: var(--state-info-surface); color: var(--primary-hover); }
+.ui-chip:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.ui-chip:disabled { opacity: 0.6; cursor: not-allowed; }
+
 .ui-check { display: inline-flex; align-items: flex-start; gap: var(--spacing-sm); min-width: 0; color: var(--neutral-text); cursor: pointer; }
 .ui-check > input { flex: 0 0 auto; width: 1rem; height: 1rem; margin-top: 0.15rem; accent-color: var(--primary); }
 .ui-check__copy { display: grid; gap: 0.1rem; min-width: 0; }
 .ui-check__label { font-size: var(--font-body-size); font-weight: 500; }
 .ui-check__description { color: var(--neutral-text-muted); font-size: var(--font-label-size); line-height: 1.4; }
+.ui-check--bare { gap: 0; }
+.ui-check--bare > input { margin-top: 0; }
+
+.ui-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 .ui-stack { display: flex; min-width: 0; flex-direction: column; }
 .ui-inline { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; }
@@ -86,6 +123,16 @@
 .ui-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ui-grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .ui-grid--auto { grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr)); }
+.ui-grid--auto.ui-grid--dense { grid-template-columns: repeat(auto-fit, minmax(min(9.5rem, 100%), 1fr)); }
+.ui-align--stretch { align-items: stretch; }
+.ui-align--start { align-items: flex-start; }
+.ui-align--center { align-items: center; }
+.ui-align--end { align-items: flex-end; }
+/* A control sharing a row with buttons should take the leftover width rather
+   than sitting at its intrinsic size. */
+.ui-inline > .ui-input,
+.ui-inline > .ui-input-group,
+.ui-inline > .ui-select { flex: 1 1 12rem; }
 .ui-gap--xs { gap: var(--spacing-xs); }
 .ui-gap--sm { gap: var(--spacing-sm); }
 .ui-gap--md { gap: var(--spacing-md); }
@@ -180,6 +227,125 @@
 .ui-inline-error { display: block; color: var(--state-danger-text); font-size: var(--font-label-size); line-height: 1.4; }
 .ui-muted-copy { color: var(--neutral-text-muted); font-size: var(--font-label-size); }
 
+/* ---- text ---- */
+
+.ui-text { min-width: 0; margin: 0; }
+.ui-text--default { color: var(--neutral-text); }
+.ui-text--muted { color: var(--neutral-text-muted); }
+.ui-text--strong { color: var(--neutral-deep); }
+.ui-text--primary { color: var(--primary-hover); }
+.ui-text--danger { color: var(--state-danger-text); }
+.ui-text--warning { color: var(--state-warning-text); }
+.ui-text--success { color: var(--state-success-text); }
+.ui-text--info { color: var(--state-info-text); }
+
+.ui-text--label { font-size: var(--font-label-size); font-weight: var(--font-label-weight); line-height: var(--font-label-line-height); }
+.ui-text--body { font-size: var(--font-body-size); line-height: var(--font-body-line-height); }
+.ui-text--title { font-size: var(--font-subheading-size); font-weight: 600; line-height: 1.4; }
+.ui-text--stat { font-size: var(--font-stat-size); font-weight: var(--font-stat-weight); line-height: var(--font-stat-line-height); }
+
+.ui-text--regular { font-weight: 400; }
+.ui-text--medium { font-weight: 500; }
+.ui-text--semibold { font-weight: 600; }
+.ui-text--bold { font-weight: 700; }
+
+.ui-text--mono { font-family: var(--font-mono-family); font-size: var(--font-mono-size); line-height: var(--font-mono-line-height); }
+.ui-text--stat.ui-text--mono { font-size: var(--font-stat-size); }
+.ui-text--nowrap { white-space: nowrap; }
+.ui-text--truncate { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Latin-only treatment, applied by opt-in prop. Never on localized copy. */
+.ui-text--caps { letter-spacing: var(--font-label-letter-spacing); text-transform: uppercase; }
+
+.ui-heading { margin: 0; color: var(--neutral-deep); font-family: var(--font-heading-family); font-weight: var(--font-heading-weight); text-wrap: balance; }
+.ui-heading--page { font-size: var(--font-heading-size); line-height: var(--font-heading-line-height); }
+.ui-heading--section { font-size: var(--font-subheading-size); line-height: 1.4; }
+.ui-heading--subsection { font-size: var(--font-body-size); line-height: 1.4; }
+
+.ui-section-heading { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: var(--spacing-lg); }
+.ui-section-heading__copy { min-width: 0; display: grid; gap: var(--spacing-xs); }
+.ui-section-heading__description { max-width: 72ch; }
+.ui-section-heading__actions { display: flex; align-items: center; gap: var(--spacing-sm); flex-wrap: wrap; }
+
+.ui-code-block {
+  min-width: 0;
+  margin: 0;
+  padding: var(--spacing-md);
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-md);
+  background: var(--neutral-subtle);
+  color: var(--neutral-text);
+  font-family: var(--font-mono-family);
+  font-size: var(--font-mono-size);
+  line-height: var(--font-mono-line-height);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ui-code-block--scroll { max-height: 22rem; overflow-y: auto; }
+.ui-code-block:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* Router links inside data surfaces. Pages were setting `color: '#1e66f5'`
+   inline, which skipped the hover and focus treatment entirely. */
+.ui-link { border-radius: var(--rounded-sm); color: var(--primary); text-decoration: none; overflow-wrap: anywhere; }
+.ui-link:hover { color: var(--primary-hover); text-decoration: underline; }
+.ui-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* ---- device condition ---- */
+
+.ui-status-dot { display: inline-block; flex: 0 0 auto; width: 0.5rem; height: 0.5rem; border-radius: 50%; }
+.ui-status-dot--ok { background: var(--device-ok); }
+.ui-status-dot--busy { background: var(--device-busy); }
+.ui-status-dot--down { background: var(--device-down); }
+.ui-status-dot--unknown { background: var(--device-unknown); }
+
+.ui-status-indicator { display: inline-flex; align-items: center; gap: var(--spacing-xs); min-width: 0; }
+.ui-status-indicator__text { font-size: var(--font-label-size); font-weight: 650; overflow-wrap: anywhere; }
+.ui-status-indicator--ok .ui-status-indicator__text { color: var(--device-ok); }
+.ui-status-indicator--busy .ui-status-indicator__text { color: var(--device-busy); }
+.ui-status-indicator--down .ui-status-indicator__text { color: var(--device-down); }
+.ui-status-indicator--unknown .ui-status-indicator__text { color: var(--device-unknown); }
+
+/* ---- metrics ---- */
+
+.ui-metric-grid { display: grid; min-width: 0; gap: var(--spacing-md); }
+.ui-metric-grid--primary { grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr)); }
+.ui-metric-grid--secondary { grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr)); }
+
+.ui-metric {
+  display: grid;
+  min-width: 0;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-lg);
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg);
+  background: var(--neutral-surface);
+}
+.ui-metric__value { color: var(--neutral-deep); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ui-metric__label { display: flex; align-items: center; gap: var(--spacing-xs); min-width: 0; }
+.ui-metric__dot { flex: 0 0 auto; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: currentcolor; }
+
+.ui-metric-grid--secondary .ui-metric { padding: var(--spacing-md) var(--spacing-lg); }
+/* Supporting row steps down to the heading size rather than inventing a step
+   between it and stat — the ramp in DESIGN.md has no rung there. */
+.ui-metric-grid--secondary .ui-metric__value { font-size: var(--font-heading-size); }
+
+.ui-metric--accent { color: var(--primary); }
+.ui-metric--accent .ui-metric__value { color: var(--primary-hover); }
+.ui-metric--ok { color: var(--device-ok); }
+.ui-metric--ok .ui-metric__value { color: var(--device-ok); }
+/* Tinted surface, not a colored edge bar: a non-zero UNVERIFIED or FAILED
+   count has to be findable across the room, and the dot beside the label
+   keeps the meaning off colour alone. */
+.ui-metric--attention { border-color: color-mix(in srgb, var(--state-warning-text) 35%, var(--neutral-border)); background: var(--state-warning-surface); color: var(--state-warning-text); }
+.ui-metric--attention .ui-metric__value { color: var(--state-warning-text); }
+.ui-metric--critical { border-color: color-mix(in srgb, var(--state-danger-text) 35%, var(--neutral-border)); background: var(--state-danger-surface); color: var(--state-danger-text); }
+.ui-metric--critical .ui-metric__value { color: var(--state-danger-text); }
+.ui-metric--attention .ui-text--muted,
+.ui-metric--critical .ui-text--muted { color: inherit; opacity: 0.85; }
+
+.ui-table-empty__cell { padding: 0; }
+.ui-table-empty__cell > * { border: 0; }
+
 .ui-drawer-layer { position: fixed; inset: 0; z-index: 120; }
 .ui-drawer-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: rgba(17, 24, 39, 0.42); cursor: default; }
 .ui-drawer { position: absolute; inset-block: 0; display: grid; width: min(31rem, calc(100vw - 2rem)); grid-template-rows: auto minmax(0, 1fr) auto; background: var(--neutral-surface); box-shadow: var(--shadow-floating); }
@@ -228,4 +394,18 @@
   .ui-data-table[data-responsive] .ui-data-cell[data-actions]::before { display: block; margin-bottom: var(--spacing-sm); }
   .ui-data-table[data-responsive] .ui-data-cell[colspan] { display: block; text-align: center; }
   .ui-data-table[data-responsive] .ui-data-cell[colspan]::before { display: none; }
+
+  /* An empty table has no record to become a card, so the row drops its card
+     chrome and the state panel speaks for itself. */
+  .ui-data-table[data-responsive] tr.ui-table-empty { border: 0; background: transparent; }
+
+  .ui-section-heading { align-items: stretch; flex-direction: column; gap: var(--spacing-md); }
+  .ui-metric-grid--primary,
+  .ui-metric-grid--secondary { grid-template-columns: repeat(auto-fit, minmax(min(8.5rem, 100%), 1fr)); }
+  .ui-metric { padding: var(--spacing-md); }
+  .ui-metric__value { font-size: var(--font-heading-size); }
 }
+
+/* Bulleted detail inside an alert body — the alert owns the tone, the list
+   only needs its indent back. */
+.sandbox-warning-list { margin: var(--spacing-xs) 0 0; padding-inline-start: var(--spacing-lg); }

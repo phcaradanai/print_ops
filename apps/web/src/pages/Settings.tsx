@@ -12,8 +12,6 @@ import {
 } from '../api/client.js';
 import { useApiAction } from '../hooks/useApiAction.js';
 import { useApiResource } from '../hooks/useApiResource.js';
-import { Alert } from '../components/Alert.js';
-import { ErrorBanner, Freshness, LoadingState } from '../components/PageState.js';
 import {
   type NatsSettings,
   DEFAULT_NATS_SETTINGS,
@@ -22,13 +20,59 @@ import {
   isTauriAvailable,
 } from '../tauri.js';
 import { ServiceAccountSettings } from '../components/ServiceAccountSettings.js';
-import { PageLayout } from '../components/PageLayout.js';
+import {
+  Alert,
+  Badge,
+  Button,
+  Checkbox,
+  ErrorBanner,
+  Fact,
+  FactList,
+  FormField,
+  Freshness,
+  Inline,
+  Input,
+  LoadingState,
+  Mono,
+  PageLayout,
+  Panel,
+  RecordCard,
+  RecordHeader,
+  RecordList,
+  Select,
+  SectionHeading,
+  Stack,
+  StatusIndicator,
+  Text,
+  type BadgeTone,
+  type StatusTone,
+} from '../components/ui/index.js';
 
 // ----- workspace profile persistence -----
 
 const WS_PROJECT_KEY = 'printops-workspace-project';
 const WS_PATH_KEY = 'printops-workspace-path';
 const API_KEY_STORAGE_KEY = 'printops-api-key';
+
+/**
+ * Readiness maps onto the shared device tones so the dot beside a component
+ * means the same thing it means on Printers and Diagnostics. `NOT_CONFIGURED`
+ * is deliberately not `down`: nothing is broken, the site simply has not set it
+ * up, and painting that red sends operators looking for a fault that isn't there.
+ */
+const READINESS_TONE: Record<ReadinessState, StatusTone> = {
+  READY: 'ok',
+  DEGRADED: 'busy',
+  NOT_CONFIGURED: 'unknown',
+  UNAVAILABLE: 'down',
+};
+
+const READINESS_BADGE: Record<ReadinessState, BadgeTone> = {
+  READY: 'success',
+  DEGRADED: 'warning',
+  NOT_CONFIGURED: 'neutral',
+  UNAVAILABLE: 'danger',
+};
 
 function loadWorkspace(): { projectName: string; workspacePath: string; apiKey: string } {
   try {
@@ -272,8 +316,10 @@ export default function Settings() {
     setNatsDirty(false);
   }, [nats]);
 
+  const localhostNats = /^(nats:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|$)/i.test(natsDraft.url.trim());
+
   return (
-    <PageLayout className="settings-page" width="standard" title={t('settings.title')}>
+    <PageLayout width="standard" title={t('settings.title')}>
 
       {message && (
         <Alert
@@ -285,344 +331,354 @@ export default function Settings() {
         </Alert>
       )}
 
-      {/* Language */}
-      <section className="settings-section" aria-labelledby="settings-lang-heading">
-        <h2 id="settings-lang-heading">{t('settings.language')}</h2>
-        <div className="settings-field">
-          <label htmlFor="settings-lang">
-            {t('settings.language')}
-          </label>
-          <select
-            id="settings-lang"
-            value={lang}
-            onChange={(e) => handleLangChange(e.target.value as Locale)}
-            disabled={false}
-          >
-            <option value="en">{t('settings.language.en')}</option>
-            <option value="th">{t('settings.language.th')}</option>
-          </select>
-        </div>
-      </section>
-
-      <section className="settings-section" aria-labelledby="settings-system-heading">
-        <div className="settings-section-heading">
-          <h2 id="settings-system-heading">{t('settings.system.title')}</h2>
-          <Freshness
-            lastSuccessAt={runtimeResource.lastSuccessAt}
-            stale={runtimeResource.stale}
-            refreshing={runtimeResource.refreshing}
-            paused={runtimeResource.paused}
-            onRefresh={runtimeResource.refresh}
-          />
-        </div>
-        <p className="settings-hint">{t('settings.system.description')}</p>
-        {runtimeResource.data === undefined && runtimeResource.error == null && <LoadingState />}
-        {runtimeResource.error != null && (
-          <ErrorBanner error={runtimeResource.error} onRetry={runtimeResource.refresh} />
-        )}
-        {runtimeResource.data && (
-          <>
-            <div className="settings-runtime-state" role="status">
-              <span className="settings-runtime-state__mark" aria-hidden="true">✓</span>
-              <span>
-                <strong>{t('settings.system.singleExecutor')}</strong>
-                <small>{t('settings.system.singleExecutorDetail')}</small>
-              </span>
-            </div>
-            <dl className="settings-runtime-grid">
-              <div>
-                <dt>{t('settings.system.runtime')}</dt>
-                <dd>{runtimeResource.data.runtimeMode === 'packaged-windows-desktop'
-                  ? t('settings.system.runtime.packaged')
-                  : t('settings.system.runtime.server')}</dd>
-              </div>
-              <div>
-                <dt>{t('settings.system.executorOwner')}</dt>
-                <dd>{runtimeResource.data.executor.owner === 'api-local-worker'
-                  ? t('settings.system.executor.api')
-                  : t('settings.system.executor.external')}</dd>
-              </div>
-              <div>
-                <dt>{t('settings.system.executorMode')}</dt>
-                <dd>{runtimeResource.data.executor.mode === 'typescript-windows-spooler'
-                  ? t('settings.system.executor.windowsSpooler')
-                  : t('settings.system.executor.external')}</dd>
-              </div>
-              <div>
-                <dt>{t('settings.system.discoveryOwner')}</dt>
-                <dd>{t('settings.system.discovery.goRunner')}</dd>
-              </div>
-              <div>
-                <dt>{t('settings.system.runnerClaims')}</dt>
-                <dd>{runtimeResource.data.discovery.jobsEnabled
-                  ? t('settings.system.runnerClaims.enabled')
-                  : t('settings.system.runnerClaims.disabled')}</dd>
-              </div>
-              <div>
-                <dt>{t('settings.system.protocolScope')}</dt>
-                <dd>{runtimeResource.data.supportedProductionProtocols.length
-                  ? runtimeResource.data.supportedProductionProtocols.join(', ')
-                  : t('common.noData')}</dd>
-              </div>
-            </dl>
-            <p className="settings-hint">
-              {t('settings.system.deferred')}{' '}
-              <span className="settings-hint--mono">
-                {runtimeResource.data.deferredProtocols.join(', ')}
-              </span>
-            </p>
-            <div className="settings-readiness-heading">
-              <div>
-                <h3>{t('settings.readiness.title')}</h3>
-                <p className="settings-hint">{t('settings.readiness.description')}</p>
-              </div>
-              <Freshness
-                lastSuccessAt={readinessResource.lastSuccessAt}
-                stale={readinessResource.stale}
-                refreshing={readinessResource.refreshing}
-                paused={readinessResource.paused}
-                onRefresh={readinessResource.refresh}
-              />
-            </div>
-            {readinessResource.data === undefined && readinessResource.error == null && <LoadingState />}
-            {readinessResource.error != null && (
-              <ErrorBanner error={readinessResource.error} onRetry={readinessResource.refresh} />
-            )}
-            {readinessResource.data && (
-              <ul className="settings-readiness-list" aria-label={t('settings.readiness.title')}>
-                {Object.entries(readinessResource.data.components).map(([key, item]) => (
-                  <li key={key}>
-                    <span className={`settings-readiness-mark settings-readiness-mark--${item.state.toLowerCase()}`} aria-hidden="true" />
-                    <span className="settings-readiness-body">
-                      <span className="settings-readiness-label">{readinessLabels[key] ?? key}</span>
-                      <span className="settings-readiness-message">{item.message}</span>
-                      {item.action && <span className="settings-readiness-action">{t('settings.readiness.action')} {item.action}</span>}
-                    </span>
-                    <span className="settings-readiness-state">{readinessStateLabel(item.state)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="settings-actions">
-              <button
-                type="button"
-                className="settings-btn-secondary"
-                disabled={backingUp}
-                onClick={() => {
-                  setBackingUp(true);
-                  void apiDownload('/v1/system/database-backup', `printops-backup-${new Date().toISOString().slice(0, 10)}.db`)
-                    .catch((cause) => setMessage({ text: errorMessage(cause), kind: 'error' }))
-                    .finally(() => setBackingUp(false));
-                }}
+      <Stack gap="xl">
+        <Panel title={t('settings.language')}>
+          <FormField label={t('settings.language')}>
+            {(control) => (
+              <Select
+                {...control}
+                value={lang}
+                onChange={(e) => handleLangChange(e.target.value as Locale)}
               >
-                {backingUp ? t('common.loading') : t('settings.database.backup')}
-              </button>
-              <button
-                type="button"
-                className="settings-btn-secondary"
-                disabled={downloadingSupport}
-                onClick={() => {
-                  setDownloadingSupport(true);
-                  void apiDownload('/v1/system/support-bundle', `printops-support-${new Date().toISOString().slice(0, 10)}.json`)
-                    .catch((cause) => setMessage({ text: errorMessage(cause), kind: 'error' }))
-                    .finally(() => setDownloadingSupport(false));
-                }}
-              >
-                {downloadingSupport ? t('common.loading') : t('settings.support.download')}
-              </button>
-            </div>
-            <p className="settings-hint">{t('settings.database.backupHint')}</p>
-            <p className="settings-hint">{t('settings.support.hint')}</p>
-          </>
-        )}
-      </section>
-
-      {/* Workspace Profile */}
-      <section
-        className="settings-section"
-        aria-labelledby="settings-ws-heading"
-      >
-        <h2 id="settings-ws-heading">{t('settings.workspace')}</h2>
-        <div className="settings-field">
-          <label htmlFor="settings-ws-project">
-            {t('settings.workspace.projectName')}
-          </label>
-          <input
-            id="settings-ws-project"
-            type="text"
-            value={wsDraft.projectName}
-            placeholder={t('settings.workspace.projectNamePlaceholder')}
-            onChange={(e) => handleWsChange('projectName', e.target.value)}
-            disabled={saving || resetting}
-          />
-        </div>
-        <div className="settings-field">
-          <label htmlFor="settings-ws-path">
-            {t('settings.workspace.workspacePath')}
-          </label>
-          <input
-            id="settings-ws-path"
-            type="text"
-            value={wsDraft.workspacePath}
-            placeholder={t('settings.workspace.workspacePathPlaceholder')}
-            onChange={(e) => handleWsChange('workspacePath', e.target.value)}
-            disabled={saving || resetting}
-          />
-        </div>
-        <div className="settings-field">
-          <label htmlFor="settings-ws-apikey">
-            {t('settings.workspace.apiKey')}
-          </label>
-          <input
-            id="settings-ws-apikey"
-            type="password"
-            autoComplete="off"
-            value={wsDraft.apiKey}
-            placeholder={t('settings.workspace.apiKeyPlaceholder')}
-            onChange={(e) => handleWsChange('apiKey', e.target.value)}
-            disabled={saving || resetting}
-          />
-          <p className="settings-hint">
-            {t('settings.workspace.apiKeyHint')}
-          </p>
-        </div>
-        <div className="settings-actions">
-          <button
-            type="button"
-            className="settings-btn-primary"
-            disabled={!wsDirty || saving || resetting}
-            onClick={handleWsSave}
-          >
-            {saving ? t('common.loading') : t('common.save')}
-          </button>
-          <button
-            type="button"
-            className="settings-btn-secondary"
-            disabled={!wsDirty || saving || resetting}
-            onClick={handleWsCancel}
-          >
-            {t('common.cancel')}
-          </button>
-          <button
-            type="button"
-            className="settings-btn-danger"
-            disabled={saving}
-            onClick={handleReset}
-          >
-            {resetting ? t('common.loading') : t('common.reset')}
-          </button>
-        </div>
-      </section>
-
-      {/* NATS client configuration (desktop only) */}
-      <section className="settings-section" aria-labelledby="settings-nats-heading">
-        <h2 id="settings-nats-heading">{t('settings.nats.title')}</h2>
-
-        {natsLoading && <p className="settings-hint">{t('common.loading')}</p>}
-
-        {!natsLoading && !natsSupported && (
-          <p className="settings-hint">{t('settings.nats.desktopOnly')}</p>
-        )}
-
-        {!natsLoading && natsSupported && (
-          <>
-            <p className="settings-hint">{t('settings.nats.description')}</p>
-            {natsStatus && (
-              <dl className="settings-nats-diagnostics" aria-label={t('settings.nats.diagnostics')}>
-                <div><dt>{t('settings.nats.state')}</dt><dd>{natsStatus.state}</dd></div>
-                <div><dt>{t('settings.nats.server')}</dt><dd>{natsStatus.server ?? t('common.noData')}</dd></div>
-                <div><dt>{t('settings.nats.intake')}</dt><dd>{natsStatus.intakeReady ? t('settings.readiness.state.READY') : t('settings.readiness.state.UNAVAILABLE')}</dd></div>
-                <div><dt>{t('settings.nats.callback')}</dt><dd>{natsStatus.callbackPublishReady ? t('settings.readiness.state.READY') : t('settings.readiness.state.UNAVAILABLE')}</dd></div>
-                <div><dt>{t('settings.nats.lastConnected')}</dt><dd>{natsStatus.lastConnectedAt ?? t('common.noData')}</dd></div>
-                <div><dt>{t('settings.nats.lastAttempt')}</dt><dd>{natsStatus.lastAttemptAt ?? t('common.noData')}</dd></div>
-                <div><dt>{t('settings.nats.nextRetry')}</dt><dd>{natsStatus.nextRetryAt ?? t('common.noData')}</dd></div>
-                {natsStatus.lastErrorCode && <div><dt>{t('settings.nats.lastError')}</dt><dd>{natsStatus.lastErrorStage}: {natsStatus.lastErrorCode}<br />{natsStatus.lastErrorMessage}</dd></div>}
-              </dl>
+                <option value="en">{t('settings.language.en')}</option>
+                <option value="th">{t('settings.language.th')}</option>
+              </Select>
             )}
-            <div className="settings-actions">
-              <button type="button" className="settings-btn-secondary" disabled={natsTesting} onClick={() => void handleNatsTest()}>
-                {natsTesting ? 'Testing...' : 'Test connection'}
-              </button>
-            </div>
-            <div className="settings-field settings-field--checkbox">
-              <label htmlFor="settings-nats-enabled">
-                <input
-                  id="settings-nats-enabled"
-                  type="checkbox"
-                  checked={natsDraft.enabled}
-                  onChange={(e) => handleNatsChange('enabled', e.target.checked)}
-                  disabled={natsSaving}
+          </FormField>
+        </Panel>
+
+        <Panel
+          title={t('settings.system.title')}
+          description={t('settings.system.description')}
+          actions={
+            <Freshness
+              lastSuccessAt={runtimeResource.lastSuccessAt}
+              stale={runtimeResource.stale}
+              refreshing={runtimeResource.refreshing}
+              paused={runtimeResource.paused}
+              onRefresh={runtimeResource.refresh}
+            />
+          }
+        >
+          <Stack gap="lg">
+            {runtimeResource.data === undefined && runtimeResource.error == null && <LoadingState />}
+            {runtimeResource.error != null && (
+              <ErrorBanner error={runtimeResource.error} onRetry={runtimeResource.refresh} />
+            )}
+            {runtimeResource.data && (
+              <>
+                {/* Was a bare '✓' glyph with no accessible name. The shared
+                    indicator states the condition in words next to the dot. */}
+                <Alert tone="success" title={t('settings.system.singleExecutor')}>
+                  {t('settings.system.singleExecutorDetail')}
+                </Alert>
+
+                <FactList>
+                  <Fact label={t('settings.system.runtime')}>
+                    {runtimeResource.data.runtimeMode === 'packaged-windows-desktop'
+                      ? t('settings.system.runtime.packaged')
+                      : t('settings.system.runtime.server')}
+                  </Fact>
+                  <Fact label={t('settings.system.executorOwner')}>
+                    {runtimeResource.data.executor.owner === 'api-local-worker'
+                      ? t('settings.system.executor.api')
+                      : t('settings.system.executor.external')}
+                  </Fact>
+                  <Fact label={t('settings.system.executorMode')}>
+                    {runtimeResource.data.executor.mode === 'typescript-windows-spooler'
+                      ? t('settings.system.executor.windowsSpooler')
+                      : t('settings.system.executor.external')}
+                  </Fact>
+                  <Fact label={t('settings.system.discoveryOwner')}>
+                    {t('settings.system.discovery.goRunner')}
+                  </Fact>
+                  <Fact label={t('settings.system.runnerClaims')}>
+                    {runtimeResource.data.discovery.jobsEnabled
+                      ? t('settings.system.runnerClaims.enabled')
+                      : t('settings.system.runnerClaims.disabled')}
+                  </Fact>
+                  <Fact label={t('settings.system.protocolScope')}>
+                    {runtimeResource.data.supportedProductionProtocols.length
+                      ? runtimeResource.data.supportedProductionProtocols.join(', ')
+                      : t('common.noData')}
+                  </Fact>
+                </FactList>
+
+                <Text as="p" tone="muted">
+                  {t('settings.system.deferred')}{' '}
+                  <Mono tone="muted">{runtimeResource.data.deferredProtocols.join(', ')}</Mono>
+                </Text>
+
+                <SectionHeading
+                  level={3}
+                  title={t('settings.readiness.title')}
+                  description={t('settings.readiness.description')}
+                  actions={
+                    <Freshness
+                      lastSuccessAt={readinessResource.lastSuccessAt}
+                      stale={readinessResource.stale}
+                      refreshing={readinessResource.refreshing}
+                      paused={readinessResource.paused}
+                      onRefresh={readinessResource.refresh}
+                    />
+                  }
                 />
-                {t('settings.nats.enabled')}
-              </label>
-            </div>
-            <div className="settings-field">
-              <label htmlFor="settings-nats-url">{t('settings.nats.url')}</label>
-              <input
-                id="settings-nats-url"
-                type="text"
-                value={natsDraft.url}
-                placeholder="nats://nats.example:4222"
-                onChange={(e) => handleNatsChange('url', e.target.value)}
-                disabled={natsSaving || !natsDraft.enabled}
-              />
-            </div>
-            {/^(nats:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|$)/i.test(natsDraft.url.trim()) && (
-              <p className="settings-hint">Warning: localhost and 127.0.0.1 mean this PrintOps workstation, not a remote broker.</p>
+
+                {readinessResource.data === undefined && readinessResource.error == null && <LoadingState />}
+                {readinessResource.error != null && (
+                  <ErrorBanner error={readinessResource.error} onRetry={readinessResource.refresh} />
+                )}
+                {readinessResource.data && (
+                  <RecordList aria-label={t('settings.readiness.title')}>
+                    {Object.entries(readinessResource.data.components).map(([key, item]) => (
+                      <RecordCard key={key}>
+                        <Stack gap="xs">
+                          <RecordHeader>
+                            <StatusIndicator condition={item.state} tone={READINESS_TONE[item.state]}>
+                              {readinessLabels[key] ?? key}
+                            </StatusIndicator>
+                            <Badge tone={READINESS_BADGE[item.state]}>{readinessStateLabel(item.state)}</Badge>
+                          </RecordHeader>
+                          <Text tone="muted">{item.message}</Text>
+                          {item.action && (
+                            <Text size="label" tone="info">
+                              {t('settings.readiness.action')} {item.action}
+                            </Text>
+                          )}
+                        </Stack>
+                      </RecordCard>
+                    ))}
+                  </RecordList>
+                )}
+
+                <Stack gap="sm">
+                  <Inline gap="sm">
+                    <Button
+                      variant="secondary"
+                      busy={backingUp}
+                      busyLabel={t('common.loading')}
+                      onClick={() => {
+                        setBackingUp(true);
+                        void apiDownload('/v1/system/database-backup', `printops-backup-${new Date().toISOString().slice(0, 10)}.db`)
+                          .catch((cause) => setMessage({ text: errorMessage(cause), kind: 'error' }))
+                          .finally(() => setBackingUp(false));
+                      }}
+                    >
+                      {t('settings.database.backup')}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      busy={downloadingSupport}
+                      busyLabel={t('common.loading')}
+                      onClick={() => {
+                        setDownloadingSupport(true);
+                        void apiDownload('/v1/system/support-bundle', `printops-support-${new Date().toISOString().slice(0, 10)}.json`)
+                          .catch((cause) => setMessage({ text: errorMessage(cause), kind: 'error' }))
+                          .finally(() => setDownloadingSupport(false));
+                      }}
+                    >
+                      {t('settings.support.download')}
+                    </Button>
+                  </Inline>
+                  <Text as="p" size="label" tone="muted">{t('settings.database.backupHint')}</Text>
+                  <Text as="p" size="label" tone="muted">{t('settings.support.hint')}</Text>
+                </Stack>
+              </>
             )}
-            <div className="settings-field">
-              <label htmlFor="settings-nats-client">
-                {t('settings.nats.clientId')}
-              </label>
-              <input
-                id="settings-nats-client"
-                type="text"
-                value={natsDraft.clientId}
-                placeholder="pharmacy-counter-01"
-                onChange={(e) => handleNatsChange('clientId', e.target.value)}
-                disabled={natsSaving || !natsDraft.enabled}
-              />
-            </div>
-            <div className="settings-field">
-              <label htmlFor="settings-nats-prefix">
-                {t('settings.nats.subjectPrefix')}
-              </label>
-              <input
-                id="settings-nats-prefix"
-                type="text"
-                value={natsDraft.subjectPrefix}
-                placeholder="medisync.print.intake"
-                onChange={(e) => handleNatsChange('subjectPrefix', e.target.value)}
-                disabled={natsSaving || !natsDraft.enabled}
-              />
-            </div>
-            <p className="settings-hint settings-hint--mono">
-              {natsDraft.enabled && natsDraft.clientId
-                ? `${natsDraft.subjectPrefix || 'medisync.print.intake'}.${natsDraft.clientId}`
-                : t('settings.nats.subjectPreviewDisabled')}
-            </p>
-            <div className="settings-actions">
-              <button
-                type="button"
-                className="settings-btn-primary"
-                disabled={!natsDirty || natsSaving}
-                onClick={() => void handleNatsSave()}
+          </Stack>
+        </Panel>
+
+        <Panel
+          title={t('settings.workspace')}
+          footer={
+            <>
+              <Button
+                variant="danger"
+                disabled={saving}
+                busy={resetting}
+                busyLabel={t('common.loading')}
+                onClick={handleReset}
               >
-                {natsSaving ? t('common.loading') : t('settings.nats.applyAndRestart')}
-              </button>
-              <button
-                type="button"
-                className="settings-btn-secondary"
-                disabled={!natsDirty || natsSaving}
-                onClick={handleNatsCancel}
+                {t('common.reset')}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={!wsDirty || saving || resetting}
+                onClick={handleWsCancel}
               >
                 {t('common.cancel')}
-              </button>
-            </div>
-          </>
-        )}
-      </section>
-      <ServiceAccountSettings />
+              </Button>
+              <Button
+                disabled={!wsDirty || resetting}
+                busy={saving}
+                busyLabel={t('common.loading')}
+                onClick={handleWsSave}
+              >
+                {t('common.save')}
+              </Button>
+            </>
+          }
+        >
+          <Stack gap="lg">
+            <FormField label={t('settings.workspace.projectName')}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="text"
+                  value={wsDraft.projectName}
+                  placeholder={t('settings.workspace.projectNamePlaceholder')}
+                  onChange={(e) => handleWsChange('projectName', e.target.value)}
+                  disabled={saving || resetting}
+                />
+              )}
+            </FormField>
+            <FormField label={t('settings.workspace.workspacePath')}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="text"
+                  value={wsDraft.workspacePath}
+                  placeholder={t('settings.workspace.workspacePathPlaceholder')}
+                  onChange={(e) => handleWsChange('workspacePath', e.target.value)}
+                  disabled={saving || resetting}
+                />
+              )}
+            </FormField>
+            <FormField label={t('settings.workspace.apiKey')} hint={t('settings.workspace.apiKeyHint')}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="password"
+                  autoComplete="off"
+                  value={wsDraft.apiKey}
+                  placeholder={t('settings.workspace.apiKeyPlaceholder')}
+                  onChange={(e) => handleWsChange('apiKey', e.target.value)}
+                  disabled={saving || resetting}
+                />
+              )}
+            </FormField>
+          </Stack>
+        </Panel>
+
+        {/* NATS client configuration (desktop only) */}
+        <Panel title={t('settings.nats.title')}>
+          {natsLoading && <LoadingState />}
+
+          {!natsLoading && !natsSupported && (
+            <Text as="p" tone="muted">{t('settings.nats.desktopOnly')}</Text>
+          )}
+
+          {!natsLoading && natsSupported && (
+            <Stack gap="lg">
+              <Text as="p" tone="muted">{t('settings.nats.description')}</Text>
+
+              {natsStatus && (
+                <FactList aria-label={t('settings.nats.diagnostics')}>
+                  <Fact label={t('settings.nats.state')}>{natsStatus.state}</Fact>
+                  <Fact label={t('settings.nats.server')}>{natsStatus.server ?? t('common.noData')}</Fact>
+                  <Fact label={t('settings.nats.intake')}>
+                    {natsStatus.intakeReady ? t('settings.readiness.state.READY') : t('settings.readiness.state.UNAVAILABLE')}
+                  </Fact>
+                  <Fact label={t('settings.nats.callback')}>
+                    {natsStatus.callbackPublishReady ? t('settings.readiness.state.READY') : t('settings.readiness.state.UNAVAILABLE')}
+                  </Fact>
+                  <Fact label={t('settings.nats.lastConnected')}>{natsStatus.lastConnectedAt ?? t('common.noData')}</Fact>
+                  <Fact label={t('settings.nats.lastAttempt')}>{natsStatus.lastAttemptAt ?? t('common.noData')}</Fact>
+                  <Fact label={t('settings.nats.nextRetry')}>{natsStatus.nextRetryAt ?? t('common.noData')}</Fact>
+                  {natsStatus.lastErrorCode && (
+                    <Fact label={t('settings.nats.lastError')}>
+                      <Stack gap="xs">
+                        <Text>{natsStatus.lastErrorStage}: {natsStatus.lastErrorCode}</Text>
+                        <Text tone="muted">{natsStatus.lastErrorMessage}</Text>
+                      </Stack>
+                    </Fact>
+                  )}
+                </FactList>
+              )}
+
+              <Inline gap="sm">
+                <Button variant="secondary" busy={natsTesting} busyLabel="Testing…" onClick={() => void handleNatsTest()}>
+                  Test connection
+                </Button>
+              </Inline>
+
+              <Checkbox
+                label={t('settings.nats.enabled')}
+                checked={natsDraft.enabled}
+                onChange={(e) => handleNatsChange('enabled', e.target.checked)}
+                disabled={natsSaving}
+              />
+
+              <FormField label={t('settings.nats.url')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="text"
+                    value={natsDraft.url}
+                    placeholder="nats://nats.example:4222"
+                    onChange={(e) => handleNatsChange('url', e.target.value)}
+                    disabled={natsSaving || !natsDraft.enabled}
+                  />
+                )}
+              </FormField>
+
+              {localhostNats && (
+                <Alert tone="warning">
+                  Warning: localhost and 127.0.0.1 mean this PrintOps workstation, not a remote broker.
+                </Alert>
+              )}
+
+              <FormField label={t('settings.nats.clientId')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="text"
+                    value={natsDraft.clientId}
+                    placeholder="pharmacy-counter-01"
+                    onChange={(e) => handleNatsChange('clientId', e.target.value)}
+                    disabled={natsSaving || !natsDraft.enabled}
+                  />
+                )}
+              </FormField>
+
+              <FormField label={t('settings.nats.subjectPrefix')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="text"
+                    value={natsDraft.subjectPrefix}
+                    placeholder="medisync.print.intake"
+                    onChange={(e) => handleNatsChange('subjectPrefix', e.target.value)}
+                    disabled={natsSaving || !natsDraft.enabled}
+                  />
+                )}
+              </FormField>
+
+              <Mono tone="muted">
+                {natsDraft.enabled && natsDraft.clientId
+                  ? `${natsDraft.subjectPrefix || 'medisync.print.intake'}.${natsDraft.clientId}`
+                  : t('settings.nats.subjectPreviewDisabled')}
+              </Mono>
+
+              <Inline gap="sm">
+                <Button
+                  disabled={!natsDirty}
+                  busy={natsSaving}
+                  busyLabel={t('common.loading')}
+                  onClick={() => void handleNatsSave()}
+                >
+                  {t('settings.nats.applyAndRestart')}
+                </Button>
+                <Button variant="secondary" disabled={!natsDirty || natsSaving} onClick={handleNatsCancel}>
+                  {t('common.cancel')}
+                </Button>
+              </Inline>
+            </Stack>
+          )}
+        </Panel>
+
+        <ServiceAccountSettings />
+      </Stack>
     </PageLayout>
   );
 }
