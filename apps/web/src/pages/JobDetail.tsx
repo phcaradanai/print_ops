@@ -743,13 +743,13 @@ export default function JobDetail() {
         {/* ── Tier 0b: what was printed ── */}
         <Panel title={t('page.jobDetail.documentInfo')}>
           <CardDetail>
-            <CardDetailItem label={t('page.jobDetail.template')}><Mono>{template ?? '—'}</Mono></CardDetailItem>
-            <CardDetailItem label={t('page.jobDetail.sourceReference')}><Mono>{job.sourceReference ?? '—'}</Mono></CardDetailItem>
+            <CardDetailItem label={t('page.jobDetail.template')}><Mono wrap>{template ?? '—'}</Mono></CardDetailItem>
+            <CardDetailItem label={t('page.jobDetail.sourceReference')}><Mono wrap>{job.sourceReference ?? '—'}</Mono></CardDetailItem>
             <CardDetailItem label={t('page.jobDetail.sourceSystem')}>{job.sourceSystem ?? '—'}</CardDetailItem>
             <CardDetailItem label={t('page.jobDetail.copies')}>{job.copies}</CardDetailItem>
             {job.metadata?.code_profile && (
               <CardDetailItem label={t('page.jobDetail.paperProfile')}>
-                <Mono>{job.metadata.code_profile}</Mono>
+                <Mono wrap>{job.metadata.code_profile}</Mono>
               </CardDetailItem>
             )}
             <CardDetailItem label={t('page.jobDetail.printer')}>
@@ -826,11 +826,11 @@ export default function JobDetail() {
               <Stack gap="lg">
                 <CardDetail>
                   {job.requestId && (
-                    <CardDetailItem label={t('page.jobDetail.requestId')}><Mono>{job.requestId}</Mono></CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.requestId')}><Mono wrap>{job.requestId}</Mono></CardDetailItem>
                   )}
                   {job.metadata?.reprintOfRequestId && (
                     <CardDetailItem label={t('page.jobDetail.originalRequestId')}>
-                      <Mono>{job.metadata.reprintOfRequestId}</Mono>
+                      <Mono wrap>{job.metadata.reprintOfRequestId}</Mono>
                     </CardDetailItem>
                   )}
                   <CardDetailItem label={t('page.jobDetail.mimeType')}>{job.mimeType ?? '—'}</CardDetailItem>
@@ -838,7 +838,7 @@ export default function JobDetail() {
                 {job.payloadSnapshot && (
                   <Stack gap="xs">
                     <Text size="label" tone="muted">{t('page.jobDetail.payloadFields')}</Text>
-                    <Mono>{job.payloadSnapshot}</Mono>
+                    <Mono wrap>{job.payloadSnapshot}</Mono>
                   </Stack>
                 )}
                 {natsInfo && (

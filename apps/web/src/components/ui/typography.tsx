@@ -37,6 +37,8 @@ export interface TextProps extends HTMLAttributes<HTMLElement> {
   /** Single-line ellipsis. Pair with `title` so the full value stays reachable. */
   truncate?: boolean;
   nowrap?: boolean;
+  /** Break extremely long words to prevent layout blowout. */
+  wrap?: boolean;
   /**
    * Uppercase + tracking. Opt-in and Latin-only by intent — Thai glyph clusters
    * must never be transformed, so this is never applied to localized copy.
@@ -53,6 +55,7 @@ export function Text({
   mono = false,
   truncate = false,
   nowrap = false,
+  wrap = false,
   caps = false,
   className = '',
   children,
@@ -66,6 +69,7 @@ export function Text({
     mono ? 'ui-text--mono' : '',
     truncate ? 'ui-text--truncate' : '',
     nowrap ? 'ui-text--nowrap' : '',
+    wrap ? 'ui-text--wrap' : '',
     caps ? 'ui-text--caps' : '',
     className,
   ]

@@ -147,6 +147,7 @@
 .ui-text--mono { font-family: var(--font-mono-family); font-size: var(--font-mono-size); line-height: var(--font-mono-line-height); }
 .ui-text--stat.ui-text--mono { font-size: var(--font-stat-size); }
 .ui-text--nowrap { white-space: nowrap; }
+.ui-text--wrap { overflow-wrap: break-word; word-wrap: break-word; word-break: break-word; hyphens: auto; }
 .ui-text--truncate { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Latin-only treatment, applied by opt-in prop. Never on localized copy. */
 .ui-text--caps { letter-spacing: var(--font-label-letter-spacing); text-transform: uppercase; }

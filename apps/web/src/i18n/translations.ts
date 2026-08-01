@@ -102,9 +102,9 @@ const en: TranslationDict = {
   'login.hint':
     'Dev accounts: sysadmin@printerops.local, admin@printerops.local, user@printerops.local, viewer@printerops.local',
   'login.error': 'Invalid email or password',
-  'setup.title': 'Secure this PrintOps station',
-  'setup.subtitle': 'Optional: create an OWNER account for full dashboard administration. Printing does not wait for this step.',
-  'setup.migrationSubtitle': 'Optional: confirm the existing owner email and replace legacy access with a strong password.',
+  'setup.title': 'Set up owner account',
+  'setup.subtitle': 'Create an owner account to manage settings and users. This is optional and does not block printing.',
+  'setup.migrationSubtitle': 'Confirm the owner email and set a strong password to upgrade legacy access.',
   'setup.migrationOwnerHint': 'Existing owner email hint: {emails}',
   'setup.optionalNotice': 'No OWNER account is configured. Existing role accounts can still sign in, and printer or integration intake continues to run.',
   'setup.openOptional': 'Set up owner (optional)',
@@ -116,7 +116,7 @@ const en: TranslationDict = {
   'setup.creating': 'Securing station…',
   'setup.error': 'Owner setup could not be completed',
   'settings.serviceAccounts.title': 'Integration API keys',
-  'settings.serviceAccounts.description': 'Create a separate key for each external system. Keys are shown once and cannot be recovered.',
+  'settings.serviceAccounts.description': 'Create a dedicated API key for each external system. Keys are shown only once and cannot be recovered if lost.',
   'settings.serviceAccounts.name': 'Account name',
   'settings.serviceAccounts.source': 'Source system identifier',
   'settings.serviceAccounts.create': 'Create API key',
@@ -132,7 +132,7 @@ const en: TranslationDict = {
   // Splash
   'splash.starting': 'Starting local PrintOps service…',
   'splash.ready': 'System Ready',
-  'splash.unable': 'Local PrintOps service is not responding.',
+  'splash.unable': 'The local PrintOps service is not responding. Ensure the background service is running.',
   'splash.tagline': 'Print Gateway for Hospitals',
   'splash.progress': 'Starting local service… ({n}/120)',
 
@@ -579,7 +579,7 @@ const en: TranslationDict = {
   'page.templates.importDone': 'Import finished — {created} created, {updated} updated, {failed} failed.',
   'page.templates.delete': 'Delete',
   'page.templates.deleteTitle': 'Delete template',
-  'page.templates.deleteBody': 'Delete "{name}"? This cannot be undone.',
+  'page.templates.deleteBody': 'Deleting "{name}" will remove it permanently. This cannot be undone.',
   'page.templates.deletedOk': 'Template deleted.',
   'page.templates.deleteBound': 'This template is bound to a printer. Remove the binding first.',
   'page.templates.deleteForbidden': 'Your role cannot delete templates.',
@@ -1056,7 +1056,7 @@ const en: TranslationDict = {
 
   // Authorization
   'auth.notAuthorized.title': 'Not authorized',
-  'auth.notAuthorized.message': 'This page is restricted to sysadmin.',
+  'auth.notAuthorized.message': 'You do not have permission to view this page. It is restricted to the sysadmin role.',
 
   // Import Design (Paper Profiles)
   'page.paperProfiles.importDesign': 'Import Design',
@@ -1142,7 +1142,7 @@ const en: TranslationDict = {
   // Reprint confirmation dialog
   'page.jobQueue.reprintTitle': 'Confirm additional physical copy',
   'page.jobQueue.reprintWarning':
-    'This creates a new print job. Output may already have occurred; this is not a callback retry.',
+    'This submits a new print request. The original job may have already printed.',
   'page.jobQueue.reprintOriginalRequestId': 'Original request ID',
   'page.jobQueue.reprintOriginalJobId': 'Original job ID',
   'page.jobQueue.reprintPrintStatus': 'Print status',
@@ -1178,7 +1178,7 @@ const en: TranslationDict = {
   'page.jobQueue.batchReprintTitle': 'Batch reprint ({count} jobs)',
   'page.jobQueue.batchReprintSubmitting': 'Submitting batch…',
   'page.jobQueue.batchReprintConfirm': 'Confirm batch reprint ({count})',
-  'page.jobQueue.batchReprintIntro': 'You are about to re-queue {count} jobs for printing. This action submits additional copies to physical printers.',
+  'page.jobQueue.batchReprintIntro': 'You are about to re-queue {count} jobs. This will send new print requests and produce additional physical copies.',
   'page.jobQueue.batchSelectedJobs': 'Selected jobs',
   'page.jobQueue.batchCopies': '{count} copies',
   'page.jobQueue.batchCautionTitle': 'Check printer output before reprinting',
@@ -1225,7 +1225,7 @@ const en: TranslationDict = {
   'page.webhooks.policiesLoadFailed': 'Could not load the route policies',
   'page.webhooks.callbackLogLoadFailed': 'Could not load the callback log',
   'page.webhooks.toastBatchDeleteFailures': '{n} could not be deleted:',
-  'settings.storageUnavailable': 'This browser refused to save the settings (private mode?). Nothing was stored.',
+  'settings.storageUnavailable': 'Settings could not be saved because the browser blocked local storage. This often happens in private browsing mode. Nothing was stored.',
 
   'settings.nats.title': 'NATS Print Intake',
   'settings.nats.description':

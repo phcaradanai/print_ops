@@ -17,7 +17,7 @@ import { RouteErrorBoundary } from './components/RouteErrorBoundary.js';
 import { NavIcon } from './components/NavIcon.js';
 import { ActionIcon } from './components/ActionIcon.js';
 import { errorMessage } from './api/errors.js';
-import { Input, Button, FormField, Card } from './components/ui/index.js';
+import { Input, Button, FormField } from './components/ui/index.js';
 
 const Dashboard = lazy(() => import('./pages/Dashboard.js'));
 const Printers = lazy(() => import('./pages/Printers.js'));
@@ -518,7 +518,7 @@ function AppNav({
         </div>
       )}
 
-      <Card className="session-card">
+      <article className="session-card">
         <div className="session-card__identity">
           <span className="session-avatar" aria-hidden="true">
             {user.name.charAt(0).toUpperCase()}
@@ -535,9 +535,10 @@ function AppNav({
           className="session-signout-btn"
           onClick={onLogout}
         >
+          <ActionIcon name="logout" />
           {t('common.signOut')}
         </button>
-      </Card>
+      </article>
     </>
   );
 

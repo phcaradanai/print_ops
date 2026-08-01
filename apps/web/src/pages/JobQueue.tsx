@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { JobStatus } from '@printerops/domain';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { flushSync } from 'react-dom';
 import { apiFetch } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
@@ -89,6 +90,26 @@ const QUEUE_PAGE_SIZE = 20;
 
 export default function JobQueue() {
   const { t } = useLocale();
+  const navigate = useNavigate();
+
+  const handleJobClick = (e: React.MouseEvent<HTMLAnchorElement>, jobId: string) => {
+    e.preventDefault();
+    const row = e.currentTarget.closest('tr');
+    if (row) {
+      row.style.viewTransitionName = 'job-card-morph';
+    }
+    
+    if (!document.startViewTransition) {
+      navigate(`/jobs/${jobId}`);
+      return;
+    }
+    
+    document.startViewTransition(() => {
+      flushSync(() => {
+        navigate(`/jobs/${jobId}`);
+      });
+    });
+  };
 
   const fetchJobs = useCallback(() => apiFetch<Job[]>('/jobs?limit=1000'), []);
   const queue = useApiResource(fetchJobs, { intervalMs: QUEUE_POLL_MS });
@@ -392,9 +413,9 @@ export default function JobQueue() {
                       {/* Document summary — the key column that was missing */}
                       <DataCell label={t('page.jobQueue.document')}>
                         <Stack gap="xs">
-                          <Link to={`/jobs/${j.id}`} className="ui-link" title={template ?? t('common.noData')}>
+                          <a href={`/jobs/${j.id}`} onClick={(e) => handleJobClick(e, j.id)} className="ui-link" title={template ?? t('common.noData')}>
                             <Text weight="semibold" truncate>{template ?? t('common.noData')}</Text>
-                          </Link>
+                          </a>
                           {j.sourceReference && (
                             <Text size="label" tone="muted" truncate title={j.sourceReference}>
                               {t('page.jobQueue.documentNumber')}: {j.sourceReference}
@@ -414,7 +435,7 @@ export default function JobQueue() {
                         </Link>
                       </DataCell>
                       <DataCell label={t('page.jobQueue.source')}>
-                        <Text tone="muted">{j.sourceSystem ?? t('common.noData')}</Text>
+                        <Text tone="muted" truncate title={j.sourceSystem ?? undefined}>{j.sourceSystem ?? t('common.noData')}</Text>
                       </DataCell>
                       <DataCell label={t('page.jobQueue.copies')}>
                         <Mono>{j.copies}</Mono>

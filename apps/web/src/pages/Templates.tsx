@@ -1087,6 +1087,7 @@ export default function Templates() {
         <div className="tpl-list-header">
           <Heading level={2}>{t('page.templates.listTitle')}</Heading>
           <div className="tpl-list-tools">
+
             <IconButton
               label={t('common.refresh')}
               onClick={() => void load()}
@@ -1094,6 +1095,7 @@ export default function Templates() {
             >
               <TemplateIcon name="refresh" spin={templatesResource.refreshing} />
             </IconButton>
+
             <IconButton
               label={t('page.templates.sortByUpdated')}
               title={t('page.templates.updated')}
