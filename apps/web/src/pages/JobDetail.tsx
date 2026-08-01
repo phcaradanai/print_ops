@@ -26,8 +26,8 @@ import {
   DataTable,
   ErrorBanner,
   ErrorState,
-  Fact,
-  FactList,
+  CardDetailItem,
+  CardDetail,
   Freshness,
   Grid,
   Inline,
@@ -282,9 +282,9 @@ function ResultDelivery({
     <Panel title={t('page.jobDetail.resultDelivery')}>
       <Stack gap="lg">
         {/* The two statuses, side by side and explicitly labelled. */}
-        <FactList>
-          <Fact label={t('page.jobDetail.printResult')}>{printStatus}</Fact>
-          <Fact label={t('page.jobDetail.deliveryState')}>
+        <CardDetail>
+          <CardDetailItem label={t('page.jobDetail.printResult')}>{printStatus}</CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.deliveryState')}>
             {deliveries.length === 0
               ? (configured && intent?.enabled === false
                   ? t('page.jobDetail.callbackDisabled')
@@ -298,20 +298,20 @@ function ResultDelivery({
                   ))}
                 </Inline>
               )}
-          </Fact>
-        </FactList>
+          </CardDetailItem>
+        </CardDetail>
 
         {/* Configuration, so "nothing was delivered" always has a stated reason. */}
-        <FactList>
-          <Fact label={t('page.jobDetail.callbackEnabled')}>
+        <CardDetail>
+          <CardDetailItem label={t('page.jobDetail.callbackEnabled')}>
             {!configured ? t('page.jobDetail.callbackNotConfigured') : intent?.enabled ? t('status.enabled') : t('status.disabled')}
-          </Fact>
-          <Fact label={t('page.jobDetail.callbackTrigger')}>{intent?.trigger ?? '—'}</Fact>
-          <Fact label={t('page.jobDetail.callbackTransport')}>{intent?.transports?.join(' + ') || '—'}</Fact>
-          <Fact label={t('page.jobDetail.callbackEndpoint')}>
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.callbackTrigger')}>{intent?.trigger ?? '—'}</CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.callbackTransport')}>{intent?.transports?.join(' + ') || '—'}</CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.callbackEndpoint')}>
             <Mono>{intent?.endpointCode ?? '—'}</Mono>
-          </Fact>
-        </FactList>
+          </CardDetailItem>
+        </CardDetail>
 
         {intent?.enabled === false && intent.disabledReason && (
           <Text as="p" tone="muted">
@@ -341,23 +341,23 @@ function ResultDelivery({
                       </Text>
                     </RecordHeader>
 
-                    <FactList>
+                    <CardDetail>
                       {/* Destination only — never a signing secret. */}
-                      <Fact label={t('page.jobDetail.destination')}>
+                      <CardDetailItem label={t('page.jobDetail.destination')}>
                         <Mono>{d.target}</Mono>
-                      </Fact>
-                      <Fact label={t('page.jobDetail.eventId')}>
+                      </CardDetailItem>
+                      <CardDetailItem label={t('page.jobDetail.eventId')}>
                         <Mono>{d.eventId}</Mono>
-                      </Fact>
-                      <Fact label={t('page.jobDetail.lastAttempt')}>{fmtTime(d.lastAttemptAt)}</Fact>
-                      <Fact label={t('page.jobDetail.nextRetry')}>{fmtTime(d.nextAttemptAt)}</Fact>
-                      <Fact label={t('page.jobDetail.deliveredAt')}>{fmtTime(d.deliveredAt)}</Fact>
+                      </CardDetailItem>
+                      <CardDetailItem label={t('page.jobDetail.lastAttempt')}>{fmtTime(d.lastAttemptAt)}</CardDetailItem>
+                      <CardDetailItem label={t('page.jobDetail.nextRetry')}>{fmtTime(d.nextAttemptAt)}</CardDetailItem>
+                      <CardDetailItem label={t('page.jobDetail.deliveredAt')}>{fmtTime(d.deliveredAt)}</CardDetailItem>
                       {d.requestId && (
-                        <Fact label={t('page.jobDetail.requestId')}>
+                        <CardDetailItem label={t('page.jobDetail.requestId')}>
                           <Mono>{d.requestId}</Mono>
-                        </Fact>
+                        </CardDetailItem>
                       )}
-                    </FactList>
+                    </CardDetail>
 
                     {d.lastErrorCode && (
                       <Alert tone="error">
@@ -409,23 +409,23 @@ export function PrinterEvidence({
       actions={<Badge tone={ippConfirmed ? 'success' : 'neutral'}>{outcome}</Badge>}
     >
       <Stack gap="lg">
-        <FactList>
-          <Fact label={t('page.jobDetail.confirmationChannel')}>{confirmationChannel}</Fact>
-          <Fact label={t('page.jobDetail.ippEndpoint')}>
+        <CardDetail>
+          <CardDetailItem label={t('page.jobDetail.confirmationChannel')}>{confirmationChannel}</CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.ippEndpoint')}>
             <Mono>{evidence.ippEndpoint ?? noData}</Mono>
-          </Fact>
-          <Fact label={t('page.jobDetail.ippExpectedJobName')}>
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.ippExpectedJobName')}>
             <Mono>{evidence.ippExpectedJobName ?? noData}</Mono>
-          </Fact>
-          <Fact label={t('page.jobDetail.windowsJobIds')}>
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.windowsJobIds')}>
             <Mono>{evidence.spoolerJobIds?.join(', ') || noData}</Mono>
-          </Fact>
-          <Fact label={t('page.jobDetail.spoolerStatus')}>{evidence.spoolerStatus ?? noData}</Fact>
-          <Fact label={t('page.jobDetail.deviceCounter')}>
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.spoolerStatus')}>{evidence.spoolerStatus ?? noData}</CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.deviceCounter')}>
             <Mono>{evidence.pagesBefore ?? '—'} → {evidence.pagesAfter ?? '—'}</Mono>
-          </Fact>
-          <Fact label={t('page.jobDetail.ippStatus')}>{evidence.ippJobStatus ?? noData}</Fact>
-        </FactList>
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.ippStatus')}>{evidence.ippJobStatus ?? noData}</CardDetailItem>
+        </CardDetail>
 
         <Stack gap="sm">
           <Inline gap="xs">
@@ -742,24 +742,24 @@ export default function JobDetail() {
 
         {/* ── Tier 0b: what was printed ── */}
         <Panel title={t('page.jobDetail.documentInfo')}>
-          <FactList>
-            <Fact label={t('page.jobDetail.template')}><Mono>{template ?? '—'}</Mono></Fact>
-            <Fact label={t('page.jobDetail.sourceReference')}><Mono>{job.sourceReference ?? '—'}</Mono></Fact>
-            <Fact label={t('page.jobDetail.sourceSystem')}>{job.sourceSystem ?? '—'}</Fact>
-            <Fact label={t('page.jobDetail.copies')}>{job.copies}</Fact>
+          <CardDetail>
+            <CardDetailItem label={t('page.jobDetail.template')}><Mono>{template ?? '—'}</Mono></CardDetailItem>
+            <CardDetailItem label={t('page.jobDetail.sourceReference')}><Mono>{job.sourceReference ?? '—'}</Mono></CardDetailItem>
+            <CardDetailItem label={t('page.jobDetail.sourceSystem')}>{job.sourceSystem ?? '—'}</CardDetailItem>
+            <CardDetailItem label={t('page.jobDetail.copies')}>{job.copies}</CardDetailItem>
             {job.metadata?.code_profile && (
-              <Fact label={t('page.jobDetail.paperProfile')}>
+              <CardDetailItem label={t('page.jobDetail.paperProfile')}>
                 <Mono>{job.metadata.code_profile}</Mono>
-              </Fact>
+              </CardDetailItem>
             )}
-            <Fact label={t('page.jobDetail.printer')}>
+            <CardDetailItem label={t('page.jobDetail.printer')}>
               <Link className="ui-link" to={`/printers/${job.printerId}`}>
                 {job.printerCode ?? job.printerId.slice(0, 8)}
               </Link>
-            </Fact>
-            <Fact label={t('page.jobDetail.priority')}>{job.priorityLabel ?? '—'}</Fact>
-            <Fact label={t('page.jobDetail.finished')}>{fmtTime(job.finishedAt)}</Fact>
-          </FactList>
+            </CardDetailItem>
+            <CardDetailItem label={t('page.jobDetail.priority')}>{job.priorityLabel ?? '—'}</CardDetailItem>
+            <CardDetailItem label={t('page.jobDetail.finished')}>{fmtTime(job.finishedAt)}</CardDetailItem>
+          </CardDetail>
         </Panel>
 
         {/* Never let a failed deliveries fetch render as "no delivery": an
@@ -805,36 +805,36 @@ export default function JobDetail() {
           <Stack gap="xl" className="job-technical__body">
             <Panel title={t('page.jobDetail.timing')} tone="subtle">
               <Stack gap="lg">
-                <FactList>
-                  <Fact label={t('page.jobDetail.totalLatency')}>{job.latency?.totalLatencyMs != null ? `${job.latency.totalLatencyMs}ms` : '—'}</Fact>
-                  <Fact label={t('page.jobDetail.queueWait')}>{job.latency?.queueWaitMs != null ? `${job.latency.queueWaitMs}ms` : '—'}</Fact>
-                  <Fact label={t('page.jobDetail.dispatch')}>{job.latency?.dispatchMs != null ? `${job.latency.dispatchMs}ms` : '—'}</Fact>
-                  <Fact label={t('page.jobDetail.runnerExec')}>{job.latency?.runnerExecMs != null ? `${job.latency.runnerExecMs}ms` : '—'}</Fact>
-                  <Fact label={t('page.jobDetail.spoolerMs')}>{job.latency?.spoolerMs != null ? `${job.latency.spoolerMs}ms` : '—'}</Fact>
-                  <Fact label={t('page.jobDetail.printerAckMs')}>{job.latency?.printerAckMs != null ? `${job.latency.printerAckMs}ms` : '—'}</Fact>
-                </FactList>
-                <FactList>
-                  <Fact label={t('page.jobDetail.received')}>{fmtTime(job.receivedAt)}</Fact>
-                  <Fact label={t('page.jobDetail.spooled')}>{fmtTime(job.spoolerSentAt)}</Fact>
-                  <Fact label={t('page.jobDetail.printerAck')}>{fmtTime(job.printerAckAt)}</Fact>
-                  <Fact label={t('page.jobDetail.finished')}>{fmtTime(job.finishedAt)}</Fact>
-                </FactList>
+                <CardDetail>
+                  <CardDetailItem label={t('page.jobDetail.totalLatency')}>{job.latency?.totalLatencyMs != null ? `${job.latency.totalLatencyMs}ms` : '—'}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.queueWait')}>{job.latency?.queueWaitMs != null ? `${job.latency.queueWaitMs}ms` : '—'}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.dispatch')}>{job.latency?.dispatchMs != null ? `${job.latency.dispatchMs}ms` : '—'}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.runnerExec')}>{job.latency?.runnerExecMs != null ? `${job.latency.runnerExecMs}ms` : '—'}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.spoolerMs')}>{job.latency?.spoolerMs != null ? `${job.latency.spoolerMs}ms` : '—'}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.printerAckMs')}>{job.latency?.printerAckMs != null ? `${job.latency.printerAckMs}ms` : '—'}</CardDetailItem>
+                </CardDetail>
+                <CardDetail>
+                  <CardDetailItem label={t('page.jobDetail.received')}>{fmtTime(job.receivedAt)}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.spooled')}>{fmtTime(job.spoolerSentAt)}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.printerAck')}>{fmtTime(job.printerAckAt)}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.finished')}>{fmtTime(job.finishedAt)}</CardDetailItem>
+                </CardDetail>
               </Stack>
             </Panel>
 
             <Panel title={t('page.jobDetail.provenance')} tone="subtle">
               <Stack gap="lg">
-                <FactList>
+                <CardDetail>
                   {job.requestId && (
-                    <Fact label={t('page.jobDetail.requestId')}><Mono>{job.requestId}</Mono></Fact>
+                    <CardDetailItem label={t('page.jobDetail.requestId')}><Mono>{job.requestId}</Mono></CardDetailItem>
                   )}
                   {job.metadata?.reprintOfRequestId && (
-                    <Fact label={t('page.jobDetail.originalRequestId')}>
+                    <CardDetailItem label={t('page.jobDetail.originalRequestId')}>
                       <Mono>{job.metadata.reprintOfRequestId}</Mono>
-                    </Fact>
+                    </CardDetailItem>
                   )}
-                  <Fact label={t('page.jobDetail.mimeType')}>{job.mimeType ?? '—'}</Fact>
-                </FactList>
+                  <CardDetailItem label={t('page.jobDetail.mimeType')}>{job.mimeType ?? '—'}</CardDetailItem>
+                </CardDetail>
                 {job.payloadSnapshot && (
                   <Stack gap="xs">
                     <Text size="label" tone="muted">{t('page.jobDetail.payloadFields')}</Text>
@@ -842,11 +842,11 @@ export default function JobDetail() {
                   </Stack>
                 )}
                 {natsInfo && (
-                  <FactList>
-                    <Fact label="NATS client"><Mono>{natsInfo.clientId ?? '—'}</Mono></Fact>
-                    <Fact label="NATS subject"><Mono>{natsInfo.subject ?? '—'}</Mono></Fact>
-                    <Fact label="NATS seq"><Mono>{natsInfo.streamSequence ?? '—'}</Mono></Fact>
-                  </FactList>
+                  <CardDetail>
+                    <CardDetailItem label="NATS client"><Mono>{natsInfo.clientId ?? '—'}</Mono></CardDetailItem>
+                    <CardDetailItem label="NATS subject"><Mono>{natsInfo.subject ?? '—'}</Mono></CardDetailItem>
+                    <CardDetailItem label="NATS seq"><Mono>{natsInfo.streamSequence ?? '—'}</Mono></CardDetailItem>
+                  </CardDetail>
                 )}
               </Stack>
             </Panel>

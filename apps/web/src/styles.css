@@ -3148,65 +3148,6 @@ body {
   .pp-profile-cards {
     display: grid;
   }
-
-  .pp-profile-card {
-    padding: var(--spacing-lg);
-    border-bottom: 1px solid var(--neutral-border);
-  }
-
-  .pp-profile-card:last-child {
-    border-bottom: 0;
-  }
-
-  .pp-profile-card__heading {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--spacing-md);
-  }
-
-  .pp-profile-card h3 {
-    margin: 0.2rem 0 0;
-    color: var(--neutral-deep);
-    font-size: 1rem;
-    overflow-wrap: anywhere;
-  }
-
-  .pp-profile-card dl {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--spacing-md);
-    margin: var(--spacing-lg) 0;
-  }
-
-  .pp-profile-card dl > div {
-    min-width: 0;
-  }
-
-  .pp-profile-card dt {
-    color: var(--neutral-text-muted);
-    font-size: 0.7rem;
-    font-weight: 600;
-  }
-
-  .pp-profile-card dd {
-    margin: 0.15rem 0 0;
-    color: var(--neutral-text);
-    font-size: 0.8rem;
-    overflow-wrap: anywhere;
-  }
-
-  .pp-profile-card__actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--spacing-sm);
-    padding-top: var(--spacing-md);
-    border-top: 1px solid var(--neutral-border);
-  }
-
-  .pp-profile-card__delete {
-    color: var(--danger-action);
-  }
 }
 
 /* ---- paper profiles: import design drawer ---- */
@@ -3831,31 +3772,6 @@ body {
   font-weight: 600;
 }
 
-.tpl-info dl {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.4rem 0.75rem;
-  margin: 0;
-}
-
-.tpl-info dl > div {
-  min-width: 0;
-}
-
-.tpl-info dt {
-  color: var(--neutral-text-muted);
-  font-size: var(--font-label-size);
-}
-
-.tpl-info dd {
-  margin: 0.1rem 0 0;
-  color: var(--neutral-text);
-  font-size: 0.75rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* list */
 
 .tpl-list-header {
@@ -4015,9 +3931,9 @@ body {
     gap: var(--spacing-xs);
   }
 
-  .tpl-info dl {
-    grid-template-columns: minmax(0, 1fr);
-  }
+
+
+
 
   .tpl-editor-actions {
     align-items: stretch;
@@ -5533,22 +5449,7 @@ body {
   color: #9a3412;
 }
 
-.reprint-facts {
-  display: grid;
-  grid-template-columns: minmax(140px, auto) 1fr;
-  gap: 0.35rem var(--spacing-md);
-  margin: 0 0 var(--spacing-lg);
-  font-size: 0.8rem;
-}
 
-.reprint-facts dt {
-  color: var(--neutral-text-muted);
-}
-
-.reprint-facts dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
 
 .reprint-ack {
   display: flex;

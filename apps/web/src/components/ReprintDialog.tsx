@@ -27,7 +27,7 @@ import { Button } from './Button.js';
 import { Dialog } from './Dialog.js';
 import { FormField } from './FormField.js';
 import { StatusBadge } from './StatusBadge.js';
-import { Input, Textarea, Checkbox } from './ui/index.js';
+import { Input, Textarea, Checkbox, CardDetail, CardDetailItem } from './ui/index.js';
 
 /** The fields a safe reprint needs. A partial job cannot be reprinted. */
 export interface ReprintableJob {
@@ -130,32 +130,36 @@ export function ReprintDialog({ job, open, onClose, onSuccess, onError, t }: Rep
           void confirm();
         }}
       >
-        <dl className="reprint-facts">
-          <dt>{t('page.jobQueue.reprintOriginalRequestId')}</dt>
-          <dd><code>{job.requestId ?? t('page.jobQueue.reprintBlockedMissing')}</code></dd>
-          <dt>{t('page.jobQueue.reprintOriginalJobId')}</dt>
-          <dd><code>{job.id}</code></dd>
-          <dt>{t('page.jobQueue.reprintPrintStatus')}</dt>
-          <dd><StatusBadge status={job.status} size="sm" /></dd>
-          <dt>{t('page.jobQueue.reprintDestination')}</dt>
-          <dd>{job.printerCode ?? job.printerId}</dd>
-          <dt>{t('page.jobQueue.reprintRunner')}</dt>
-          <dd>{job.runnerId ?? t('page.jobQueue.reprintBlockedUnknown')}</dd>
-          <dt>{t('page.jobQueue.reprintCompletedAt')}</dt>
-          <dd>
+        <CardDetail columns={2} style={{ marginBottom: 'var(--spacing-lg)' }}>
+          <CardDetailItem label={t('page.jobQueue.reprintOriginalRequestId')}>
+            <code>{job.requestId ?? t('page.jobQueue.reprintBlockedMissing')}</code>
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobQueue.reprintOriginalJobId')}>
+            <code>{job.id}</code>
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobQueue.reprintPrintStatus')}>
+            <StatusBadge status={job.status} size="sm" />
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobQueue.reprintDestination')}>
+            {job.printerCode ?? job.printerId}
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobQueue.reprintRunner')}>
+            {job.runnerId ?? t('page.jobQueue.reprintBlockedUnknown')}
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobQueue.reprintCompletedAt')}>
             {job.completedAt
               ? new Date(job.completedAt).toLocaleString()
               : t('page.jobQueue.reprintNotRecorded')}
-          </dd>
-          <dt>{t('page.jobQueue.reprintRunnerAck')}</dt>
-          <dd>
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobQueue.reprintRunnerAck')}>
             {job.runnerId && job.completedAt
               ? t('page.jobQueue.reprintAckYes')
               : t('page.jobQueue.reprintAckUnknown')}
-          </dd>
-          <dt>{t('page.jobQueue.reprintCallbackDelivery')}</dt>
-          <dd>{t('page.jobQueue.reprintCallbackNote')}</dd>
-        </dl>
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobQueue.reprintCallbackDelivery')}>
+            {t('page.jobQueue.reprintCallbackNote')}
+          </CardDetailItem>
+        </CardDetail>
 
         <FormField
           label={t('page.jobQueue.reprintCopies')}

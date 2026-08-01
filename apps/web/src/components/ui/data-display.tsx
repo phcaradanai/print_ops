@@ -67,13 +67,7 @@ export function RecordHeader({ className = '', ...props }: HTMLAttributes<HTMLDi
   return <div {...props} className={`ui-record-header${className ? ` ${className}` : ''}`} />;
 }
 
-export function FactList({ className = '', ...props }: HTMLAttributes<HTMLDListElement>) {
-  return <dl {...props} className={`ui-fact-list${className ? ` ${className}` : ''}`} />;
-}
 
-export function Fact({ label, children }: { label: ReactNode; children: ReactNode }) {
-  return <div className="ui-fact"><dt>{label}</dt><dd>{children}</dd></div>;
-}
 
 export type BadgeTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 

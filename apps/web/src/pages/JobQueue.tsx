@@ -18,8 +18,8 @@ import {
   EmptyState,
   ErrorBanner,
   ErrorState,
-  Fact,
-  FactList,
+  CardDetailItem,
+  CardDetail,
   FormField,
   Freshness,
   Inline,
@@ -562,32 +562,32 @@ export default function JobQueue() {
       >
         {reprintJob && (
           <Stack as="form" gap="lg" id="reprint-form" onSubmit={(event) => { event.preventDefault(); void confirmReprint(); }}>
-            <FactList>
-              <Fact label={t('page.jobQueue.reprintOriginalRequestId')}>
+            <CardDetail>
+              <CardDetailItem label={t('page.jobQueue.reprintOriginalRequestId')}>
                 <Mono>{reprintJob.requestId ?? t('page.jobQueue.reprintBlockedMissing')}</Mono>
-              </Fact>
-              <Fact label={t('page.jobQueue.reprintOriginalJobId')}>
+              </CardDetailItem>
+              <CardDetailItem label={t('page.jobQueue.reprintOriginalJobId')}>
                 <Mono>{reprintJob.id}</Mono>
-              </Fact>
-              <Fact label={t('page.jobQueue.reprintPrintStatus')}>
+              </CardDetailItem>
+              <CardDetailItem label={t('page.jobQueue.reprintPrintStatus')}>
                 <StatusBadge status={reprintJob.status} size="sm" />
-              </Fact>
-              <Fact label={t('page.jobQueue.reprintDestination')}>
+              </CardDetailItem>
+              <CardDetailItem label={t('page.jobQueue.reprintDestination')}>
                 {reprintJob.printerCode ?? reprintJob.printerId}
-              </Fact>
-              <Fact label={t('page.jobQueue.reprintRunner')}>
+              </CardDetailItem>
+              <CardDetailItem label={t('page.jobQueue.reprintRunner')}>
                 {reprintJob.runnerId ?? t('page.jobQueue.reprintBlockedUnknown')}
-              </Fact>
-              <Fact label={t('page.jobQueue.reprintCompletedAt')}>
+              </CardDetailItem>
+              <CardDetailItem label={t('page.jobQueue.reprintCompletedAt')}>
                 {reprintJob.completedAt ? new Date(reprintJob.completedAt).toLocaleString() : t('page.jobQueue.reprintNotRecorded')}
-              </Fact>
-              <Fact label={t('page.jobQueue.reprintRunnerAck')}>
+              </CardDetailItem>
+              <CardDetailItem label={t('page.jobQueue.reprintRunnerAck')}>
                 {reprintJob.runnerId && reprintJob.completedAt ? t('page.jobQueue.reprintAckYes') : t('page.jobQueue.reprintAckUnknown')}
-              </Fact>
-              <Fact label={t('page.jobQueue.reprintCallbackDelivery')}>
+              </CardDetailItem>
+              <CardDetailItem label={t('page.jobQueue.reprintCallbackDelivery')}>
                 {t('page.jobQueue.reprintCallbackNote')}
-              </Fact>
-            </FactList>
+              </CardDetailItem>
+            </CardDetail>
 
             <FormField label={t('page.jobQueue.reprintCopies')} required requiredLabel={t('common.required')}>
               {(control) => (

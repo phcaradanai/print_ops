@@ -10,8 +10,8 @@ import {
   Button,
   ErrorBanner,
   ErrorState,
-  Fact,
-  FactList,
+  CardDetailItem,
+  CardDetail,
   Freshness,
   Grid,
   Inline,
@@ -154,21 +154,21 @@ export default function PrinterDetail() {
 
       <Grid columns={2}>
         <Panel title={t('page.printerDetail.configuration')}>
-          <FactList>
-            <Fact label={t('page.printers.code')}>
+          <CardDetail>
+            <CardDetailItem label={t('page.printers.code')}>
               <Mono weight="semibold">{printer.code}</Mono>
-            </Fact>
-            <Fact label={t('page.printers.protocol')}>{printer.protocol}</Fact>
-            <Fact label={t('page.printerDetail.connectionUri')}>
+            </CardDetailItem>
+            <CardDetailItem label={t('page.printers.protocol')}>{printer.protocol}</CardDetailItem>
+            <CardDetailItem label={t('page.printerDetail.connectionUri')}>
               <Mono>{printer.connectionUri}</Mono>
-            </Fact>
-            <Fact label={t('page.printerDetail.department')}>
+            </CardDetailItem>
+            <CardDetailItem label={t('page.printerDetail.department')}>
               {printer.department ?? t('common.noData')}
-            </Fact>
-            <Fact label={t('page.printers.location')}>
+            </CardDetailItem>
+            <CardDetailItem label={t('page.printers.location')}>
               {printer.location ?? t('common.noData')}
-            </Fact>
-          </FactList>
+            </CardDetailItem>
+          </CardDetail>
         </Panel>
 
         <Panel title={t('page.printerDetail.liveStatus')}>

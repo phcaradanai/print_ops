@@ -26,8 +26,8 @@ import {
   Button,
   Checkbox,
   ErrorBanner,
-  Fact,
-  FactList,
+  CardDetailItem,
+  CardDetail,
   FormField,
   Freshness,
   Inline,
@@ -373,36 +373,36 @@ export default function Settings() {
                   {t('settings.system.singleExecutorDetail')}
                 </Alert>
 
-                <FactList>
-                  <Fact label={t('settings.system.runtime')}>
+                <CardDetail>
+                  <CardDetailItem label={t('settings.system.runtime')}>
                     {runtimeResource.data.runtimeMode === 'packaged-windows-desktop'
                       ? t('settings.system.runtime.packaged')
                       : t('settings.system.runtime.server')}
-                  </Fact>
-                  <Fact label={t('settings.system.executorOwner')}>
+                  </CardDetailItem>
+                  <CardDetailItem label={t('settings.system.executorOwner')}>
                     {runtimeResource.data.executor.owner === 'api-local-worker'
                       ? t('settings.system.executor.api')
                       : t('settings.system.executor.external')}
-                  </Fact>
-                  <Fact label={t('settings.system.executorMode')}>
+                  </CardDetailItem>
+                  <CardDetailItem label={t('settings.system.executorMode')}>
                     {runtimeResource.data.executor.mode === 'typescript-windows-spooler'
                       ? t('settings.system.executor.windowsSpooler')
                       : t('settings.system.executor.external')}
-                  </Fact>
-                  <Fact label={t('settings.system.discoveryOwner')}>
+                  </CardDetailItem>
+                  <CardDetailItem label={t('settings.system.discoveryOwner')}>
                     {t('settings.system.discovery.goRunner')}
-                  </Fact>
-                  <Fact label={t('settings.system.runnerClaims')}>
+                  </CardDetailItem>
+                  <CardDetailItem label={t('settings.system.runnerClaims')}>
                     {runtimeResource.data.discovery.jobsEnabled
                       ? t('settings.system.runnerClaims.enabled')
                       : t('settings.system.runnerClaims.disabled')}
-                  </Fact>
-                  <Fact label={t('settings.system.protocolScope')}>
+                  </CardDetailItem>
+                  <CardDetailItem label={t('settings.system.protocolScope')}>
                     {runtimeResource.data.supportedProductionProtocols.length
                       ? runtimeResource.data.supportedProductionProtocols.join(', ')
                       : t('common.noData')}
-                  </Fact>
-                </FactList>
+                  </CardDetailItem>
+                </CardDetail>
 
                 <Text as="p" tone="muted">
                   {t('settings.system.deferred')}{' '}
@@ -573,27 +573,27 @@ export default function Settings() {
               <Text as="p" tone="muted">{t('settings.nats.description')}</Text>
 
               {natsStatus && (
-                <FactList aria-label={t('settings.nats.diagnostics')}>
-                  <Fact label={t('settings.nats.state')}>{natsStatus.state}</Fact>
-                  <Fact label={t('settings.nats.server')}>{natsStatus.server ?? t('common.noData')}</Fact>
-                  <Fact label={t('settings.nats.intake')}>
+                <CardDetail aria-label={t('settings.nats.diagnostics')}>
+                  <CardDetailItem label={t('settings.nats.state')}>{natsStatus.state}</CardDetailItem>
+                  <CardDetailItem label={t('settings.nats.server')}>{natsStatus.server ?? t('common.noData')}</CardDetailItem>
+                  <CardDetailItem label={t('settings.nats.intake')}>
                     {natsStatus.intakeReady ? t('settings.readiness.state.READY') : t('settings.readiness.state.UNAVAILABLE')}
-                  </Fact>
-                  <Fact label={t('settings.nats.callback')}>
+                  </CardDetailItem>
+                  <CardDetailItem label={t('settings.nats.callback')}>
                     {natsStatus.callbackPublishReady ? t('settings.readiness.state.READY') : t('settings.readiness.state.UNAVAILABLE')}
-                  </Fact>
-                  <Fact label={t('settings.nats.lastConnected')}>{natsStatus.lastConnectedAt ?? t('common.noData')}</Fact>
-                  <Fact label={t('settings.nats.lastAttempt')}>{natsStatus.lastAttemptAt ?? t('common.noData')}</Fact>
-                  <Fact label={t('settings.nats.nextRetry')}>{natsStatus.nextRetryAt ?? t('common.noData')}</Fact>
+                  </CardDetailItem>
+                  <CardDetailItem label={t('settings.nats.lastConnected')}>{natsStatus.lastConnectedAt ?? t('common.noData')}</CardDetailItem>
+                  <CardDetailItem label={t('settings.nats.lastAttempt')}>{natsStatus.lastAttemptAt ?? t('common.noData')}</CardDetailItem>
+                  <CardDetailItem label={t('settings.nats.nextRetry')}>{natsStatus.nextRetryAt ?? t('common.noData')}</CardDetailItem>
                   {natsStatus.lastErrorCode && (
-                    <Fact label={t('settings.nats.lastError')}>
+                    <CardDetailItem label={t('settings.nats.lastError')}>
                       <Stack gap="xs">
                         <Text>{natsStatus.lastErrorStage}: {natsStatus.lastErrorCode}</Text>
                         <Text tone="muted">{natsStatus.lastErrorMessage}</Text>
                       </Stack>
-                    </Fact>
+                    </CardDetailItem>
                   )}
-                </FactList>
+                </CardDetail>
               )}
 
               <Inline gap="sm">

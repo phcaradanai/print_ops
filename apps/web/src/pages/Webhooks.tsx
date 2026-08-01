@@ -21,8 +21,8 @@ import {
   Dialog,
   EmptyState,
   ErrorBanner,
-  Fact,
-  FactList,
+  CardDetailItem,
+  CardDetail,
   FormField,
   Freshness,
   Heading,
@@ -1444,32 +1444,32 @@ export default function Webhooks() {
               </CodeBlock>
             </Stack>
 
-            <FactList>
-              <Fact label={t('page.webhooks.sourceLabelColon')}>{selectedEndpointModal.sourceSystem}</Fact>
-              <Fact label={t('page.webhooks.authLabelColon')}>
+            <CardDetail>
+              <CardDetailItem label={t('page.webhooks.sourceLabelColon')}>{selectedEndpointModal.sourceSystem}</CardDetailItem>
+              <CardDetailItem label={t('page.webhooks.authLabelColon')}>
                 <Mono>{selectedEndpointModal.authMode}</Mono>
-              </Fact>
-              <Fact label={t('page.webhooks.statusLabelColon')}>
+              </CardDetailItem>
+              <CardDetailItem label={t('page.webhooks.statusLabelColon')}>
                 <Badge tone={selectedEndpointModal.enabled ? 'success' : 'neutral'}>
                   {selectedEndpointModal.enabled ? t('page.webhooks.statusEnabled') : t('page.webhooks.statusDraft')}
                 </Badge>
-              </Fact>
-              <Fact label="Callback">
+              </CardDetailItem>
+              <CardDetailItem label="Callback">
                 <Badge tone={selectedEndpointModal.callbackTransport === 'NONE' ? 'neutral' : 'info'}>
                   {selectedEndpointModal.callbackTransport}
                 </Badge>
-              </Fact>
+              </CardDetailItem>
               {selectedEndpointModal.callbackUrl && (
-                <Fact label="Callback Target URL">
+                <CardDetailItem label="Callback Target URL">
                   <Mono>{selectedEndpointModal.callbackUrl}</Mono>
-                </Fact>
+                </CardDetailItem>
               )}
               {selectedEndpointModal.callbackNatsSubject && (
-                <Fact label="NATS Subject">
+                <CardDetailItem label="NATS Subject">
                   <Mono>{selectedEndpointModal.callbackNatsSubject}</Mono>
-                </Fact>
+                </CardDetailItem>
               )}
-            </FactList>
+            </CardDetail>
           </Stack>
         )}
       </Dialog>

@@ -1,0 +1,30 @@
+.ui-card-detail {
+  display: grid;
+  gap: var(--spacing-sm) var(--spacing-md);
+  margin: 0;
+}
+
+.ui-card-detail--cols-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ui-card-detail--cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ui-card-detail__item {
+  min-width: 0;
+}
+
+.ui-card-detail__item dt {
+  color: var(--neutral-text-muted);
+  font-size: var(--font-label-size);
+  font-weight: 600;
+}
+
+.ui-card-detail__item dd {
+  margin: 0.1rem 0 0;
+  color: var(--neutral-text);
+  font-size: var(--font-body-size);
+  overflow-wrap: anywhere;
+}

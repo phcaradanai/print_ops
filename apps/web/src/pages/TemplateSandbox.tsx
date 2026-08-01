@@ -14,8 +14,8 @@ import {
   Dialog,
   EmptyState,
   ErrorBanner,
-  Fact,
-  FactList,
+  CardDetailItem,
+  CardDetail,
   FormField,
   Inline,
   Input,
@@ -372,11 +372,11 @@ export default function TemplateSandbox() {
         </>}
       >
         <Stack gap="lg">
-          <FactList>
-            <Fact label="Printer">{selectedPrinter?.name ?? '—'}</Fact>
-            <Fact label="Template">{selectedTemplate?.templateCode ?? '—'}</Fact>
-            <Fact label="Copies">{copies}</Fact>
-          </FactList>
+          <CardDetail>
+            <CardDetailItem label="Printer">{selectedPrinter?.name ?? '—'}</CardDetailItem>
+            <CardDetailItem label="Template">{selectedTemplate?.templateCode ?? '—'}</CardDetailItem>
+            <CardDetailItem label="Copies">{copies}</CardDetailItem>
+          </CardDetail>
           <Checkbox
             label="I understand this will produce physical output."
             checked={printAcknowledged}

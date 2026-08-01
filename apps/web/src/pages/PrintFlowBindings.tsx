@@ -16,8 +16,8 @@ import {
   DataTable,
   ErrorBanner,
   ErrorState,
-  Fact,
-  FactList,
+  CardDetailItem,
+  CardDetail,
   FormField,
   Freshness,
   Inline,
@@ -282,17 +282,17 @@ export default function PrintFlowBindings() {
         {/* ----- HTTP transport ----- */}
         <Panel title={t('page.printFlow.httpTransport')}>
           <Stack gap="lg">
-            <FactList>
-              <Fact label={t('page.printFlow.path')}>
+            <CardDetail>
+              <CardDetailItem label={t('page.printFlow.path')}>
                 <Mono>{flowConfig?.http.path ?? '/api/v1/printer/{code_template}/{code_profile}'}</Mono>
-              </Fact>
-              <Fact label={t('page.printFlow.auth')}>
+              </CardDetailItem>
+              <CardDetailItem label={t('page.printFlow.auth')}>
                 <Inline gap="xs">
                   <Mono>{flowConfig?.http.authHeader ?? 'X-Api-Key'}</Mono>
                   <Text tone="muted">{t('page.printFlow.authRequired')}</Text>
                 </Inline>
-              </Fact>
-            </FactList>
+              </CardDetailItem>
+            </CardDetail>
             <Stack gap="xs">
               <Text size="label" tone="muted">{t('page.printFlow.examplePayload')}</Text>
               <CodeBlock label={t('page.printFlow.examplePayload')}>{httpExample}</CodeBlock>
@@ -317,20 +317,20 @@ export default function PrintFlowBindings() {
             <Stack gap="lg">
               <Alert tone="info">{t('page.printFlow.natsNoAuth')}</Alert>
 
-              <FactList>
-                <Fact label={t('page.printFlow.subject')}>
+              <CardDetail>
+                <CardDetailItem label={t('page.printFlow.subject')}>
                   <Mono weight="semibold" tone="strong">{nats.subject}</Mono>
-                </Fact>
-                <Fact label={t('page.printFlow.stream')}><Mono>{nats.stream}</Mono></Fact>
-                <Fact label={t('page.printFlow.durable')}><Mono>{nats.durable}</Mono></Fact>
-                <Fact label={t('page.printFlow.server')}><Mono>{nats.url}</Mono></Fact>
-                <Fact label={t('page.printFlow.dlq')}>
+                </CardDetailItem>
+                <CardDetailItem label={t('page.printFlow.stream')}><Mono>{nats.stream}</Mono></CardDetailItem>
+                <CardDetailItem label={t('page.printFlow.durable')}><Mono>{nats.durable}</Mono></CardDetailItem>
+                <CardDetailItem label={t('page.printFlow.server')}><Mono>{nats.url}</Mono></CardDetailItem>
+                <CardDetailItem label={t('page.printFlow.dlq')}>
                   <Stack gap="xs">
                     <Mono>{nats.dlqPrefix}{nats.subject}</Mono>
                     <Text size="label" tone="muted">{t('page.printFlow.maxDeliver')} {nats.maxDeliver}</Text>
                   </Stack>
-                </Fact>
-              </FactList>
+                </CardDetailItem>
+              </CardDetail>
 
               <Stack gap="xs">
                 <Text size="label" tone="muted">{t('page.printFlow.examplePayload')}</Text>

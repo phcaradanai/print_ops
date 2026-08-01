@@ -12,6 +12,8 @@ import {
   Badge,
   Button,
   Card,
+  CardDetail,
+  CardDetailItem,
   Chip,
   DataCell,
   DataHead,
@@ -1065,18 +1067,17 @@ export default function Templates() {
 
           <div className="tpl-info">
             <h3>{t('page.templates.templateInfo')}</h3>
-            <dl>
-              <div><dt>{t('page.templates.engine')}</dt><dd>{selected?.engine ?? form.engine}</dd></div>
-              <div>
-                <dt>{t('page.templates.paperProfile')}</dt>
-                <dd>{(selected ? selectedProfile?.name : formProfile?.name) ?? t('page.templates.noPaperProfile')}</dd>
-              </div>
-              <div><dt>{t('page.templates.version')}</dt><dd>{selected?.version ?? '—'}</dd></div>
-              <div><dt>{t('page.templates.status')}</dt><dd>{selected?.status ?? t('page.templates.unsavedDraft')}</dd></div>
-              <div><dt>{t('page.templates.createdBy')}</dt><dd>{selected?.createdBy ?? '—'}</dd></div>
-              <div><dt>{t('page.templates.createdAt')}</dt><dd>{formatDate(selected?.createdAt, locale)}</dd></div>
-              <div><dt>{t('page.templates.updatedAt')}</dt><dd>{formatDate(selected?.updatedAt, locale)}</dd></div>
-            </dl>
+            <CardDetail>
+              <CardDetailItem label={t('page.templates.engine')}>{selected?.engine ?? form.engine}</CardDetailItem>
+              <CardDetailItem label={t('page.templates.paperProfile')}>
+                {(selected ? selectedProfile?.name : formProfile?.name) ?? t('page.templates.noPaperProfile')}
+              </CardDetailItem>
+              <CardDetailItem label={t('page.templates.version')}>{selected?.version ?? '—'}</CardDetailItem>
+              <CardDetailItem label={t('page.templates.status')}>{selected?.status ?? t('page.templates.unsavedDraft')}</CardDetailItem>
+              <CardDetailItem label={t('page.templates.createdBy')}>{selected?.createdBy ?? '—'}</CardDetailItem>
+              <CardDetailItem label={t('page.templates.createdAt')}>{formatDate(selected?.createdAt, locale)}</CardDetailItem>
+              <CardDetailItem label={t('page.templates.updatedAt')}>{formatDate(selected?.updatedAt, locale)}</CardDetailItem>
+            </CardDetail>
           </div>
         </Card>
         </div>

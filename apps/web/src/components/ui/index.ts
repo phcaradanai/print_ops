@@ -9,6 +9,7 @@ export { Input, Select, Textarea, Checkbox, Chip, Label, type ChipProps, type Co
 export { Stack, Inline, Grid, Spacer, Divider, type Align, type Space, type StackProps, type GridProps } from './layout.js';
 export { Panel, Fieldset, Toolbar, type PanelProps, type FieldsetProps } from './surfaces.js';
 export { Card, type CardProps, type CardPadding, type CardTone } from './Card.js';
+export { CardDetail, CardDetailItem, type CardDetailProps, type CardDetailItemProps } from './CardDetail.js';
 export { TabList, Tab, TabPanel, type TabProps } from './tabs.js';
 export {
   DataTable,
@@ -18,8 +19,6 @@ export {
   RecordList,
   RecordCard,
   RecordHeader,
-  FactList,
-  Fact,
   Badge,
   type BadgeTone,
 } from './data-display.js';
