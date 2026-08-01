@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/errors.js';
-import { apiFetch, apiFetchVoid, getBootstrapState, login, onUnauthorized } from '../api/client.js';
+import { apiFetch, apiFetchVoid, getBootstrapState, healthUrl, login, onUnauthorized } from '../api/client.js';
 import { clearRecentErrors, logError, recentErrors } from '../lib/logError.js';
 
 const realFetch = globalThis.fetch;
@@ -50,6 +50,20 @@ describe('apiFetch', () => {
   it('resolves the parsed body on success', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse(200, [{ id: 'j1' }])) as typeof fetch;
     await expect(apiFetch<{ id: string }[]>('/jobs')).resolves.toEqual([{ id: 'j1' }]);
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/jobs', expect.any(Object));
+  });
+
+  it('keeps both legacy resources and v1 resources in the unambiguous /api namespace', async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async () => jsonResponse(200, {})) as typeof fetch;
+
+    await apiFetch('/jobs?limit=500');
+    await apiFetch('/v1/system/readiness');
+
+    expect(vi.mocked(globalThis.fetch).mock.calls.map(([url]) => url)).toEqual([
+      '/api/jobs?limit=500',
+      '/api/v1/system/readiness',
+    ]);
+    expect(healthUrl()).toBe('/api/health');
   });
 
   it('keeps an empty JSON-contract response invalid', async () => {
@@ -79,6 +93,7 @@ describe('owner bootstrap discovery', () => {
       state: 'MIGRATION_REQUIRED',
       ownerEmailHints: ['s*******@printerops.local'],
     });
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/auth/bootstrap');
   });
 });
 
@@ -124,6 +139,7 @@ describe('login', () => {
     expect((err as ApiError).message).toBe('Invalid email or password');
     expect((err as ApiError).status).toBe(401);
     expect((err as ApiError).code).toBe('UNAUTHORIZED');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/auth/login', expect.any(Object));
   });
 
   it('shows a non-401 failure verbatim, so a broken gateway is not read as a typo', async () => {

@@ -22,23 +22,24 @@ async function mockApi(page: import('@playwright/test').Page) {
   await installHarness(page, {
     locale: 'en',
     api: (url, route, method) => {
-      if (url.pathname === '/jobs' && method === 'GET') {
+      const path = url.pathname.replace(/^\/api/, '');
+      if (path === '/jobs' && method === 'GET') {
         route.fulfill({ json: [job] });
         return true;
       }
-      if (url.pathname === `/jobs/${job.id}`) {
+      if (path === `/jobs/${job.id}`) {
         route.fulfill({ json: job });
         return true;
       }
-      if (url.pathname === `/jobs/${job.id}/reprint`) {
+      if (path === `/jobs/${job.id}/reprint`) {
         route.fulfill({ status: 201, json: { ...job, id: 'synthetic-reprint-0002', requestId: 'reprint-synthetic-0002' } });
         return true;
       }
-      if (url.pathname === '/printers' && method === 'GET') {
+      if (path === '/printers' && method === 'GET') {
         route.fulfill({ json: [{ id: job.printerId, code: job.printerCode, name: job.printerCode, status: 'ONLINE' }] });
         return true;
       }
-      if (url.pathname === '/runners' && method === 'GET') {
+      if (path === '/runners' && method === 'GET') {
         route.fulfill({ json: [{ id: job.runnerId, name: 'synthetic-runner', hostname: 'synthetic', status: 'ONLINE' }] });
         return true;
       }

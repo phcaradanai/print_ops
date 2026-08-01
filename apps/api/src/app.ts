@@ -180,6 +180,33 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     },
   });
 
+  // The packaged API also serves the built SPA. Retain root legacy API routes
+  // for runners, but let real browser document navigations such as /jobs load
+  // React instead of entering the JWT-protected JSON handler.
+  const staticRoots = [
+    join(dirname(process.execPath), 'static'),          // next to .exe
+    join(process.cwd(), '..', 'web', 'dist'),          // dev mode (tsx)
+  ];
+  if (typeof __dirname === 'string') {
+    staticRoots.unshift(join(__dirname, 'static'));    // pkg snapshot
+  }
+  const readSpaIndex = (): Buffer | undefined => {
+    for (const root of staticRoots) {
+      try { return readFileSync(join(root, 'index.html')); } catch {}
+    }
+    return undefined;
+  };
+
+  app.addHook('onRequest', async (req, reply) => {
+    const path = new URL(req.url, 'http://localhost').pathname;
+    const isDashboardDeepLink = /^\/(jobs|printers|runners|audit-logs)(\/|$)/.test(path);
+    const acceptsHtml = req.headers.accept?.split(',').some((value) => value.trim().startsWith('text/html')) ?? false;
+    if ((req.method === 'GET' || req.method === 'HEAD') && isDashboardDeepLink && acceptsHtml) {
+      const index = readSpaIndex();
+      if (index) return reply.type('text/html').send(index);
+    }
+  });
+
   // CORS origin is reflect-any by default (`origin: true`) because this is a
   // LAN-only print gateway authenticated by bearer JWT / X-Api-Key header,
   // not cookies, so reflecting the origin does not by itself grant a
@@ -798,11 +825,16 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   );
   natsManager.setIntakeCallbacks(intakeOutcomeCallbacks);
 
-  // Health check (no auth)
-  app.get('/health', async () => ({ status: 'ok', uptime: process.uptime() }));
+  // Health check (no auth). /api is the canonical dashboard namespace; the
+  // root alias remains for runner/deployment compatibility.
+  const health = async () => ({ status: 'ok', uptime: process.uptime() });
+  app.get('/health', health);
+  app.get('/api/health', health);
 
-  // Routes — legacy internal API
-  await app.register(async (api) => {
+  // Routes — internal dashboard API. Keep the root registration temporarily
+  // for existing runners/integrations, while the dashboard exclusively uses
+  // /api so its client-side /jobs, /printers and /runners routes cannot collide.
+  const registerDashboardRoutes = async (api: import('fastify').FastifyInstance) => {
     await authRoutes(api, {
       users: userRepo,
       runnerBootstrapSecret: process.env['PRINTOPS_RUNNER_BOOTSTRAP_SECRET'],
@@ -812,7 +844,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await runnerRoutes(api, { runners: runnerRepo, jobs: jobRepo, registerRunner, runnerHeartbeat });
     await auditRoutes(api, { audit: auditRepo });
     await exportRoutes(api, { exportJobs, audit: auditRepo, printers: printerRepo, exporter });
-  });
+  };
+  await app.register(registerDashboardRoutes);
+  await app.register(registerDashboardRoutes, { prefix: '/api' });
 
   // Routes — external API v1
   await app.register(async (v1) => {
@@ -854,18 +888,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   app.addHook('onClose', async () => { await natsManager.stop(); });
 
   // Landing page — serve Vite index.html if available, otherwise inline UI
-  const staticRoots = [
-    join(dirname(process.execPath), 'static'),          // next to .exe
-    join(process.cwd(), '..', 'web', 'dist'),            // dev mode (tsx)
-  ];
-  if (typeof __dirname === 'string') {
-    staticRoots.unshift(join(__dirname, 'static'));      // pkg snapshot
-  }
-
   app.get('/', async (_req, reply) => {
-    for (const root of staticRoots) {
-      try { return reply.type('text/html').send(readFileSync(join(root, 'index.html'))); } catch {}
-    }
+    const index = readSpaIndex();
+    if (index) return reply.type('text/html').send(index);
     // Fallback inline UI
     return reply.type('text/html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PrinterOps</title><style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#1e1e2e;color:#cdd6f4}a{color:#89b4fa}</style></head><body><div style="text-align:center;max-width:400px"><h1 style="font-size:2rem;margin-bottom:.5rem">🖨️ PrinterOps</h1><p style="color:#9ca3af">Print Gateway — API + Dashboard</p><div style="margin:2rem 0"><p>✅ API running on port ${process.env['PORT'] ?? 3001}</p><p>📋 <a href="/api/v1/templates">Templates</a> · <a href="/api/v1/sandbox/run">Sandbox</a></p><p>🔌 <a href="/api/v1/connectivity/report">Connectivity Report</a></p></div></div></body></html>`);
   });
@@ -899,9 +924,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       } catch {}
     }
     // SPA fallback
-    for (const root of staticRoots) {
-      try { return reply.type('text/html').send(readFileSync(join(root, 'index.html'))); } catch {}
-    }
+    const index = readSpaIndex();
+    if (index) return reply.type('text/html').send(index);
     return reply.status(404).send({ error: 'Not found' });
   });
 

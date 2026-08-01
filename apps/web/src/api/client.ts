@@ -154,17 +154,15 @@ export function getReadiness(): Promise<ReadinessSnapshot> {
 }
 
 export function healthUrl(): string {
-  return apiBase() + '/health';
+  return apiBase() + '/api/health';
 }
 
 function apiUrl(path: string): string {
-  // v1 routes: /api/v1/... (dev proxy strips /api, so double prefix needed)
-  if (path.startsWith('/v1/')) {
-    const prefix = import.meta.env.DEV ? '/api/api' : '/api';
-    return apiBase() + prefix + path;
-  }
-  // Legacy routes: /jobs, /me, /runners, etc. — no prefix in production
-  return apiBase() + path;
+  // Keep every dashboard request below /api. Several SPA routes intentionally
+  // share names with the internal resources (/jobs, /printers, /runners); root
+  // API URLs make a browser refresh hit Fastify instead of React and return a
+  // raw JWT 401 because a document navigation has no Authorization header.
+  return apiBase() + '/api' + path;
 }
 
 async function authenticatedResponse(path: string, init: RequestInit, scope: string): Promise<Response> {
@@ -247,7 +245,7 @@ export async function apiFetchVoid(path: string, init: RequestInit = {}): Promis
 }
 
 export async function login(email: string, password: string): Promise<SessionUser> {
-  const url = apiBase() + '/auth/login';
+  const url = apiBase() + '/api/auth/login';
   const path = '/auth/login';
 
   let res: Response;
@@ -288,7 +286,7 @@ export type BootstrapState = 'READY' | 'REQUIRED_NEW' | 'MIGRATION_REQUIRED';
 export interface BootstrapInfo { state: BootstrapState; ownerEmailHints: string[] }
 
 export async function getBootstrapState(): Promise<BootstrapInfo> {
-  const res = await fetch(apiBase() + '/auth/bootstrap');
+  const res = await fetch(apiBase() + '/api/auth/bootstrap');
   if (!res.ok) throw await apiErrorFromResponse(res, '/auth/bootstrap');
   const data = (await res.json()) as { state: BootstrapState; ownerEmailHints?: string[] };
   return { state: data.state, ownerEmailHints: data.ownerEmailHints ?? [] };
@@ -301,7 +299,7 @@ export async function bootstrapOwner(input: {
   passwordConfirmation: string;
 }): Promise<SessionUser> {
   const path = '/auth/bootstrap';
-  const res = await fetch(apiBase() + path, {
+  const res = await fetch(apiBase() + '/api' + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),

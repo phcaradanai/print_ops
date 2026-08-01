@@ -75,13 +75,13 @@ export async function installHarness(page: Page, options: HarnessOptions = {}): 
     const method = request.method();
     // The whole shell sits behind a splash screen that polls this until it
     // answers, so every suite needs it before anything else can be asserted.
-    if (url.pathname === '/health') {
+    if (url.pathname === '/api/health') {
       return route.fulfill({ json: { status: 'ok' } });
     }
-    if (url.pathname === '/auth/bootstrap') {
+    if (url.pathname === '/api/auth/bootstrap') {
       return route.fulfill({ json: { state: 'READY' } });
     }
-    if (url.pathname === '/me') {
+    if (url.pathname === '/api/me') {
       return route.fulfill({
         json: {
           id: 'synthetic-admin',
