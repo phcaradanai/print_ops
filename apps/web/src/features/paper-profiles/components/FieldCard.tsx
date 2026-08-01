@@ -3,6 +3,7 @@ import type { DynamicField } from '../model/types.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import { FieldBarcodePreview, FieldTypeControls } from './PaperCanvas.js';
 import type { Translate } from './types.js';
+import { PaperProfileIcon } from './PaperProfileIcon.js';
 
 export function FieldCard({ field, editor, t }: {
   field: DynamicField;
@@ -37,7 +38,7 @@ export function FieldCard({ field, editor, t }: {
           value={field.label} onChange={(event) => update({ label: event.target.value })} />
         <button type="button" className="pp-field-delete"
           onClick={(event) => { event.stopPropagation(); editor.deleteField(field.id); }}
-          title={t('page.paperProfiles.remove')} aria-label={t('page.paperProfiles.remove')}>✕</button>
+          title={t('page.paperProfiles.remove')} aria-label={t('page.paperProfiles.remove')}><PaperProfileIcon name="close" /></button>
       </div>
       <div className="pp-field-row__group-label">{t('page.paperProfiles.groupContentOutput')}</div>
       <div className="pp-field-row__content">

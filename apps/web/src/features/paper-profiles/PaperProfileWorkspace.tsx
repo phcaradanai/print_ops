@@ -14,6 +14,9 @@ import { useImportDesign } from './hooks/useImportDesign.js';
 import { usePaperProfileEditor } from './hooks/usePaperProfileEditor.js';
 import { usePaperProfilePersistence } from './hooks/usePaperProfilePersistence.js';
 import { usePaperProfilePopups } from './hooks/usePaperProfilePopups.js';
+import { PaperProfileIcon } from './components/PaperProfileIcon.js';
+import { UnsavedChangesDialog } from './components/UnsavedChangesDialog.js';
+import type { PaperProfile } from './model/types.js';
 
 const DEFAULT_CANVAS_OPTIONS: CanvasOptions = {
   verticalGrid: false,
@@ -27,6 +30,8 @@ const DEFAULT_CANVAS_OPTIONS: CanvasOptions = {
 export default function PaperProfileWorkspace() {
   const { t } = useLocale();
   const editor = usePaperProfileEditor();
+  const [stage, setStage] = useState<'library' | 'editor'>('library');
+  const [discardPromptOpen, setDiscardPromptOpen] = useState(false);
   const popups = usePaperProfilePopups(editor.state.editingProfileId);
   const interaction = useCanvasInteraction(editor);
   const [canvasOptions, setCanvasOptionsState] = useState(DEFAULT_CANVAS_OPTIONS);
@@ -61,6 +66,7 @@ export default function PaperProfileWorkspace() {
   const onImported = useCallback(async (profile: Parameters<typeof editor.startEditing>[0], duplicate: boolean) => {
     persistence.refresh();
     editor.startEditing(profile);
+    setStage('editor');
     popups.closeDrawer();
     showNotice(duplicate ? t('page.paperProfiles.importDuplicate') : t('page.paperProfiles.importSuccess'));
   }, [editor.startEditing, persistence.refresh, popups.closeDrawer, showNotice, t]);
@@ -77,17 +83,63 @@ export default function PaperProfileWorkspace() {
     onArtworkFeedback,
   );
   const mainSheetRef = useRef<HTMLDivElement>(null);
+  const hasUnsavedChanges = editor.state.saveStatus === 'dirty' || editor.state.saveStatus === 'error';
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  const openCreate = useCallback(() => {
+    editor.resetEditor();
+    setStage('editor');
+  }, [editor.resetEditor]);
+  const openProfile = useCallback((profile: PaperProfile) => {
+    editor.startEditing(profile);
+    setStage('editor');
+  }, [editor.startEditing]);
+  const returnToLibrary = useCallback(() => {
+    if (hasUnsavedChanges) {
+      setDiscardPromptOpen(true);
+      return;
+    }
+    popups.closeDrawer();
+    editor.resetEditor();
+    setStage('library');
+  }, [editor.resetEditor, hasUnsavedChanges, popups.closeDrawer]);
+  const discardAndReturn = useCallback(() => {
+    setDiscardPromptOpen(false);
+    popups.closeDrawer();
+    editor.resetEditor();
+    setStage('library');
+  }, [editor.resetEditor, popups.closeDrawer]);
+  const finishSave = useCallback(() => {
+    editor.resetEditor();
+    popups.closeDrawer();
+    setStage('library');
+  }, [editor.resetEditor, popups.closeDrawer]);
 
   return (
     <div className="paper-profiles-page">
-      {notice && <div className="pp-sticky-note" role="status"><span aria-hidden="true">💡</span>{notice}</div>}
-      <PaperProfilePageHeader editor={editor} popups={popups} t={t} />
-      <div className="pp-main-layout">
-        <ProfileFormPanel editor={editor} persistence={persistence} popups={popups} t={t} onNotice={showNotice} />
-        <PreviewPanel editor={editor} popups={popups} interaction={interaction}
-          options={canvasOptions} setOptions={setCanvasOptions} sheetRef={mainSheetRef}
-          artwork={importDesign.currentArtwork} t={t} />
-      </div>
+      {notice && <div className="pp-sticky-note" role="status"><PaperProfileIcon name="info" />{notice}</div>}
+      <PaperProfilePageHeader editor={editor} popups={popups} stage={stage}
+        onCreate={openCreate} onBack={returnToLibrary} t={t} />
+      {stage === 'library' ? (
+        <SavedProfilesTable onEdit={openProfile} onCreate={openCreate} persistence={persistence} t={t} />
+      ) : (
+        <div className="pp-main-layout">
+          <ProfileFormPanel editor={editor} persistence={persistence} popups={popups} t={t}
+            onNotice={showNotice} onSaved={finishSave} onCancel={returnToLibrary} />
+          <PreviewPanel editor={editor} popups={popups} interaction={interaction}
+            options={canvasOptions} setOptions={setCanvasOptions} sheetRef={mainSheetRef}
+            artwork={importDesign.currentArtwork} t={t} />
+        </div>
+      )}
       {popups.fullPreviewOpen && (
         <FullPreviewDialog editor={editor} popups={popups} interaction={interaction}
           options={canvasOptions} setOptions={setCanvasOptions}
@@ -99,8 +151,9 @@ export default function PaperProfileWorkspace() {
       {popups.drawer === 'import' && (
         <ImportDesignDrawer controller={importDesign} popups={popups} t={t} />
       )}
-      <SavedProfilesTable editor={editor} persistence={persistence} t={t} />
       <DeleteProfileDialog persistence={persistence} t={t} />
+      <UnsavedChangesDialog open={discardPromptOpen} profileCode={editor.form.code || t('page.paperProfiles.newProfile')}
+        onContinue={() => setDiscardPromptOpen(false)} onDiscard={discardAndReturn} t={t} />
     </div>
   );
 }

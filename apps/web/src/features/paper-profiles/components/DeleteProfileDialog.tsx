@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { useModalFocusTrap } from '../../../components/Dialog.js';
 import type { PaperProfilePersistence } from '../hooks/usePaperProfilePersistence.js';
 import type { Translate } from './types.js';
+import { PaperProfileIcon } from './PaperProfileIcon.js';
 
 export function DeleteProfileDialog({ persistence, t }: {
   persistence: PaperProfilePersistence;
@@ -17,7 +18,7 @@ export function DeleteProfileDialog({ persistence, t }: {
       <div ref={panelRef} tabIndex={-1} className="ds-modal__panel ds-modal__panel--sm" onClick={(event) => event.stopPropagation()}>
         <div className="ds-modal__header"><h2 id="paper-profile-delete-title">{t('page.paperProfiles.deleteProfile')}</h2>
           <button type="button" className="ds-btn ds-btn--icon" onClick={persistence.cancelDelete}
-            disabled={persistence.deletePending} aria-label={t('common.cancel')}>✕</button></div>
+            disabled={persistence.deletePending} aria-label={t('common.cancel')}><PaperProfileIcon name="close" /></button></div>
         <div className="ds-confirm__body">
           <p>{t('page.paperProfiles.confirmDelete').replace('{code}', profile.code)}</p><code>{profile.code}</code>
         </div>
@@ -25,7 +26,7 @@ export function DeleteProfileDialog({ persistence, t }: {
           <button type="button" className="ds-btn ds-btn--ghost" onClick={persistence.cancelDelete}
             disabled={persistence.deletePending}>{t('common.cancel')}</button>
           <button type="button" className="ds-btn ds-btn--danger" onClick={() => void persistence.confirmDelete()}
-            disabled={persistence.deletePending}>🗑 {t('page.paperProfiles.deleteProfile')}</button>
+            disabled={persistence.deletePending}><PaperProfileIcon name="trash" /> {t('page.paperProfiles.deleteProfile')}</button>
         </div>
       </div>
     </div>

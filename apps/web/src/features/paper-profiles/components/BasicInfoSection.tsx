@@ -1,6 +1,7 @@
 import { Section } from './editorPrimitives.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { Translate } from './types.js';
+import { PaperProfileIcon } from './PaperProfileIcon.js';
 
 export function BasicInfoSection({ editor, t, anchorRef }: {
   editor: PaperProfileEditor;
@@ -9,7 +10,7 @@ export function BasicInfoSection({ editor, t, anchorRef }: {
 }) {
   return (
     <div ref={anchorRef} className="pp-section-anchor">
-      <Section title={t('page.paperProfiles.basicInfo')} icon="📄"
+      <Section title={t('page.paperProfiles.basicInfo')} icon={<PaperProfileIcon name="profile" />}
         open={editor.state.sectionsOpen.basicInfo}
         onToggle={() => editor.setSection('basicInfo', !editor.state.sectionsOpen.basicInfo)}>
         <div className="pp-form-grid pp-form-grid--two">

@@ -7,6 +7,8 @@ import type { ImportFitMode, PaperForm } from '../model/types.js';
 import type { ImportDesignController } from '../hooks/useImportDesign.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { Translate } from './types.js';
+import { TransferIcon } from '../../../components/TransferIcon.js';
+import { PaperProfileIcon } from './PaperProfileIcon.js';
 
 export function ImportDesignDrawer({ controller, popups, t }: {
   controller: ImportDesignController;
@@ -25,8 +27,8 @@ export function ImportDesignDrawer({ controller, popups, t }: {
         aria-label={t('page.paperProfiles.importDesign')} ref={popups.drawerRef} tabIndex={-1}>
         <div className="pp-drawer__header">
           <span className="pp-drawer__title">{t('page.paperProfiles.importDesign')}</span>
-          <button className="pp-tool-btn" ref={popups.drawerCloseButtonRef}
-            title={t('common.cancel')} aria-label={t('common.cancel')} onClick={close}>✕</button>
+          <button type="button" className="pp-tool-btn" ref={popups.drawerCloseButtonRef}
+            title={t('common.cancel')} aria-label={t('common.cancel')} onClick={close}><PaperProfileIcon name="close" /></button>
         </div>
         <div className="pp-drawer__body">
           {controller.error && <div className="pp-import-error">{controller.error}</div>}
@@ -38,7 +40,7 @@ export function ImportDesignDrawer({ controller, popups, t }: {
                   if (file) controller.selectFile(file);
                   event.target.value = '';
                 }} />
-              <span className="pp-import-dropzone__icon">📥</span>
+              <span className="pp-import-dropzone__icon"><TransferIcon action="import" /></span>
               <strong>{t('page.paperProfiles.importSelectFile')}</strong>
               <span>{t('page.paperProfiles.importMaxSize').replace('{size}', String(MAX_IMPORT_FILE_BYTES / 1024 / 1024))}</span>
             </label>
@@ -84,10 +86,10 @@ function ImportReview({ controller, t }: { controller: ImportDesignController; t
         <span>{analysis.suggestedDpi} DPI</span>
       </div>
       {analysis.detectedDpi === null && (
-        <div className="pp-import-warning">⚠ {t('page.paperProfiles.importWarningNoDpi').replace('{dpi}', String(analysis.suggestedDpi))}</div>
+        <div className="pp-import-warning"><PaperProfileIcon name="warning" /> {t('page.paperProfiles.importWarningNoDpi').replace('{dpi}', String(analysis.suggestedDpi))}</div>
       )}
       {isLowImportDpi(analysis.detectedDpi) && analysis.detectedDpi !== null && (
-        <div className="pp-import-warning">⚠ {t('page.paperProfiles.importWarningLowDpi')
+        <div className="pp-import-warning"><PaperProfileIcon name="warning" /> {t('page.paperProfiles.importWarningLowDpi')
           .replace('{detected}', String(analysis.detectedDpi)).replace('{suggested}', String(analysis.suggestedDpi))}</div>
       )}
       <div className="pp-import-form">

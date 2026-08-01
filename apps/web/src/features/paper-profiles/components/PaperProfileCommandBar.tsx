@@ -5,13 +5,23 @@ import type { PaperProfilePersistence } from '../hooks/usePaperProfilePersistenc
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { SectionKey } from '../state/editorState.js';
 import type { Translate } from './types.js';
+import { PaperProfileIcon, type PaperProfileIconName } from './PaperProfileIcon.js';
 
-export function PaperProfileCommandBar({ editor, persistence, popups, t, scrollTo }: {
+const SECTION_ICONS: Record<SectionKey, PaperProfileIconName> = {
+  basicInfo: 'profile',
+  dimensions: 'dimensions',
+  margins: 'margins',
+  fields: 'fields',
+};
+
+export function PaperProfileCommandBar({ editor, persistence, popups, t, scrollTo, onSaved, onCancel }: {
   editor: PaperProfileEditor;
   persistence: PaperProfilePersistence;
   popups: PaperProfilePopups;
   t: Translate;
   scrollTo: (section: SectionKey) => void;
+  onSaved: () => void;
+  onCancel: () => void;
 }) {
   const { saveStatus, saveError, editingProfileId, sectionsOpen } = editor.state;
   const allExpanded = Object.values(sectionsOpen).every(Boolean);
@@ -26,32 +36,32 @@ export function PaperProfileCommandBar({ editor, persistence, popups, t, scrollT
         {(['basicInfo', 'dimensions', 'margins', 'fields'] as SectionKey[]).map((key) => (
           <button type="button" key={key} className="pp-index-btn" onClick={() => scrollTo(key)}
             title={t(`page.paperProfiles.${key}`)} aria-label={t(`page.paperProfiles.${key}`)}>
-            <span aria-hidden="true">{key === 'basicInfo' ? '📄' : key === 'dimensions' ? '📐' : key === 'margins' ? '⬜' : '⚡'}</span>
+            <PaperProfileIcon name={SECTION_ICONS[key]} />
           </button>
         ))}
       </nav>
       <div className="pp-command-actions">
         <div className="pp-command-status" aria-live="polite">
-          <span className="pp-command-status__dot" aria-hidden="true">●</span>
+          <span className="pp-command-status__dot" aria-hidden="true" />
           <span>{statusText}</span>
           {saveStatus === 'error' && (
             <button type="button" onClick={editor.dismissSaveError} className="pp-command-status__dismiss"
-              aria-label={t('common.cancel')}>✕</button>
+              aria-label={t('common.cancel')}><PaperProfileIcon name="close" /></button>
           )}
         </div>
         <PresetMenu editor={editor} popups={popups} t={t} />
-        <IconButton icon={allExpanded ? '▾' : '▸'}
+        <IconButton icon={<PaperProfileIcon name="chevron" className={allExpanded ? 'pp-icon--expanded' : undefined} />}
           label={allExpanded ? t('page.paperProfiles.collapseAll') : t('page.paperProfiles.expandAll')}
           onClick={() => editor.setAllSections(!allExpanded)} />
-        <button type="button" className="ds-btn ds-btn--primary" onClick={() => void persistence.save()}
+        <button type="button" className="ds-btn ds-btn--primary" onClick={() => void persistence.save().then((saved) => {
+          if (saved) onSaved();
+        })}
           disabled={persistence.savePending} title={editingProfileId ? t('page.paperProfiles.updateProfile') : t('page.paperProfiles.saveProfile')}
           aria-label={editingProfileId ? t('page.paperProfiles.updateProfile') : t('page.paperProfiles.saveProfile')}>
-          <span aria-hidden="true">{persistence.savePending ? '⏳' : '💾'}</span>
+          <PaperProfileIcon name={persistence.savePending ? 'spinner' : 'save'} className={persistence.savePending ? 'pp-icon--spin' : undefined} />
         </button>
-        {editingProfileId && (
-          <button type="button" className="pp-icon-btn" onClick={editor.resetEditor}
-            title={t('common.cancel')} aria-label={t('common.cancel')}><span aria-hidden="true">✕</span></button>
-        )}
+        <button type="button" className="pp-icon-btn" onClick={onCancel}
+          title={t('page.paperProfiles.backToLibrary')} aria-label={t('page.paperProfiles.backToLibrary')}><PaperProfileIcon name="close" /></button>
       </div>
     </div>
   );

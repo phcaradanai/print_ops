@@ -5,6 +5,7 @@ import type { PaperForm } from '../model/types.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import { Section } from './editorPrimitives.js';
 import type { Translate } from './types.js';
+import { PaperProfileIcon } from './PaperProfileIcon.js';
 
 export function DimensionInput({ editor, field, label, t }: {
   editor: PaperProfileEditor;
@@ -39,7 +40,7 @@ export function DimensionsSection({ editor, t, anchorRef }: {
   const { form, ux } = editor;
   return (
     <div ref={anchorRef} className="pp-section-anchor">
-      <Section title={t('page.paperProfiles.dimensions')} icon="📐"
+      <Section title={t('page.paperProfiles.dimensions')} icon={<PaperProfileIcon name="dimensions" />}
         open={editor.state.sectionsOpen.dimensions}
         onToggle={() => editor.setSection('dimensions', !editor.state.sectionsOpen.dimensions)}>
         <div className="pp-form-grid pp-form-grid--three">

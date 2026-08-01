@@ -10,12 +10,14 @@ import { MarginsSection } from './MarginsSection.js';
 import { PaperProfileCommandBar } from './PaperProfileCommandBar.js';
 import type { Translate } from './types.js';
 
-export function ProfileFormPanel({ editor, persistence, popups, t, onNotice }: {
+export function ProfileFormPanel({ editor, persistence, popups, t, onNotice, onSaved, onCancel }: {
   editor: PaperProfileEditor;
   persistence: PaperProfilePersistence;
   popups: PaperProfilePopups;
   t: Translate;
   onNotice: (message: string) => void;
+  onSaved: () => void;
+  onCancel: () => void;
 }) {
   const basicInfo = useRef<HTMLDivElement>(null);
   const dimensions = useRef<HTMLDivElement>(null);
@@ -28,7 +30,8 @@ export function ProfileFormPanel({ editor, persistence, popups, t, onNotice }: {
   };
   return (
     <div className="pp-form-panel">
-      <PaperProfileCommandBar editor={editor} persistence={persistence} popups={popups} t={t} scrollTo={scrollTo} />
+      <PaperProfileCommandBar editor={editor} persistence={persistence} popups={popups} t={t}
+        scrollTo={scrollTo} onSaved={onSaved} onCancel={onCancel} />
       <div className="pp-form-scroll">
         <BasicInfoSection editor={editor} t={t} anchorRef={basicInfo} />
         <DimensionsSection editor={editor} t={t} anchorRef={dimensions} />

@@ -12,7 +12,7 @@ import type {
   PaperForm,
   PaperProfileUx as UxOptions,
 } from '../model/types.js';
-import { IconButton, s } from './editorPrimitives.js';
+import { IconButton } from './editorPrimitives.js';
 
 export function RulerSheet({
   form,
@@ -275,15 +275,15 @@ export function FieldBarcodePreview({ field }: { field: DynamicField }) {
             height: `${heightMm}mm`,
             width: widthMm ? `${widthMm}mm` : 'auto',
             padding: quietMm ? `${quietMm}mm` : undefined,
-            background: quietMm ? '#fff' : undefined,
+            background: quietMm ? 'var(--neutral-surface)' : undefined,
             lineHeight: 0,
           }}
           dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', `<svg style="height:100%;width:${widthMm ? '100%' : 'auto'}" `) }}
         />
       ) : (
-        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>[{field.type}: {sample || '?'}]</span>
+        <span style={{ fontSize: 'var(--font-label-size)', color: 'var(--neutral-text-muted)' }}>[{field.type}: {sample || '?'}]</span>
       )}
-      <span style={{ fontSize: '0.65rem', color: '#6b7280' }}>
+      <span style={{ fontSize: 'var(--font-label-size)', color: 'var(--neutral-text-muted)' }}>
         {t('page.paperProfiles.barcodeApproxSize')
           .replace('{w}', widthMm ? widthMm.toFixed(1) : '—')
           .replace('{h}', heightMm.toFixed(1))}
@@ -420,14 +420,14 @@ export function PaperCanvas({
 
       <div style={{
         position: 'absolute', left: pvML, top: pvMT, width: pvPrintW, height: pvPrintH,
-        border: '1px dashed rgba(0,0,0,0.18)', zIndex: 1,
+        border: '1px dashed var(--pp-canvas-outline)', zIndex: 1,
       }}>
         {/* Grid lines */}
         {gridLinesVertical.map((x) => (
           <div key={`vg-${x}`} style={{
             position: 'absolute', left: x * scale, top: 0,
             width: 0, height: '100%',
-            borderLeft: '1px solid rgba(0,0,0,0.08)',
+            borderLeft: '1px solid var(--pp-canvas-grid)',
             pointerEvents: 'none', zIndex: 0,
           }} />
         ))}
@@ -435,7 +435,7 @@ export function PaperCanvas({
           <div key={`hg-${y}`} style={{
             position: 'absolute', left: 0, top: y * scale,
             height: 0, width: '100%',
-            borderTop: '1px solid rgba(0,0,0,0.08)',
+            borderTop: '1px solid var(--pp-canvas-grid)',
             pointerEvents: 'none', zIndex: 0,
           }} />
         ))}
@@ -445,7 +445,7 @@ export function PaperCanvas({
           <div style={{
             position: 'absolute', left: guideX, top: 0,
             width: 0, height: '100%',
-            borderLeft: '1px dashed rgba(30,102,245,0.5)',
+            borderLeft: '1px dashed var(--pp-canvas-guide)',
             pointerEvents: 'none', zIndex: 3,
           }} />
         )}
@@ -453,7 +453,7 @@ export function PaperCanvas({
           <div style={{
             position: 'absolute', left: 0, top: guideY,
             height: 0, width: '100%',
-            borderTop: '1px dashed rgba(30,102,245,0.5)',
+            borderTop: '1px dashed var(--pp-canvas-guide)',
             pointerEvents: 'none', zIndex: 3,
           }} />
         )}
@@ -490,9 +490,9 @@ export function PaperCanvas({
               fontFamily: ux.fontFamily, pointerEvents: interactive ? 'auto' : 'none',
               cursor: interactive ? 'grab' : 'default',
               padding: interactive ? '0.15rem 0.25rem' : 0,
-              border: selectedFieldId === f.id ? '1px solid #1e66f5' : '1px solid transparent',
+              border: selectedFieldId === f.id ? '1px solid var(--primary)' : '1px solid transparent',
               borderRadius: 3,
-              background: selectedFieldId === f.id ? 'rgba(30,102,245,0.1)' : 'transparent',
+              background: selectedFieldId === f.id ? 'var(--state-info-surface)' : 'transparent',
               transform: anchorTransform(f.align, geometry.rotated),
               transformOrigin: anchorTransformOrigin(f.align),
               zIndex: 4,
@@ -536,8 +536,8 @@ export function PaperCanvas({
             left: pvML,
             top: pvMT + pvPrintH - 14,
             padding: '1px 4px',
-            background: 'rgba(0,0,0,0.45)',
-            color: '#fff',
+            background: 'var(--pp-canvas-scrim)',
+            color: 'var(--neutral-surface)',
             fontSize: '0.75rem',
             pointerEvents: 'none',
             zIndex: 1,

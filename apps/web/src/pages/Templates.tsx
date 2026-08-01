@@ -8,6 +8,7 @@ import { exportJsonFile } from '../tauri.js';
 import { qrQuietZoneMm, renderBarcodeSvg, type BarcodeKind, type BarcodeSymbology } from '../lib/barcode.js';
 import { sanitizePreviewHtml } from '../lib/previewHtml.js';
 import { useModalFocusTrap } from '../components/Dialog.js';
+import { TransferIcon } from '../components/TransferIcon.js';
 
 const WS_PATH_KEY = 'printops-workspace-path';
 
@@ -78,9 +79,9 @@ const ENGINES = ['RAW_TEXT', 'ZPL', 'HTML', 'JSON_LAYOUT', 'TSPL', 'EPL', 'PDF_L
 
 type TemplateIconName =
   | 'back' | 'barcode' | 'braces' | 'check' | 'close' | 'code' | 'delete'
-  | 'download' | 'duplicate' | 'edit' | 'expand' | 'label' | 'more'
+  | 'duplicate' | 'edit' | 'expand' | 'label' | 'more'
   | 'next' | 'pdf' | 'plus' | 'preview' | 'printer' | 'qrcode' | 'refresh'
-  | 'save' | 'search' | 'sortAsc' | 'sortDesc' | 'terminal' | 'text' | 'upload';
+  | 'save' | 'search' | 'sortAsc' | 'sortDesc' | 'terminal' | 'text';
 
 const ENGINE_ICON: Record<typeof ENGINES[number], TemplateIconName> = {
   RAW_TEXT: 'text',
@@ -101,7 +102,6 @@ function TemplateIcon({ name, spin = false }: { name: TemplateIconName; spin?: b
     close: <path d="m3.5 3.5 9 9m0-9-9 9" />,
     code: <path d="m5.75 3.5-4 4.5 4 4.5m4.5-9 4 4.5-4 4.5M9.5 2l-3 12" />,
     delete: <path d="M3.5 5h9M6 5V3.25h4V5m1.5 0-.5 8H5L4.5 5M6.75 7.5v3.25m2.5-3.25v3.25" />,
-    download: <path d="M8 2v8m-3-3 3 3 3-3M3 13h10" />,
     duplicate: <><rect x="5" y="5" width="8" height="8" rx="1.25" /><path d="M3 10.5H2.75A1.75 1.75 0 0 1 1 8.75v-6A1.75 1.75 0 0 1 2.75 1h6A1.75 1.75 0 0 1 10.5 2.75V3" /></>,
     edit: <path d="m3 11.75.5-3 7.75-7.25 3.25 3.25-7.25 7.75-3 .5Zm6.75-8.75 3.25 3.25" />,
     expand: <path d="M6 2H2v4m0-4 4.5 4.5M10 14h4v-4m0 4-4.5-4.5" />,
@@ -120,7 +120,6 @@ function TemplateIcon({ name, spin = false }: { name: TemplateIconName; spin?: b
     sortDesc: <path d="M8 3v10m-3-3 3 3 3-3" />,
     terminal: <><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" /><path d="m4.25 6 2 2-2 2M8.25 10h3" /></>,
     text: <path d="M2.5 3h11M2.5 6.5h11M2.5 10h8M2.5 13h5" />,
-    upload: <path d="M8 10V2m-3 3 3-3 3 3M3 13h10" />,
   }[name];
 
   return (
@@ -781,7 +780,7 @@ export default function Templates() {
             />
           </label>
           <button type="button" className="tpl-btn tpl-btn--ghost" onClick={exportTemplates}>
-            <TemplateIcon name="download" /> {t('page.templates.exportBtn')}
+            <TransferIcon action="export" /> {t('page.templates.exportBtn')}
           </button>
           <button
             type="button"
@@ -790,7 +789,7 @@ export default function Templates() {
             disabled={busy}
             aria-busy={busy || undefined}
           >
-            <TemplateIcon name={busy ? 'refresh' : 'upload'} spin={busy} /> {busy ? t('page.templates.importing') : t('page.templates.importBtn')}
+            {busy ? <TemplateIcon name="refresh" spin /> : <TransferIcon action="import" />} {busy ? t('page.templates.importing') : t('page.templates.importBtn')}
           </button>
           <input
             ref={importInputRef}

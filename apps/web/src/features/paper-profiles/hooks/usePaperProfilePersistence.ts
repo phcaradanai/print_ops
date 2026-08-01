@@ -50,17 +50,17 @@ export function usePaperProfilePersistence(
   const deleteAction = useApiAction(deletePaperProfile);
 
   const save = useCallback(async () => {
-    if (saveAction.pending) return;
+    if (saveAction.pending) return false;
     editor.saveStarted();
     const profile = await saveAction.run();
     const err = saveAction.getError();
     if (err) {
       editor.saveFailed(errorMessage(err, messages.saveFailed));
-      return;
+      return false;
     }
-    editor.resetEditor();
-    editor.saveSucceeded();
+    editor.saveSucceeded(profile?.id);
     profilesResource.refresh();
+    return true;
   }, [editor, messages.saveFailed, profilesResource, saveAction]);
 
   const requestDelete = useCallback((profile: PaperProfile, returnFocus?: HTMLElement | null) => {
@@ -78,7 +78,9 @@ export function usePaperProfilePersistence(
     const result = await deleteAction.run(profile.id);
     const err = deleteAction.getError();
     if (err) {
-      editor.saveFailed(errorMessage(err, messages.deleteFailed));
+      setFeedback({ tone: 'error', text: errorMessage(err, messages.deleteFailed) });
+      setPendingDeleteProfile(null);
+      requestAnimationFrame(() => deleteReturnFocusRef.current?.focus());
       return;
     }
     void result;

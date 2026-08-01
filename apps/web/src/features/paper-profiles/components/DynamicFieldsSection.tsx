@@ -1,7 +1,8 @@
 import type { RefObject } from 'react';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
-import { Section, s } from './editorPrimitives.js';
+import { Section } from './editorPrimitives.js';
 import { FieldCard } from './FieldCard.js';
+import { PaperProfileIcon } from './PaperProfileIcon.js';
 import type { Translate } from './types.js';
 
 export function DynamicFieldsSection({ editor, t, anchorRef, onNotice }: {
@@ -17,17 +18,17 @@ export function DynamicFieldsSection({ editor, t, anchorRef, onNotice }: {
   };
   return (
     <div ref={anchorRef} className="pp-section-anchor">
-      <Section title={t('page.paperProfiles.fieldsCount').replace('{n}', String(fields.length))} icon="⚡"
+      <Section title={t('page.paperProfiles.fieldsCount').replace('{n}', String(fields.length))} icon={<PaperProfileIcon name="fields" />}
         open={editor.state.sectionsOpen.fields}
         onToggle={() => editor.setSection('fields', !editor.state.sectionsOpen.fields)}>
         {fields.length === 0 && (
           <div className="pp-fields-empty">
             <div className="pp-fields-empty__copy">
-              <span className="pp-fields-empty__icon" aria-hidden="true">⚡</span>
+              <span className="pp-fields-empty__icon" aria-hidden="true"><PaperProfileIcon name="fields" /></span>
               <div><strong>{t('page.paperProfiles.noCustomFields')}</strong><p>{t('page.paperProfiles.clickAddField')}</p></div>
             </div>
             <button type="button" className="pp-tool-btn" onClick={add}
-              title={t('page.paperProfiles.addField')} aria-label={t('page.paperProfiles.addField')}>+</button>
+              title={t('page.paperProfiles.addField')} aria-label={t('page.paperProfiles.addField')}><PaperProfileIcon name="plus" /></button>
           </div>
         )}
         <p className="pp-preview-only-hint">{t('page.paperProfiles.previewOnlyHint')}</p>
@@ -36,9 +37,8 @@ export function DynamicFieldsSection({ editor, t, anchorRef, onNotice }: {
         </div>
         {fields.length > 0 && (
           <button type="button" className="pp-add-field"
-            style={{ ...s.btnSmall, marginTop: '0.5rem', width: '100%', borderStyle: 'dashed', color: '#1e66f5', borderColor: '#89b4fa' }}
             onClick={add} title={t('page.paperProfiles.addField')} aria-label={t('page.paperProfiles.addField')}>
-            <span aria-hidden="true">+</span>
+            <PaperProfileIcon name="plus" />
           </button>
         )}
       </Section>

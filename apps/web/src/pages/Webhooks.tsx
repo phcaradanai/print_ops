@@ -6,6 +6,7 @@ import { useApiResource } from '../hooks/useApiResource.js';
 import { ErrorBanner, Freshness } from '../components/PageState.js';
 import { saveOrDownloadJsonFile } from '../utils/fileExport.js';
 import { parseWebhookImportJson } from '../features/webhooks/parseImportJson.js';
+import { TransferIcon } from '../components/TransferIcon.js';
 
 interface Endpoint {
   id: string;
@@ -717,11 +718,11 @@ export default function Webhooks() {
         </div>
 
         <div className="wh-header-actions">
-          <button className="ds-btn ds-btn--ghost" onClick={() => handleExportJSON()} title={t('page.webhooks.exportTitle')}>
-            ⤓ {t('page.webhooks.export')}
+          <button type="button" className="ds-btn ds-btn--ghost" onClick={() => handleExportJSON()} title={t('page.webhooks.exportTitle')}>
+            <TransferIcon action="export" /> {t('page.webhooks.export')}
           </button>
-          <button className="ds-btn ds-btn--ghost" onClick={() => fileInputRef.current?.click()} title={t('page.webhooks.importTitle')}>
-            ⤒ {t('page.webhooks.import')}
+          <button type="button" className="ds-btn ds-btn--ghost" onClick={() => fileInputRef.current?.click()} title={t('page.webhooks.importTitle')}>
+            <TransferIcon action="import" /> {t('page.webhooks.import')}
           </button>
 
           <div className="wh-search-box">
@@ -751,8 +752,8 @@ export default function Webhooks() {
             ✓ {t('page.webhooks.selectCount').replace('{n}', String(selectedIds.length))}
           </div>
           <div className="wh-bulk-actions">
-            <button className="ds-btn ds-btn--ghost" onClick={() => handleExportJSON(endpoints.filter((e) => selectedIds.includes(e.id)))}>
-              ⤓ {t('page.webhooks.exportSelected')}
+            <button type="button" className="ds-btn ds-btn--ghost" onClick={() => handleExportJSON(endpoints.filter((e) => selectedIds.includes(e.id)))}>
+              <TransferIcon action="export" /> {t('page.webhooks.exportSelected')}
             </button>
             <button className="ds-btn ds-btn--danger" onClick={() => void handleBatchDelete()}>
               🗑️ {t('page.webhooks.deleteSelected').replace('{n}', String(selectedIds.length))}
@@ -1377,7 +1378,7 @@ export default function Webhooks() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="ds-modal__header">
-              <h2>⤒ {t('page.webhooks.importModalTitle').replace('{n}', String(importModalEndpoints.length))}</h2>
+              <h2 className="wh-modal-title"><TransferIcon action="import" /> {t('page.webhooks.importModalTitle').replace('{n}', String(importModalEndpoints.length))}</h2>
               <button
                 className="ds-btn ds-btn--icon"
                 onClick={() => setImportModalEndpoints(null)}
@@ -1445,7 +1446,7 @@ export default function Webhooks() {
                 {t('common.cancel')}
               </button>
               <button className="ds-btn ds-btn--primary" onClick={() => void confirmImport()}>
-                {t('page.webhooks.confirmImport').replace('{n}', String(importModalEndpoints.length))}
+                <TransferIcon action="import" /> {t('page.webhooks.confirmImport').replace('{n}', String(importModalEndpoints.length))}
               </button>
             </div>
           </div>
@@ -1549,4 +1550,3 @@ export default function Webhooks() {
     </div>
   );
 }
-

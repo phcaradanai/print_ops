@@ -6,7 +6,8 @@ import { clampGridSpacing, getVisualPaperGeometry, stepPreviewZoom } from '../mo
 import { getFieldInspectorState } from '../state/selectors.js';
 import { type CanvasOptions } from './CanvasToolbar.js';
 import { FieldBarcodePreview, FieldTypeControls, PaperCanvas, RulerSheet } from './PaperCanvas.js';
-import { IconButton, s } from './editorPrimitives.js';
+import { IconButton } from './editorPrimitives.js';
+import { PaperProfileIcon } from './PaperProfileIcon.js';
 import type { Translate } from './types.js';
 
 export function FullPreviewDialog({ editor, popups, interaction, options, setOptions, artwork, onNotice, t }: {
@@ -49,27 +50,27 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
             <p>{t('page.paperProfiles.dragHint')}</p></div>
           <div className="paper-preview-modal__toolstrip" role="toolbar" aria-label="Preview tools">
             <div className="paper-preview-modal__zoom-control" role="group" aria-label={t('page.paperProfiles.zoomControls')}>
-              <IconButton icon="−" label={t('page.paperProfiles.zoomOut')} onClick={() => setZoom((value) => stepPreviewZoom(value, -1))} />
+              <IconButton icon={<PaperProfileIcon name="minus" />} label={t('page.paperProfiles.zoomOut')} onClick={() => setZoom((value) => stepPreviewZoom(value, -1))} />
               <button type="button" className="paper-preview-modal__zoom-readout" onClick={() => setZoom(1)}
                 title={t('page.paperProfiles.resetZoom')} aria-label={t('page.paperProfiles.resetZoom')}>{Math.round(zoom * 100)}%</button>
-              <IconButton icon="+" label={t('page.paperProfiles.zoomIn')} onClick={() => setZoom((value) => stepPreviewZoom(value, 1))} />
+              <IconButton icon={<PaperProfileIcon name="plus" />} label={t('page.paperProfiles.zoomIn')} onClick={() => setZoom((value) => stepPreviewZoom(value, 1))} />
             </div>
-            <IconButton icon="⫶" label={t('page.paperProfiles.toggleVerticalGrid')}
+            <IconButton icon={<PaperProfileIcon name="vertical-grid" />} label={t('page.paperProfiles.toggleVerticalGrid')}
               onClick={() => setOptions({ verticalGrid: !options.verticalGrid })} active={options.verticalGrid} />
-            <IconButton icon="≡" label={t('page.paperProfiles.toggleHorizontalGrid')}
+            <IconButton icon={<PaperProfileIcon name="horizontal-grid" />} label={t('page.paperProfiles.toggleHorizontalGrid')}
               onClick={() => setOptions({ horizontalGrid: !options.horizontalGrid })} active={options.horizontalGrid} />
-            <IconButton icon="📏" label={t('page.paperProfiles.toggleRulers')}
+            <IconButton icon={<PaperProfileIcon name="ruler" />} label={t('page.paperProfiles.toggleRulers')}
               onClick={() => setOptions({ rulers: !options.rulers })} active={options.rulers} />
-            <IconButton icon="⊕" label={t('page.paperProfiles.toggleAlignmentGuides')}
+            <IconButton icon={<PaperProfileIcon name="guides" />} label={t('page.paperProfiles.toggleAlignmentGuides')}
               onClick={() => setOptions({ alignmentGuides: !options.alignmentGuides })} active={options.alignmentGuides} />
             <label className="paper-preview-modal__spacing-label" title={t('page.paperProfiles.gridSpacing')}>
-              <span aria-hidden="true">⊞</span>
+              <PaperProfileIcon name="grid" />
               <input type="number" className="paper-preview-modal__spacing-input" value={options.gridSpacingMm}
                 min={1} max={100} onChange={(event) => setOptions({ gridSpacingMm: clampGridSpacing(Number(event.target.value)) })}
                 aria-label={t('page.paperProfiles.gridSpacing')} /><span>mm</span>
             </label>
           </div>
-          <button ref={popups.previewCloseButtonRef} type="button" style={s.btnSmall} onClick={popups.closeFullPreview}>
+          <button ref={popups.previewCloseButtonRef} type="button" className="ds-btn ds-btn--ghost" onClick={popups.closeFullPreview}>
             {t('page.paperProfiles.closePreview')}
           </button>
         </header>
@@ -102,15 +103,15 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
             <div className="paper-preview-modal__controls-heading">
               <div><h3>{t('page.paperProfiles.positionFields')}</h3><p>{t('page.paperProfiles.positionFieldsHint')}</p></div>
               <button type="button" className="pp-tool-btn" onClick={() => editor.addField()}
-                title={t('page.paperProfiles.addField')} aria-label={t('page.paperProfiles.addField')}>+</button>
+                title={t('page.paperProfiles.addField')} aria-label={t('page.paperProfiles.addField')}><PaperProfileIcon name="plus" /></button>
             </div>
             {inspector !== 'empty' && (
               <div className={`paper-preview-modal__alignment${inspector === 'selection-required' ? ' is-disabled' : ''}`}
                 role="toolbar" aria-label={t('page.paperProfiles.positionFields')}>
-                <IconButton icon="↔" label={t('page.paperProfiles.centerHorizontally')}
+                <IconButton icon={<PaperProfileIcon name="align-horizontal" />} label={t('page.paperProfiles.centerHorizontally')}
                   onClick={() => { if (editor.selectedField) { editor.centerField(editor.selectedField.id, 'horizontal'); onNotice(t('page.paperProfiles.centerHorizontally')); } }}
                   disabled={!editor.selectedField} disabledReason={t('page.paperProfiles.centerDisabledNoField')} />
-                <IconButton icon="↕" label={t('page.paperProfiles.centerVertically')}
+                <IconButton icon={<PaperProfileIcon name="align-vertical" />} label={t('page.paperProfiles.centerVertically')}
                   onClick={() => { if (editor.selectedField) { editor.centerField(editor.selectedField.id, 'vertical'); onNotice(t('page.paperProfiles.centerVertically')); } }}
                   disabled={!editor.selectedField} disabledReason={t('page.paperProfiles.centerDisabledNoField')} />
               </div>

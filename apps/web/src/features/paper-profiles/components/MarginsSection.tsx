@@ -2,6 +2,7 @@ import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import { Section } from './editorPrimitives.js';
 import { DimensionInput } from './DimensionsSection.js';
 import type { Translate } from './types.js';
+import { PaperProfileIcon } from './PaperProfileIcon.js';
 
 export function MarginsSection({ editor, t, anchorRef }: {
   editor: PaperProfileEditor;
@@ -10,7 +11,7 @@ export function MarginsSection({ editor, t, anchorRef }: {
 }) {
   return (
     <div ref={anchorRef} className="pp-section-anchor">
-      <Section title={t('page.paperProfiles.margins')} icon="⬜"
+      <Section title={t('page.paperProfiles.margins')} icon={<PaperProfileIcon name="margins" />}
         open={editor.state.sectionsOpen.margins}
         onToggle={() => editor.setSection('margins', !editor.state.sectionsOpen.margins)}>
         <div className="pp-form-grid pp-form-grid--four">
