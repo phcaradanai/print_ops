@@ -21,6 +21,21 @@
   --nav-active: #89b4fa;
   --nav-button: #313244;
 
+  /* -- semantic component tokens -- */
+  --primary-strong: #2563eb;
+  --primary-hover: #1654d1;
+  --primary-pressed: #1d4ed8;
+  --state-danger-surface: #fee2e2;
+  --state-danger-text: #991b1b;
+  --state-success-surface: #e6f7e6;
+  --state-success-text: #2d6a2d;
+  --state-info-surface: #eff6ff;
+  --state-info-text: #1e40af;
+  --control-height-compact: 34px;
+  --control-height-standard: 38px;
+  --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-floating: 0 8px 24px rgba(0, 0, 0, 0.08);
+
   /* -- typography -- */
   --font-body-family: system-ui, sans-serif;
   --font-body-size: 0.875rem;
@@ -789,13 +804,7 @@ body {
 }
 
 .settings-actions button {
-  padding: 0.65rem 1rem;
-  border: 0;
-  border-radius: 6px;
-  font: inherit;
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
+  /* Uses the shared action-control core declared with .ds-btn below. */
 }
 
 .settings-actions button:focus-visible {
@@ -809,32 +818,32 @@ body {
 }
 
 .settings-btn-primary {
-  background: #1e1e2e;
-  color: #fff;
+  background: var(--neutral-deep);
+  color: var(--neutral-surface);
 }
 
 .settings-btn-primary:hover:not(:disabled) {
-  background: #313244;
+  background: var(--nav-button);
 }
 
 .settings-btn-secondary {
-  background: #fff;
-  color: #374151;
-  border: 1px solid #d1d5db !important;
+  background: var(--neutral-surface);
+  color: var(--neutral-text);
+  border: 1px solid var(--neutral-border-strong) !important;
 }
 
 .settings-btn-secondary:hover:not(:disabled) {
-  background: #f5f5f5;
+  background: var(--neutral-page);
 }
 
 .settings-btn-danger {
-  background: #fff;
-  color: #f38ba8;
-  border: 1px solid #f38ba8 !important;
+  background: var(--neutral-surface);
+  color: var(--state-danger-text);
+  border: 1px solid var(--semantic-error) !important;
 }
 
 .settings-btn-danger:hover:not(:disabled) {
-  background: #fee2e2;
+  background: var(--state-danger-surface);
 }
 
 .settings-message {
@@ -845,8 +854,8 @@ body {
 }
 
 .settings-message--success {
-  background: #e6f7e6;
-  color: #2d6a2d;
+  background: var(--state-success-surface);
+  color: var(--state-success-text);
 }
 
 .settings-message--error {
@@ -3183,19 +3192,7 @@ body {
 }
 
 .tpl-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  min-height: 34px;
-  padding: 0.4rem 0.85rem;
-  border: 1px solid transparent;
-  border-radius: var(--rounded-md);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.82rem;
-  font-weight: 600;
-  white-space: nowrap;
+  /* Uses the shared action-control core declared with .ds-btn below. */
 }
 
 .tpl-btn:focus-visible,
@@ -3214,8 +3211,8 @@ body {
 }
 
 .tpl-btn--primary:hover:not(:disabled) {
-  background: #1654d1;
-  border-color: #1654d1;
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
 }
 
 .tpl-btn--ghost {
@@ -3232,11 +3229,11 @@ body {
 .tpl-btn--danger {
   background: var(--neutral-surface);
   border-color: var(--semantic-error);
-  color: #991b1b;
+  color: var(--state-danger-text);
 }
 
 .tpl-btn--danger:hover:not(:disabled) {
-  background: #fee2e2;
+  background: var(--state-danger-surface);
 }
 
 .tpl-btn--link {
@@ -3255,19 +3252,7 @@ body {
 }
 
 .tpl-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: 1px solid var(--neutral-border);
-  border-radius: var(--rounded-md);
-  background: var(--neutral-surface);
-  color: var(--neutral-text-muted);
-  cursor: pointer;
-  font-size: 0.9rem;
-  line-height: 1;
+  /* Uses the shared icon-control core declared with .ds-btn--icon below. */
 }
 
 .tpl-icon-btn:hover:not(:disabled) {
@@ -3293,8 +3278,8 @@ body {
 }
 
 .tpl-message--error {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--state-danger-surface);
+  color: var(--state-danger-text);
 }
 
 .tpl-layout {
@@ -4433,7 +4418,7 @@ body {
   cursor: pointer;
   top: 0; left: 0; right: 0; bottom: 0;
   background-color: #cbd5e1;
-  transition: .2s;
+  transition: background-color 0.2s ease;
   border-radius: 24px;
 }
 
@@ -4445,7 +4430,7 @@ body {
   left: 3px;
   bottom: 3px;
   background-color: white;
-  transition: .2s;
+  transition: transform 0.2s ease;
   border-radius: 50%;
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
@@ -4555,21 +4540,21 @@ body {
   display: inline-flex;
   align-items: center;
   padding: 3px 8px;
-  background: #ffffff;
+  background: var(--neutral-surface);
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   font-family: var(--font-mono-family);
   font-size: 0.75rem;
-  color: #334155;
+  color: var(--neutral-text);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
   user-select: none;
 }
 
 .wh-var-pill:hover {
-  border-color: #2563eb;
-  color: #2563eb;
-  background: #eff6ff;
+  border-color: var(--primary-strong);
+  color: var(--primary-strong);
+  background: var(--state-info-surface);
 }
 
 .wh-guide-list {
@@ -4625,12 +4610,12 @@ body {
   border: none;
   background: transparent;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .wh-tab--active {
-  background: #ffffff;
-  color: #2563eb;
+  background: var(--neutral-surface);
+  color: var(--primary-strong);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
@@ -4745,44 +4730,28 @@ body {
 }
 
 .wh-action-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.35rem 0.65rem;
-  border-radius: 6px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #334155;
-  cursor: pointer;
-  transition: all 0.15s;
+  background: var(--neutral-surface);
+  border-color: var(--neutral-border-strong);
+  color: var(--neutral-text);
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
 }
 
 .wh-action-btn:hover {
-  border-color: #2563eb;
-  color: #2563eb;
-  background: #f8fafc;
+  border-color: var(--primary-strong);
+  color: var(--primary-strong);
+  background: var(--neutral-page);
 }
 
 .wh-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  background: #ffffff;
-  color: #64748b;
-  cursor: pointer;
-  transition: all 0.15s;
+  background: var(--neutral-surface);
+  color: var(--neutral-text-muted);
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
 }
 
 .wh-icon-btn:hover {
   border-color: #cbd5e1;
   color: #0f172a;
-  background: #f8fafc;
+  background: var(--neutral-page);
 }
 
 .wh-pagination {
@@ -4912,20 +4881,16 @@ body {
   gap: 0.35rem;
   height: 38px;
   padding: 0 0.85rem;
-  background: #ffffff;
-  color: #475569;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
+  background: var(--neutral-surface);
+  color: var(--neutral-text);
+  border-color: var(--neutral-border-strong);
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
 }
 
 .wh-btn-outline:hover {
-  border-color: #2563eb;
-  color: #2563eb;
-  background: #f8fafc;
+  border-color: var(--primary-strong);
+  color: var(--primary-strong);
+  background: var(--neutral-page);
 }
 
 /* ============================================================
@@ -4935,12 +4900,16 @@ body {
    ============================================================ */
 
 /* ── ds-btn base ── */
-.ds-btn {
+.ds-btn,
+.tpl-btn,
+.wh-action-btn,
+.wh-btn-outline,
+.settings-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
-  min-height: 34px;
+  min-height: var(--control-height-compact);
   padding: 0.4rem 0.85rem;
   border: 1px solid transparent;
   border-radius: var(--rounded-md); /* 6px — clinical, not playful */
@@ -4955,12 +4924,22 @@ body {
   @media (prefers-reduced-motion: reduce) { transition: none; }
 }
 
-.ds-btn:focus-visible {
+.ds-btn:focus-visible,
+.tpl-btn:focus-visible,
+.wh-action-btn:focus-visible,
+.wh-icon-btn:focus-visible,
+.wh-btn-outline:focus-visible,
+.settings-actions button:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
-.ds-btn:disabled {
+.ds-btn:disabled,
+.tpl-btn:disabled,
+.wh-action-btn:disabled,
+.wh-icon-btn:disabled,
+.wh-btn-outline:disabled,
+.settings-actions button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
@@ -4992,15 +4971,17 @@ body {
 .ds-btn--danger {
   background: var(--neutral-surface);
   border-color: var(--semantic-error);
-  color: #991b1b;
+  color: var(--state-danger-text);
 }
 
 .ds-btn--danger:hover:not(:disabled) {
-  background: #fee2e2;
+  background: var(--state-danger-surface);
 }
 
 /* ── ds-btn--icon: square icon-only button ── */
-.ds-btn--icon {
+.ds-btn--icon,
+.tpl-icon-btn,
+.wh-icon-btn {
   min-height: unset;
   width: 30px;
   height: 30px;
@@ -5769,7 +5750,7 @@ body {
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .status-indicator--online .status-dot,
@@ -6198,6 +6179,112 @@ body {
 
 .ui-dialog::backdrop {
   background: rgba(30, 30, 46, 0.45);
+}
+
+/* ---------------------------------------------------------------------------
+   Coarse-pointer adaptation — actionable controls retain their compact desktop
+   visual weight, but expose a reliable 44px target on phones, tablets and
+   touch-enabled workstations.  Keep this targeted: table content and static
+   labels should not acquire artificial height just because the device is touch.
+   --------------------------------------------------------------------------- */
+@media (pointer: coarse), (max-width: 760px) {
+  .ds-btn,
+  .ds-btn--icon,
+  .ui-button,
+  .pp-tool-btn,
+  .pp-icon-btn,
+  .pp-index-btn,
+  .pp-section__toggle,
+  .pp-save-button,
+  .tpl-btn,
+  .tpl-icon-btn,
+  .tpl-page-btn,
+  .tpl-chip,
+  .wh-action-btn,
+  .wh-icon-btn,
+  .wh-page-btn,
+  .settings-btn-primary,
+  .settings-btn-secondary,
+  .settings-btn-danger,
+  .session-signout-btn,
+  .error-reload-btn,
+  .state-panel-details-toggle {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Prevent iOS focus zoom without making desktop data-entry controls larger. */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: max(1rem, 16px);
+    min-height: 44px;
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .reprint-ack,
+  .print-flow-checkbox,
+  .pp-checkbox-label,
+  .settings-field--checkbox label,
+  .wh-toggle-row {
+    min-height: 44px;
+    align-items: center;
+  }
+
+  /* Queue selection has no accompanying label; make the control itself tappable. */
+  .job-queue-table th:first-child {
+    width: 44px !important;
+  }
+
+  .job-queue-table input[type="checkbox"] {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Touch users need press feedback where desktop users receive hover feedback. */
+@media (hover: none) {
+  .ds-btn:not(:disabled):active,
+  .ui-button:not(:disabled):active,
+  .pp-tool-btn:not(:disabled):active,
+  .pp-icon-btn:not(:disabled):active,
+  .tpl-btn:not(:disabled):active,
+  .tpl-icon-btn:not(:disabled):active,
+  .tpl-page-btn:not(:disabled):active,
+  .wh-action-btn:not(:disabled):active,
+  .wh-icon-btn:not(:disabled):active,
+  .wh-page-btn:not(:disabled):active {
+    opacity: 0.76;
+  }
+}
+
+@media (max-width: 760px) {
+  .ds-modal {
+    align-items: end;
+    padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+  }
+
+  .ds-modal__panel,
+  .ds-modal__panel--sm,
+  .ds-modal__panel--lg {
+    width: 100%;
+    max-height: min(88dvh, 760px);
+  }
+
+  .ds-modal__actions,
+  .ui-dialog-footer {
+    flex-wrap: wrap;
+  }
+
+  .ds-modal__actions .ds-btn,
+  .ui-dialog-footer .ui-button {
+    flex: 1 1 10rem;
+  }
 }
 
 .ui-dialog-title {
@@ -7353,7 +7440,7 @@ body {
   background: var(--semantic-neutral, #9399b2);
   border: 2px solid var(--neutral-surface, #ffffff);
   box-shadow: 0 0 0 1px var(--neutral-border, #e5e7eb);
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .job-trace__step--success .job-trace__marker {
@@ -7481,5 +7568,24 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .d1-nav .d1-link--active .d1-marker {
     animation: none; opacity: 1; transform: scaleY(1);
+  }
+}
+
+/* One app-wide accessibility boundary: no route or new component can leave
+   essential content waiting on motion. Existing state styles stay intact. */
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
   }
 }

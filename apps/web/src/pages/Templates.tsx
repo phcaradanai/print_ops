@@ -6,6 +6,8 @@ import { useApiResource } from '../hooks/useApiResource.js';
 import { ErrorBanner, Freshness } from '../components/PageState.js';
 import { exportJsonFile } from '../tauri.js';
 import { qrQuietZoneMm, renderBarcodeSvg, type BarcodeKind, type BarcodeSymbology } from '../lib/barcode.js';
+import { sanitizePreviewHtml } from '../lib/previewHtml.js';
+import { useModalFocusTrap } from '../components/Dialog.js';
 
 const WS_PATH_KEY = 'printops-workspace-path';
 
@@ -263,10 +265,14 @@ export default function Templates() {
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Template | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const deleteModalRef = useRef<HTMLDivElement | null>(null);
+  const fullPreviewModalRef = useRef<HTMLDivElement | null>(null);
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
+  useModalFocusTrap(Boolean(pendingDelete), deleteModalRef, () => setPendingDelete(null));
+  useModalFocusTrap(fullPage, fullPreviewModalRef, () => setFullPage(false));
 
   // Both lists were `.catch(() => {})`: with the API down the page rendered as
   // "no templates configured", which is indistinguishable from a fresh install
@@ -358,7 +364,7 @@ export default function Templates() {
         }),
       });
       setPreview(res);
-      setPreviewHtml(res.renderedPreview);
+      setPreviewHtml(sanitizePreviewHtml(res.renderedPreview));
       setPreviewError('');
     } catch (err: unknown) {
       setPreview(null);
@@ -642,7 +648,7 @@ export default function Templates() {
       {previewError ? (
         <p className="tpl-preview-empty">{previewError}</p>
       ) : previewHtml ? (
-        <div className="tpl-preview-paper" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+        <div className="tpl-preview-paper" dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(previewHtml) }} />
       ) : (
         <p className="tpl-preview-empty">{t('page.templates.selectPreview')}</p>
       )}
@@ -1095,10 +1101,10 @@ export default function Templates() {
       </section>
 
       {pendingDelete && (
-        <div className="ds-modal" role="dialog" aria-modal="true" onClick={() => setPendingDelete(null)}>
-          <div className="ds-modal__panel ds-modal__panel--sm" onClick={(e) => e.stopPropagation()}>
+        <div className="ds-modal" role="dialog" aria-modal="true" aria-labelledby="template-delete-title" onClick={() => setPendingDelete(null)}>
+          <div ref={deleteModalRef} tabIndex={-1} className="ds-modal__panel ds-modal__panel--sm" onClick={(e) => e.stopPropagation()}>
             <div className="ds-modal__header">
-              <h2>{t('page.templates.deleteTitle')}</h2>
+              <h2 id="template-delete-title">{t('page.templates.deleteTitle')}</h2>
               <button
                 type="button"
                 className="ds-btn ds-btn--icon"
@@ -1123,10 +1129,10 @@ export default function Templates() {
       )}
 
       {fullPage && (
-        <div className="ds-modal" role="dialog" aria-modal="true" onClick={() => setFullPage(false)}>
-          <div className="ds-modal__panel" style={{ width: 'min(900px, 100%)' }} onClick={(e) => e.stopPropagation()}>
+        <div className="ds-modal" role="dialog" aria-modal="true" aria-labelledby="template-preview-title" onClick={() => setFullPage(false)}>
+          <div ref={fullPreviewModalRef} tabIndex={-1} className="ds-modal__panel" style={{ width: 'min(900px, 100%)' }} onClick={(e) => e.stopPropagation()}>
             <div className="ds-modal__header">
-              <h2>{t('page.templates.previewTitle')}</h2>
+              <h2 id="template-preview-title">{t('page.templates.previewTitle')}</h2>
               <button
                 type="button"
                 className="ds-btn ds-btn--icon"
@@ -1135,7 +1141,7 @@ export default function Templates() {
               >✕</button>
             </div>
             <div className="ds-modal__body" style={{ display: 'grid', placeItems: 'center', background: 'var(--neutral-page)' }}>
-              <div className="tpl-preview-paper" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+              <div className="tpl-preview-paper" dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(previewHtml) }} />
             </div>
           </div>
         </div>

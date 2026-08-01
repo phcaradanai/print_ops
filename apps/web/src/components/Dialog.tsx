@@ -12,7 +12,41 @@
  * a `window.confirm`-style blocking dialog.
  */
 
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
+
+const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+
+/** Shared keyboard, scroll-lock and focus-return behaviour for div-based modals. */
+export function useModalFocusTrap(open: boolean, panelRef: RefObject<HTMLElement>, onClose: () => void) {
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusable = () => Array.from(panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
+      .filter((element) => !element.hasAttribute('hidden') && element.offsetParent !== null);
+    const frame = requestAnimationFrame(() => (focusable()[0] ?? panelRef.current)?.focus());
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onCloseRef.current(); return; }
+      if (event.key !== 'Tab') return;
+      const controls = focusable();
+      if (controls.length === 0) { event.preventDefault(); panelRef.current?.focus(); return; }
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      cancelAnimationFrame(frame);
+      document.body.style.overflow = previousOverflow;
+      requestAnimationFrame(() => previouslyFocused?.focus());
+    };
+  }, [open, panelRef]);
+}
 
 export interface DialogProps {
   open: boolean;

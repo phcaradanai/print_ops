@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useModalFocusTrap } from '../../../components/Dialog.js';
 
 export type PaperProfileDrawer = 'fields' | 'appearance' | 'import';
 
@@ -12,26 +13,14 @@ export function usePaperProfilePopups(profileId: string | null) {
   const drawerCloseButtonRef = useRef<HTMLButtonElement>(null);
   const previewPanelRef = useRef<HTMLDivElement>(null);
   const previewCloseButtonRef = useRef<HTMLButtonElement>(null);
-  const layerReturnFocusRef = useRef<HTMLElement | null>(null);
-
-  const rememberFocus = () => {
-    layerReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  };
-  const restoreFocus = useCallback(() => {
-    requestAnimationFrame(() => layerReturnFocusRef.current?.focus());
-  }, []);
   const closePresets = useCallback((restore = true) => {
     setPresetsOpen(false);
     if (restore) requestAnimationFrame(() => presetsTriggerRef.current?.focus());
   }, []);
   const togglePresets = useCallback(() => {
-    setPresetsOpen((open) => {
-      if (!open) rememberFocus();
-      return !open;
-    });
+    setPresetsOpen((open) => !open);
   }, []);
   const openDrawer = useCallback((next: PaperProfileDrawer) => {
-    rememberFocus();
     setPresetsOpen(false);
     setFullPreviewOpen(false);
     setDrawer(next);
@@ -39,25 +28,21 @@ export function usePaperProfilePopups(profileId: string | null) {
   const toggleDrawer = useCallback((next: PaperProfileDrawer) => {
     if (drawer === next) {
       setDrawer(null);
-      restoreFocus();
     } else {
       openDrawer(next);
     }
-  }, [drawer, openDrawer, restoreFocus]);
+  }, [drawer, openDrawer]);
   const closeDrawer = useCallback(() => {
     setDrawer(null);
-    restoreFocus();
-  }, [restoreFocus]);
+  }, []);
   const openFullPreview = useCallback(() => {
-    rememberFocus();
     setPresetsOpen(false);
     setDrawer(null);
     setFullPreviewOpen(true);
   }, []);
   const closeFullPreview = useCallback(() => {
     setFullPreviewOpen(false);
-    restoreFocus();
-  }, [restoreFocus]);
+  }, []);
 
   useEffect(() => {
     if (!presetsOpen) return;
@@ -79,43 +64,8 @@ export function usePaperProfilePopups(profileId: string | null) {
     };
   }, [closePresets, presetsOpen]);
 
-  useEffect(() => {
-    const active = drawer ? drawerRef.current : fullPreviewOpen ? previewPanelRef.current : null;
-    if (!active) return;
-    const close = drawer ? closeDrawer : closeFullPreview;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const frame = requestAnimationFrame(() => {
-      (drawer ? drawerCloseButtonRef.current : previewCloseButtonRef.current)?.focus();
-    });
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        close();
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const focusable = Array.from(active.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-      )).filter((element) => element.offsetParent !== null);
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      cancelAnimationFrame(frame);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [closeDrawer, closeFullPreview, drawer, fullPreviewOpen]);
+  useModalFocusTrap(Boolean(drawer), drawerRef, closeDrawer);
+  useModalFocusTrap(fullPreviewOpen, previewPanelRef, closeFullPreview);
 
   useEffect(() => {
     setPresetsOpen(false);

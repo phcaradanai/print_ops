@@ -704,7 +704,7 @@ export default function JobQueue() {
           <p style={{ margin: '0 0 1rem', fontSize: '0.9rem', color: 'var(--neutral-text)' }}>
             {t('page.jobQueue.batchReprintIntro').replace('{count}', String(selectedJobs.length))}
           </p>
-          {selectedRoutineJobs.length > 0 && <ul className="batch-reprint-jobs" aria-label={t('page.jobQueue.batchSelectedJobs)}>
+          {selectedRoutineJobs.length > 0 && <ul className="batch-reprint-jobs" aria-label={t('page.jobQueue.batchSelectedJobs')}>
             {selectedRoutineJobs.map((job) => (
               <li key={job.id}>
                 <StatusBadge status={job.status} size="sm" />

@@ -57,7 +57,7 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     await mockApi(page);
     await page.goto('/jobs');
-    await page.getByRole('button', { name: /re-print/i }).click();
+    await page.getByRole('button', { name: /reprint job/i }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText('synthetic-request-0001');
@@ -66,6 +66,14 @@ for (const viewport of [
     await expect(dialog).toContainText('not a callback retry');
     const confirm = dialog.getByRole('button', { name: 'Confirm reprint' });
     await expect(confirm).toBeDisabled();
+    if (viewport.width === 390) {
+      const cancelBox = await dialog.getByRole('button', { name: 'Cancel' }).boundingBox();
+      const confirmBox = await confirm.boundingBox();
+      expect(cancelBox?.width).toBeGreaterThanOrEqual(44);
+      expect(cancelBox?.height).toBeGreaterThanOrEqual(44);
+      expect(confirmBox?.width).toBeGreaterThanOrEqual(44);
+      expect(confirmBox?.height).toBeGreaterThanOrEqual(44);
+    }
     await dialog.getByLabel('Reason for reprint').fill('Synthetic safety verification');
     await dialog.getByLabel(/I understand this action/).check();
     await expect(confirm).toBeEnabled();

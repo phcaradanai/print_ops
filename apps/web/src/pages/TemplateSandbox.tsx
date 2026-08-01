@@ -4,6 +4,7 @@ import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { ErrorBanner } from '../components/PageState.js';
+import { sanitizePreviewHtml } from '../lib/previewHtml.js';
 
 interface Printer {
   id: string;
@@ -551,7 +552,7 @@ export default function TemplateSandbox() {
                     <span className="sandbox-proof-latency">⚡ {preview.renderTimeMs}ms</span>
                   </div>
                   <div className="sandbox-paper-sheet">
-                    <div dangerouslySetInnerHTML={{ __html: preview.renderedPreview }} />
+                    <div dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(preview.renderedPreview) }} />
                   </div>
                 </div>
 
