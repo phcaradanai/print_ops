@@ -11,10 +11,22 @@ export function FieldCard({ field, editor, t }: {
 }) {
   const update = (patch: Partial<DynamicField>) => editor.updateField(field.id, patch);
   const isMachineReadable = field.type === 'barcode' || field.type === 'qrcode';
+  const isSelected = editor.state.selectedFieldId === field.id;
+  const selectFieldFromKeyboard = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    editor.selectField(field.id);
+  };
   return (
     <div id={`paper-field-${field.id}`}
-      className={`pp-field-row${editor.state.selectedFieldId === field.id ? ' is-selected' : ''}`}
-      onClick={() => editor.selectField(field.id)}>
+      className={`pp-field-row${isSelected ? ' is-selected' : ''}`}
+      role="group"
+      tabIndex={0}
+      aria-label={`${field.label || field.key || t('page.paperProfiles.untitledField')}. ${t('page.paperProfiles.selectFieldHint')}`}
+      aria-current={isSelected ? 'true' : undefined}
+      onClick={() => editor.selectField(field.id)}
+      onFocusCapture={() => editor.selectField(field.id)}
+      onKeyDown={selectFieldFromKeyboard}>
       <div className="pp-field-row__header">
         <span className="pp-field-type-badge">{field.type === 'qrcode' ? 'QR' : field.type}</span>
         <input className="pp-input pp-input--sm pp-input--mono pp-field-row__key"

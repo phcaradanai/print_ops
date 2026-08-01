@@ -466,6 +466,9 @@ export function PaperCanvas({
             key={f.id}
             type="button"
             aria-label={`${f.key || f.label || 'field'} at ${f.xMm}, ${f.yMm} mm`}
+            aria-pressed={selectedFieldId === f.id}
+            aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"
+            disabled={!interactive}
             onPointerDown={interactive ? (event) => onFieldPointerDown?.(event, f.id) : undefined}
             onClick={interactive ? () => onFieldSelect?.(f.id) : undefined}
             onKeyDown={onFieldNudge ? (event) => {

@@ -199,9 +199,27 @@ export default function TemplateSandbox() {
   }, [payload]);
 
   const printerMaxCopies = selectedPrinter?.maxCopiesPerJob ?? selectedPrinter?.capabilities?.maxCopies;
+  const duplexAvailable = Boolean(selectedPrinter?.capabilities?.duplexSupported);
+  const colorAvailable = Boolean(selectedPrinter?.capabilities?.colorSupported);
   const copiesExceeded = printerMaxCopies != null && copies > printerMaxCopies;
   const templateAllowed = !selectedPrinter?.allowedTemplates || selectedPrinter.allowedTemplates.length === 0 || !selectedTemplate || selectedPrinter.allowedTemplates.includes(selectedTemplate.templateCode);
   const canPrint = !!printerId && !!templateId && !payloadError && !copiesExceeded && templateAllowed;
+  const testPrintBlockedReason = !printerId
+    ? t('page.sandbox.testPrintNeedsPrinter')
+    : !templateId
+      ? t('page.sandbox.testPrintNeedsTemplate')
+      : payloadError
+        ? t('page.sandbox.testPrintFixPayload')
+        : copiesExceeded
+          ? t('page.sandbox.testPrintReduceCopies')
+          : !templateAllowed
+            ? t('page.sandbox.testPrintChooseAllowedTemplate')
+            : '';
+
+  useEffect(() => {
+    if (!duplexAvailable && duplex) setDuplex(false);
+    if (!colorAvailable && colorMode === 'color') setColorMode('auto');
+  }, [colorAvailable, colorMode, duplex, duplexAvailable]);
 
   function handlePaperProfileChange(nextPaperProfileId: string) {
     setPaperProfileId(nextPaperProfileId);
@@ -340,6 +358,11 @@ export default function TemplateSandbox() {
                   </option>
                 ))}
               </select>
+              <p id="sandbox-capability-status" role="status" aria-live="polite" style={{ margin: '0.35rem 0 0', color: '#6b7280', fontSize: '0.72rem' }}>
+                {!selectedPrinter
+                  ? t('page.sandbox.selectPrinterForOptions')
+                  : [!duplexAvailable && t('page.sandbox.duplexUnavailable'), !colorAvailable && t('page.sandbox.colorUnavailable')].filter(Boolean).join(' ')}
+              </p>
               {selectedPrinter && (
                 <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
                   {selectedPrinter.status && (
@@ -442,8 +465,10 @@ export default function TemplateSandbox() {
                   </button>
                   <button
                     type="button"
-                    style={{ ...fieldBtn, ...(duplex ? activeFieldBtn : {}), ...(!selectedPrinter?.capabilities?.duplexSupported ? { opacity: 0.4 } : {}) }}
-                    onClick={() => selectedPrinter?.capabilities?.duplexSupported && setDuplex(true)}
+                    style={{ ...fieldBtn, ...(duplex ? activeFieldBtn : {}), ...(!duplexAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+                    onClick={() => setDuplex(true)}
+                    disabled={!duplexAvailable}
+                    aria-describedby={!duplexAvailable ? 'sandbox-capability-status' : undefined}
                   >
                     ⇄ {t('page.sandbox.doubleSidedShort')}
                   </button>
@@ -458,8 +483,10 @@ export default function TemplateSandbox() {
                     <button
                       key={m}
                       type="button"
-                      style={{ ...fieldBtn, ...(colorMode === m ? activeFieldBtn : {}) }}
+                      style={{ ...fieldBtn, ...(colorMode === m ? activeFieldBtn : {}), ...(m === 'color' && !colorAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
                       onClick={() => setColorMode(m)}
+                      disabled={m === 'color' && !colorAvailable}
+                      aria-describedby={m === 'color' && !colorAvailable ? 'sandbox-capability-status' : undefined}
                     >
                       {m === 'auto' ? t('page.sandbox.auto') : m === 'color' ? t('page.sandbox.color') : t('page.sandbox.monochrome')}
                     </button>
@@ -511,17 +538,24 @@ export default function TemplateSandbox() {
               </div>
             )}
             <div style={{ display: 'flex', gap: '0.5rem', paddingBottom: '1.1rem' }}>
-              <button style={primaryBtn} onClick={() => void renderPreview()} disabled={loading.render}>
+              <button type="button" style={primaryBtn} onClick={() => void renderPreview()} disabled={loading.render}>
                 {loading.render ? t('page.sandbox.rendering') : t('page.sandbox.renderPreview')}
               </button>
               <button
+                type="button"
                 style={{ ...primaryBtn, ...(canPrint && !loading.print ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
                 onClick={() => void testPrint()}
                 disabled={!canPrint || loading.print}
+                aria-describedby={!canPrint ? 'sandbox-test-print-status' : undefined}
               >
                 {loading.print ? t('page.sandbox.sending') : t('page.sandbox.testPrint')}
               </button>
             </div>
+            {!canPrint && (
+              <p id="sandbox-test-print-status" role="status" aria-live="polite" style={{ margin: '0 0 1.1rem', color: '#6b7280', fontSize: '0.75rem' }}>
+                {t('page.sandbox.testPrintBlocked').replace('{reason}', testPrintBlockedReason)}
+              </p>
+            )}
           </section>
 
           {/* ===================== Preview Panel ===================== */}

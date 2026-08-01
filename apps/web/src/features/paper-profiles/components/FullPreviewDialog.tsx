@@ -119,7 +119,17 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
             <div className="paper-preview-modal__field-list">
               {editor.ux.dynamicFields.map((field) => (
                 <div key={field.id} className={`paper-preview-modal__field${editor.state.selectedFieldId === field.id ? ' is-selected' : ''}`}
-                  onClick={() => editor.selectField(field.id)}>
+                  role="group"
+                  tabIndex={0}
+                  aria-label={`${field.label || field.key || t('page.paperProfiles.untitledField')}. ${t('page.paperProfiles.selectFieldHint')}`}
+                  aria-current={editor.state.selectedFieldId === field.id ? 'true' : undefined}
+                  onClick={() => editor.selectField(field.id)}
+                  onFocusCapture={() => editor.selectField(field.id)}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+                    event.preventDefault();
+                    editor.selectField(field.id);
+                  }}>
                   <div className="paper-preview-modal__field-heading"><code>{field.key || t('page.paperProfiles.noKey')}</code>
                     <button type="button" className="pp-field-delete" onClick={(event) => { event.stopPropagation(); editor.deleteField(field.id); }}>{t('page.paperProfiles.remove')}</button></div>
                   <div className="paper-preview-modal__field-grid">
