@@ -4,6 +4,7 @@ import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { ErrorBanner } from '../components/PageState.js';
+import { Dialog } from '../components/Dialog.js';
 import { sanitizePreviewHtml } from '../lib/previewHtml.js';
 
 interface Printer {
@@ -155,6 +156,9 @@ export default function TemplateSandbox() {
   const [loading, setLoading] = useState({ init: true, render: false, print: false });
   const [error, setError] = useState('');
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [confirmPrintOpen, setConfirmPrintOpen] = useState(false);
+  const [printAcknowledged, setPrintAcknowledged] = useState(false);
+  const [submittedJobId, setSubmittedJobId] = useState<string | null>(null);
 
   // ---- load reference data ----
   // Each list was `.catch(() => {})`: a failure left the three dropdowns empty
@@ -203,7 +207,8 @@ export default function TemplateSandbox() {
   const colorAvailable = Boolean(selectedPrinter?.capabilities?.colorSupported);
   const copiesExceeded = printerMaxCopies != null && copies > printerMaxCopies;
   const templateAllowed = !selectedPrinter?.allowedTemplates || selectedPrinter.allowedTemplates.length === 0 || !selectedTemplate || selectedPrinter.allowedTemplates.includes(selectedTemplate.templateCode);
-  const canPrint = !!printerId && !!templateId && !payloadError && !copiesExceeded && templateAllowed;
+  const printerReady = selectedPrinter?.status?.code === 'online' || selectedPrinter?.status?.code === 'idle';
+  const canPrint = !!printerId && !!templateId && !payloadError && !copiesExceeded && templateAllowed && printerReady;
   const testPrintBlockedReason = !printerId
     ? t('page.sandbox.testPrintNeedsPrinter')
     : !templateId
@@ -214,6 +219,8 @@ export default function TemplateSandbox() {
           ? t('page.sandbox.testPrintReduceCopies')
           : !templateAllowed
             ? t('page.sandbox.testPrintChooseAllowedTemplate')
+            : !printerReady
+              ? 'The selected printer is not ready for physical output. Choose a printer reported as online or idle.'
             : '';
 
   useEffect(() => {
@@ -290,6 +297,7 @@ export default function TemplateSandbox() {
           samplePayload: JSON.parse(payload) as Record<string, unknown>,
         }),
       });
+      setSubmittedJobId(res.jobId);
       const completed = await waitForSandboxJob(res.jobId);
       if (completed.status === 'SUCCESS') {
         setToast({ type: 'success', msg: t('page.sandbox.printSuccess').replace('{jobId}', res.jobId.slice(0, 8)).replace('{copies}', String(copies)).replace('{printer}', selectedPrinter?.name ?? '') });
@@ -307,6 +315,12 @@ export default function TemplateSandbox() {
     } finally {
       setLoading((s) => ({ ...s, print: false }));
     }
+  }
+
+  function requestTestPrint() {
+    if (!canPrint) { setError(t('page.sandbox.printIncomplete')); return; }
+    setPrintAcknowledged(false);
+    setConfirmPrintOpen(true);
   }
 
   return (
@@ -338,11 +352,33 @@ export default function TemplateSandbox() {
           {toast.msg}
         </div>
       )}
+      <Dialog
+        open={confirmPrintOpen}
+        onClose={() => setConfirmPrintOpen(false)}
+        title="Confirm physical test print"
+        warning="This action will produce physical output. Generating a proof does not print."
+        footer={<>
+          <button type="button" style={secondaryBtn} onClick={() => setConfirmPrintOpen(false)}>Cancel</button>
+          <button type="button" style={{ ...primaryBtn, ...(printAcknowledged && !loading.print ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }} disabled={!printAcknowledged || loading.print} onClick={() => { setConfirmPrintOpen(false); void testPrint(); }}>
+            {loading.print ? t('page.sandbox.sending') : 'Send physical test print'}
+          </button>
+        </>}
+      >
+        <dl className="sandbox-confirmation-summary">
+          <dt>Printer</dt><dd>{selectedPrinter?.name ?? '—'}</dd>
+          <dt>Template</dt><dd>{selectedTemplate?.templateCode ?? '—'}</dd>
+          <dt>Copies</dt><dd>{copies}</dd>
+        </dl>
+        <label className="sandbox-confirmation-ack">
+          <input type="checkbox" checked={printAcknowledged} onChange={(event) => setPrintAcknowledged(event.target.checked)} />
+          I understand this will produce physical output.
+        </label>
+      </Dialog>
 
       {loading.init ? (
         <p className="loading-text">{t('page.sandbox.loading')}</p>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: '1rem', alignItems: 'start' }}>
+        <div className="template-sandbox-layout">
           {/* ===================== Config Panel ===================== */}
           <section style={cardStyle}>
             {/* --- Printer --- */}
@@ -420,8 +456,6 @@ export default function TemplateSandbox() {
 
             {/* --- Print Options --- */}
             <div style={sectionStyle}>
-              <div style={sectionTitleStyle}>⚙️ Print Options</div>
-
               <div style={sectionTitleStyle}>{t('page.sandbox.printOptions')}</div>
               <div style={{ marginBottom: '0.6rem' }}>
                 <label style={labelStyle}>{t('page.sandbox.copies')}</label>
@@ -513,8 +547,9 @@ export default function TemplateSandbox() {
             </div>
 
             {/* --- Payload --- */}
-            <div style={sectionLastStyle}>
-              <div style={sectionTitleStyle}>{t('page.sandbox.samplePayload')}</div>
+            <details style={sectionLastStyle}>
+              <summary style={{ ...sectionTitleStyle, cursor: 'pointer' }}>Expert payload</summary>
+              <p style={{ margin: '0 0 var(--spacing-sm)', color: 'var(--neutral-text-muted)', fontSize: 'var(--font-label-size)' }}>Edit JSON only when troubleshooting a template proof.</p>
               <textarea
                 aria-label={t('page.sandbox.samplePayload')}
                 value={payload}
@@ -529,7 +564,7 @@ export default function TemplateSandbox() {
               {payloadError && (
                 <div style={{ marginTop: '0.3rem', color: 'var(--semantic-error)', fontSize: 'var(--font-label-size)' }}>{payloadError}</div>
               )}
-            </div>
+            </details>
 
             {/* --- Actions --- */}
             {error && (
@@ -544,13 +579,18 @@ export default function TemplateSandbox() {
               <button
                 type="button"
                 style={{ ...primaryBtn, ...(canPrint && !loading.print ? {} : { opacity: 0.5, cursor: 'not-allowed' }) }}
-                onClick={() => void testPrint()}
+                onClick={requestTestPrint}
                 disabled={!canPrint || loading.print}
                 aria-describedby={!canPrint ? 'sandbox-test-print-status' : undefined}
               >
                 {loading.print ? t('page.sandbox.sending') : t('page.sandbox.testPrint')}
               </button>
             </div>
+            {submittedJobId && (
+              <p role="status" aria-live="polite" style={{ margin: '0 0 1.1rem', color: 'var(--neutral-text-muted)', fontSize: 'var(--font-label-size)' }}>
+                Physical test print submitted. <a href={`/jobs/${submittedJobId}`}>Open job {submittedJobId.slice(0, 8)}</a> to check its latest status.
+              </p>
+            )}
             {!canPrint && (
               <p id="sandbox-test-print-status" role="status" aria-live="polite" style={{ margin: '0 0 1.1rem', color: 'var(--neutral-text-muted)', fontSize: 'var(--font-label-size)' }}>
                 {t('page.sandbox.testPrintBlocked').replace('{reason}', testPrintBlockedReason)}

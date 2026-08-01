@@ -7,15 +7,15 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:3001',
+        target: 'http://127.0.0.1:31415',
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
       // Legacy unversioned routes are same-origin in production (the API serves
       // the built SPA itself), so the client requests them without a prefix.
       // Under Vite they need an explicit proxy or they resolve against the dev
       // server and 404 — login being the first one an operator hits.
-      '^/(auth|health|me|jobs|printers|runners|commands|audit-logs)(/|$)': {
-        target: 'http://127.0.0.1:3001',
+      '^/(auth|health|me|jobs|printers|runners|commands|audit-logs)(/|\\?|$)': {
+        target: 'http://127.0.0.1:31415',
       },
     },
   },

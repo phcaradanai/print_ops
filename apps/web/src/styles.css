@@ -5814,6 +5814,19 @@ body {
 
 /* ---- Template Sandbox (Variant 1: Print Proof Workbench) ---- */
 
+.template-sandbox-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+  gap: var(--spacing-lg);
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .template-sandbox-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .sandbox-proof-workbench {
   background-color: var(--neutral-page, #f5f5f5);
   border-radius: var(--rounded-lg, 8px);
