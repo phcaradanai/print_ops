@@ -27,6 +27,8 @@
   --primary-pressed: #1d4ed8;
   --state-danger-surface: #fee2e2;
   --state-danger-text: #991b1b;
+  --state-warning-surface: #fef3c7;
+  --state-warning-text: #92400e;
   --state-success-surface: #e6f7e6;
   --state-success-text: #2d6a2d;
   --state-info-surface: #eff6ff;
@@ -51,6 +53,8 @@
   --font-heading-size: 1.5rem;
   --font-heading-weight: 600;
   --font-heading-line-height: 1.3;
+
+  --font-subheading-size: 1rem;
 
   --font-stat-family: system-ui, sans-serif;
   --font-stat-size: 2rem;
@@ -6244,6 +6248,13 @@ body {
   .job-queue-table input[type="checkbox"] {
     width: 44px;
     height: 44px;
+  }
+
+  /* The sandbox composes a few context-specific buttons instead of the shared
+     Button primitive. Keep those choices comfortably tappable too. */
+  .template-sandbox-page button {
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 

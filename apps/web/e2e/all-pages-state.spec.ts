@@ -40,19 +40,20 @@ test.describe('all-page interaction state', () => {
         role: 'OWNER',
         api: async (url, route, method) => {
           if (method !== 'GET') return false;
-          if (url.pathname === '/printers/p1') {
+          const path = url.pathname.replace(/^\/api/, '');
+          if (path === '/printers/p1') {
             await route.fulfill({ json: printer });
             return true;
           }
-          if (url.pathname === '/jobs/j1') {
+          if (path === '/jobs/j1') {
             await route.fulfill({ json: job });
             return true;
           }
-          if (url.pathname === '/jobs/j1/trace') {
+          if (path === '/jobs/j1/trace') {
             await route.fulfill({ status: 404, json: { error: 'No trace' } });
             return true;
           }
-          if (url.pathname === '/v1/print-flow/config') {
+          if (path === '/v1/print-flow/config') {
             await route.fulfill({
               json: {
                 http: { path: '/api/v1/printer/:template/:profile', method: 'POST', authHeader: 'X-API-Key' },
@@ -61,7 +62,20 @@ test.describe('all-page interaction state', () => {
             });
             return true;
           }
-          if (url.pathname.endsWith('/v1/system/readiness')) {
+          if (path === '/v1/print-flow/runtime-architecture') {
+            await route.fulfill({
+              json: {
+                runtimeMode: 'server',
+                executor: { owner: 'external-runner', mode: 'external-runner', enabled: true },
+                discovery: { owner: 'go-runner', mode: 'platform-configured', jobsEnabled: false },
+                invariant: { ok: true, code: 'SINGLE_EXECUTOR' },
+                supportedProductionProtocols: [],
+                deferredProtocols: ['ipp', 'cups', 'raw-tcp-9100'],
+              },
+            });
+            return true;
+          }
+          if (path.endsWith('/v1/system/readiness')) {
             await route.fulfill({
               json: {
                 status: 'READY',
@@ -71,11 +85,11 @@ test.describe('all-page interaction state', () => {
             });
             return true;
           }
-          if (url.pathname === '/printers') {
+          if (path === '/printers') {
             await route.fulfill({ json: path === '/printers' ? [] : [printer] });
             return true;
           }
-          if (url.pathname === '/jobs') {
+          if (path === '/jobs') {
             await route.fulfill({ json: path === '/jobs' ? [] : [job] });
             return true;
           }

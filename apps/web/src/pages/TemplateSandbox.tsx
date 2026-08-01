@@ -93,45 +93,45 @@ export function resolvePaperProfileId(currentPaperProfileId: string, template?: 
 }
 
 const STATUS_DOT: Record<string, string> = {
-  idle: '#a6e3a1', online: '#a6e3a1', busy: '#fab387',
-  offline: '#f38ba8', error: '#f38ba8', unknown: '#9399b2',
+  idle: 'var(--semantic-success)', online: 'var(--semantic-success)', busy: 'var(--semantic-progress)',
+  offline: 'var(--semantic-error)', error: 'var(--semantic-error)', unknown: 'var(--semantic-neutral)',
 };
 
 const DEFAULT_PAYLOAD = '{"label":"Test Label","barcode":"ABC123","hn_masked":"HN***"}';
 
 // ---- shared styles (consistent with PaperProfiles page) ----
 const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '0.5rem 0.6rem', border: '1px solid #d1d5db',
-  borderRadius: 6, font: 'inherit', fontSize: '0.85rem',
+  width: '100%', padding: 'var(--spacing-sm) 0.6rem', border: '1px solid var(--neutral-border-strong)',
+  borderRadius: 'var(--rounded-md)', font: 'inherit', fontSize: 'var(--font-body-size)',
 };
 const labelStyle: React.CSSProperties = {
-  display: 'block', marginBottom: '0.25rem', fontSize: '0.75rem',
-  fontWeight: 600, color: '#374151',
+  display: 'block', marginBottom: '0.25rem', fontSize: 'var(--font-label-size)',
+  fontWeight: 'var(--font-label-weight)', color: 'var(--neutral-text)',
 };
-const sectionStyle: React.CSSProperties = { borderBottom: '1px solid #eee', padding: '0.85rem 0' };
+const sectionStyle: React.CSSProperties = { borderBottom: '1px solid var(--neutral-border)', padding: '0.85rem 0' };
 const sectionLastStyle: React.CSSProperties = { padding: '0.85rem 0' };
 const sectionTitleStyle: React.CSSProperties = {
-  fontSize: '0.8rem', fontWeight: 700, color: '#1e1e2e',
+  fontSize: 'var(--font-mono-size)', fontWeight: 700, color: 'var(--neutral-deep)',
   textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.6rem',
 };
 const primaryBtn: React.CSSProperties = {
-  padding: '0.6rem 1.2rem', border: 0, borderRadius: 6, background: '#1e1e2e',
-  color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem',
+  padding: '0.6rem 1.2rem', border: 0, borderRadius: 'var(--rounded-md)', background: 'var(--neutral-deep)',
+  color: 'var(--neutral-surface)', cursor: 'pointer', fontWeight: 600, fontSize: 'var(--font-body-size)',
 };
 const secondaryBtn: React.CSSProperties = {
-  padding: '0.6rem 1.2rem', border: '1px solid #d1d5db', borderRadius: 6,
-  background: '#fff', color: '#374151', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem',
+  padding: '0.6rem 1.2rem', border: '1px solid var(--neutral-border-strong)', borderRadius: 'var(--rounded-md)',
+  background: 'var(--neutral-surface)', color: 'var(--neutral-text)', cursor: 'pointer', fontWeight: 600, fontSize: 'var(--font-body-size)',
 };
 const fieldBtn: React.CSSProperties = {
-  padding: '0.45rem 0.6rem', border: '1px solid #d1d5db', borderRadius: 6,
-  background: '#fff', cursor: 'pointer', fontSize: '0.8rem', flex: 1,
+  padding: '0.45rem 0.6rem', border: '1px solid var(--neutral-border-strong)', borderRadius: 'var(--rounded-md)',
+  background: 'var(--neutral-surface)', cursor: 'pointer', fontSize: 'var(--font-mono-size)', flex: 1,
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem',
 };
 const activeFieldBtn: React.CSSProperties = {
-  background: '#1e1e2e', color: '#fff', borderColor: '#1e1e2e',
+  background: 'var(--neutral-deep)', color: 'var(--neutral-surface)', borderColor: 'var(--neutral-deep)',
 };
 const cardStyle: React.CSSProperties = {
-  background: '#fff', padding: '0 1.25rem', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+  background: 'var(--neutral-surface)', padding: '0 var(--spacing-xl)', borderRadius: 'var(--rounded-lg)', boxShadow: 'var(--shadow-subtle)',
 };
 
 export default function TemplateSandbox() {
@@ -310,9 +310,9 @@ export default function TemplateSandbox() {
   }
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div className="template-sandbox-page" style={{ position: 'relative' }}>
       <h1 style={{ marginBottom: '0.25rem' }}>{t('page.sandbox.title')}</h1>
-      <p style={{ color: '#6b7280', marginBottom: '1rem', fontSize: '0.9rem' }}>
+      <p style={{ color: 'var(--neutral-text-muted)', marginBottom: 'var(--spacing-lg)', fontSize: '0.9rem' }}>
         {t('page.sandbox.description')}
       </p>
 
@@ -330,10 +330,10 @@ export default function TemplateSandbox() {
       {toast && (
         <div style={{
           position: 'fixed', top: 16, right: 16, zIndex: 2000,
-          padding: '0.7rem 1rem', borderRadius: 8,
-          background: toast.type === 'success' ? '#dcfce7' : '#fee2e2',
-          color: toast.type === 'success' ? '#166534' : '#991b1b',
-          fontWeight: 600, fontSize: '0.85rem', boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+          padding: '0.7rem var(--spacing-lg)', borderRadius: 'var(--rounded-lg)',
+          background: toast.type === 'success' ? 'var(--state-success-surface)' : 'var(--state-danger-surface)',
+          color: toast.type === 'success' ? 'var(--state-success-text)' : 'var(--state-danger-text)',
+          fontWeight: 600, fontSize: 'var(--font-body-size)', boxShadow: 'var(--shadow-floating)',
         }}>
           {toast.msg}
         </div>
@@ -358,7 +358,7 @@ export default function TemplateSandbox() {
                   </option>
                 ))}
               </select>
-              <p id="sandbox-capability-status" role="status" aria-live="polite" style={{ margin: '0.35rem 0 0', color: '#6b7280', fontSize: '0.72rem' }}>
+              <p id="sandbox-capability-status" role="status" aria-live="polite" style={{ margin: 'var(--spacing-xs) 0 0', color: 'var(--neutral-text-muted)', fontSize: 'var(--font-label-size)' }}>
                 {!selectedPrinter
                   ? t('page.sandbox.selectPrinterForOptions')
                   : [!duplexAvailable && t('page.sandbox.duplexUnavailable'), !colorAvailable && t('page.sandbox.colorUnavailable')].filter(Boolean).join(' ')}
@@ -366,19 +366,19 @@ export default function TemplateSandbox() {
               {selectedPrinter && (
                 <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
                   {selectedPrinter.status && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: '#f3f4f6', borderRadius: 4 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_DOT[selectedPrinter.status.code] ?? '#ccc', display: 'inline-block' }} />
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-label-size)', padding: '0.15rem var(--spacing-sm)', background: 'var(--neutral-subtle)', borderRadius: 'var(--rounded-sm)' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_DOT[selectedPrinter.status.code] ?? 'var(--semantic-neutral)', display: 'inline-block' }} />
                       {selectedPrinter.status.code}
                     </span>
                   )}
-                  <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: '#f3f4f6', borderRadius: 4 }}>{selectedPrinter.protocol}</span>
-                  {selectedPrinter.capabilities?.duplexSupported && <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: '#f3f4f6', borderRadius: 4 }}>{t('page.sandbox.duplexLabel')}</span>}
-                  {selectedPrinter.capabilities?.colorSupported && <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: '#f3f4f6', borderRadius: 4 }}>{t('page.sandbox.colorLabel')}</span>}
-                  {printerMaxCopies != null && <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: '#f3f4f6', borderRadius: 4 }}>{t('page.sandbox.maxCopiesLabel').replace('{n}', String(printerMaxCopies))}</span>}
+                  <span style={{ fontSize: 'var(--font-label-size)', padding: '0.15rem var(--spacing-sm)', background: 'var(--neutral-subtle)', borderRadius: 'var(--rounded-sm)' }}>{selectedPrinter.protocol}</span>
+                  {selectedPrinter.capabilities?.duplexSupported && <span style={{ fontSize: 'var(--font-label-size)', padding: '0.15rem var(--spacing-sm)', background: 'var(--neutral-subtle)', borderRadius: 'var(--rounded-sm)' }}>{t('page.sandbox.duplexLabel')}</span>}
+                  {selectedPrinter.capabilities?.colorSupported && <span style={{ fontSize: 'var(--font-label-size)', padding: '0.15rem var(--spacing-sm)', background: 'var(--neutral-subtle)', borderRadius: 'var(--rounded-sm)' }}>{t('page.sandbox.colorLabel')}</span>}
+                  {printerMaxCopies != null && <span style={{ fontSize: 'var(--font-label-size)', padding: '0.15rem var(--spacing-sm)', background: 'var(--neutral-subtle)', borderRadius: 'var(--rounded-sm)' }}>{t('page.sandbox.maxCopiesLabel').replace('{n}', String(printerMaxCopies))}</span>}
                 </div>
               )}
               {!templateAllowed && (
-                <div style={{ marginTop: '0.4rem', padding: '0.4rem 0.55rem', background: '#fef3c7', color: '#92400e', borderRadius: 4, fontSize: '0.75rem' }}>
+                <div style={{ marginTop: '0.4rem', padding: '0.4rem 0.55rem', background: 'var(--state-warning-surface)', color: 'var(--state-warning-text)', borderRadius: 'var(--rounded-sm)', fontSize: 'var(--font-label-size)' }}>
                   ⚠️ {t('page.sandbox.templateNotAllowed').replace('{code}', selectedTemplate?.templateCode ?? '')}
                 </div>
               )}
@@ -396,7 +396,7 @@ export default function TemplateSandbox() {
                   ))}
                 </select>
                 {paperProfileId && (
-                  <p style={{ margin: '0.3rem 0 0', color: '#6b7280', fontSize: '0.72rem' }}>
+                  <p style={{ margin: '0.3rem 0 0', color: 'var(--neutral-text-muted)', fontSize: 'var(--font-label-size)' }}>
                     {t('page.sandbox.paperProfilePriorityHint')}
                   </p>
                 )}
@@ -411,8 +411,8 @@ export default function TemplateSandbox() {
                 </select>
                 {selectedTemplate && (
                   <div style={{ marginTop: '0.3rem', display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: '#f3f4f6', borderRadius: 4 }}>{selectedTemplate.engine}</span>
-                    <span style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: '#f3f4f6', borderRadius: 4 }}>{selectedTemplate.status}</span>
+                    <span style={{ fontSize: 'var(--font-label-size)', padding: '0.15rem var(--spacing-sm)', background: 'var(--neutral-subtle)', borderRadius: 'var(--rounded-sm)' }}>{selectedTemplate.engine}</span>
+                    <span style={{ fontSize: 'var(--font-label-size)', padding: '0.15rem var(--spacing-sm)', background: 'var(--neutral-subtle)', borderRadius: 'var(--rounded-sm)' }}>{selectedTemplate.status}</span>
                   </div>
                 )}
               </div>
@@ -428,7 +428,7 @@ export default function TemplateSandbox() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <button
                     type="button"
-                    style={{ ...secondaryBtn, padding: '0.35rem 0.7rem', fontSize: '0.9rem', minWidth: 34 }}
+                    style={{ ...secondaryBtn, padding: '0.35rem 0.7rem', fontSize: '0.9rem' }}
                     onClick={() => setCopies(Math.max(1, copies - 1))}
                   >
                     −
@@ -443,14 +443,14 @@ export default function TemplateSandbox() {
                   />
                   <button
                     type="button"
-                    style={{ ...secondaryBtn, padding: '0.35rem 0.7rem', fontSize: '0.9rem', minWidth: 34 }}
+                    style={{ ...secondaryBtn, padding: '0.35rem 0.7rem', fontSize: '0.9rem' }}
                     onClick={() => setCopies(copies + 1)}
                   >
                     +
                   </button>
                 </div>
                 {copiesExceeded && (
-                  <div style={{ marginTop: '0.3rem', padding: '0.35rem 0.5rem', background: '#fee2e2', color: '#991b1b', borderRadius: 4, fontSize: '0.72rem' }}>
+                  <div style={{ marginTop: '0.3rem', padding: 'var(--spacing-xs) var(--spacing-sm)', background: 'var(--state-danger-surface)', color: 'var(--state-danger-text)', borderRadius: 'var(--rounded-sm)', fontSize: 'var(--font-label-size)' }}>
                     {t('page.sandbox.copiesExceeded').replace('{max}', String(printerMaxCopies))}
                   </div>
                 )}
@@ -523,17 +523,17 @@ export default function TemplateSandbox() {
                 style={{
                   ...inputStyle, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
                   fontSize: '0.78rem', resize: 'vertical',
-                  ...(payloadError ? { borderColor: '#f38ba8', background: '#fef2f2' } : {}),
+                  ...(payloadError ? { borderColor: 'var(--semantic-error)', background: 'var(--state-danger-surface)' } : {}),
                 }}
               />
               {payloadError && (
-                <div style={{ marginTop: '0.3rem', color: '#f38ba8', fontSize: '0.72rem' }}>{payloadError}</div>
+                <div style={{ marginTop: '0.3rem', color: 'var(--semantic-error)', fontSize: 'var(--font-label-size)' }}>{payloadError}</div>
               )}
             </div>
 
             {/* --- Actions --- */}
             {error && (
-              <div style={{ padding: '0.55rem 0.7rem', background: '#fee2e2', color: '#991b1b', borderRadius: 6, fontSize: '0.8rem', marginBottom: '0.6rem' }}>
+              <div style={{ padding: '0.55rem 0.7rem', background: 'var(--state-danger-surface)', color: 'var(--state-danger-text)', borderRadius: 'var(--rounded-md)', fontSize: 'var(--font-mono-size)', marginBottom: '0.6rem' }}>
                 {error}
               </div>
             )}
@@ -552,7 +552,7 @@ export default function TemplateSandbox() {
               </button>
             </div>
             {!canPrint && (
-              <p id="sandbox-test-print-status" role="status" aria-live="polite" style={{ margin: '0 0 1.1rem', color: '#6b7280', fontSize: '0.75rem' }}>
+              <p id="sandbox-test-print-status" role="status" aria-live="polite" style={{ margin: '0 0 1.1rem', color: 'var(--neutral-text-muted)', fontSize: 'var(--font-label-size)' }}>
                 {t('page.sandbox.testPrintBlocked').replace('{reason}', testPrintBlockedReason)}
               </p>
             )}
@@ -561,18 +561,18 @@ export default function TemplateSandbox() {
           {/* ===================== Preview Panel ===================== */}
           <section style={{ ...cardStyle, padding: '1.25rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <h2 style={{ fontSize: '1rem', margin: 0 }}>{t('page.sandbox.preview')}</h2>
+              <h2 style={{ fontSize: 'var(--font-subheading-size)', margin: 0, color: 'var(--neutral-deep)' }}>{t('page.sandbox.preview')}</h2>
               {preview && (
-                <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>render {preview.renderTimeMs}ms</span>
+                <span style={{ fontSize: 'var(--font-label-size)', color: 'var(--neutral-text-muted)' }}>render {preview.renderTimeMs}ms</span>
               )}
             </div>
 
             {!preview ? (
               <div style={{
                 minHeight: 320, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                background: '#f9fafb', borderRadius: 8, color: '#9ca3af', textAlign: 'center', padding: '2rem',
+                background: 'var(--neutral-page)', borderRadius: 'var(--rounded-lg)', color: 'var(--neutral-text-muted)', textAlign: 'center', padding: 'var(--spacing-3xl)',
               }}>
-                <span style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🖨️</span>
+                <span style={{ fontSize: 'calc(var(--font-stat-size) + var(--spacing-sm))', marginBottom: 'var(--spacing-sm)' }}>🖨️</span>
                 <p style={{ fontSize: '0.85rem' }}>{t('page.sandbox.previewEmpty')}</p>
               </div>
             ) : (
@@ -592,7 +592,7 @@ export default function TemplateSandbox() {
 
                 {/* Warnings */}
                 {preview.warnings.length > 0 && (
-                  <div style={{ marginTop: '0.6rem', padding: '0.55rem 0.7rem', background: '#fef3c7', color: '#92400e', borderRadius: 6, fontSize: '0.78rem' }}>
+                  <div style={{ marginTop: '0.6rem', padding: '0.55rem 0.7rem', background: 'var(--state-warning-surface)', color: 'var(--state-warning-text)', borderRadius: 'var(--rounded-md)', fontSize: 'var(--font-label-size)' }}>
                     <strong>{t('page.sandbox.warnings')}:</strong>
                     <ul style={{ margin: '0.3rem 0 0 1rem', padding: 0 }}>
                       {preview.warnings.map((w, i) => <li key={i}>{w}</li>)}
@@ -603,7 +603,7 @@ export default function TemplateSandbox() {
                 {/* Generated payload */}
                 <div style={{ marginTop: '0.8rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
-                    <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e1e2e', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
+                    <h3 style={{ fontSize: 'var(--font-mono-size)', fontWeight: 700, color: 'var(--neutral-deep)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
                       {t('page.sandbox.generatedPayload')}
                     </h3>
                     <button
@@ -616,7 +616,7 @@ export default function TemplateSandbox() {
                   </div>
                   <pre style={{
                     whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 240, overflow: 'auto',
-                    margin: 0, padding: '0.7rem', background: '#1e1e2e', color: '#cdd6f4', borderRadius: 6,
+                    margin: 0, padding: '0.7rem', background: 'var(--neutral-deep)', color: 'var(--nav-text)', borderRadius: 'var(--rounded-md)',
                     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', fontSize: '0.75rem',
                   }}>
                     {preview.renderedPrintPayload}
@@ -627,7 +627,7 @@ export default function TemplateSandbox() {
 
             {/* Print summary */}
             {(selectedPrinter || selectedTemplate) && (
-              <div style={{ marginTop: '0.8rem', padding: '0.6rem 0.75rem', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, fontSize: '0.78rem', color: '#075985' }}>
+              <div style={{ marginTop: '0.8rem', padding: '0.6rem var(--spacing-md)', background: 'var(--state-info-surface)', border: '1px solid var(--semantic-info)', borderRadius: 'var(--rounded-md)', fontSize: 'var(--font-label-size)', color: 'var(--state-info-text)' }}>
                 <strong>{t('page.sandbox.printSummary')}:</strong>{' '}
                 {selectedPrinter?.name ?? t('page.sandbox.summaryNoPrinter')}
                 {' · '}

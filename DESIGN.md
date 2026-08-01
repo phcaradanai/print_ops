@@ -147,6 +147,7 @@ A muted, clinical palette derived from Catppuccin pastels, tightened for hospita
 
 ### Hierarchy
 - **Heading** (600, 1.5rem, 1.3): Page titles. One per page.
+- **Subheading** (1rem): Panel headings, such as a preview title, where a page heading would overstate the hierarchy.
 - **Stat** (700, 2rem, 1.2): Dashboard metric values. Large enough for at-a-glance scanning, not decorative.
 - **Body** (400, 0.875rem, 1.5): Table cells, list items, paragraph text. Comfortable reading size under fluorescent light.
 - **Label** (600, 0.75rem, 1.4, 0.05em letter-spacing, uppercase): Stat labels, table headers, form labels. Compact but legible.
