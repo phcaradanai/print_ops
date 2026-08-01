@@ -3,7 +3,7 @@ import { apiFetch } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
-import { ErrorBanner, Freshness } from '../components/PageState.js';
+import { EmptyState, ErrorBanner, Freshness, LoadingState } from '../components/PageState.js';
 import { exportJsonFile } from '../tauri.js';
 import { qrQuietZoneMm, renderBarcodeSvg, type BarcodeKind, type BarcodeSymbology } from '../lib/barcode.js';
 import { sanitizePreviewHtml } from '../lib/previewHtml.js';
@@ -76,15 +76,59 @@ const EXPORT_KIND = 'printops.templates';
 
 const ENGINES = ['RAW_TEXT', 'ZPL', 'HTML', 'JSON_LAYOUT', 'TSPL', 'EPL', 'PDF_LIKE_PREVIEW'] as const;
 
-const ENGINE_ICON: Record<string, string> = {
-  RAW_TEXT: '📄',
-  ZPL: '🏷️',
-  HTML: '🌐',
-  JSON_LAYOUT: '{ }',
-  TSPL: '🖨️',
-  EPL: '📃',
-  PDF_LIKE_PREVIEW: '📑',
+type TemplateIconName =
+  | 'back' | 'barcode' | 'braces' | 'check' | 'close' | 'code' | 'delete'
+  | 'download' | 'duplicate' | 'edit' | 'expand' | 'label' | 'more'
+  | 'next' | 'pdf' | 'plus' | 'preview' | 'printer' | 'qrcode' | 'refresh'
+  | 'save' | 'search' | 'sortAsc' | 'sortDesc' | 'terminal' | 'text' | 'upload';
+
+const ENGINE_ICON: Record<typeof ENGINES[number], TemplateIconName> = {
+  RAW_TEXT: 'text',
+  ZPL: 'label',
+  HTML: 'code',
+  JSON_LAYOUT: 'braces',
+  TSPL: 'printer',
+  EPL: 'terminal',
+  PDF_LIKE_PREVIEW: 'pdf',
 };
+
+function TemplateIcon({ name, spin = false }: { name: TemplateIconName; spin?: boolean }) {
+  const path = {
+    back: <path d="m10.5 3.5-4.5 4.5 4.5 4.5M6 8h8" />,
+    barcode: <path d="M2 3v10M4.5 3v10M7.5 3v10M9.5 3v10M13 3v10" />,
+    braces: <path d="M6 2.5H5A1.5 1.5 0 0 0 3.5 4v2.25C3.5 7.3 3 8 2 8c1 0 1.5.7 1.5 1.75V12A1.5 1.5 0 0 0 5 13.5h1m4-11h1A1.5 1.5 0 0 1 12.5 4v2.25C12.5 7.3 13 8 14 8c-1 0-1.5.7-1.5 1.75V12a1.5 1.5 0 0 1-1.5 1.5h-1" />,
+    check: <path d="m3.25 8.25 3 3 6.5-6.5" />,
+    close: <path d="m3.5 3.5 9 9m0-9-9 9" />,
+    code: <path d="m5.75 3.5-4 4.5 4 4.5m4.5-9 4 4.5-4 4.5M9.5 2l-3 12" />,
+    delete: <path d="M3.5 5h9M6 5V3.25h4V5m1.5 0-.5 8H5L4.5 5M6.75 7.5v3.25m2.5-3.25v3.25" />,
+    download: <path d="M8 2v8m-3-3 3 3 3-3M3 13h10" />,
+    duplicate: <><rect x="5" y="5" width="8" height="8" rx="1.25" /><path d="M3 10.5H2.75A1.75 1.75 0 0 1 1 8.75v-6A1.75 1.75 0 0 1 2.75 1h6A1.75 1.75 0 0 1 10.5 2.75V3" /></>,
+    edit: <path d="m3 11.75.5-3 7.75-7.25 3.25 3.25-7.25 7.75-3 .5Zm6.75-8.75 3.25 3.25" />,
+    expand: <path d="M6 2H2v4m0-4 4.5 4.5M10 14h4v-4m0 4-4.5-4.5" />,
+    label: <><path d="M2.5 4.5v7h7l4-3.5-4-3.5h-7Z" /><circle cx="5.25" cy="8" r=".7" fill="currentColor" stroke="none" /></>,
+    more: <><circle cx="3" cy="8" r=".75" fill="currentColor" stroke="none" /><circle cx="8" cy="8" r=".75" fill="currentColor" stroke="none" /><circle cx="13" cy="8" r=".75" fill="currentColor" stroke="none" /></>,
+    next: <path d="m6 3.5 4.5 4.5L6 12.5" />,
+    pdf: <><path d="M9.5 1.75H4.5A1.5 1.5 0 0 0 3 3.25v9.5a1.5 1.5 0 0 0 1.5 1.5h7a1.5 1.5 0 0 0 1.5-1.5V5.25Z" /><path d="M9.5 1.75v3.5H13M5.25 9h5.5M5.25 11.5h3.5" /></>,
+    plus: <path d="M8 2.5v11M2.5 8h11" />,
+    preview: <><path d="M1.5 8s2.25-4 6.5-4 6.5 4 6.5 4-2.25 4-6.5 4-6.5-4-6.5-4Z" /><circle cx="8" cy="8" r="2" /></>,
+    printer: <><path d="M4.5 5V2.5h7V5M4 11H2.75A1.25 1.25 0 0 1 1.5 9.75V6.5A1.5 1.5 0 0 1 3 5h10a1.5 1.5 0 0 1 1.5 1.5v3.25A1.25 1.25 0 0 1 13.25 11H12" /><path d="M4 9h8v4.5H4Z" /></>,
+    qrcode: <><rect x="2" y="2" width="4" height="4" /><rect x="10" y="2" width="4" height="4" /><rect x="2" y="10" width="4" height="4" /><path d="M10 10h2v2h2v2h-4v-4Z" /></>,
+    refresh: <path d="M13 5.25A5.5 5.5 0 1 0 13.5 10M13 2.5v2.75h-2.75" />,
+    save: <><path d="M2.5 2.5h9l2 2v9h-11Z" /><path d="M5 2.5v4h5v-4M5 13.5V9h6v4.5" /></>,
+    search: <><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3.5 3.5" /></>,
+    sortAsc: <path d="M8 13V3m-3 3 3-3 3 3" />,
+    sortDesc: <path d="M8 3v10m-3-3 3 3 3-3" />,
+    terminal: <><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" /><path d="m4.25 6 2 2-2 2M8.25 10h3" /></>,
+    text: <path d="M2.5 3h11M2.5 6.5h11M2.5 10h8M2.5 13h5" />,
+    upload: <path d="M8 10V2m-3 3 3-3 3 3M3 13h10" />,
+  }[name];
+
+  return (
+    <svg className={`tpl-action-icon${spin ? ' tpl-action-icon--spin' : ''}`} viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      {path}
+    </svg>
+  );
+}
 
 const STATUS_TONE: Record<string, string> = {
   PUBLISHED: 'tpl-badge--published',
@@ -245,6 +289,7 @@ export default function Templates() {
   const { t, locale } = useLocale();
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
 
@@ -257,21 +302,25 @@ export default function Templates() {
   const [fullPage, setFullPage] = useState(false);
 
   const [search, setSearch] = useState('');
-  const [listSearch, setListSearch] = useState('');
   const [chip, setChip] = useState<string>('ALL');
   const [sortDesc, setSortDesc] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Template | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const deleteModalRef = useRef<HTMLDivElement | null>(null);
+  const discardModalRef = useRef<HTMLDivElement | null>(null);
   const fullPreviewModalRef = useRef<HTMLDivElement | null>(null);
 
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
+  const previewRef = useRef<HTMLElement | null>(null);
+  const libraryRef = useRef<HTMLElement | null>(null);
   useModalFocusTrap(Boolean(pendingDelete), deleteModalRef, () => setPendingDelete(null));
+  useModalFocusTrap(confirmDiscard, discardModalRef, () => setConfirmDiscard(false));
   useModalFocusTrap(fullPage, fullPreviewModalRef, () => setFullPage(false));
 
   // Both lists were `.catch(() => {})`: with the API down the page rendered as
@@ -302,11 +351,20 @@ export default function Templates() {
   }, [message]);
 
   const selected = templates.find((tpl) => tpl.id === selectedId);
+  const editingTemplate = templates.find((tpl) => tpl.id === editingId);
   const formProfile = profiles.find((p) => p.id === form.paperProfileId);
   const selectedProfile = profiles.find((p) => p.id === selected?.paperProfileId);
   const profileKeys = (formProfile?.fields ?? []).map((f) => f.key).filter(Boolean);
 
   const contentLines = form.content.split('\n');
+  const baselineForm = editingTemplate ? {
+    templateCode: editingTemplate.templateCode,
+    name: editingTemplate.name,
+    engine: editingTemplate.engine,
+    content: editingTemplate.content,
+    paperProfileId: editingTemplate.paperProfileId ?? '',
+  } : EMPTY_FORM;
+  const formDirty = Object.keys(EMPTY_FORM).some((key) => form[key as keyof typeof form] !== baselineForm[key as keyof typeof baselineForm]);
 
   function insertSnippet(snippet: string) {
     const el = contentRef.current;
@@ -345,8 +403,20 @@ export default function Templates() {
     setPreviewHtml(localPreview(form.content, form.engine, sample, formProfile));
   }
 
-  async function renderServerPreview(tpl: Template, mode: SampleMode = sampleMode) {
+  async function renderServerPreview(tpl: Template, mode: SampleMode = sampleMode, revealWorkspace = true) {
     setSelectedId(tpl.id);
+    if (revealWorkspace) {
+      setWorkspaceOpen(true);
+      setEditingId(tpl.id);
+      setForm({
+        templateCode: tpl.templateCode,
+        name: tpl.name,
+        engine: tpl.engine,
+        content: tpl.content,
+        paperProfileId: tpl.paperProfileId ?? '',
+      });
+      requestAnimationFrame(() => previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
     setPreviewNote('');
     const profile = profiles.find((p) => p.id === tpl.paperProfileId);
     if (!tpl.paperProfileId) {
@@ -376,7 +446,7 @@ export default function Templates() {
   function refreshPreview(mode: SampleMode) {
     setSampleMode(mode);
     if (selected) {
-      void renderServerPreview(selected, mode);
+      void renderServerPreview(selected, mode, false);
       return;
     }
     const sample = buildSample(mode, form.content, formProfile);
@@ -402,6 +472,8 @@ export default function Templates() {
       setForm({ ...EMPTY_FORM });
       setEditingId(null);
       await load();
+      setWorkspaceOpen(false);
+      requestAnimationFrame(() => libraryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     } catch (err: unknown) {
       setMessage({ tone: 'error', text: `${t('page.templates.actionFailed')} ${errorMessage(err)}` });
     } finally {
@@ -410,7 +482,13 @@ export default function Templates() {
   }
 
   function startEdit(tpl: Template) {
+    setWorkspaceOpen(true);
     setEditingId(tpl.id);
+    setSelectedId(tpl.id);
+    setPreview(null);
+    setPreviewHtml('');
+    setPreviewNote('');
+    setPreviewError('');
     setForm({
       templateCode: tpl.templateCode,
       name: tpl.name,
@@ -419,14 +497,42 @@ export default function Templates() {
       paperProfileId: tpl.paperProfileId ?? '',
     });
     setMenuFor(null);
-    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
 
   function newTemplate() {
+    setWorkspaceOpen(true);
     setEditingId(null);
+    setSelectedId(null);
+    setPreview(null);
+    setPreviewHtml('');
+    setPreviewNote('');
+    setPreviewError('');
     setForm({ ...EMPTY_FORM });
-    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    requestAnimationFrame(() => formRef.current?.querySelector('input')?.focus());
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      formRef.current?.querySelector('input')?.focus();
+    });
+  }
+
+  function closeWorkspace() {
+    setWorkspaceOpen(false);
+    setEditingId(null);
+    setSelectedId(null);
+    setForm({ ...EMPTY_FORM });
+    setPreview(null);
+    setPreviewHtml('');
+    setPreviewNote('');
+    setPreviewError('');
+    requestAnimationFrame(() => libraryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
+
+  function requestCloseWorkspace() {
+    if (formDirty) {
+      setConfirmDiscard(true);
+      return;
+    }
+    closeWorkspace();
   }
 
   async function duplicate(tpl: Template) {
@@ -460,16 +566,6 @@ export default function Templates() {
     }
   }
 
-  async function testPrint(id: string) {
-    setMenuFor(null);
-    try {
-      await apiFetch(`/v1/templates/${id}/test-print`, { method: 'POST' });
-      setMessage({ tone: 'ok', text: t('page.templates.testPrintSent') });
-    } catch (err: unknown) {
-      setMessage({ tone: 'error', text: `${t('page.templates.actionFailed')} ${errorMessage(err)}` });
-    }
-  }
-
   async function confirmDelete() {
     const target = pendingDelete;
     if (!target) return;
@@ -484,6 +580,7 @@ export default function Templates() {
       if (editingId === target.id) {
         setEditingId(null);
         setForm({ ...EMPTY_FORM });
+        setWorkspaceOpen(false);
       }
       setMessage({ tone: 'ok', text: t('page.templates.deletedOk') });
       await load();
@@ -620,28 +717,38 @@ export default function Templates() {
   }, [templates]);
 
   const filtered = useMemo(() => {
-    const needle = `${search} ${listSearch}`.trim().toLowerCase();
-    const terms = [search.trim().toLowerCase(), listSearch.trim().toLowerCase()].filter(Boolean);
+    const needle = search.trim().toLowerCase();
     const rows = templates.filter((tpl) => {
       if (chip !== 'ALL' && tpl.status !== chip && tpl.engine !== chip) return false;
       if (!needle) return true;
       const haystack = `${tpl.templateCode} ${tpl.name} ${tpl.engine} ${tpl.status}`.toLowerCase();
-      return terms.every((term) => haystack.includes(term));
+      return haystack.includes(needle);
     });
     return rows.sort((a, b) => {
       const av = a.updatedAt ?? a.createdAt ?? '';
       const bv = b.updatedAt ?? b.createdAt ?? '';
       return sortDesc ? bv.localeCompare(av) : av.localeCompare(bv);
     });
-  }, [templates, chip, search, listSearch, sortDesc]);
+  }, [templates, chip, search, sortDesc]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const pageRows = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const from = filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const to = Math.min(currentPage * pageSize, filtered.length);
+  const visiblePages = useMemo<(number | 'gap-start' | 'gap-end')[]>(() => {
+    if (pageCount <= 7) return Array.from({ length: pageCount }, (_, index) => index + 1);
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(pageCount - 1, currentPage + 1);
+    const items: (number | 'gap-start' | 'gap-end')[] = [1];
+    if (start > 2) items.push('gap-start');
+    for (let pageNumber = start; pageNumber <= end; pageNumber += 1) items.push(pageNumber);
+    if (end < pageCount - 1) items.push('gap-end');
+    items.push(pageCount);
+    return items;
+  }, [currentPage, pageCount]);
 
-  useEffect(() => { setPage(1); }, [chip, search, listSearch, pageSize]);
+  useEffect(() => { setPage(1); }, [chip, search, pageSize]);
 
   const previewBody = (
     <div className="tpl-preview-stage">
@@ -662,9 +769,9 @@ export default function Templates() {
           <h1>{t('page.templates.title')}</h1>
           <p>{t('page.templates.subtitle')}</p>
         </div>
-        <div className="tpl-page-tools">
+        {!workspaceOpen && <div className="tpl-page-tools">
           <label className="tpl-search">
-            <span aria-hidden="true">🔍</span>
+            <TemplateIcon name="search" />
             <input
               type="search"
               value={search}
@@ -673,16 +780,17 @@ export default function Templates() {
               aria-label={t('page.templates.searchPlaceholder')}
             />
           </label>
-          <button type="button" className="ds-btn ds-btn--ghost" onClick={exportTemplates}>
-            ⤓ {t('page.templates.exportBtn')}
+          <button type="button" className="tpl-btn tpl-btn--ghost" onClick={exportTemplates}>
+            <TemplateIcon name="download" /> {t('page.templates.exportBtn')}
           </button>
           <button
             type="button"
-            className="ds-btn ds-btn--ghost"
+            className="tpl-btn tpl-btn--ghost"
             onClick={() => importInputRef.current?.click()}
             disabled={busy}
+            aria-busy={busy || undefined}
           >
-            ⤒ {t('page.templates.importBtn')}
+            <TemplateIcon name={busy ? 'refresh' : 'upload'} spin={busy} /> {busy ? t('page.templates.importing') : t('page.templates.importBtn')}
           </button>
           <input
             ref={importInputRef}
@@ -695,16 +803,16 @@ export default function Templates() {
               if (file) void importTemplates(file);
             }}
           />
-          <button type="button" className="ds-btn ds-btn--primary" onClick={newTemplate}>
-            + {t('page.templates.newTemplate')}
+          <button type="button" className="tpl-btn tpl-btn--primary" onClick={newTemplate}>
+            <TemplateIcon name="plus" /> {t('page.templates.newTemplate')}
           </button>
-        </div>
+        </div>}
       </header>
 
       {message && (
         <div className={`ds-toast ds-toast--${message.tone === 'ok' ? 'success' : 'error'}`} role="status">
           <span>{message.text}</span>
-          <button type="button" className="ds-toast__close" onClick={() => setMessage(null)} aria-label={t('common.cancel')}>✕</button>
+          <button type="button" className="ds-toast__close" onClick={() => setMessage(null)} aria-label={t('common.close')}><TemplateIcon name="close" /></button>
         </div>
       )}
 
@@ -725,7 +833,7 @@ export default function Templates() {
         />
       )}
 
-      <div className="page-header">
+      {(templatesResource.lastSuccessAt != null || templatesResource.error != null) && <div className="page-header">
         <span />
         <Freshness
           lastSuccessAt={templatesResource.lastSuccessAt}
@@ -733,9 +841,16 @@ export default function Templates() {
           refreshing={templatesResource.refreshing}
           onRefresh={templatesResource.refresh}
         />
-      </div>
+      </div>}
 
-      <div className="tpl-layout">
+      {workspaceOpen ? <>
+        <div className="tpl-workspace-bar">
+          <button type="button" className="tpl-btn tpl-btn--ghost" onClick={requestCloseWorkspace}>
+            <TemplateIcon name="back" /> {t('page.templates.backToLibrary')}
+          </button>
+          <span>{editingId ? form.templateCode : t('page.templates.newTemplate')}</span>
+        </div>
+        <div className="tpl-layout">
         <section className="tpl-card tpl-editor" ref={formRef}>
           <h2 className="tpl-card-title">
             {editingId ? t('page.templates.editTemplate') : t('page.templates.createTemplate')}
@@ -782,12 +897,12 @@ export default function Templates() {
                     aria-pressed={form.engine === engine}
                     onClick={() => setForm({ ...form, engine })}
                   >
-                    <span className="tpl-engine-card__icon" aria-hidden="true">{ENGINE_ICON[engine]}</span>
+                    <span className="tpl-engine-card__icon" aria-hidden="true"><TemplateIcon name={ENGINE_ICON[engine]} /></span>
                     <span className="tpl-engine-card__text">
                       <strong>{engine}</strong>
                       <small>{t(`page.templates.engineDesc.${engine}`)}</small>
                     </span>
-                    {form.engine === engine && <span className="tpl-engine-card__check" aria-hidden="true">✔</span>}
+                    {form.engine === engine && <span className="tpl-engine-card__check" aria-hidden="true"><TemplateIcon name="check" /></span>}
                   </button>
                 ))}
               </div>
@@ -814,12 +929,12 @@ export default function Templates() {
               </div>
               <aside className="tpl-vars">
                 <h3>{t('page.templates.availableKeys')}</h3>
-                <div className="tpl-vars__barcode-actions" style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.6rem' }}>
+                <div className="tpl-vars__barcode-actions">
                   <button type="button" onClick={() => insertBarcodeToken('barcode')} title={t('page.templates.insertBarcodeHint')}>
-                    ▮▯▮ {t('page.templates.insertBarcode')}
+                    <TemplateIcon name="barcode" /> {t('page.templates.insertBarcode')}
                   </button>
                   <button type="button" onClick={() => insertBarcodeToken('qrcode')} title={t('page.templates.insertQrcodeHint')}>
-                    ⬛ {t('page.templates.insertQrcode')}
+                    <TemplateIcon name="qrcode" /> {t('page.templates.insertQrcode')}
                   </button>
                 </div>
                 <ul>
@@ -847,24 +962,24 @@ export default function Templates() {
 
           <div className="tpl-editor-actions">
             <button type="button" className="tpl-btn tpl-btn--ghost" onClick={showLocalPreview}>
-              👁 {t('page.templates.previewBtn')}
+              <TemplateIcon name="preview" /> {t('page.templates.previewBtn')}
             </button>
             <div className="tpl-editor-actions__right">
-              <button type="button" className="tpl-btn tpl-btn--primary" onClick={() => void submit()} disabled={busy}>
-                💾 {editingId ? t('page.templates.saveBtn') : t('page.templates.createTemplate')}
+              <button type="button" className="tpl-btn tpl-btn--primary" onClick={() => void submit()} disabled={busy} aria-busy={busy || undefined}>
+                <TemplateIcon name={busy ? 'refresh' : 'save'} spin={busy} /> {busy ? t('page.templates.saving') : editingId ? t('page.templates.saveBtn') : t('page.templates.createTemplate')}
               </button>
               <button
                 type="button"
                 className="tpl-btn tpl-btn--link"
-                onClick={() => { setForm({ ...EMPTY_FORM }); setEditingId(null); }}
+                onClick={requestCloseWorkspace}
               >
-                {editingId ? t('page.templates.cancelEdit') : t('page.templates.clearBtn')}
+                {t('page.templates.cancelEdit')}
               </button>
             </div>
           </div>
         </section>
 
-        <section className="tpl-card tpl-preview">
+        <section className="tpl-card tpl-preview" ref={previewRef}>
           <div className="tpl-preview-header">
             <h2 className="tpl-card-title">{t('page.templates.previewTitle')}</h2>
             <div className="tpl-preview-controls">
@@ -878,7 +993,7 @@ export default function Templates() {
                 <option value="empty">{t('page.templates.sampleEmpty')}</option>
               </select>
               <button type="button" className="tpl-btn tpl-btn--ghost" onClick={() => refreshPreview(sampleMode)}>
-                ⟳ {t('common.refresh')}
+                <TemplateIcon name="refresh" /> {t('common.refresh')}
               </button>
               <button
                 type="button"
@@ -886,7 +1001,7 @@ export default function Templates() {
                 onClick={() => setFullPage(true)}
                 disabled={!previewHtml}
               >
-                ⛶ {t('page.templates.fullPage')}
+                <TemplateIcon name="expand" /> {t('page.templates.fullPage')}
               </button>
             </div>
           </div>
@@ -915,39 +1030,41 @@ export default function Templates() {
             </dl>
           </div>
         </section>
-      </div>
+        </div>
+      </> : (
 
-      <section className="tpl-card tpl-list">
+      <section className="tpl-card tpl-list" ref={libraryRef}>
         <div className="tpl-list-header">
           <h2 className="tpl-card-title">{t('page.templates.listTitle')}</h2>
           <div className="tpl-list-tools">
-            <label className="tpl-search tpl-search--sm">
-              <span aria-hidden="true">🔍</span>
-              <input
-                type="search"
-                value={listSearch}
-                onChange={(e) => setListSearch(e.target.value)}
-                placeholder={t('page.templates.searchList')}
-                aria-label={t('page.templates.searchList')}
-              />
-            </label>
-            <button type="button" className="tpl-icon-btn" onClick={() => void load()} title={t('common.refresh')}>⟳</button>
+            <button type="button" className="tpl-icon-btn tpl-icon-btn--surface" onClick={() => void load()} disabled={templatesResource.refreshing} aria-busy={templatesResource.refreshing || undefined} title={t('common.refresh')} aria-label={t('common.refresh')}><TemplateIcon name="refresh" spin={templatesResource.refreshing} /></button>
             <button
               type="button"
-              className="tpl-icon-btn"
+              className="tpl-icon-btn tpl-icon-btn--surface"
               onClick={() => setSortDesc((v) => !v)}
               title={t('page.templates.updated')}
+              aria-label={t('page.templates.sortByUpdated')}
               aria-pressed={sortDesc}
             >
-              {sortDesc ? '↓' : '↑'}
+              <TemplateIcon name={sortDesc ? 'sortDesc' : 'sortAsc'} />
             </button>
           </div>
         </div>
 
-        <div className="tpl-chips">
+        {templatesResource.loading && templatesResource.data === undefined ? (
+          <LoadingState />
+        ) : templatesResource.error != null && templatesResource.data === undefined ? null : templates.length === 0 ? (
+          <EmptyState
+            title={t('page.templates.emptyTitle')}
+            hint={t('page.templates.emptyHint')}
+            action={<button type="button" className="tpl-btn tpl-btn--primary" onClick={newTemplate}><TemplateIcon name="plus" /> {t('page.templates.newTemplate')}</button>}
+          />
+        ) : <>
+          <div className="tpl-chips" aria-label={t('page.templates.filters')}>
           <button
             type="button"
             className={`tpl-chip${chip === 'ALL' ? ' is-active' : ''}`}
+            aria-pressed={chip === 'ALL'}
             onClick={() => setChip('ALL')}
           >
             {t('page.templates.filterAll')} <b>{templates.length}</b>
@@ -957,6 +1074,7 @@ export default function Templates() {
               type="button"
               key={status}
               className={`tpl-chip${chip === status ? ' is-active' : ''}`}
+              aria-pressed={chip === status}
               onClick={() => setChip(status)}
             >
               {status} <b>{count}</b>
@@ -967,14 +1085,15 @@ export default function Templates() {
               type="button"
               key={engine}
               className={`tpl-chip${chip === engine ? ' is-active' : ''}`}
+              aria-pressed={chip === engine}
               onClick={() => setChip(engine)}
             >
               {engine} <b>{count}</b>
             </button>
           ))}
-        </div>
+          </div>
 
-        <div className="tpl-table-wrap">
+          <div className="tpl-table-wrap">
           <table className="tpl-table">
             <thead>
               <tr>
@@ -990,47 +1109,49 @@ export default function Templates() {
             <tbody>
               {pageRows.map((tpl) => (
                 <tr key={tpl.id} className={tpl.id === selectedId ? 'is-selected' : undefined}>
-                  <td><code>{tpl.templateCode}</code></td>
-                  <td className="tpl-cell-name"><span className="truncate">{tpl.name}</span></td>
-                  <td><span className="tpl-engine-pill">{tpl.engine}</span></td>
-                  <td>{tpl.version}</td>
-                  <td><span className={`tpl-badge ${STATUS_TONE[tpl.status] ?? ''}`}>{tpl.status}</span></td>
-                  <td className="tpl-cell-time">{formatDate(tpl.updatedAt ?? tpl.createdAt, locale)}</td>
-                  <td>
+                  <td data-label={t('page.templates.code')}><code>{tpl.templateCode}</code></td>
+                  <td data-label={t('page.templates.name')} className="tpl-cell-name"><span className="truncate">{tpl.name}</span></td>
+                  <td data-label={t('page.templates.engine')}><span className="tpl-engine-pill">{tpl.engine}</span></td>
+                  <td data-label={t('page.templates.version')}>{tpl.version}</td>
+                  <td data-label={t('page.templates.status')}><span className={`tpl-badge ${STATUS_TONE[tpl.status] ?? ''}`}>{tpl.status}</span></td>
+                  <td data-label={t('page.templates.updated')} className="tpl-cell-time">{formatDate(tpl.updatedAt ?? tpl.createdAt, locale)}</td>
+                  <td data-label={t('page.templates.actions')}>
                     <div className="tpl-row-actions">
                       <button
                         type="button"
                         className="tpl-icon-btn"
                         title={t('common.preview')}
+                        aria-label={t('page.templates.previewTemplate').replace('{name}', tpl.name)}
                         onClick={() => void renderServerPreview(tpl)}
-                      >👁</button>
+                      ><TemplateIcon name="preview" /></button>
                       <button
                         type="button"
                         className="tpl-icon-btn"
                         title={t('page.templates.duplicate')}
+                        aria-label={t('page.templates.duplicateTemplate').replace('{name}', tpl.name)}
                         onClick={() => void duplicate(tpl)}
-                      >⧉</button>
+                      ><TemplateIcon name="duplicate" /></button>
                       <button
                         type="button"
                         className="tpl-icon-btn"
                         title={t('page.templates.edit')}
+                        aria-label={t('page.templates.editTemplateNamed').replace('{name}', tpl.name)}
                         onClick={() => startEdit(tpl)}
-                      >✎</button>
+                      ><TemplateIcon name="edit" /></button>
                       <div className="tpl-menu-wrap" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           className="tpl-icon-btn"
                           title={t('page.templates.more')}
+                          aria-label={t('page.templates.moreTemplateActions').replace('{name}', tpl.name)}
                           aria-expanded={menuFor === tpl.id}
+                          aria-haspopup="menu"
                           onClick={() => setMenuFor(menuFor === tpl.id ? null : tpl.id)}
-                        >⋯</button>
+                        ><TemplateIcon name="more" /></button>
                         {menuFor === tpl.id && (
                           <div className="tpl-menu" role="menu">
                             <button type="button" role="menuitem" onClick={() => void publish(tpl.id)}>
-                              {t('common.publish')}
-                            </button>
-                            <button type="button" role="menuitem" onClick={() => void testPrint(tpl.id)}>
-                              {t('page.templates.testPrint')}
+                              <TemplateIcon name="check" /> {t('common.publish')}
                             </button>
                             <button
                               type="button"
@@ -1038,7 +1159,7 @@ export default function Templates() {
                               className="tpl-menu__danger"
                               onClick={() => { setMenuFor(null); setPendingDelete(tpl); }}
                             >
-                              {t('page.templates.delete')}
+                              <TemplateIcon name="delete" /> {t('page.templates.delete')}
                             </button>
                           </div>
                         )}
@@ -1054,7 +1175,7 @@ export default function Templates() {
               )}
             </tbody>
           </table>
-        </div>
+          </div>
 
         <div className="tpl-pagination">
           <span className="tpl-pagination__count">
@@ -1066,26 +1187,29 @@ export default function Templates() {
           <div className="tpl-pagination__pages">
             <button
               type="button"
-              className="tpl-icon-btn"
+              className="tpl-icon-btn tpl-icon-btn--surface"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={currentPage <= 1}
-              aria-label="previous page"
-            >‹</button>
-            {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
-              <button
-                type="button"
-                key={n}
-                className={`tpl-page-btn${n === currentPage ? ' is-active' : ''}`}
-                onClick={() => setPage(n)}
-              >{n}</button>
-            ))}
+              aria-label={t('page.templates.previousPage')}
+            ><TemplateIcon name="back" /></button>
+            {visiblePages.map((item) => typeof item === 'number' ? (
+                <button
+                  type="button"
+                  key={item}
+                  className={`tpl-page-btn${item === currentPage ? ' is-active' : ''}`}
+                  aria-current={item === currentPage ? 'page' : undefined}
+                  aria-label={t('page.templates.pageNumber').replace('{n}', String(item))}
+                  onClick={() => setPage(item)}
+                >{item}</button>
+              ) : <span key={item} className="tpl-pagination__gap" aria-hidden="true">…</span>
+            )}
             <button
               type="button"
-              className="tpl-icon-btn"
+              className="tpl-icon-btn tpl-icon-btn--surface"
               onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
               disabled={currentPage >= pageCount}
-              aria-label="next page"
-            >›</button>
+              aria-label={t('page.templates.nextPage')}
+            ><TemplateIcon name="next" /></button>
           </div>
           <select
             className="tpl-page-size"
@@ -1097,8 +1221,34 @@ export default function Templates() {
               <option key={n} value={n}>{t('page.templates.rowsPerPage').replace('{n}', String(n))}</option>
             ))}
           </select>
-        </div>
+          </div>
+        </>}
       </section>
+      )}
+
+      {confirmDiscard && (
+        <div className="ds-modal" role="dialog" aria-modal="true" aria-labelledby="template-discard-title" aria-describedby="template-discard-body" onClick={() => setConfirmDiscard(false)}>
+          <div ref={discardModalRef} tabIndex={-1} className="ds-modal__panel ds-modal__panel--sm" onClick={(e) => e.stopPropagation()}>
+            <div className="ds-modal__header">
+              <h2 id="template-discard-title">{t('page.templates.discardTitle')}</h2>
+              <button type="button" className="ds-btn ds-btn--icon" onClick={() => setConfirmDiscard(false)} aria-label={t('common.close')}>
+                <TemplateIcon name="close" />
+              </button>
+            </div>
+            <div className="ds-confirm__body">
+              <p id="template-discard-body">{t('page.templates.discardBody')}</p>
+            </div>
+            <div className="ds-modal__actions">
+              <button type="button" className="ds-btn ds-btn--ghost" onClick={() => setConfirmDiscard(false)}>
+                {t('page.templates.keepEditing')}
+              </button>
+              <button type="button" className="ds-btn ds-btn--danger" onClick={() => { setConfirmDiscard(false); closeWorkspace(); }}>
+                <TemplateIcon name="delete" /> {t('page.templates.discardChanges')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pendingDelete && (
         <div className="ds-modal" role="dialog" aria-modal="true" aria-labelledby="template-delete-title" onClick={() => setPendingDelete(null)}>
@@ -1110,7 +1260,7 @@ export default function Templates() {
                 className="ds-btn ds-btn--icon"
                 onClick={() => setPendingDelete(null)}
                 aria-label={t('common.cancel')}
-              >✕</button>
+              ><TemplateIcon name="close" /></button>
             </div>
             <div className="ds-confirm__body">
               <p>{t('page.templates.deleteBody').replace('{name}', pendingDelete.name)}</p>
@@ -1121,7 +1271,7 @@ export default function Templates() {
                 {t('common.cancel')}
               </button>
               <button type="button" className="ds-btn ds-btn--danger" onClick={() => void confirmDelete()}>
-                🗑 {t('page.templates.delete')}
+                <TemplateIcon name="delete" /> {t('page.templates.delete')}
               </button>
             </div>
           </div>
@@ -1138,7 +1288,7 @@ export default function Templates() {
                 className="ds-btn ds-btn--icon"
                 onClick={() => setFullPage(false)}
                 aria-label={t('page.templates.closePreview')}
-              >✕</button>
+              ><TemplateIcon name="close" /></button>
             </div>
             <div className="ds-modal__body" style={{ display: 'grid', placeItems: 'center', background: 'var(--neutral-page)' }}>
               <div className="tpl-preview-paper" dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(previewHtml) }} />

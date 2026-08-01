@@ -1,33 +1,762 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-01T06:10:16Z",
+  "generatedAt": "2026-08-01T09:45:00Z",
   "title": "Design System: PrintOps",
   "extensions": {
     "colorMeta": {
-      "primary": { "role": "primary", "displayName": "Action Blue", "canonical": "#1e66f5", "tonalRamp": ["#0b2b6b", "#123d91", "#1950c0", "#1e66f5", "#5c91f8", "#94b6fa", "#ccddfc", "#f0f5fe"] },
-      "neutral-deep": { "role": "neutral", "displayName": "Deep Navy", "canonical": "#1e1e2e", "tonalRamp": ["#0c0c12", "#13131d", "#1e1e2e", "#313244", "#45475a", "#6c7086", "#9399b2", "#cdd6f4"] },
-      "neutral-page": { "role": "neutral", "displayName": "Page Gray", "canonical": "#f5f5f5", "tonalRamp": ["#1f1f1f", "#3b3b3b", "#5e5e5e", "#858585", "#b0b0b0", "#d4d4d4", "#f5f5f5", "#ffffff"] },
-      "semantic-success": { "role": "semantic", "displayName": "Soft Green", "canonical": "#a6e3a1", "tonalRamp": ["#1f4d1c", "#2f732a", "#429c3b", "#58c44f", "#a6e3a1", "#c5ecc2", "#e2f6e0", "#f4fcf4"] },
-      "semantic-error": { "role": "semantic", "displayName": "Muted Rose", "canonical": "#f38ba8", "tonalRamp": ["#5c1727", "#8b243d", "#ba3253", "#e04d72", "#f38ba8", "#f7b5c6", "#fbdfe6", "#fef5f7"] }
+      "primary": {
+        "role": "primary",
+        "displayName": "Action Blue",
+        "canonical": "#1e66f5",
+        "tonalRamp": [
+          "#0a214e",
+          "#0f337b",
+          "#1649b0",
+          "#1e66f5",
+          "#548bf7",
+          "#86acfa",
+          "#bcd1fc",
+          "#e4edfe"
+        ]
+      },
+      "primary-strong": {
+        "role": "primary",
+        "displayName": "Action Blue Strong",
+        "canonical": "#2563eb",
+        "tonalRamp": [
+          "#0c204b",
+          "#133276",
+          "#1b47a9",
+          "#2563eb",
+          "#5988f0",
+          "#89abf4",
+          "#bed0f9",
+          "#e5ecfd"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Action Blue Hover",
+        "canonical": "#1654d1",
+        "tonalRamp": [
+          "#071b43",
+          "#0b2a69",
+          "#103c96",
+          "#1654d1",
+          "#4e7ddc",
+          "#81a3e6",
+          "#b9ccf1",
+          "#e3eaf9"
+        ]
+      },
+      "primary-pressed": {
+        "role": "primary",
+        "displayName": "Action Blue Pressed",
+        "canonical": "#1d4ed8",
+        "tonalRamp": [
+          "#091945",
+          "#0f276c",
+          "#15389c",
+          "#1d4ed8",
+          "#5378e1",
+          "#859fea",
+          "#bbcaf3",
+          "#e4eafa"
+        ]
+      },
+      "neutral-deep": {
+        "role": "neutral",
+        "displayName": "Deep Navy",
+        "canonical": "#1e1e2e",
+        "tonalRamp": [
+          "#0a0a0f",
+          "#0f0f17",
+          "#161621",
+          "#1e1e2e",
+          "#545460",
+          "#86868e",
+          "#bcbcc0",
+          "#e4e4e6"
+        ]
+      },
+      "neutral-page": {
+        "role": "neutral",
+        "displayName": "Page Gray",
+        "canonical": "#f5f5f5",
+        "tonalRamp": [
+          "#4e4e4e",
+          "#7b7b7b",
+          "#b0b0b0",
+          "#f5f5f5",
+          "#f7f7f7",
+          "#fafafa",
+          "#fcfcfc",
+          "#fefefe"
+        ]
+      },
+      "neutral-surface": {
+        "role": "neutral",
+        "displayName": "White Surface",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#525252",
+          "#808080",
+          "#b8b8b8",
+          "#ffffff",
+          "#ffffff",
+          "#ffffff",
+          "#ffffff",
+          "#ffffff"
+        ]
+      },
+      "neutral-subtle": {
+        "role": "neutral",
+        "displayName": "Warm Subtle Gray",
+        "canonical": "#f0f0f0",
+        "tonalRamp": [
+          "#4d4d4d",
+          "#787878",
+          "#adadad",
+          "#f0f0f0",
+          "#f4f4f4",
+          "#f7f7f7",
+          "#fbfbfb",
+          "#fdfdfd"
+        ]
+      },
+      "neutral-border": {
+        "role": "neutral",
+        "displayName": "Border Gray",
+        "canonical": "#e5e7eb",
+        "tonalRamp": [
+          "#494a4b",
+          "#737476",
+          "#a5a6a9",
+          "#e5e7eb",
+          "#ebedf0",
+          "#f1f2f4",
+          "#f7f8f9",
+          "#fcfcfd"
+        ]
+      },
+      "neutral-border-strong": {
+        "role": "neutral",
+        "displayName": "Strong Border Gray",
+        "canonical": "#d1d5db",
+        "tonalRamp": [
+          "#434446",
+          "#696b6e",
+          "#96999e",
+          "#d1d5db",
+          "#dcdfe4",
+          "#e6e8ec",
+          "#f1f2f4",
+          "#f9fafb"
+        ]
+      },
+      "neutral-text": {
+        "role": "neutral",
+        "displayName": "Body Gray",
+        "canonical": "#374151",
+        "tonalRamp": [
+          "#12151a",
+          "#1c2129",
+          "#282f3a",
+          "#374151",
+          "#676f7b",
+          "#9398a1",
+          "#c3c6cb",
+          "#e7e8ea"
+        ]
+      },
+      "neutral-text-muted": {
+        "role": "neutral",
+        "displayName": "Muted Gray",
+        "canonical": "#6b7280",
+        "tonalRamp": [
+          "#222429",
+          "#363940",
+          "#4d525c",
+          "#6b7280",
+          "#8f949e",
+          "#afb3ba",
+          "#d3d5d9",
+          "#edeef0"
+        ]
+      },
+      "neutral-inverse": {
+        "role": "neutral",
+        "displayName": "Almost Black",
+        "canonical": "#111827",
+        "tonalRamp": [
+          "#05080c",
+          "#090c14",
+          "#0c111c",
+          "#111827",
+          "#4a4f5b",
+          "#7e828a",
+          "#b8babe",
+          "#e2e3e5"
+        ]
+      },
+      "semantic-success": {
+        "role": "semantic",
+        "displayName": "Soft Green",
+        "canonical": "#a6e3a1",
+        "tonalRamp": [
+          "#354934",
+          "#537251",
+          "#78a374",
+          "#a6e3a1",
+          "#bbeab8",
+          "#cff0cc",
+          "#e4f7e3",
+          "#f4fcf4"
+        ]
+      },
+      "semantic-warning": {
+        "role": "semantic",
+        "displayName": "Pale Amber",
+        "canonical": "#f9e2af",
+        "tonalRamp": [
+          "#504838",
+          "#7d7158",
+          "#b3a37e",
+          "#f9e2af",
+          "#fae9c2",
+          "#fcefd4",
+          "#fdf6e7",
+          "#fefcf5"
+        ]
+      },
+      "semantic-error": {
+        "role": "semantic",
+        "displayName": "Muted Rose",
+        "canonical": "#f38ba8",
+        "tonalRamp": [
+          "#4e2c36",
+          "#7a4654",
+          "#af6479",
+          "#f38ba8",
+          "#f6a7bd",
+          "#f9c0d0",
+          "#fbdce5",
+          "#fef1f5"
+        ]
+      },
+      "semantic-info": {
+        "role": "semantic",
+        "displayName": "Powder Blue",
+        "canonical": "#89b4fa",
+        "tonalRamp": [
+          "#2c3a50",
+          "#455a7d",
+          "#6382b4",
+          "#89b4fa",
+          "#a5c6fb",
+          "#bfd7fc",
+          "#dce9fe",
+          "#f1f6fe"
+        ]
+      },
+      "semantic-neutral": {
+        "role": "semantic",
+        "displayName": "Slate",
+        "canonical": "#9399b2",
+        "tonalRamp": [
+          "#2f3139",
+          "#4a4d59",
+          "#6a6e80",
+          "#9399b2",
+          "#adb1c4",
+          "#c5c8d5",
+          "#dfe0e8",
+          "#f2f3f6"
+        ]
+      },
+      "semantic-progress": {
+        "role": "semantic",
+        "displayName": "Warm Peach",
+        "canonical": "#fab387",
+        "tonalRamp": [
+          "#50392b",
+          "#7d5a44",
+          "#b48161",
+          "#fab387",
+          "#fbc5a4",
+          "#fcd6be",
+          "#fee8db",
+          "#fef6f1"
+        ]
+      },
+      "state-danger-surface": {
+        "role": "semantic",
+        "displayName": "Danger Surface",
+        "canonical": "#fee2e2",
+        "tonalRamp": [
+          "#514848",
+          "#7f7171",
+          "#b7a3a3",
+          "#fee2e2",
+          "#fee9e9",
+          "#feefef",
+          "#fff6f6",
+          "#fffcfc"
+        ]
+      },
+      "state-danger-text": {
+        "role": "semantic",
+        "displayName": "Danger Text",
+        "canonical": "#991b1b",
+        "tonalRamp": [
+          "#310909",
+          "#4d0e0e",
+          "#6e1313",
+          "#991b1b",
+          "#b15252",
+          "#c88484",
+          "#e0bbbb",
+          "#f3e4e4"
+        ]
+      },
+      "state-warning-surface": {
+        "role": "semantic",
+        "displayName": "Warning Surface",
+        "canonical": "#fef3c7",
+        "tonalRamp": [
+          "#514e40",
+          "#7f7a64",
+          "#b7af8f",
+          "#fef3c7",
+          "#fef6d4",
+          "#fef9e1",
+          "#fffbee",
+          "#fffef8"
+        ]
+      },
+      "state-warning-text": {
+        "role": "semantic",
+        "displayName": "Warning Text",
+        "canonical": "#92400e",
+        "tonalRamp": [
+          "#2f1404",
+          "#492007",
+          "#692e0a",
+          "#92400e",
+          "#ac6e48",
+          "#c4987d",
+          "#dec6b7",
+          "#f2e8e2"
+        ]
+      },
+      "state-success-surface": {
+        "role": "semantic",
+        "displayName": "Success Surface",
+        "canonical": "#e6f7e6",
+        "tonalRamp": [
+          "#4a4f4a",
+          "#737c73",
+          "#a6b2a6",
+          "#e6f7e6",
+          "#ecf9ec",
+          "#f2fbf2",
+          "#f8fdf8",
+          "#fcfefc"
+        ]
+      },
+      "state-success-text": {
+        "role": "semantic",
+        "displayName": "Success Text",
+        "canonical": "#2d6a2d",
+        "tonalRamp": [
+          "#0e220e",
+          "#173517",
+          "#204c20",
+          "#2d6a2d",
+          "#5f8e5f",
+          "#8eaf8e",
+          "#c0d2c0",
+          "#e6ede6"
+        ]
+      },
+      "state-info-surface": {
+        "role": "semantic",
+        "displayName": "Information Surface",
+        "canonical": "#eff6ff",
+        "tonalRamp": [
+          "#4c4f52",
+          "#787b80",
+          "#acb1b8",
+          "#eff6ff",
+          "#f3f8ff",
+          "#f6faff",
+          "#fafcff",
+          "#fdfeff"
+        ]
+      },
+      "state-info-text": {
+        "role": "semantic",
+        "displayName": "Information Text",
+        "canonical": "#1e40af",
+        "tonalRamp": [
+          "#0a1438",
+          "#0f2058",
+          "#162e7e",
+          "#1e40af",
+          "#546ec2",
+          "#8698d4",
+          "#bcc6e7",
+          "#e4e8f5"
+        ]
+      },
+      "danger-action": {
+        "role": "semantic",
+        "displayName": "Consequence Rose",
+        "canonical": "#9f1239",
+        "tonalRamp": [
+          "#330612",
+          "#50091d",
+          "#720d29",
+          "#9f1239",
+          "#b64b69",
+          "#cb7f94",
+          "#e2b8c4",
+          "#f3e3e7"
+        ]
+      },
+      "danger-action-hover": {
+        "role": "semantic",
+        "displayName": "Consequence Rose Deep",
+        "canonical": "#830e2e",
+        "tonalRamp": [
+          "#2a040f",
+          "#420717",
+          "#5e0a21",
+          "#830e2e",
+          "#a14860",
+          "#bc7d8e",
+          "#dab7c0",
+          "#f0e2e6"
+        ]
+      },
+      "nav-bg": {
+        "role": "neutral",
+        "displayName": "Deep Navy Navigation",
+        "canonical": "#1e1e2e",
+        "tonalRamp": [
+          "#0a0a0f",
+          "#0f0f17",
+          "#161621",
+          "#1e1e2e",
+          "#555561",
+          "#85858c",
+          "#bbbbbf",
+          "#e4e4e5"
+        ]
+      },
+      "nav-text": {
+        "role": "neutral",
+        "displayName": "Lavender Navigation Text",
+        "canonical": "#cdd6f4",
+        "tonalRamp": [
+          "#42444e",
+          "#676b7a",
+          "#949ab0",
+          "#cdd6f4",
+          "#d9e0f7",
+          "#e4e9f9",
+          "#f0f3fc",
+          "#f9fafe"
+        ]
+      },
+      "nav-active": {
+        "role": "primary",
+        "displayName": "Powder Blue Navigation Active",
+        "canonical": "#89b4fa",
+        "tonalRamp": [
+          "#2c3a50",
+          "#455a7d",
+          "#6382b4",
+          "#89b4fa",
+          "#a5c6fb",
+          "#bfd8fc",
+          "#dceafd",
+          "#f1f8fe"
+        ]
+      },
+      "nav-button": {
+        "role": "neutral",
+        "displayName": "Dark Slate Navigation Button",
+        "canonical": "#313244",
+        "tonalRamp": [
+          "#101016",
+          "#191922",
+          "#232431",
+          "#313244",
+          "#626371",
+          "#90909a",
+          "#c1c2c7",
+          "#e6e6e9"
+        ]
+      },
+      "status-accepted": {
+        "role": "semantic",
+        "displayName": "Accepted Teal",
+        "canonical": "#0e7490",
+        "tonalRamp": [
+          "#04252e",
+          "#073a48",
+          "#0a5468",
+          "#0e7490",
+          "#4895ab",
+          "#7db4c3",
+          "#b7d5de",
+          "#e2eef2"
+        ]
+      },
+      "status-validated": {
+        "role": "semantic",
+        "displayName": "Validated Cyan",
+        "canonical": "#0891b2",
+        "tonalRamp": [
+          "#032e39",
+          "#044959",
+          "#066880",
+          "#0891b2",
+          "#43abc4",
+          "#7ac4d5",
+          "#b5dee8",
+          "#e1f2f6"
+        ]
+      },
+      "status-queued": {
+        "role": "semantic",
+        "displayName": "Queued Blue",
+        "canonical": "#1d4ed8",
+        "tonalRamp": [
+          "#091945",
+          "#0f276c",
+          "#15389c",
+          "#1d4ed8",
+          "#5378e1",
+          "#859fea",
+          "#bbcaf3",
+          "#e4eafa"
+        ]
+      },
+      "status-dispatched": {
+        "role": "semantic",
+        "displayName": "Dispatched Violet",
+        "canonical": "#6d28d9",
+        "tonalRamp": [
+          "#230d45",
+          "#37146d",
+          "#4e1d9c",
+          "#6d28d9",
+          "#905ce2",
+          "#b08bea",
+          "#d3bff4",
+          "#ede5fa"
+        ]
+      },
+      "status-printing": {
+        "role": "semantic",
+        "displayName": "Printing Orange",
+        "canonical": "#c2410c",
+        "tonalRamp": [
+          "#3e1504",
+          "#612106",
+          "#8c2f09",
+          "#c2410c",
+          "#d16f46",
+          "#de987c",
+          "#edc6b6",
+          "#f8e8e2"
+        ]
+      },
+      "status-success": {
+        "role": "semantic",
+        "displayName": "Success Green",
+        "canonical": "#166534",
+        "tonalRamp": [
+          "#072011",
+          "#0b331a",
+          "#104925",
+          "#166534",
+          "#4e8a65",
+          "#81ac91",
+          "#b9d1c2",
+          "#e3ede7"
+        ]
+      },
+      "status-unverified": {
+        "role": "semantic",
+        "displayName": "Unverified Amber",
+        "canonical": "#92400e",
+        "tonalRamp": [
+          "#2f1404",
+          "#492007",
+          "#692e0a",
+          "#92400e",
+          "#ac6e48",
+          "#c4987d",
+          "#dec6b7",
+          "#f2e8e2"
+        ]
+      },
+      "status-failed": {
+        "role": "semantic",
+        "displayName": "Failed Rose",
+        "canonical": "#9f1239",
+        "tonalRamp": [
+          "#330612",
+          "#50091d",
+          "#720d29",
+          "#9f1239",
+          "#b64b69",
+          "#cb7f94",
+          "#e2b8c4",
+          "#f3e3e7"
+        ]
+      },
+      "status-timeout": {
+        "role": "semantic",
+        "displayName": "Timeout Umber",
+        "canonical": "#78350f",
+        "tonalRamp": [
+          "#261105",
+          "#3c1b08",
+          "#56260b",
+          "#78350f",
+          "#986549",
+          "#b6927d",
+          "#d7c2b7",
+          "#efe7e2"
+        ]
+      },
+      "status-cancelled": {
+        "role": "semantic",
+        "displayName": "Cancelled Slate",
+        "canonical": "#374151",
+        "tonalRamp": [
+          "#12151a",
+          "#1c2129",
+          "#282f3a",
+          "#374151",
+          "#676f7b",
+          "#9398a1",
+          "#c3c6cb",
+          "#e7e8ea"
+        ]
+      },
+      "status-duplicate": {
+        "role": "semantic",
+        "displayName": "Duplicate Gray",
+        "canonical": "#4b5563",
+        "tonalRamp": [
+          "#181b20",
+          "#262b32",
+          "#363d47",
+          "#4b5563",
+          "#767e88",
+          "#9ea3ab",
+          "#c9ccd0",
+          "#e9ebec"
+        ]
+      }
     },
     "typographyMeta": {
-      "heading": { "displayName": "Page Heading", "purpose": "Page titles and top-level headers." },
-      "body": { "displayName": "Body Text", "purpose": "Primary readable UI text." },
-      "label": { "displayName": "Section Label", "purpose": "Table headers, stat labels, and upper-case metadata." },
-      "mono": { "displayName": "Monospace Data", "purpose": "Job IDs, trace codes, IP addresses, and code snippets." }
+      "headline": {
+        "displayName": "Page Headline",
+        "purpose": "One top-level title per application surface."
+      },
+      "title": {
+        "displayName": "Section Title",
+        "purpose": "Cards, panels, dialogs, and focused-workspace headings."
+      },
+      "body": {
+        "displayName": "Body Text",
+        "purpose": "Forms, tables, descriptions, and operational copy."
+      },
+      "label": {
+        "displayName": "Compact Label",
+        "purpose": "Metadata and column labels; uppercase and tracking only where the script permits."
+      },
+      "mono": {
+        "displayName": "Technical Evidence",
+        "purpose": "Identifiers, payloads, printer addresses, and trace values."
+      },
+      "stat": {
+        "displayName": "Operational Stat",
+        "purpose": "At-a-glance dashboard metrics only."
+      }
     },
     "shadows": [
-      { "name": "card-rest", "value": "0 1px 3px rgba(0,0,0,0.1)", "purpose": "Stat cards on dashboard at rest." },
-      { "name": "panel-float", "value": "0 8px 24px rgba(0,0,0,0.08)", "purpose": "Login panel, error boundary overlay, dialog popovers." },
-      { "name": "popover", "value": "0 10px 24px rgba(0,0,0,0.18)", "purpose": "Hover popovers on dark background." }
+      {
+        "name": "subtle-surface",
+        "value": "0 1px 3px rgba(0, 0, 0, 0.05)",
+        "purpose": "Rare separation for compact metrics or proof paper."
+      },
+      {
+        "name": "floating-panel",
+        "value": "0 8px 24px rgba(0, 0, 0, 0.08)",
+        "purpose": "Dialogs, login panels, and centered overlays."
+      },
+      {
+        "name": "popover",
+        "value": "0 8px 24px rgba(17, 24, 39, 0.14)",
+        "purpose": "Menus and anchored floating content."
+      },
+      {
+        "name": "drawer",
+        "value": "-4px 0 24px rgba(0, 0, 0, 0.12)",
+        "purpose": "Directional depth for right-edge drawers."
+      },
+      {
+        "name": "action-lift",
+        "value": "0 3px 8px rgba(30, 102, 245, 0.30)",
+        "purpose": "Hover feedback for the canonical primary button."
+      }
     ],
     "motion": [
-      { "name": "state-fade", "value": "opacity 0.15s ease", "purpose": "Button and hover state change transitions." }
+      {
+        "name": "state-fast",
+        "value": "0.15s ease",
+        "purpose": "Color, border, and opacity feedback on interactive state changes."
+      },
+      {
+        "name": "surface-standard",
+        "value": "0.2s ease",
+        "purpose": "Navigation and overlay spatial transitions."
+      },
+      {
+        "name": "surface-expressive",
+        "value": "0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Short active-marker and drawer movement with a firm finish."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "none",
+        "purpose": "Instant fallback under prefers-reduced-motion."
+      }
     ],
     "breakpoints": [
-      { "name": "mobile", "value": "520px" },
-      { "name": "tablet", "value": "760px" },
-      { "name": "desktop", "value": "1024px" }
+      {
+        "name": "compact",
+        "value": "520px"
+      },
+      {
+        "name": "mobile",
+        "value": "760px"
+      },
+      {
+        "name": "workspace-stack",
+        "value": "860px"
+      },
+      {
+        "name": "dense-grid-reduction",
+        "value": "1100px"
+      }
     ]
   },
   "components": [
@@ -35,61 +764,169 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Clinical navy button for primary page actions.",
-      "html": "<button class=\"ds-btn-primary\">SAVE CHANGES</button>",
-      "css": ".ds-btn-primary { background: #1e1e2e; color: #ffffff; padding: 0.7rem 0.9rem; font-family: system-ui, sans-serif; font-size: 0.875rem; font-weight: 700; border: none; border-radius: 6px; cursor: pointer; transition: opacity 0.15s ease; } .ds-btn-primary:hover { opacity: 0.9; } .ds-btn-primary:focus-visible { outline: 2px solid #1e66f5; outline-offset: 2px; }"
+      "description": "Action-blue control for direct task progression.",
+      "html": "<button class=\"ds-button-primary\">Save changes</button>",
+      "css": ".ds-button-primary { min-height: 38px; padding: 0.48rem 1.1rem; border: 1.5px solid #1e66f5; border-radius: 6px; background: #1e66f5; color: #fff; font-family: system-ui, sans-serif; font-size: 0.825rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease; } .ds-button-primary:hover { background: #1654d1; border-color: #1654d1; transform: translateY(-1px); box-shadow: 0 3px 8px rgba(30,102,245,0.3); } .ds-button-primary:active { transform: translateY(0); box-shadow: 0 1px 2px rgba(30,102,245,0.2); } .ds-button-primary:focus-visible { outline: 2px solid #1e66f5; outline-offset: 2px; }"
     },
     {
-      "name": "Stat Card",
-      "kind": "card",
-      "refersTo": "stat-card",
-      "description": "Dashboard metric card with soft elevation and bold stat text.",
-      "html": "<div class=\"ds-stat-card\"><div class=\"ds-stat-label\">ACTIVE PRINTERS</div><div class=\"ds-stat-val\">12</div></div>",
-      "css": ".ds-stat-card { background: #ffffff; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; font-family: system-ui, sans-serif; } .ds-stat-label { font-size: 0.75rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; } .ds-stat-val { font-size: 2rem; font-weight: 700; line-height: 1.2; margin-top: 0.5rem; color: #1e1e2e; }"
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "White bordered control for reversible or supporting actions.",
+      "html": "<button class=\"ds-button-secondary\">Preview</button>",
+      "css": ".ds-button-secondary { min-height: 38px; padding: 0.48rem 1.1rem; border: 1.5px solid #d1d5db; border-radius: 6px; background: #fff; color: #1e1e2e; font-family: system-ui, sans-serif; font-size: 0.825rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease; } .ds-button-secondary:hover { border-color: #1e66f5; color: #1e66f5; background: rgba(30,102,245,0.03); } .ds-button-secondary:active { background: #eff6ff; } .ds-button-secondary:focus-visible { outline: 2px solid #1e66f5; outline-offset: 2px; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Consequence-rose control for destructive or physically consequential confirmation.",
+      "html": "<button class=\"ds-button-danger\">Confirm physical print</button>",
+      "css": ".ds-button-danger { min-height: 38px; padding: 0.48rem 1.1rem; border: 1.5px solid #9f1239; border-radius: 6px; background: #9f1239; color: #fff; font-family: system-ui, sans-serif; font-size: 0.825rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease; } .ds-button-danger:hover { background: #830e2e; border-color: #830e2e; transform: translateY(-1px); box-shadow: 0 3px 8px rgba(159,18,57,0.3); } .ds-button-danger:active { transform: translateY(0); box-shadow: none; } .ds-button-danger:focus-visible { outline: 2px solid #1e66f5; outline-offset: 2px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Quiet transparent control for dismissal and tertiary navigation.",
+      "html": "<button class=\"ds-button-ghost\">Cancel</button>",
+      "css": ".ds-button-ghost { min-height: 38px; padding: 0.48rem 1.1rem; border: 1.5px solid transparent; border-radius: 6px; background: transparent; color: #6b7280; font-family: system-ui, sans-serif; font-size: 0.825rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease; } .ds-button-ghost:hover { background: rgba(30,102,245,0.08); color: #1e66f5; } .ds-button-ghost:active { background: rgba(30,102,245,0.12); } .ds-button-ghost:focus-visible { outline: 2px solid #1e66f5; outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-standard",
+      "description": "Clinical white input with a strong boundary and connected label.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Template code</span><input class=\"ds-field-input\" value=\"LAB_LABEL\" /></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 0.35rem; font-family: system-ui, sans-serif; } .ds-field-label { color: #6b7280; font-size: 0.75rem; font-weight: 600; } .ds-field-input { min-height: 38px; padding: 0.5rem 0.7rem; border: 1.5px solid #d1d5db; border-radius: 6px; background: #fff; color: #374151; font: 400 0.875rem/1.5 system-ui, sans-serif; transition: border-color 0.15s ease, box-shadow 0.15s ease; } .ds-field-input:hover { border-color: #9399b2; } .ds-field-input:focus { outline: none; border-color: #1e66f5; box-shadow: 0 0 0 3px rgba(30,102,245,0.15); }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "filter-chip",
+      "description": "Pill-shaped categorical filter with a visibly pressed state.",
+      "html": "<button class=\"ds-filter-chip ds-filter-chip-selected\" aria-pressed=\"true\">Published <strong>18</strong></button>",
+      "css": ".ds-filter-chip { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.25rem 0.6rem; border: 1px solid #e5e7eb; border-radius: 9999px; background: #fff; color: #6b7280; font-family: system-ui, sans-serif; font-size: 0.75rem; font-weight: 600; cursor: pointer; } .ds-filter-chip:hover { border-color: #1e66f5; color: #1e66f5; } .ds-filter-chip-selected { border-color: #1e66f5; background: #eff6ff; color: #1d4ed8; } .ds-filter-chip:focus-visible { outline: 2px solid #1e66f5; outline-offset: 2px; }"
     },
     {
       "name": "Status Badge",
       "kind": "chip",
       "refersTo": "status-badge",
-      "description": "Inline status indicator badge with semantic background.",
-      "html": "<span class=\"ds-badge ds-badge-success\">SUCCESS</span>",
-      "css": ".ds-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; color: #ffffff; font-family: system-ui, sans-serif; } .ds-badge-success { background: #a6e3a1; color: #1e1e2e; }"
+      "description": "Literal outlined job status with contrast-safe text and ring.",
+      "html": "<span class=\"ds-status-badge\">SUCCESS</span>",
+      "css": ".ds-status-badge { display: inline-block; padding: 3px 10px; border: 1.5px solid #166534; border-radius: 9999px; background: transparent; color: #166534; font-family: system-ui, sans-serif; font-size: 0.7rem; font-weight: 700; line-height: 1; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }"
     },
     {
-      "name": "Status Dot",
-      "kind": "chip",
-      "refersTo": "status-dot",
-      "description": "Compact 8px colored dot for live device reachability.",
-      "html": "<span class=\"ds-status-dot ds-status-dot-online\"></span> <span class=\"ds-status-text\">online</span>",
-      "css": ".ds-status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; } .ds-status-dot-online { background: #a6e3a1; } .ds-status-text { font-size: 0.85rem; font-weight: 600; color: #40a02b; font-family: system-ui, sans-serif; }"
+      "name": "Panel Card",
+      "kind": "card",
+      "refersTo": "card-panel",
+      "description": "Flat white reading surface separated from the page by a quiet border.",
+      "html": "<section class=\"ds-panel-card\"><h3>Template library</h3><p>Find, assess, and safely maintain existing templates.</p></section>",
+      "css": ".ds-panel-card { padding: 1.25rem; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; color: #374151; font-family: system-ui, sans-serif; } .ds-panel-card h3 { margin: 0 0 0.5rem; color: #1e1e2e; font-size: 1rem; font-weight: 600; } .ds-panel-card p { margin: 0; font-size: 0.875rem; line-height: 1.5; }"
+    },
+    {
+      "name": "Navigation Item",
+      "kind": "nav",
+      "refersTo": "nav-link-active",
+      "description": "Dark-rail destination with a reinforced active marker.",
+      "html": "<a class=\"ds-nav-item ds-nav-item-active\" href=\"#\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" aria-hidden=\"true\"><path d=\"M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5zM8 8h8M8 12h8M8 16h5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"/></svg><span>Templates</span></a>",
+      "css": ".ds-nav-item { position: relative; display: flex; align-items: center; gap: 0.5rem; padding: 0.38rem 0.6rem 0.38rem 0.85rem; border-radius: 4px; background: transparent; color: rgba(205,214,244,0.8); font-family: system-ui, sans-serif; font-size: 0.85rem; line-height: 1.5; text-decoration: none; transition: background-color 0.15s ease, color 0.15s ease; } .ds-nav-item::before { content: ''; position: absolute; left: 0; top: 20%; bottom: 20%; width: 3px; border-radius: 0 2px 2px 0; background: #1e66f5; opacity: 0; } .ds-nav-item:hover { background: rgba(255,255,255,0.08); color: #fff; } .ds-nav-item-active { background: rgba(30,102,245,0.15); color: #fff; font-weight: 600; } .ds-nav-item-active::before { opacity: 1; } .ds-nav-item:focus-visible { outline: 2px solid #89b4fa; outline-offset: 0; }"
+    },
+    {
+      "name": "Confirmation Dialog",
+      "kind": "custom",
+      "refersTo": "card-panel",
+      "description": "Floating confirmation panel for actions with operational or physical consequence.",
+      "html": "<div class=\"ds-dialog\" role=\"dialog\" aria-labelledby=\"ds-dialog-title\"><h2 id=\"ds-dialog-title\">Confirm physical print</h2><p>This action will produce 2 physical copies on Ward Printer 3.</p><div class=\"ds-dialog-actions\"><button class=\"ds-dialog-cancel\">Cancel</button><button class=\"ds-dialog-confirm\">Print 2 copies</button></div></div>",
+      "css": ".ds-dialog { width: min(560px, 100%); padding: 1.5rem; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; color: #374151; box-shadow: 0 8px 24px rgba(0,0,0,0.08); font-family: system-ui, sans-serif; } .ds-dialog h2 { margin: 0 0 0.5rem; color: #1e1e2e; font-size: 1rem; } .ds-dialog p { margin: 0; font-size: 0.875rem; line-height: 1.5; } .ds-dialog-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.25rem; } .ds-dialog button { min-height: 38px; padding: 0.48rem 1.1rem; border-radius: 6px; font: 600 0.825rem system-ui, sans-serif; cursor: pointer; } .ds-dialog-cancel { border: 1.5px solid #d1d5db; background: #fff; color: #1e1e2e; } .ds-dialog-confirm { border: 1.5px solid #9f1239; background: #9f1239; color: #fff; } .ds-dialog button:hover { opacity: 0.88; } .ds-dialog button:focus-visible { outline: 2px solid #1e66f5; outline-offset: 2px; }"
     }
   ],
   "narrative": {
     "northStar": "The Lab Notebook",
-    "overview": "PrintOps feels like a well-kept clinical notebook — precise, clean, and trustworthy. Nothing decorative. Every element is a deliberate record, placed with care and easy to read at a glance.",
+    "overview": "PrintOps feels like a well-kept clinical notebook: precise, calm, and trustworthy. Every element is a deliberate record, placed for rapid scanning rather than decoration. The interface recedes behind the operator's task while keeping physical-output consequences unmistakable.\n\nThe system is light-first and restrained. Familiar system typography, compact controls, quiet borders, and flat reading surfaces suit long shifts under fluorescent hospital lighting. Brand character comes from disciplined blue accents, exact spacing, bilingual resilience, and honest operational states—not visual spectacle.\n\nMotion is limited to short state feedback and spatial transitions that explain where an overlay or drawer came from. All motion has an instant reduced-motion fallback. The visual system rejects flashy SaaS gradients, terminal-dense data walls, generic component-library styling, and dark-first interfaces.",
     "keyCharacteristics": [
-      "Light-first, dark-optional color scheme tuned for fluorescent-lit clinical environments",
-      "Flat-by-default elevation; shadows reserved for floating surfaces",
-      "Single system sans-serif font stack — no display/body pairing",
-      "6-color semantic palette for job status, down from 10 — clarity over decoration",
-      "Restrained rounded corners (4–8px) — clinical precision, not soft-playfulness"
+      "Light-first surfaces tuned for clinical workstations",
+      "Flat-by-default depth with elevation reserved for overlays, drawers, and consequential controls",
+      "System-native sans-serif typography with monospace reserved for technical evidence",
+      "One action-blue family plus explicit semantic state colors",
+      "Restrained surface corners with pills reserved for compact status and filtering",
+      "Keyboard-complete controls, 44px touch targets, and equal English/Thai support"
     ],
     "rules": [
-      { "name": "The One Accent Rule", "body": "Action Blue (#1e66f5) is the only accent color outside the semantic palette. No secondary accent, no tertiary.", "section": "colors" },
-      { "name": "The Five-Color Status Rule", "body": "Job status uses exactly six semantic colors (green/amber/rose/blue/peach/slate), never more.", "section": "colors" },
-      { "name": "The Single Family Rule", "body": "One font family for everything except code. No display/body pairing. No web font loading.", "section": "typography" },
-      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest. Shadows appear only as a response to context (floating above the page).", "section": "elevation" }
+      {
+        "name": "The One Accent Rule",
+        "body": "Action Blue is the only non-semantic accent. Its restraint makes focus, selection, and the next safe action immediately recognizable.",
+        "section": "colors"
+      },
+      {
+        "name": "The Literal Status Rule",
+        "body": "Never merge, rename, or imply a server status through color alone. Preserve the literal label, pair it with a contrast-safe outline or explicit text, and keep `UNVERIFIED` visually distinct from `FAILED`.",
+        "section": "colors"
+      },
+      {
+        "name": "The Consequence Color Rule",
+        "body": "Rose signals destructive or physically consequential action, not ordinary emphasis. Routine primary actions remain blue or neutral.",
+        "section": "colors"
+      },
+      {
+        "name": "The Single Family Rule",
+        "body": "Use system fonts only. Do not load display fonts or create a decorative headline layer.",
+        "section": "typography"
+      },
+      {
+        "name": "The Evidence Layer Rule",
+        "body": "Use monospace only where the exact string matters operationally; ordinary prose and labels stay sans-serif.",
+        "section": "typography"
+      },
+      {
+        "name": "The Thai Integrity Rule",
+        "body": "Uppercase and letter-spacing are optional Latin treatments, never global label requirements. Thai glyph clusters must remain unmodified and layouts must tolerate longer localized copy.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Task Per Mobile View Rule",
+        "body": "On narrow screens, show the list or the focused maintenance task—not both side by side. Navigation back to the parent context must remain explicit.",
+        "section": "layout"
+      },
+      {
+        "name": "The Touch Floor Rule",
+        "body": "Interactive targets are at least 44px on coarse pointers and mobile widths, even when their desktop visual footprint remains compact.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Cards and page regions are border-defined at rest. Add a shadow only when the element floats above, moves over, or must be distinguished from the current plane.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Directional Depth Rule",
+        "body": "Drawers cast depth away from their attached edge; centered overlays use ambient depth. Shadow direction must explain spatial origin.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Restrained Corner Rule",
+        "body": "Use 4–8px corners for ordinary surfaces and controls. Use full pills only for status or filtering, never for primary buttons or large containers.",
+        "section": "shapes"
+      }
     ],
     "dos": [
-      "Do use White (#ffffff) for all content surfaces (cards, tables, panels) on Page Gray (#f5f5f5) background",
-      "Do use Action Blue (#1e66f5) as the sole accent color; ≤5% of any screen",
-      "Do keep surfaces flat at rest; only stat cards, panels, and popovers get shadows",
-      "Do use system fonts only — no web font imports, no display/body pairing"
+      "Do use White reading surfaces on Page Gray and quiet borders for primary structure.",
+      "Do preserve literal operational states, especially `UNVERIFIED`, and pair every status color with text, outline, shape, or icon.",
+      "Do keep proof generation and physical printing visibly separate; generating or refreshing a proof must never trigger output.",
+      "Do require a distinct confirmation for every physical print and block printing while printer readiness is offline or unknown.",
+      "Do use shared Button, Dialog, Alert, FormField, PageState, and StatusBadge primitives where they fit.",
+      "Do maintain visible focus, keyboard operation, 44px touch targets, reduced-motion behavior, and bilingual EN/TH resilience.",
+      "Do use mobile cards or focused next-step views when a dense desktop table or split workspace would compete for attention."
     ],
     "donts": [
-      "Don't use flashy SaaS gradients — no purple-to-blue hero sections",
-      "Don't create terminal-dense data walls — hospital operators are not SREs",
-      "Don't default to dark mode — dark interfaces increase eye strain under fluorescent light"
+      "Don't use gradients, decorative glows, oversized display type, or animation as decoration.",
+      "Don't create terminal-dense dashboards or expose expert payload controls as the default operator workflow.",
+      "Don't default to dark mode in fluorescent clinical environments.",
+      "Don't invent new accent colors or arbitrary one-off font sizes when a token already serves the role.",
+      "Don't use color as the only communicator or lower contrast for secondary operational text.",
+      "Don't place shadows on ordinary table rows, section headings, or static cards.",
+      "Don't use pill-shaped primary buttons or large rounded containers; pills belong to compact status and filtering.",
+      "Don't truncate critical identifiers or safety copy without a discoverable full value."
     ]
   }
 }
