@@ -33,6 +33,11 @@ function fail(name, detail) {
   console.error(`[FAIL] ${name}: ${detail}`);
 }
 
+function info(name, detail) {
+  checks.push({ name, status: 'INFO', detail });
+  console.log(`[INFO] ${name}: ${detail}`);
+}
+
 function commandVersion(name, args = ['--version']) {
   let executable = name;
   let commandArgs = args;
@@ -123,6 +128,17 @@ function checkToolchain() {
   } else if (npmVersion) {
     pass('version:npm', 'supported');
   }
+}
+
+function checkBuildHost() {
+  if (process.platform !== 'win32') {
+    fail(
+      'platform:windows-installer',
+      `current host is ${process.platform}/${process.arch}; this release requires both MSI and NSIS installers, and the MSI target must be built on Windows. Use a Windows x64 machine, VM, or CI runner`,
+    );
+    return;
+  }
+  pass('platform:windows-installer', `supported host ${process.platform}/${process.arch}`);
 }
 
 function checkVersions() {
@@ -220,6 +236,7 @@ function installers(version, minimumMtime) {
   });
 }
 
+checkBuildHost();
 checkToolchain();
 const version = checkVersions();
 checkForbiddenArtifacts();
@@ -237,7 +254,14 @@ if (!postBundle && failures.length === 0) {
   }
 }
 
-const resources = checkResources();
+if (!postBundle && failures.length > 0) {
+  info(
+    'build:resources',
+    'skipped because release preflight failed; generated desktop resources are checked only after their build can run',
+  );
+}
+
+const resources = !postBundle && failures.length > 0 ? [] : checkResources();
 const resourceMtime = newestMtime([join(root, 'apps/desktop/src-tauri/resources')]);
 const installerManifest = postBundle ? installers(version, resourceMtime) : [];
 if (postBundle && installerManifest.length !== 2) {

@@ -22,6 +22,7 @@ import {
   isTauriAvailable,
 } from '../tauri.js';
 import { ServiceAccountSettings } from '../components/ServiceAccountSettings.js';
+import { PageLayout } from '../components/PageLayout.js';
 
 // ----- workspace profile persistence -----
 
@@ -272,8 +273,7 @@ export default function Settings() {
   }, [nats]);
 
   return (
-    <div className="settings-page">
-      <h1>{t('settings.title')}</h1>
+    <PageLayout className="settings-page" width="standard" title={t('settings.title')}>
 
       {message && (
         <Alert
@@ -623,6 +623,6 @@ export default function Settings() {
         )}
       </section>
       <ServiceAccountSettings />
-    </div>
+    </PageLayout>
   );
 }

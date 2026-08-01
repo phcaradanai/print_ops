@@ -1,0 +1,219 @@
+/*
+ * Final route-layout contract.
+ *
+ * This file intentionally loads after feature styles. It is the one place
+ * where equivalent page chrome converges: route anatomy, surfaces, controls,
+ * corners, and responsive workspace behavior. Feature files may still own
+ * domain-specific geometry, but not a competing visual language.
+ */
+
+.ops-page {
+  width: min(100%, var(--page-content-wide));
+  margin-inline: auto;
+}
+
+.ops-page--standard,
+.ops-page.settings-page {
+  width: min(100%, var(--page-content-standard));
+  max-width: var(--page-content-standard);
+}
+
+.ops-page--full {
+  width: 100%;
+  max-width: none;
+}
+
+.ops-page.wh-container,
+.ops-page.templates-page,
+.ops-page.paper-profiles-page,
+.ops-page.template-sandbox-page {
+  max-width: none;
+  margin: 0 auto;
+  padding: 0;
+}
+
+.ops-page__header {
+  margin: 0;
+  padding: 0 0 var(--spacing-xl);
+  border-bottom: 1px solid var(--neutral-border);
+}
+
+.ops-page__header > .tpl-page-header,
+.ops-page__header > .wh-header,
+.ops-page__header > .pp-page-header {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ops-page__header .wh-header-title-area {
+  width: auto;
+  min-width: 18rem;
+  flex: 1 1 28rem;
+}
+
+.ops-page__header .wh-header-actions {
+  flex: 0 1 44rem;
+}
+
+.ops-page__body {
+  gap: var(--page-section-gap);
+}
+
+.ops-page .card,
+.ops-page .tpl-card,
+.ops-page .wh-card,
+.ops-page .wh-panel,
+.ops-page .settings-section,
+.ops-page .job-panel,
+.ops-page .stat-card,
+.ops-page .pp-library,
+.ops-page .pp-form-panel,
+.ops-page .pp-preview-panel,
+.ops-page .pp-profile-card {
+  border-color: var(--neutral-border);
+  border-radius: var(--rounded-lg);
+  background: var(--neutral-surface);
+  box-shadow: none;
+}
+
+.ops-page .stat-card:hover,
+.ops-page .job-trace__card:hover {
+  transform: none;
+}
+
+.ui-button,
+.ds-btn,
+.tpl-btn,
+.wh-action-btn,
+.wh-btn-outline,
+.settings-actions button,
+.btn-primary,
+.btn-secondary {
+  border-radius: var(--rounded-md);
+}
+
+.ds-btn--primary,
+.tpl-btn--primary,
+.settings-btn-primary,
+.btn-primary {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--neutral-surface);
+}
+
+.ds-btn--primary:hover:not(:disabled),
+.tpl-btn--primary:hover:not(:disabled),
+.settings-btn-primary:hover:not(:disabled),
+.btn-primary:hover:not(:disabled) {
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
+  opacity: 1;
+}
+
+.ds-btn--ghost,
+.ds-btn--secondary,
+.tpl-btn--ghost,
+.wh-btn-outline,
+.settings-btn-secondary,
+.btn-secondary {
+  border-color: var(--neutral-border-strong);
+  background: var(--neutral-surface);
+  color: var(--neutral-text);
+}
+
+.ds-btn--danger,
+.settings-btn-danger {
+  border-color: var(--state-danger-text);
+  background: var(--state-danger-text);
+  color: var(--neutral-surface);
+}
+
+.ops-page input:not([type='checkbox']):not([type='radio']),
+.ops-page select,
+.ops-page textarea,
+.ops-page .wh-input,
+.ops-page .tpl-input,
+.ops-page .tpl-select {
+  border-color: var(--neutral-border-strong);
+  border-radius: var(--rounded-md);
+  background: var(--neutral-surface);
+  color: var(--neutral-text);
+}
+
+.ops-page .data-table,
+.ops-page .wh-table-wrap,
+.ops-page .tpl-table-wrap,
+.ops-page .print-flow-table-wrap {
+  border-radius: var(--rounded-lg);
+}
+
+.wh-header-icon {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  border-radius: var(--rounded-md);
+  background: var(--state-info-surface);
+  color: var(--primary);
+}
+
+.wh-header-icon .nav-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.template-sandbox-layout {
+  grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
+  gap: var(--page-section-gap);
+}
+
+@media (max-width: 1100px) {
+  .template-sandbox-layout,
+  .wh-form-layout,
+  .tpl-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .ops-page__header > .tpl-page-header,
+  .ops-page__header > .wh-header,
+  .ops-page__header > .pp-page-header {
+    align-items: stretch;
+    flex-direction: column;
+    flex-wrap: wrap;
+  }
+
+  .ops-page__header .wh-header-title-area,
+  .ops-page__header .wh-header-actions {
+    width: 100%;
+    min-width: 0;
+    flex-basis: auto;
+  }
+
+  .ops-page__header button,
+  .ops-page__header a,
+  .ops-page__footer button,
+  .ops-page__footer a,
+  .ops-page .ds-btn,
+  .ops-page .tpl-btn,
+  .ops-page .wh-action-btn {
+    min-height: 44px;
+  }
+
+  .wh-search-box,
+  .tpl-search {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+}

@@ -5,6 +5,7 @@ import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { ErrorBanner } from '../components/PageState.js';
 import { Dialog } from '../components/Dialog.js';
+import { PageLayout } from '../components/PageLayout.js';
 import { sanitizePreviewHtml } from '../lib/previewHtml.js';
 
 interface Printer {
@@ -324,11 +325,12 @@ export default function TemplateSandbox() {
   }
 
   return (
-    <div className="template-sandbox-page" style={{ position: 'relative' }}>
-      <h1 style={{ marginBottom: '0.25rem' }}>{t('page.sandbox.title')}</h1>
-      <p style={{ color: 'var(--neutral-text-muted)', marginBottom: 'var(--spacing-lg)', fontSize: '0.9rem' }}>
-        {t('page.sandbox.description')}
-      </p>
+    <PageLayout
+      className="template-sandbox-page"
+      width="full"
+      title={t('page.sandbox.title')}
+      description={t('page.sandbox.description')}
+    >
 
       {/* Reference data failed: the dropdowns below are empty because of this,
           not because nothing is configured. */}
@@ -684,6 +686,6 @@ export default function TemplateSandbox() {
           </section>
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 }

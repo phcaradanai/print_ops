@@ -9,8 +9,6 @@ export function usePaperProfilePopups(profileId: string | null) {
   const [fullPreviewOpen, setFullPreviewOpen] = useState(false);
   const presetsTriggerRef = useRef<HTMLButtonElement>(null);
   const presetsContainerRef = useRef<HTMLDivElement>(null);
-  const drawerRef = useRef<HTMLDivElement>(null);
-  const drawerCloseButtonRef = useRef<HTMLButtonElement>(null);
   const previewPanelRef = useRef<HTMLDivElement>(null);
   const previewCloseButtonRef = useRef<HTMLButtonElement>(null);
   const closePresets = useCallback((restore = true) => {
@@ -64,7 +62,6 @@ export function usePaperProfilePopups(profileId: string | null) {
     };
   }, [closePresets, presetsOpen]);
 
-  useModalFocusTrap(Boolean(drawer), drawerRef, closeDrawer);
   useModalFocusTrap(fullPreviewOpen, previewPanelRef, closeFullPreview);
 
   useEffect(() => {
@@ -80,8 +77,6 @@ export function usePaperProfilePopups(profileId: string | null) {
     togglePresets,
     closePresets,
     drawer,
-    drawerRef,
-    drawerCloseButtonRef,
     openDrawer,
     toggleDrawer,
     closeDrawer,

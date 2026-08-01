@@ -3,18 +3,15 @@ import { useLocale } from '../i18n/index.js';
 import { apiDownload } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useApiAction } from '../hooks/useApiAction.js';
-import { Alert } from '../components/Alert.js';
-import { Button } from '../components/Button.js';
+import { Alert, Button, Grid, PageLayout, Panel } from '../components/ui/index.js';
 
-interface ExportItem {
-  label: string; description: string; path: string; filename: string; color: string;
-}
+interface ExportItem { label: string; description: string; path: string; filename: string }
 
 const EXPORTS: ExportItem[] = [
-  { label: 'page.export.jobsCsv', description: 'page.export.jobsCsvDesc', path: '/exports/jobs.csv', filename: 'jobs.csv', color: '#a6e3a1' },
-  { label: 'page.export.jobsJson', description: 'page.export.jobsJsonDesc', path: '/exports/jobs.json', filename: 'jobs.json', color: '#89b4fa' },
-  { label: 'page.export.auditCsv', description: 'page.export.auditCsvDesc', path: '/exports/audit.csv', filename: 'audit.csv', color: '#fab387' },
-  { label: 'page.export.printerStatusCsv', description: 'page.export.printerStatusCsvDesc', path: '/exports/printers.csv', filename: 'printer-status.csv', color: '#cba6f7' },
+  { label: 'page.export.jobsCsv', description: 'page.export.jobsCsvDesc', path: '/exports/jobs.csv', filename: 'jobs.csv' },
+  { label: 'page.export.jobsJson', description: 'page.export.jobsJsonDesc', path: '/exports/jobs.json', filename: 'jobs.json' },
+  { label: 'page.export.auditCsv', description: 'page.export.auditCsvDesc', path: '/exports/audit.csv', filename: 'audit.csv' },
+  { label: 'page.export.printerStatusCsv', description: 'page.export.printerStatusCsvDesc', path: '/exports/printers.csv', filename: 'printer-status.csv' },
 ];
 
 export default function ExportCenter() {
@@ -36,12 +33,11 @@ export default function ExportCenter() {
   };
 
   return (
-    <div>
-      <h1 className="page-title">{t('page.export.title')}</h1>
-      <p style={{ color: '#666', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-        {t('page.export.description')}
-      </p>
-
+    <PageLayout
+      width="standard"
+      title={t('page.export.title')}
+      description={t('page.export.description')}
+    >
       {download.error != null && (
         <Alert
           tone="error"
@@ -59,23 +55,28 @@ export default function ExportCenter() {
         </Alert>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+      <Grid columns="auto">
         {EXPORTS.map((item) => (
-          <div key={item.label} style={{ background: '#fff', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>{t(item.label)}</div>
-            <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '1rem' }}>{t(item.description)}</div>
-            <Button
-              variant="secondary"
-              onClick={() => void run(item)}
-              busy={download.pending && activeFilename === item.filename}
-              busyLabel={t('page.export.downloading')}
-              style={{ background: item.color, borderColor: item.color }}
-            >
-              {t('common.download')} {item.filename}
-            </Button>
-          </div>
+          <Panel
+            key={item.label}
+            title={t(item.label)}
+            description={t(item.description)}
+            padding="lg"
+            footer={(
+              <Button
+                variant="secondary"
+                onClick={() => void run(item)}
+                busy={download.pending && activeFilename === item.filename}
+                busyLabel={t('page.export.downloading')}
+              >
+                {t('common.download')} {item.filename}
+              </Button>
+            )}
+          >
+            <code>{item.filename}</code>
+          </Panel>
         ))}
-      </div>
-    </div>
+      </Grid>
+    </PageLayout>
   );
 }

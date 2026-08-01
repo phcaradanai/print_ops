@@ -6,6 +6,7 @@ import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 import { StatusBadge } from '../components/StatusBadge.js';
+import { PageLayout } from '../components/PageLayout.js';
 
 interface Job { id: string; status: string; latency?: { totalLatencyMs?: number } }
 interface Printer { id: string; isActive: boolean }
@@ -82,18 +83,15 @@ export default function Dashboard() {
   const p95Ms = sorted.length > 0 ? sorted[Math.floor(sorted.length * 0.95)] ?? null : null;
 
   return (
-    <div>
-
-      <div className="page-header">
-        <h1 className="page-title" style={{ margin: 0 }}>{t('page.dashboard.title')}</h1>
-        <Freshness
+    <PageLayout
+      title={t('page.dashboard.title')}
+      actions={<Freshness
           lastSuccessAt={lastSuccessAt}
           stale={failed.length > 0}
           refreshing={resources.some((resource) => resource.refreshing)}
           onRefresh={refreshAll}
-        />
-      </div>
-
+        />}
+    >
 
       {/* Names WHICH endpoint is down. Tiles fed by a failed endpoint are still
           the last known values, not zeroes, and the timestamp above says how
@@ -154,6 +152,6 @@ export default function Dashboard() {
           </table>
         </>
       )}
-    </div>
+    </PageLayout>
   );
 }

@@ -9,6 +9,7 @@ import { qrQuietZoneMm, renderBarcodeSvg, type BarcodeKind, type BarcodeSymbolog
 import { sanitizePreviewHtml } from '../lib/previewHtml.js';
 import { useModalFocusTrap } from '../components/Dialog.js';
 import { TransferIcon } from '../components/TransferIcon.js';
+import { PageLayout } from '../components/PageLayout.js';
 
 const WS_PATH_KEY = 'printops-workspace-path';
 
@@ -762,8 +763,8 @@ export default function Templates() {
   );
 
   return (
-    <div className="templates-page">
-      <header className="tpl-page-header">
+    <PageLayout className="templates-page" width="full" header={
+      <div className="tpl-page-header">
         <div className="tpl-page-heading">
           <h1>{t('page.templates.title')}</h1>
           <p>{t('page.templates.subtitle')}</p>
@@ -806,7 +807,8 @@ export default function Templates() {
             <TemplateIcon name="plus" /> {t('page.templates.newTemplate')}
           </button>
         </div>}
-      </header>
+      </div>
+    }>
 
       {message && (
         <div className={`ds-toast ds-toast--${message.tone === 'ok' ? 'success' : 'error'}`} role="status">
@@ -1295,6 +1297,6 @@ export default function Templates() {
           </div>
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 }

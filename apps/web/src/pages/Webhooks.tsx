@@ -7,6 +7,9 @@ import { ErrorBanner, Freshness } from '../components/PageState.js';
 import { saveOrDownloadJsonFile } from '../utils/fileExport.js';
 import { parseWebhookImportJson } from '../features/webhooks/parseImportJson.js';
 import { TransferIcon } from '../components/TransferIcon.js';
+import { PageLayout } from '../components/PageLayout.js';
+import { ActionIcon } from '../components/ActionIcon.js';
+import { Button, Checkbox, IconButton, Inline, Input, Select, Tab, TabList, Toolbar } from '../components/ui/index.js';
 
 interface Endpoint {
   id: string;
@@ -651,7 +654,51 @@ export default function Webhooks() {
   };
 
   return (
-    <div className="wh-container">
+    <PageLayout className="wh-container" width="full" header={
+      <div className="wh-header">
+        <div className="wh-header-title-area">
+          <div className="wh-header-text">
+            <h1>{t('page.webhooks.title')}</h1>
+            <p>{t('page.webhooks.subtitle')}</p>
+            <Freshness
+              lastSuccessAt={endpointsResource.lastSuccessAt}
+              stale={endpointsResource.stale}
+              refreshing={endpointsResource.refreshing}
+              onRefresh={loadData}
+            />
+          </div>
+        </div>
+
+        <div className="wh-header-actions">
+          <button type="button" className="ds-btn ds-btn--ghost" onClick={() => handleExportJSON()} title={t('page.webhooks.exportTitle')}>
+            <TransferIcon action="export" /> {t('page.webhooks.export')}
+          </button>
+          <button type="button" className="ds-btn ds-btn--ghost" onClick={() => fileInputRef.current?.click()} title={t('page.webhooks.importTitle')}>
+            <TransferIcon action="import" /> {t('page.webhooks.import')}
+          </button>
+
+          <div className="wh-search-box">
+            <span className="wh-search-icon-left" aria-hidden="true">
+              <ActionIcon name="search" />
+            </span>
+            <input
+              aria-label={t('page.webhooks.searchPlaceholder')}
+              ref={searchInputRef}
+              type="text"
+              className="wh-search-input"
+              placeholder={t('page.webhooks.searchPlaceholder')}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <span className="wh-search-badge">Ctrl + K</span>
+          </div>
+
+          <button className="ds-btn ds-btn--primary" onClick={scrollToFormAndFocus}>
+            <span aria-hidden="true">+</span> {t('page.webhooks.create')}
+          </button>
+        </div>
+      </div>
+    }>
       {/* Hidden File Input for Import */}
       <input
         ref={fileInputRef}
@@ -670,7 +717,7 @@ export default function Webhooks() {
             onClick={() => setToast(null)}
             aria-label={t('common.close')}
           >
-            ✕
+            <ActionIcon name="close" />
           </button>
         </div>
       )}
@@ -701,65 +748,21 @@ export default function Webhooks() {
         />
       )}
 
-      {/* Top Page Header */}
-      <header className="wh-header">
-        <div className="wh-header-title-area">
-          <div className="wh-header-icon">🔗</div>
-          <div className="wh-header-text">
-            <h1>{t('page.webhooks.title')}</h1>
-            <p>{t('page.webhooks.subtitle')}</p>
-            <Freshness
-              lastSuccessAt={endpointsResource.lastSuccessAt}
-              stale={endpointsResource.stale}
-              refreshing={endpointsResource.refreshing}
-              onRefresh={loadData}
-            />
-          </div>
-        </div>
-
-        <div className="wh-header-actions">
-          <button type="button" className="ds-btn ds-btn--ghost" onClick={() => handleExportJSON()} title={t('page.webhooks.exportTitle')}>
-            <TransferIcon action="export" /> {t('page.webhooks.export')}
-          </button>
-          <button type="button" className="ds-btn ds-btn--ghost" onClick={() => fileInputRef.current?.click()} title={t('page.webhooks.importTitle')}>
-            <TransferIcon action="import" /> {t('page.webhooks.import')}
-          </button>
-
-          <div className="wh-search-box">
-            <span className="wh-search-icon-left">🔍</span>
-            <input
-              aria-label={t('page.webhooks.searchPlaceholder')}
-              ref={searchInputRef}
-              type="text"
-              className="wh-search-input"
-              placeholder={t('page.webhooks.searchPlaceholder')}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <span className="wh-search-badge">Ctrl + K</span>
-          </div>
-
-          <button className="ds-btn ds-btn--primary" onClick={scrollToFormAndFocus}>
-            <span>+</span> {t('page.webhooks.create')}
-          </button>
-        </div>
-      </header>
-
       {/* Bulk Selection Action Bar */}
       {selectedIds.length > 0 && (
         <div className="wh-bulk-bar">
           <div>
-            ✓ {t('page.webhooks.selectCount').replace('{n}', String(selectedIds.length))}
+            <ActionIcon name="check" /> {t('page.webhooks.selectCount').replace('{n}', String(selectedIds.length))}
           </div>
           <div className="wh-bulk-actions">
             <button type="button" className="ds-btn ds-btn--ghost" onClick={() => handleExportJSON(endpoints.filter((e) => selectedIds.includes(e.id)))}>
               <TransferIcon action="export" /> {t('page.webhooks.exportSelected')}
             </button>
             <button className="ds-btn ds-btn--danger" onClick={() => void handleBatchDelete()}>
-              🗑️ {t('page.webhooks.deleteSelected').replace('{n}', String(selectedIds.length))}
+              <ActionIcon name="delete" /> {t('page.webhooks.deleteSelected').replace('{n}', String(selectedIds.length))}
             </button>
             <button className="ds-btn ds-btn--ghost" onClick={() => setSelectedIds([])}>
-              ✕ {t('page.webhooks.clearSelection')}
+              <ActionIcon name="close" /> {t('page.webhooks.clearSelection')}
             </button>
           </div>
         </div>
@@ -775,7 +778,7 @@ export default function Webhooks() {
               onClick={resetForm}
               style={{ fontSize: '0.8rem', fontWeight: 500 }}
             >
-              ✕ {t('page.webhooks.cancelEdit')}
+              <ActionIcon name="close" /> {t('page.webhooks.cancelEdit')}
             </button>
           )}
         </div>
@@ -887,7 +890,7 @@ export default function Webhooks() {
 
               <div className="wh-field">
                 <label className="wh-field-label">
-                  Callback URL <span>🔗</span>
+                  Callback URL <ActionIcon name="link" />
                 </label>
                 <input
                   aria-label="Callback URL"
@@ -925,8 +928,8 @@ export default function Webhooks() {
                   letting an operator configure a template that is then silently
                   ignored the moment they enable result callbacks. */}
               {form.callbackOnPrintResult && (
-                <span className="wh-field-hint" style={{ color: '#8a5a00' }}>
-                  ⚠ {t('page.webhooks.payloadTemplateIgnoredOnResult')}
+                <span className="wh-field-hint" style={{ color: 'var(--state-warning-text)' }}>
+                  {t('page.webhooks.payloadTemplateIgnoredOnResult')}
                 </span>
               )}
 
@@ -975,8 +978,8 @@ export default function Webhooks() {
                   </span>
                   {form.callbackOnPrintResult &&
                     (form.callbackTransport === 'NATS' || form.callbackTransport === 'BOTH') && (
-                      <span className="wh-field-hint" style={{ color: '#8a5a00' }}>
-                        ⚠ {t('page.webhooks.natsBestEffortWarning')}
+                      <span className="wh-field-hint" style={{ color: 'var(--state-warning-text)' }}>
+                        {t('page.webhooks.natsBestEffortWarning')}
                       </span>
                     )}
                 </div>
@@ -989,7 +992,7 @@ export default function Webhooks() {
                 {t('page.webhooks.saveDraft')}
               </button>
               <button className="ds-btn ds-btn--ghost" onClick={() => void testCallback()}>
-                ▷ {t('page.webhooks.testShort')}
+                {t('page.webhooks.testShort')}
               </button>
               <button className="ds-btn ds-btn--primary" onClick={() => void handleSave(true)}>
                 {editingId ? t('page.webhooks.saveEndpoint') : t('page.webhooks.createEndpoint')}
@@ -1041,20 +1044,14 @@ export default function Webhooks() {
                 <span>{t('page.webhooks.howToUse')}</span>
               </div>
               <ul className="wh-guide-list">
+                <li className="wh-guide-item"><span>{t('page.webhooks.guide1')}</span></li>
                 <li className="wh-guide-item">
-                  <span className="wh-guide-icon">🔗</span>
-                  <span>{t('page.webhooks.guide1')}</span>
-                </li>
-                <li className="wh-guide-item">
-                  <span className="wh-guide-icon">▷</span>
                   <span>{t('page.webhooks.guide2')}</span>
                 </li>
                 <li className="wh-guide-item">
-                  <span className="wh-guide-icon">▷</span>
                   <span>{t('page.webhooks.guide3')}</span>
                 </li>
                 <li className="wh-guide-item">
-                  <span className="wh-guide-icon">▷</span>
                   <span>{t('page.webhooks.guide4')}</span>
                 </li>
               </ul>
@@ -1066,58 +1063,42 @@ export default function Webhooks() {
       {/* Main Card 2: Endpoints Table List */}
       <div className="wh-card">
         <div className="wh-table-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-            <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
+          <Inline gap="lg">
+            <h2 className="section-title">
               {t('page.webhooks.allEndpoints')}
             </h2>
 
             {/* Filter Tabs */}
-            <div className="wh-tabs">
-              <button
-                className={`wh-tab ${tabFilter === 'all' ? 'wh-tab--active' : ''}`}
-                onClick={() => setTabFilter('all')}
-              >
-                {t('page.webhooks.tabAll')} <span className="wh-tab-badge">{counts.all}</span>
-              </button>
-              <button
-                className={`wh-tab ${tabFilter === 'active' ? 'wh-tab--active' : ''}`}
-                onClick={() => setTabFilter('active')}
-              >
-                {t('page.webhooks.statusEnabled')} <span className="wh-tab-badge">{counts.active}</span>
-              </button>
-              <button
-                className={`wh-tab ${tabFilter === 'draft' ? 'wh-tab--active' : ''}`}
-                onClick={() => setTabFilter('draft')}
-              >
-                {t('page.webhooks.statusDraft')} <span className="wh-tab-badge">{counts.draft}</span>
-              </button>
-              <button
-                className={`wh-tab ${tabFilter === 'none_callback' ? 'wh-tab--active' : ''}`}
-                onClick={() => setTabFilter('none_callback')}
-              >
-                {t('page.webhooks.transport.none')} <span className="wh-tab-badge">{counts.none_callback}</span>
-              </button>
-            </div>
-          </div>
+            <TabList label={t('page.webhooks.allEndpoints')}>
+              <Tab selected={tabFilter === 'all'} count={counts.all} onClick={() => setTabFilter('all')}>
+                {t('page.webhooks.tabAll')}
+              </Tab>
+              <Tab selected={tabFilter === 'active'} count={counts.active} onClick={() => setTabFilter('active')}>
+                {t('page.webhooks.statusEnabled')}
+              </Tab>
+              <Tab selected={tabFilter === 'draft'} count={counts.draft} onClick={() => setTabFilter('draft')}>
+                {t('page.webhooks.statusDraft')}
+              </Tab>
+              <Tab selected={tabFilter === 'none_callback'} count={counts.none_callback} onClick={() => setTabFilter('none_callback')}>
+                {t('page.webhooks.transport.none')}
+              </Tab>
+            </TabList>
+          </Inline>
 
-          <div className="wh-table-controls">
-            <div className="wh-search-box">
-              <span className="wh-search-icon-left">🔍</span>
-              <input
-                aria-label={t('page.webhooks.searchPlaceholder')}
-                type="text"
-                className="wh-search-input"
-                style={{ width: 190, paddingRight: '1rem' }}
-                placeholder={t('page.webhooks.searchPlaceholder')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-
-            <select
+          <Toolbar label={t('page.webhooks.allEndpoints')} className="wh-table-controls">
+            <Input
+              aria-label={t('page.webhooks.searchPlaceholder')}
+              type="search"
+              controlSize="sm"
+              className="wh-shared-search"
+              leading={<ActionIcon name="search" />}
+              placeholder={t('page.webhooks.searchPlaceholder')}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <Select
               aria-label={t('page.webhooks.statusAllOption')}
-              className="wh-select"
-              style={{ height: 38 }}
+              controlSize="sm"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
             >
@@ -1125,12 +1106,11 @@ export default function Webhooks() {
               <option value="active">{t('page.webhooks.statusEnabled')}</option>
               <option value="draft">{t('page.webhooks.statusDraft')}</option>
               <option value="none_callback">{t('page.webhooks.transport.none')}</option>
-            </select>
-
-            <button className="wh-icon-btn" title={t('common.refresh')} onClick={loadData}>
-              🔁
-            </button>
-          </div>
+            </Select>
+            <IconButton size="sm" label={t('common.refresh')} onClick={loadData}>
+              <ActionIcon name="refresh" />
+            </IconButton>
+          </Toolbar>
         </div>
 
         {/* Table Content */}
@@ -1160,13 +1140,13 @@ export default function Webhooks() {
             <tbody>
               {paginatedEndpoints.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--semantic-neutral)' }}>
                     {t('page.webhooks.noResults')}
                   </td>
                 </tr>
               ) : (
                 paginatedEndpoints.map((e) => (
-                  <tr key={e.id} style={{ background: selectedIds.includes(e.id) ? '#eff6ff' : undefined }}>
+                  <tr key={e.id} style={{ background: selectedIds.includes(e.id) ? 'var(--state-info-surface)' : undefined }}>
                     <td style={{ textAlign: 'center' }}>
                       <input
                         aria-label={`${t('page.webhooks.endpoint')} ${e.endpointCode}`}
@@ -1181,7 +1161,7 @@ export default function Webhooks() {
                         onClick={() => setSelectedEndpointModal(e)}
                         title={t('page.webhooks.viewIntakeUrlTitle')}
                       >
-                        {e.endpointCode} <span>🔗</span>
+                        {e.endpointCode} <ActionIcon name="link" />
                       </button>
                     </td>
                     <td>{e.sourceSystem || 'integration-service'}</td>
@@ -1206,37 +1186,38 @@ export default function Webhooks() {
                     </td>
                     <td>{formatDate(e.updatedAt || e.createdAt)}</td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem' }}>
-                        <button
-                          className="wh-action-btn"
+                      <Toolbar label={t('page.webhooks.actions')} align="end">
+                        <Button
+                          size="sm"
+                          variant="secondary"
                           onClick={() => void testCallback(e)}
                           title={t('page.webhooks.testCallbackTitle')}
                         >
-                          ▷ {t('page.webhooks.test')}
-                        </button>
-                        <button
-                          className="wh-icon-btn"
+                          <ActionIcon name="play" /> {t('page.webhooks.test')}
+                        </Button>
+                        <IconButton
+                          size="sm"
+                          label={t('page.webhooks.edit')}
                           onClick={() => startEdit(e)}
-                          title={t('page.webhooks.edit')}
                         >
-                          ✏️
-                        </button>
-                        <button
-                          className="wh-icon-btn"
+                          <ActionIcon name="edit" />
+                        </IconButton>
+                        <IconButton
+                          size="sm"
+                          label={e.enabled ? t('page.webhooks.setDraftTitle') : t('page.webhooks.enableTitle')}
                           onClick={() => void toggleStatus(e)}
-                          title={e.enabled ? t('page.webhooks.setDraftTitle') : t('page.webhooks.enableTitle')}
                         >
-                          {e.enabled ? '🛑' : '🟢'}
-                        </button>
-                        <button
-                          className="wh-icon-btn"
+                          <ActionIcon name={e.enabled ? 'pause' : 'check'} />
+                        </IconButton>
+                        <IconButton
+                          size="sm"
+                          variant="danger"
+                          label={t('page.webhooks.deleteTitle')}
                           onClick={() => void handleDelete(e)}
-                          title={t('page.webhooks.deleteTitle')}
-                          style={{ color: '#ef4444' }}
                         >
-                          🗑️
-                        </button>
-                      </div>
+                          <ActionIcon name="delete" />
+                        </IconButton>
+                      </Toolbar>
                     </td>
                   </tr>
                 ))
@@ -1295,26 +1276,21 @@ export default function Webhooks() {
           "ทดสอบ callback" fire above. */}
       <div className="wh-card">
         <div className="wh-table-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-            <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
+          <Inline gap="lg">
+            <h2 className="section-title">
               {t('page.webhooks.callbackLogTitle')}
             </h2>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', color: '#475569' }}>
-              <input
-                type="checkbox"
-                checked={callbackLogFailedOnly}
-                onChange={(e) => setCallbackLogFailedOnly(e.target.checked)}
-              />
-              {t('page.webhooks.callbackLogFailedOnly')}
-            </label>
-          </div>
-          <div className="wh-table-controls">
-            <button className="wh-icon-btn" title={t('common.refresh')} onClick={loadCallbackLog} disabled={callbackLogLoading}>
-              🔁
-            </button>
-          </div>
+            <Checkbox
+              label={t('page.webhooks.callbackLogFailedOnly')}
+              checked={callbackLogFailedOnly}
+              onChange={(e) => setCallbackLogFailedOnly(e.target.checked)}
+            />
+          </Inline>
+          <IconButton label={t('common.refresh')} onClick={loadCallbackLog} disabled={callbackLogLoading}>
+            <ActionIcon name="refresh" />
+          </IconButton>
         </div>
-        <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '0 0 0.5rem' }}>
+        <p className="section-description">
           {t('page.webhooks.callbackLogDescription')}
         </p>
         <div className="wh-table-wrapper">
@@ -1334,7 +1310,7 @@ export default function Webhooks() {
             <tbody>
               {callbackLog.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--semantic-neutral)' }}>
                     {callbackLogLoading ? t('common.loading') : t('page.webhooks.noCallbackHistory')}
                   </td>
                 </tr>
@@ -1356,7 +1332,7 @@ export default function Webhooks() {
                     </td>
                     <td>{a.httpStatus ?? '—'}</td>
                     <td>{a.durationMs} ms</td>
-                    <td style={{ maxWidth: 280, whiteSpace: 'normal', wordBreak: 'break-word', fontSize: '0.8rem', color: '#64748b' }}>
+                    <td style={{ maxWidth: 280, whiteSpace: 'normal', wordBreak: 'break-word', fontSize: '0.8rem', color: 'var(--neutral-text-muted)' }}>
                       {a.errorMessage || a.target || '—'}
                     </td>
                   </tr>
@@ -1383,7 +1359,7 @@ export default function Webhooks() {
                 className="ds-btn ds-btn--icon"
                 onClick={() => setImportModalEndpoints(null)}
                 aria-label={t('common.close')}
-              >✕</button>
+              ><ActionIcon name="close" /></button>
             </div>
 
             <div className="ds-modal__body" style={{ padding: '1rem' }}>
@@ -1469,7 +1445,7 @@ export default function Webhooks() {
                 className="ds-btn ds-btn--icon"
                 onClick={() => setSelectedEndpointModal(null)}
                 aria-label={t('common.close')}
-              >✕</button>
+              ><ActionIcon name="close" /></button>
             </div>
 
             <div className="ds-modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.85rem', color: 'var(--neutral-text)' }}>
@@ -1515,7 +1491,7 @@ export default function Webhooks() {
                 className="ds-btn ds-btn--ghost"
                 onClick={() => void testCallback(selectedEndpointModal)}
               >
-                ▷ {t('page.webhooks.testCallbackTitle')}
+                <ActionIcon name="play" /> {t('page.webhooks.testCallbackTitle')}
               </button>
               <button
                 className="ds-btn ds-btn--primary"
@@ -1534,7 +1510,7 @@ export default function Webhooks() {
           <div className="ds-modal__panel ds-modal__panel--sm" onClick={(e) => e.stopPropagation()}>
             <div className="ds-modal__header">
               <h2>{t('page.webhooks.deleteTitle')}</h2>
-              <button className="ds-btn ds-btn--icon" onClick={() => setPendingDeleteEndpoint(null)} aria-label={t('common.close')}>✕</button>
+              <button className="ds-btn ds-btn--icon" onClick={() => setPendingDeleteEndpoint(null)} aria-label={t('common.close')}><ActionIcon name="close" /></button>
             </div>
             <div className="ds-confirm__body">
               <p>{t('page.webhooks.confirmDeleteBody')}</p>
@@ -1542,11 +1518,11 @@ export default function Webhooks() {
             </div>
             <div className="ds-modal__actions">
               <button className="ds-btn ds-btn--ghost" onClick={() => setPendingDeleteEndpoint(null)}>{t('common.cancel')}</button>
-              <button className="ds-btn ds-btn--danger" onClick={() => void confirmDeleteEndpoint()}>🗑 {t('page.webhooks.deleteTitle')}</button>
+              <button className="ds-btn ds-btn--danger" onClick={() => void confirmDeleteEndpoint()}><ActionIcon name="delete" /> {t('page.webhooks.deleteTitle')}</button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 }

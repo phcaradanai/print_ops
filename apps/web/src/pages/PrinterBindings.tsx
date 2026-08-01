@@ -8,6 +8,7 @@ import { EmptyState, ErrorState, Freshness, LoadingState } from '../components/P
 import { Alert } from '../components/Alert.js';
 import { Button } from '../components/Button.js';
 import { FormField } from '../components/FormField.js';
+import { PageLayout, PageSection } from '../components/PageLayout.js';
 
 interface Binding { id: string; printerCode: string; templateCode: string; paperProfileId: string; isDefault: boolean; enabled: boolean }
 
@@ -38,16 +39,16 @@ export default function PrinterBindings() {
   });
 
   return (
-    <div>
-      <div className="page-header">
-        <h1 className="page-title" style={{ margin: 0 }}>{t('page.bindings.title')}</h1>
-        <Freshness
+    <PageLayout
+      title={t('page.bindings.title')}
+      density="compact"
+      actions={<Freshness
           lastSuccessAt={bindingsResource.lastSuccessAt}
           stale={bindingsResource.stale}
           refreshing={bindingsResource.refreshing}
           onRefresh={bindingsResource.refresh}
-        />
-      </div>
+        />}
+    >
 
       {createBinding.error != null && (
         <Alert
@@ -66,8 +67,8 @@ export default function PrinterBindings() {
         </Alert>
       )}
 
-      <section style={{ background: '#fff', padding: '1rem', borderRadius: 8, marginBottom: '1rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, alignItems: 'end' }}>
+      <PageSection>
+        <div className="binding-form-grid">
           {(['printerCode', 'templateCode', 'paperProfileId'] as const).map((key) => (
             <FormField key={key} label={t(`page.bindings.${key}`)}>
               {(control) => (
@@ -91,9 +92,9 @@ export default function PrinterBindings() {
             {t('common.bind')}
           </Button>
         </div>
-      </section>
+      </PageSection>
 
-      <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden' }}>
+      <div className="ops-surface ops-surface--flush">
         {bindingsResource.loading && !bindingsResource.data ? (
           <LoadingState />
         ) : bindingsResource.error != null && !bindingsResource.data ? (
@@ -103,7 +104,7 @@ export default function PrinterBindings() {
             <thead>
               <tr>
                 {[t('page.bindings.printer'), t('page.bindings.template'), t('page.bindings.paper'), t('page.bindings.default'), t('page.bindings.enabled')].map((h) => (
-                  <th key={h} scope="col" style={{ padding: 10, textAlign: 'left' }}>{h}</th>
+                  <th key={h} scope="col">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -113,17 +114,17 @@ export default function PrinterBindings() {
               )}
               {bindings.map((b) => (
                 <tr key={b.id}>
-                  <td style={{ padding: 10 }}>{b.printerCode}</td>
-                  <td style={{ padding: 10 }}>{b.templateCode}</td>
-                  <td style={{ padding: 10 }}>{b.paperProfileId.slice(0, 8)}</td>
-                  <td style={{ padding: 10 }}>{b.isDefault ? t('page.bindings.isDefault') : t('page.bindings.notDefault')}</td>
-                  <td style={{ padding: 10 }}>{b.enabled ? t('status.enabled') : t('status.disabled')}</td>
+                  <td>{b.printerCode}</td>
+                  <td>{b.templateCode}</td>
+                  <td>{b.paperProfileId.slice(0, 8)}</td>
+                  <td>{b.isDefault ? t('page.bindings.isDefault') : t('page.bindings.notDefault')}</td>
+                  <td>{b.enabled ? t('status.enabled') : t('status.disabled')}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
-    </div>
+    </PageLayout>
   );
 }

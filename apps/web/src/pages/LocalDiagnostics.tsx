@@ -9,6 +9,7 @@ import { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '..
 import { Alert } from '../components/Alert.js';
 import { Button } from '../components/Button.js';
 import { RunnerStatusBadge } from '../components/RunnerStatusBadge.js';
+import { PageLayout } from '../components/PageLayout.js';
 
 interface Runner {
   id: string;
@@ -146,32 +147,28 @@ export default function LocalDiagnostics() {
     .filter((value): value is number => value !== null)
     .reduce<number | null>((oldest, value) => (oldest === null || value < oldest ? value : oldest), null);
 
-  if (firstLoad) return <LoadingState />;
+  if (firstLoad) return <PageLayout title={t('page.diagnostics.title')}><LoadingState /></PageLayout>;
 
   if (!runnersResource.data && !printersResource.data && failed.length > 0) {
     return (
-      <div>
-        <h1 style={{ marginBottom: '0.5rem' }}>{t('page.diagnostics.title')}</h1>
+      <PageLayout title={t('page.diagnostics.title')}>
         <ErrorState error={failed[0]!.error} onRetry={refreshAll} />
-      </div>
+      </PageLayout>
     );
   }
 
   return (
-    <div>
-      <div className="page-header">
-        <h1 style={{ margin: 0 }}>{t('page.diagnostics.title')}</h1>
-        <Freshness
+    <PageLayout
+      title={t('page.diagnostics.title')}
+      description={t('page.diagnostics.description')}
+      actions={<Freshness
           lastSuccessAt={lastSuccessAt}
           stale={failed.length > 0 || resources.some((resource) => resource.stale)}
           refreshing={resources.some((resource) => resource.refreshing)}
           paused={resources.some((resource) => resource.paused)}
           onRefresh={refreshAll}
-        />
-      </div>
-      <p style={{ color: '#666', marginBottom: '2rem', fontSize: '0.9rem' }}>
-        {t('page.diagnostics.description')}
-      </p>
+        />}
+    >
 
       {failed.length > 0 && (
         <ErrorBanner
@@ -189,7 +186,7 @@ export default function LocalDiagnostics() {
         <EmptyState title={t('page.diagnostics.noRunners')} />
       )}
       {runnersResource.data === undefined && (
-        <p style={{ color: '#888', fontSize: '0.85rem' }}>{t('page.diagnostics.runnersUnavailable')}</p>
+        <p style={{ color: 'var(--neutral-text-muted)', fontSize: '0.85rem' }}>{t('page.diagnostics.runnersUnavailable')}</p>
       )}
 
       {runners.map((runner) => {
@@ -200,15 +197,15 @@ export default function LocalDiagnostics() {
         const result = refreshResult[runner.id];
 
         return (
-          <div key={runner.id} style={{ marginBottom: '2rem', background: '#fff', borderRadius: '10px', padding: '1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+          <section key={runner.id} className="ops-surface">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', gap: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
                 <span style={{ fontWeight: 700, fontSize: '1rem' }}>{runner.name}</span>
-                <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: '#666' }}>
+                <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--neutral-text-muted)' }}>
                   <Truncate value={computerName} className="cell-driver" />
                 </span>
                 {osName && (
-                  <span style={{ fontSize: '0.75rem', background: '#e8eaf6', color: '#3949ab', padding: '2px 8px', borderRadius: '12px' }}>{osName}</span>
+                  <span style={{ fontSize: '0.75rem', background: 'var(--state-info-surface)', color: 'var(--state-info-text)', padding: '2px 8px', borderRadius: 'var(--rounded-sm)' }}>{osName}</span>
                 )}
                 <RunnerStatusBadge status={runner.status} />
               </div>
@@ -241,7 +238,7 @@ export default function LocalDiagnostics() {
               /* Same rule per runner: with no successful discovered-printer
                  response, an empty filter result says nothing about this
                  runner's printers, so it must not be reported as "none found". */
-              <p style={{ color: '#aaa', fontSize: '0.85rem' }}>
+              <p style={{ color: 'var(--neutral-text-muted)', fontSize: '0.85rem' }}>
                 {printersResource.data === undefined
                   ? t('page.diagnostics.printersUnavailable')
                   : t('page.diagnostics.noPrinters')}
@@ -258,36 +255,36 @@ export default function LocalDiagnostics() {
                   <col style={{ width: '10%' }} />
                 </colgroup>
                 <thead>
-                  <tr style={{ background: '#f5f5f5' }}>
+                  <tr style={{ background: 'var(--neutral-page)' }}>
                     {[t('page.diagnostics.printerName'), t('page.diagnostics.driver'), t('page.diagnostics.portUri'), t('page.diagnostics.type'), t('page.diagnostics.default'), t('page.diagnostics.lastSeen'), t('page.diagnostics.registered')].map((heading) => (
-                      <th key={heading} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontSize: '0.75rem', color: '#555' }}>{heading}</th>
+                      <th key={heading} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontSize: '0.75rem', color: 'var(--neutral-text)' }}>{heading}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {runnerPrinters.map((printer) => (
-                    <tr key={printer.id} style={{ borderTop: '1px solid #f0f0f0' }}>
+                    <tr key={printer.id} style={{ borderTop: '1px solid var(--neutral-subtle)' }}>
                       <td style={{ padding: '0.5rem 0.75rem', fontWeight: 600, fontSize: '0.85rem' }}>
                         <Truncate value={printer.localPrinterName} className="cell-name" />
                       </td>
-                      <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: '#555' }}>
+                      <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: 'var(--neutral-text)' }}>
                         <Truncate value={printer.driverName} className="cell-driver" />
                       </td>
-                      <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: '#666' }}>
+                      <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--neutral-text-muted)' }}>
                         <Truncate value={printer.portName} className="cell-uri" />
                       </td>
                       <td style={{ padding: '0.5rem 0.75rem' }}>
-                        <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', background: CONN_COLOR[printer.connectionType] ?? '#e0e0e0', color: '#1e1e2e' }}>
+                        <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: 'var(--rounded-sm)', background: CONN_COLOR[printer.connectionType] ?? 'var(--neutral-border)', color: 'var(--neutral-deep)' }}>
                           {printer.connectionType}
                         </span>
                       </td>
                       <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', textAlign: 'center' }}>{printer.isDefault ? '✓' : ''}</td>
-                      <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: '#888' }}>{relativeTime(printer.lastSeenAt)}</td>
+                      <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: 'var(--neutral-text-muted)' }}>{relativeTime(printer.lastSeenAt)}</td>
                       <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem' }}>
                         {printer.registeredPrinterId ? (
-                          <span style={{ color: '#059669' }}>{t('status.registered')}</span>
+                          <span style={{ color: 'var(--state-success-text)' }}>{t('status.registered')}</span>
                         ) : (
-                          <span style={{ color: '#aaa' }}>{t('common.noData')}</span>
+                          <span style={{ color: 'var(--neutral-text-muted)' }}>{t('common.noData')}</span>
                         )}
                       </td>
                     </tr>
@@ -295,9 +292,9 @@ export default function LocalDiagnostics() {
                 </tbody>
               </table>
             )}
-          </div>
+          </section>
         );
       })}
-    </div>
+    </PageLayout>
   );
 }

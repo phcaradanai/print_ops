@@ -8,6 +8,7 @@ import { EmptyState, ErrorState, Freshness, LoadingState } from '../components/P
 import { Alert } from '../components/Alert.js';
 import { Button } from '../components/Button.js';
 import { Dialog } from '../components/Dialog.js';
+import { PageLayout } from '../components/PageLayout.js';
 
 interface DiscoveredPrinter {
   id: string;
@@ -24,11 +25,11 @@ interface DiscoveredPrinter {
 }
 
 const CONNECTION_BADGE: Record<string, { label: string; color: string }> = {
-  usb: { label: 'USB', color: '#7c3aed' },
-  tcp_ip: { label: 'TCP/IP', color: '#0369a1' },
+  usb: { label: 'USB', color: '#6d28d9' },
+  tcp_ip: { label: 'TCP/IP', color: '#0e7490' },
   wsd: { label: 'WSD', color: '#0891b2' },
-  lpt_com: { label: 'LPT/COM', color: '#b45309' },
-  network_share: { label: 'Network Share', color: '#15803d' },
+  lpt_com: { label: 'LPT/COM', color: '#92400e' },
+  network_share: { label: 'Network Share', color: '#166534' },
   unknown: { label: 'Unknown', color: '#6b7280' },
 };
 
@@ -95,23 +96,17 @@ export default function DiscoveredPrinters() {
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: '#1e1e2e' }}>{t('page.discovery.title')}</h1>
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>
-            {t('page.discovery.description')}
-          </p>
-        </div>
-        {/* Freshness carries the refresh affordance; discovery data ages fast
-            (a printer unplugged five minutes ago still lists as present). */}
-        <Freshness
+    <PageLayout
+      title={t('page.discovery.title')}
+      description={t('page.discovery.description')}
+      density="compact"
+      actions={<Freshness
           lastSuccessAt={printersResource.lastSuccessAt}
           stale={printersResource.stale}
           refreshing={printersResource.refreshing}
           onRefresh={printersResource.refresh}
-        />
-      </div>
+        />}
+    >
 
       {/* Tone was previously inferred by string-matching the message against a
           translated prefix — it broke the moment either string changed. */}
@@ -140,8 +135,8 @@ export default function DiscoveredPrinters() {
       )}
 
       {printers.length > 0 && (
-        <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+        <div className="ops-surface ops-surface--flush">
+          <table className="data-table">
             <colgroup>
               <col style={{ width: '21%' }} />
               <col style={{ width: '17%' }} />
@@ -187,9 +182,9 @@ export default function DiscoveredPrinters() {
                     </td>
                     <td style={{ padding: '0.75rem 1rem' }}>
                       {p.registeredPrinterId ? (
-                        <span style={{ color: '#16a34a', fontSize: '0.75rem', fontWeight: 600 }}>{t('status.registered')}</span>
+                        <span style={{ color: '#166534', fontSize: '0.75rem', fontWeight: 600 }}>{t('status.registered')}</span>
                       ) : (
-                        <span style={{ color: '#d97706', fontSize: '0.75rem', fontWeight: 600 }}>{t('status.unregistered')}</span>
+                        <span style={{ color: '#92400e', fontSize: '0.75rem', fontWeight: 600 }}>{t('status.unregistered')}</span>
                       )}
                     </td>
                     <td style={{ padding: '0.75rem 1rem' }}>
@@ -234,6 +229,6 @@ export default function DiscoveredPrinters() {
           <p>{t('page.discovery.confirmRegister').replace('{name}', pendingRegister.localPrinterName)}</p>
         )}
       </Dialog>
-    </div>
+    </PageLayout>
   );
 }

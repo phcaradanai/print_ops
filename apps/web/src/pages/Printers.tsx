@@ -3,6 +3,7 @@ import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { EmptyState, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
+import { PageLayout } from '../components/PageLayout.js';
 
 interface Printer {
   id: string; code: string; name: string; location?: string;
@@ -24,16 +25,16 @@ export default function Printers() {
   const printers = printersResource.data ?? [];
 
   return (
-    <div>
-      <div className="page-header">
-        <h1 className="page-title" style={{ margin: 0 }}>{t('page.printers.title')}</h1>
-        <Freshness
+    <PageLayout
+      title={t('page.printers.title')}
+      density="compact"
+      actions={<Freshness
           lastSuccessAt={printersResource.lastSuccessAt}
           stale={printersResource.stale}
           refreshing={printersResource.refreshing}
           onRefresh={printersResource.refresh}
-        />
-      </div>
+        />}
+    >
 
       {printersResource.loading && !printersResource.data ? (
         <LoadingState />
@@ -108,6 +109,6 @@ export default function Printers() {
         </ul>
         </>
       )}
-    </div>
+    </PageLayout>
   );
 }

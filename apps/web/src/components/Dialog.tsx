@@ -27,7 +27,14 @@ export function useModalFocusTrap(open: boolean, panelRef: RefObject<HTMLElement
     document.body.style.overflow = 'hidden';
     const focusable = () => Array.from(panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
       .filter((element) => !element.hasAttribute('hidden') && element.offsetParent !== null);
-    const frame = requestAnimationFrame(() => (focusable()[0] ?? panelRef.current)?.focus());
+    const moveFocusInside = () => {
+      const panel = panelRef.current;
+      if (panel && !panel.contains(document.activeElement)) (focusable()[0] ?? panel).focus();
+    };
+    // Focus synchronously for assistive technology, then repeat on the next
+    // frame in case a just-mounted drawer is still settling its descendants.
+    moveFocusInside();
+    const frame = requestAnimationFrame(moveFocusInside);
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') { event.preventDefault(); onCloseRef.current(); return; }
       if (event.key !== 'Tab') return;
@@ -35,6 +42,11 @@ export function useModalFocusTrap(open: boolean, panelRef: RefObject<HTMLElement
       if (controls.length === 0) { event.preventDefault(); panelRef.current?.focus(); return; }
       const first = controls[0];
       const last = controls[controls.length - 1];
+      if (!panelRef.current?.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first)?.focus();
+        return;
+      }
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
       if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };

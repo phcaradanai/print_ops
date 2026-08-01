@@ -9,6 +9,7 @@ import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { Translate } from './types.js';
 import { TransferIcon } from '../../../components/TransferIcon.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
+import { Drawer } from '../../../components/ui/index.js';
 
 export function ImportDesignDrawer({ controller, popups, t }: {
   controller: ImportDesignController;
@@ -21,16 +22,13 @@ export function ImportDesignDrawer({ controller, popups, t }: {
     popups.closeDrawer();
   };
   return (
-    <>
-      <div className="pp-drawer-backdrop" onClick={close} />
-      <div className="pp-drawer pp-drawer--import" role="dialog" aria-modal="true"
-        aria-label={t('page.paperProfiles.importDesign')} ref={popups.drawerRef} tabIndex={-1}>
-        <div className="pp-drawer__header">
-          <span className="pp-drawer__title">{t('page.paperProfiles.importDesign')}</span>
-          <button type="button" className="pp-tool-btn" ref={popups.drawerCloseButtonRef}
-            title={t('common.cancel')} aria-label={t('common.cancel')} onClick={close}><PaperProfileIcon name="close" /></button>
-        </div>
-        <div className="pp-drawer__body">
+    <Drawer
+      open
+      onClose={close}
+      title={t('page.paperProfiles.importDesign')}
+      closeLabel={t('common.cancel')}
+      className="pp-drawer--import"
+    >
           {controller.error && <div className="pp-import-error">{controller.error}</div>}
           {controller.phase === 'select' && (
             <label className="pp-import-dropzone">
@@ -55,9 +53,7 @@ export function ImportDesignDrawer({ controller, popups, t }: {
           {controller.phase === 'review' && controller.analysis && (
             <ImportReview controller={controller} t={t} />
           )}
-        </div>
-      </div>
-    </>
+    </Drawer>
   );
 }
 

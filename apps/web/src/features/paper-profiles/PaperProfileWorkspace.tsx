@@ -17,6 +17,7 @@ import { usePaperProfilePopups } from './hooks/usePaperProfilePopups.js';
 import { PaperProfileIcon } from './components/PaperProfileIcon.js';
 import { UnsavedChangesDialog } from './components/UnsavedChangesDialog.js';
 import type { PaperProfile } from './model/types.js';
+import { PageLayout } from '../../components/PageLayout.js';
 
 const DEFAULT_CANVAS_OPTIONS: CanvasOptions = {
   verticalGrid: false,
@@ -125,10 +126,13 @@ export default function PaperProfileWorkspace() {
   }, [editor.resetEditor, popups.closeDrawer]);
 
   return (
-    <div className="paper-profiles-page">
+    <PageLayout
+      className="paper-profiles-page"
+      width="full"
+      header={<PaperProfilePageHeader editor={editor} popups={popups} stage={stage}
+        onCreate={openCreate} onBack={returnToLibrary} t={t} />}
+    >
       {notice && <div className="pp-sticky-note" role="status"><PaperProfileIcon name="info" />{notice}</div>}
-      <PaperProfilePageHeader editor={editor} popups={popups} stage={stage}
-        onCreate={openCreate} onBack={returnToLibrary} t={t} />
       {stage === 'library' ? (
         <SavedProfilesTable onEdit={openProfile} onCreate={openCreate} persistence={persistence} t={t} />
       ) : (
@@ -154,7 +158,7 @@ export default function PaperProfileWorkspace() {
       <DeleteProfileDialog persistence={persistence} t={t} />
       <UnsavedChangesDialog open={discardPromptOpen} profileCode={editor.form.code || t('page.paperProfiles.newProfile')}
         onContinue={() => setDiscardPromptOpen(false)} onDiscard={discardAndReturn} t={t} />
-    </div>
+    </PageLayout>
   );
 }
 

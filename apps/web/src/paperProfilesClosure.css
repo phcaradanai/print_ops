@@ -129,8 +129,8 @@
   -webkit-appearance: none;
   padding-right: 2.25rem !important;
   background-image:
-    linear-gradient(45deg, transparent 50%, #64748b 50%),
-    linear-gradient(135deg, #64748b 50%, transparent 50%);
+    linear-gradient(45deg, transparent 50%, #6b7280 50%),
+    linear-gradient(135deg, #6b7280 50%, transparent 50%);
   background-position:
     calc(100% - 15px) 50%,
     calc(100% - 10px) 50%;
@@ -154,7 +154,7 @@
 .paper-profiles-page .pp-drawer input:hover:not(:disabled),
 .paper-profiles-page .pp-drawer select:hover:not(:disabled),
 .paper-profiles-page .pp-drawer textarea:hover:not(:disabled) {
-  border-color: #94a3b8 !important;
+  border-color: #9399b2 !important;
 }
 
 .paper-profiles-page .pp-input:focus-visible,
@@ -174,8 +174,8 @@
 
 .paper-profiles-page [aria-invalid='true'],
 .paper-profiles-page .is-invalid {
-  border-color: var(--semantic-error, #d20f39) !important;
-  box-shadow: inset 0 0 0 1px var(--semantic-error, #d20f39);
+  border-color: var(--state-danger-text, #9f1239) !important;
+  box-shadow: inset 0 0 0 1px var(--state-danger-text, #9f1239);
 }
 
 .paper-profiles-page :disabled,
@@ -216,7 +216,7 @@
 }
 
 .paper-profiles-page .pp-field-row:hover:not(.is-selected) {
-  border-color: #94a3b8 !important;
+  border-color: #9399b2 !important;
   background: #fbfdff !important;
 }
 
@@ -278,7 +278,7 @@
 }
 
 .paper-profiles-page table td:last-child .ds-btn--danger:hover:not(:disabled) {
-  border-color: var(--semantic-error, #d20f39);
+  border-color: var(--state-danger-text, #9f1239);
   color: #991b1b;
   background: #fee2e2;
 }

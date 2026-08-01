@@ -8,6 +8,7 @@ import { useApiAction } from '../hooks/useApiAction.js';
 import { ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 import { Alert } from '../components/Alert.js';
 import { Button } from '../components/Button.js';
+import { PageLayout } from '../components/PageLayout.js';
 
 interface PrinterStatus {
   code: string;
@@ -83,40 +84,45 @@ export default function PrinterDetail() {
 
   if (printerResource.loading && !printer) {
     return (
-      <div>
-        <h1 className="page-title">{t('page.printerDetail.title')}</h1>
+      <PageLayout title={t('page.printerDetail.title')}>
         <LoadingState />
-      </div>
+      </PageLayout>
     );
   }
 
   if (!printer) {
     return (
-      <div>
-        <h1 className="page-title">{t('page.printerDetail.title')}</h1>
+      <PageLayout title={t('page.printerDetail.title')}>
         <ErrorState
           error={printerResource.error ?? new Error(t('page.printerDetail.notFound'))}
           title={t('page.printerDetail.loadFailed')}
           onRetry={printerResource.refresh}
         />
-      </div>
+      </PageLayout>
     );
   }
 
   return (
-    <div>
-      <div className="page-header">
-        <h1 className="page-title" style={{ margin: 0 }}>
-          {t('page.printerDetail.title')}: {printer.name}
-        </h1>
-        <Freshness
+    <PageLayout
+      title={`${t('page.printerDetail.title')}: ${printer.name}`}
+      actions={<Freshness
           lastSuccessAt={printerResource.lastSuccessAt}
           stale={printerResource.stale}
           refreshing={printerResource.refreshing}
           paused={printerResource.paused}
           onRefresh={printerResource.refresh}
-        />
-      </div>
+        />}
+      footer={
+        <>
+          <Button variant="secondary" onClick={() => void runRefreshStatus()} busy={refreshStatus.pending}>
+            {t('page.printerDetail.getStatus')}
+          </Button>
+          <Button onClick={() => void runTestPrint()} busy={testPrint.pending} busyLabel={t('page.printerDetail.testPrintSending')}>
+            {t('page.printerDetail.testPrint')}
+          </Button>
+        </>
+      }
+    >
 
       {printerResource.stale && printerResource.error != null && (
         <ErrorBanner
@@ -136,7 +142,7 @@ export default function PrinterDetail() {
         </Alert>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+      <div className="ops-grid">
         <div className="card" style={{ padding: '1.5rem' }}>
           <h2 style={{ fontSize: '1rem', marginTop: 0, marginBottom: '1rem' }}>
             {t('page.printerDetail.configuration')}
@@ -180,14 +186,6 @@ export default function PrinterDetail() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '1rem' }}>
-        <Button variant="secondary" onClick={() => void runRefreshStatus()} busy={refreshStatus.pending}>
-          {t('page.printerDetail.getStatus')}
-        </Button>
-        <Button onClick={() => void runTestPrint()} busy={testPrint.pending} busyLabel={t('page.printerDetail.testPrintSending')}>
-          {t('page.printerDetail.testPrint')}
-        </Button>
-      </div>
-    </div>
+    </PageLayout>
   );
 }

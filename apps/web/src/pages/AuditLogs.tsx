@@ -3,6 +3,7 @@ import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { EmptyState, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
+import { PageLayout } from '../components/PageLayout.js';
 
 interface AuditLog {
   id: string; action: string; actorId?: string;
@@ -18,16 +19,16 @@ export default function AuditLogs() {
   const logs = logsResource.data ?? [];
 
   return (
-    <div>
-      <div className="page-header">
-        <h1 className="page-title" style={{ margin: 0 }}>{t('page.auditLogs.title')}</h1>
-        <Freshness
+    <PageLayout
+      title={t('page.auditLogs.title')}
+      density="compact"
+      actions={<Freshness
           lastSuccessAt={logsResource.lastSuccessAt}
           stale={logsResource.stale}
           refreshing={logsResource.refreshing}
           onRefresh={logsResource.refresh}
-        />
-      </div>
+        />}
+    >
 
       {logsResource.loading && !logsResource.data ? (
         <LoadingState />
@@ -50,7 +51,7 @@ export default function AuditLogs() {
             )}
             {logs.map((l) => (
               <tr key={l.id}>
-                <td style={{ padding: '0.75rem', fontSize: '0.75rem', color: '#666', whiteSpace: 'nowrap' }}>
+                <td style={{ padding: '0.75rem', fontSize: '0.75rem', color: 'var(--neutral-text-muted)', whiteSpace: 'nowrap' }}>
                   {new Date(l.occurredAt).toLocaleString()}
                 </td>
                 <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.8rem', fontWeight: 600 }}>{l.action}</td>
@@ -64,6 +65,6 @@ export default function AuditLogs() {
           </tbody>
         </table>
       )}
-    </div>
+    </PageLayout>
   );
 }

@@ -17,6 +17,7 @@ import {
 import { getErrorAdvice } from '../lib/jobErrorAdvice.js';
 import { Alert } from '../components/Alert.js';
 import { Button } from '../components/Button.js';
+import { PageLayout } from '../components/PageLayout.js';
 import { ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 import { JobVerdictBand } from '../components/JobVerdict.js';
 import { ReprintDialog } from '../components/ReprintDialog.js';
@@ -595,10 +596,9 @@ export default function JobDetail() {
   // First load still running: a spinner is honest here.
   if (!job && jobResource.loading) {
     return (
-      <div>
-        <h1 className="page-title">{t('page.jobDetail.title')}</h1>
+      <PageLayout title={t('page.jobDetail.title')}>
         <LoadingState />
-      </div>
+      </PageLayout>
     );
   }
 
@@ -606,14 +606,13 @@ export default function JobDetail() {
   // page span forever, with the reason discarded by `catch(() => {})`.
   if (!job) {
     return (
-      <div>
-        <h1 className="page-title">{t('page.jobDetail.title')}</h1>
+      <PageLayout title={t('page.jobDetail.title')}>
         <ErrorState
           error={jobResource.error ?? new Error(t('page.jobDetail.notFound'))}
           title={t('page.jobDetail.loadFailed')}
           onRetry={refreshAll}
         />
-      </div>
+      </PageLayout>
     );
   }
 
@@ -627,9 +626,11 @@ export default function JobDetail() {
   const identityComplete = Boolean(job.requestId) && Boolean(job.runnerId);
 
   return (
-    <div className="job-detail">
-      <div className="job-detail__header">
-        <h1 className="page-title">{t('page.jobDetail.title')}</h1>
+    <PageLayout
+      className="job-detail"
+      title={t('page.jobDetail.title')}
+      density="compact"
+      actions={<>
         <code className="job-detail__id">{job.id}</code>
         <Freshness
           lastSuccessAt={jobResource.lastSuccessAt}
@@ -639,7 +640,8 @@ export default function JobDetail() {
           monitoringComplete={monitoringComplete}
           onRefresh={refreshAll}
         />
-      </div>
+      </>}
+    >
 
       {/* Refresh failed while the job is already on screen: the panels below
           are a snapshot, not the live state. Say so instead of letting the
@@ -897,6 +899,6 @@ export default function JobDetail() {
         onError={(text) => setNotice({ tone: 'error', text })}
         t={t}
       />
-    </div>
+    </PageLayout>
   );
 }

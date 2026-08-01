@@ -5,6 +5,7 @@ import { formatRelativeTime } from '../lib/relativeTime.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 import { RunnerStatusBadge } from '../components/RunnerStatusBadge.js';
+import { PageLayout } from '../components/PageLayout.js';
 
 interface Runner {
   id: string; name: string; hostname: string; ipAddress?: string;
@@ -25,20 +26,17 @@ export default function Runners() {
   const heartbeatAge = (ts?: string): string => formatRelativeTime(t, ts);
 
   return (
-    <div>
-      <div className="page-header">
-        <h1 className="page-title" style={{ margin: 0 }}>{t('page.runners.title')}</h1>
-        {/* "Runner online" is only meaningful with the age of that claim next
-            to it: a frozen table of green dots during an API outage is exactly
-            how an operator concludes printing is healthy when it is not. */}
-        <Freshness
+    <PageLayout
+      title={t('page.runners.title')}
+      density="compact"
+      actions={<Freshness
           lastSuccessAt={runnersResource.lastSuccessAt}
           stale={runnersResource.stale}
           refreshing={runnersResource.refreshing}
           paused={runnersResource.paused}
           onRefresh={runnersResource.refresh}
-        />
-      </div>
+        />}
+    >
 
       {runnersResource.stale && runnersResource.error != null && (
         <ErrorBanner
@@ -98,6 +96,6 @@ export default function Runners() {
         </ul>
         </>
       )}
-    </div>
+    </PageLayout>
   );
 }

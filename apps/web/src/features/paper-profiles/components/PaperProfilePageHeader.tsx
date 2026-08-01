@@ -17,9 +17,8 @@ export function PaperProfilePageHeader({ editor, popups, stage, onCreate, onBack
   const { form, ux } = editor;
   if (stage === 'library') {
     return (
-      <header className="pp-page-header pp-page-header--library">
+      <div className="pp-page-header pp-page-header--library">
         <div className="pp-page-heading">
-          <span className="pp-page-heading__icon" aria-hidden="true"><PaperProfileIcon name="library" /></span>
           <div>
             <h1>{t('page.paperProfiles.title')}</h1>
             <p className="pp-page-heading__description">{t('page.paperProfiles.libraryDescription')}</p>
@@ -28,17 +27,16 @@ export function PaperProfilePageHeader({ editor, popups, stage, onCreate, onBack
         <button type="button" className="ds-btn ds-btn--secondary" onClick={onCreate}>
           <PaperProfileIcon name="plus" /> {t('page.paperProfiles.createProfile')}
         </button>
-      </header>
+      </div>
     );
   }
   return (
-    <header className="pp-page-header pp-page-header--editor">
+    <div className="pp-page-header pp-page-header--editor">
       <div className="pp-editor-heading">
         <button type="button" className="pp-back-button" onClick={onBack}>
           <PaperProfileIcon name="arrow-left" /> <span>{t('page.paperProfiles.backToLibrary')}</span>
         </button>
         <div className="pp-page-heading">
-        <span className="pp-page-heading__icon" aria-hidden="true"><PaperProfileIcon name="profile" /></span>
         <div>
           <h1>{editor.state.editingProfileId ? t('page.paperProfiles.editProfileTitle') : t('page.paperProfiles.createProfileTitle')}</h1>
           <div className="pp-page-heading__meta">
@@ -54,6 +52,6 @@ export function PaperProfilePageHeader({ editor, popups, stage, onCreate, onBack
         <IconButton icon={<PaperProfileIcon name="palette" />} label={t('page.paperProfiles.toggleStyle')} onClick={() => popups.toggleDrawer('appearance')} active={popups.drawer === 'appearance'} />
         <IconButton icon={<TransferIcon action="import" />} label={t('page.paperProfiles.importDesign')} onClick={() => popups.openDrawer('import')} active={popups.drawer === 'import'} />
       </div>
-    </header>
+    </div>
   );
 }

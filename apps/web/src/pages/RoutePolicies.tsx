@@ -5,9 +5,19 @@ import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
 import { EmptyState, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
-import { Alert } from '../components/Alert.js';
-import { Button } from '../components/Button.js';
-import { FormField } from '../components/FormField.js';
+import {
+  Alert,
+  Badge,
+  Button,
+  FormField,
+  Grid,
+  Inline,
+  PageLayout,
+  Panel,
+  RecordCard,
+  RecordList,
+  Textarea,
+} from '../components/ui/index.js';
 
 interface Policy { id: string; policyCode: string; name: string; enabled: boolean }
 
@@ -50,16 +60,15 @@ export default function RoutePolicies() {
   })();
 
   return (
-    <div>
-      <div className="page-header">
-        <h1 className="page-title" style={{ margin: 0 }}>{t('page.routePolicies.title')}</h1>
-        <Freshness
+    <PageLayout
+      title={t('page.routePolicies.title')}
+      actions={<Freshness
           lastSuccessAt={policiesResource.lastSuccessAt}
           stale={policiesResource.stale}
           refreshing={policiesResource.refreshing}
           onRefresh={policiesResource.refresh}
-        />
-      </div>
+        />}
+    >
 
       {createPolicy.error != null && (
         <Alert
@@ -78,16 +87,16 @@ export default function RoutePolicies() {
         </Alert>
       )}
 
-      <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-        <div style={{ background: '#fff', padding: '1rem', borderRadius: 8 }}>
+      <Grid columns={2}>
+        <Panel title={t('page.routePolicies.createPolicy')}>
           <FormField label={t('page.routePolicies.policyJson')} error={jsonError ?? undefined}>
             {(control) => (
-              <textarea
+              <Textarea
                 {...control}
                 value={raw}
                 onChange={(e) => setRaw(e.target.value)}
                 rows={16}
-                style={{ width: '100%', fontFamily: 'monospace' }}
+                className="code-input"
               />
             )}
           </FormField>
@@ -99,10 +108,9 @@ export default function RoutePolicies() {
           >
             {t('page.routePolicies.createPolicy')}
           </Button>
-        </div>
+        </Panel>
 
-        <div style={{ background: '#fff', padding: '1rem', borderRadius: 8 }}>
-          <h2 style={{ fontSize: '1rem' }}>{t('page.routePolicies.policies')}</h2>
+        <Panel title={t('page.routePolicies.policies')}>
           {policiesResource.loading && !policiesResource.data ? (
             <LoadingState />
           ) : policiesResource.error != null && !policiesResource.data ? (
@@ -110,14 +118,22 @@ export default function RoutePolicies() {
           ) : policies.length === 0 ? (
             <EmptyState title={t('page.routePolicies.noPolicies')} />
           ) : (
-            policies.map((p) => (
-              <p key={p.id}>
-                <code>{p.policyCode}</code> {p.name} {p.enabled ? t('status.enabled') : t('status.disabled')}
-              </p>
-            ))
+            <RecordList>
+              {policies.map((policy) => (
+                <RecordCard key={policy.id}>
+                  <Inline>
+                    <code>{policy.policyCode}</code>
+                    <strong>{policy.name}</strong>
+                    <Badge tone={policy.enabled ? 'success' : 'neutral'}>
+                      {policy.enabled ? t('status.enabled') : t('status.disabled')}
+                    </Badge>
+                  </Inline>
+                </RecordCard>
+              ))}
+            </RecordList>
           )}
-        </div>
-      </section>
-    </div>
+        </Panel>
+      </Grid>
+    </PageLayout>
   );
 }

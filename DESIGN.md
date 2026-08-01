@@ -281,6 +281,12 @@ Full pills are a functional exception for filter chips and outlined status badge
 
 Components feel precise and operator-grade: compact on desktop, comfortably targetable on touch devices, visibly focusable, and explicit about disabled or busy state.
 
+### Shared Component Architecture
+
+The implementation follows a small composition ladder in `apps/web/src/components/ui`: primitives (`Button`, form controls, icons, and spacing), molecules (`FormField`, input groups, toolbars, tabs, and fact lists), and composites (`Panel`, `DataTable`, record cards, dialogs, and drawers). Pages import the public vocabulary from `components/ui/index.ts` and keep only feature-specific behavior and layout exceptions locally.
+
+Repeated layout uses `Stack`, `Inline`, and `Grid` token gaps. A responsive data table keeps one semantic DOM tree and becomes labelled record cards on narrow screens; desktop and mobile must not mount duplicate interactive forms. New shared patterns require typed props, accessible semantics, token-based styling, a representative migration, and a semantic test. The maintenance guide and component inventory live in `apps/web/src/components/ui/README.md`.
+
 ### Buttons
 
 - **Shape:** 6px corners with compact desktop height and a 44px touch target on coarse pointers.
@@ -340,7 +346,7 @@ Components feel precise and operator-grade: compact on desktop, comfortably targ
 - **Do** preserve literal operational states, especially `UNVERIFIED`, and pair every status color with text, outline, shape, or icon.
 - **Do** keep proof generation and physical printing visibly separate; generating or refreshing a proof must never trigger output.
 - **Do** require a distinct confirmation for every physical print and block printing while printer readiness is offline or unknown.
-- **Do** use shared Button, Dialog, Alert, FormField, PageState, and StatusBadge primitives where they fit.
+- **Do** compose surfaces from the shared primitives, molecules, and composites exported by `components/ui/index.ts`.
 - **Do** maintain visible focus, keyboard operation, 44px touch targets, reduced-motion behavior, and bilingual EN/TH resilience.
 - **Do** use mobile cards or focused next-step views when a dense desktop table or split workspace would compete for attention.
 

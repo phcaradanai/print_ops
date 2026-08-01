@@ -5,6 +5,20 @@ import { errorMessage } from '../api/errors.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
 import { ErrorState, Freshness, LoadingState } from '../components/PageState.js';
+import {
+  Badge,
+  Button,
+  Checkbox,
+  DataCell,
+  DataHead,
+  DataTable,
+  Grid,
+  Inline,
+  Input,
+  PageLayout,
+  Stack,
+} from '../components/ui/index.js';
+import './UsersRoles.css';
 
 interface UserItem {
   id: string;
@@ -97,212 +111,188 @@ export default function UsersRoles() {
     }
   };
 
+  const cancelPasswordEdit = () => {
+    setEditingUserId(null);
+    setNewPassword('');
+    setShowPassword(false);
+    changePassword.reset();
+  };
+
+  const renderUserActions = (user: UserItem) => (
+    <Stack gap="sm" className="users-actions">
+      {accessUserId === user.id ? (
+        <fieldset className="users-access-editor">
+          <legend>{t('page.usersRoles.pageAccess')}</legend>
+          <Grid columns="auto" gap="sm" className="users-access-grid">
+            {PAGE_OPTIONS.map((page) => (
+              <Checkbox
+                key={page}
+                label={page}
+                checked={selectedPages.includes(page)}
+                onChange={() => setSelectedPages((pages) => pages.includes(page) ? pages.filter((item) => item !== page) : [...pages, page])}
+              />
+            ))}
+          </Grid>
+          <Inline gap="sm" className="users-action-row">
+            <Button
+              size="sm"
+              busy={changeAccess.pending}
+              busyLabel={t('common.saving')}
+              onClick={() => void changeAccess.run(user.id, selectedPages).then((ok) => {
+                if (ok) {
+                  setAccessUserId(null);
+                  void directory.refresh();
+                }
+              })}
+            >
+              {t('common.save')}
+            </Button>
+            <Button size="sm" variant="secondary" disabled={changeAccess.pending} onClick={() => setAccessUserId(null)}>
+              {t('common.cancel')}
+            </Button>
+          </Inline>
+        </fieldset>
+      ) : canEditAccess(user) ? (
+        <div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setAccessUserId(user.id);
+              setSelectedPages(user.allowedPages ?? PAGE_OPTIONS);
+              changeAccess.reset();
+            }}
+          >
+            {t('page.usersRoles.pageAccess')}
+          </Button>
+        </div>
+      ) : null}
+
+      {changeAccess.error != null && accessUserId === user.id && (
+        <span className="ui-inline-error" role="alert">{errorMessage(changeAccess.error, t('page.usersRoles.accessError'))}</span>
+      )}
+
+      {editingUserId === user.id ? (
+        <form className="users-password-form" onSubmit={(event) => void handlePasswordSubmit(event, user.id)}>
+          <Input
+            type={showPassword ? 'text' : 'password'}
+            controlSize="sm"
+            aria-label={t('page.usersRoles.newPassword')}
+            placeholder={t('page.usersRoles.newPassword')}
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+            autoComplete="new-password"
+            autoFocus
+          />
+          <Button size="sm" variant="ghost" onClick={() => setShowPassword((visible) => !visible)}>
+            {showPassword ? t('page.usersRoles.hidePassword') : t('page.usersRoles.showPassword')}
+          </Button>
+          <Button type="submit" size="sm" busy={submitting} busyLabel={t('common.saving')} disabled={!newPassword}>
+            {t('common.save')}
+          </Button>
+          <Button size="sm" variant="secondary" disabled={submitting} onClick={cancelPasswordEdit}>
+            {t('common.cancel')}
+          </Button>
+        </form>
+      ) : canEditPassword(user) ? (
+        <div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setEditingUserId(user.id);
+              setNewPassword('');
+              setShowPassword(false);
+              changePassword.reset();
+            }}
+          >
+            {t('page.usersRoles.changePassword')}
+          </Button>
+        </div>
+      ) : (
+        <span className="ui-muted-copy">{t('page.usersRoles.readOnly')}</span>
+      )}
+
+      {editError && editingUserId === user.id && <span className="ui-inline-error" role="alert">{editError}</span>}
+
+      {canEditStatus(user) && (
+        <div>
+          <Button
+            size="sm"
+            variant={user.isActive ? 'danger' : 'secondary'}
+            busy={changeStatus.pending && statusUserId === user.id}
+            disabled={changeStatus.pending && statusUserId !== user.id}
+            aria-label={user.isActive ? t('page.usersRoles.deactivateUser') : t('page.usersRoles.activateUser')}
+            onClick={() => void handleStatusChange(user)}
+          >
+            {user.isActive ? t('page.usersRoles.deactivate') : t('page.usersRoles.activate')}
+          </Button>
+        </div>
+      )}
+      {changeStatus.error != null && statusUserId === user.id && (
+        <span className="ui-inline-error" role="alert">{errorMessage(changeStatus.error, t('page.usersRoles.statusError'))}</span>
+      )}
+    </Stack>
+  );
+
   if (directory.loading && !directory.data) {
-    return <LoadingState />;
+    return <PageLayout title={t('page.usersRoles.title')}><LoadingState /></PageLayout>;
   }
 
   if (!directory.data && directory.error != null) {
     return (
-      <div className="page-container" style={{ padding: '2rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 600, margin: '0 0 1rem' }}>
-          {t('page.usersRoles.title')}
-        </h1>
+      <PageLayout title={t('page.usersRoles.title')} description={t('page.usersRoles.description')}>
         <ErrorState error={directory.error} onRetry={directory.refresh} />
-      </div>
+      </PageLayout>
     );
   }
 
   return (
-    <div className="page-container" style={{ padding: '2rem' }}>
-      <header style={{ marginBottom: '2rem' }}>
-        <div className="page-header">
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827', margin: 0 }}>
-            {t('page.usersRoles.title')}
-          </h1>
-          <Freshness
+    <PageLayout
+      title={t('page.usersRoles.title')}
+      description={t('page.usersRoles.description')}
+      density="compact"
+      actions={<Freshness
             lastSuccessAt={directory.lastSuccessAt}
             stale={directory.stale}
             refreshing={directory.refreshing}
             onRefresh={directory.refresh}
-          />
-        </div>
-        <p style={{ color: '#6b7280', fontSize: '0.875rem', marginTop: '0.35rem' }}>
-          {t('page.usersRoles.description')}
-        </p>
-      </header>
+          />}
+    >
 
-      <div style={{ background: '#ffffff', borderRadius: '8px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+      <DataTable label={t('page.usersRoles.directory')} responsive>
           <thead>
-            <tr style={{ background: '#f0f0f0', borderBottom: '1px solid #e5e7eb' }}>
-              <th style={{ padding: '0.75rem', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#374151' }}>Name</th>
-              <th style={{ padding: '0.75rem', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#374151' }}>Email</th>
-              <th style={{ padding: '0.75rem', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#374151' }}>Role</th>
-              <th style={{ padding: '0.75rem', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#374151' }}>Status</th>
-              <th style={{ padding: '0.75rem', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#374151' }}>Actions</th>
+            <tr>
+              <DataHead>{t('page.usersRoles.name')}</DataHead>
+              <DataHead>{t('page.usersRoles.email')}</DataHead>
+              <DataHead>{t('page.usersRoles.role')}</DataHead>
+              <DataHead>{t('page.usersRoles.status')}</DataHead>
+              <DataHead>{t('page.usersRoles.actions')}</DataHead>
             </tr>
           </thead>
           <tbody>
-            {users.map(u => (
-              <tr key={u.id} style={{ borderBottom: '1px solid #eee' }}>
-                <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#111827' }}>
-                  {u.name} {currentUser?.id === u.id && <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>(You)</span>}
-                </td>
-                <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#111827' }}>{u.email}</td>
-                <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#111827' }}>
-                  <span style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem' }}>
-                    {u.role}
-                  </span>
-                </td>
-                <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#111827' }}>
-                  {u.isActive ? (
-                    <span style={{ color: '#059669', fontSize: '0.75rem', fontWeight: 500 }}>Active</span>
-                  ) : (
-                    <span style={{ color: '#dc2626', fontSize: '0.75rem', fontWeight: 500 }}>Inactive</span>
-                  )}
-                </td>
-                <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: '#111827' }}>
-                  {accessUserId === u.id ? (
-                    <div className="user-access-editor">
-                      <div className="user-access-grid">
-                        {PAGE_OPTIONS.map(page => <label key={page}><input type="checkbox" checked={selectedPages.includes(page)} onChange={() => setSelectedPages(p => p.includes(page) ? p.filter(x => x !== page) : [...p, page])} />{page}</label>)}
-                      </div>
-                      <div className="user-access-actions">
-                        <button type="button" className="ui-button ui-button--primary ui-button--sm" disabled={changeAccess.pending} onClick={() => void changeAccess.run(u.id, selectedPages).then(ok => { if (ok) { setAccessUserId(null); void directory.refresh(); } })}>{t('common.save')}</button>
-                        <button type="button" className="ui-button ui-button--secondary ui-button--sm" onClick={() => setAccessUserId(null)}>{t('common.cancel')}</button>
-                      </div>
-                    </div>
-                  ) : canEditAccess(u) ? <button type="button" className="ui-button ui-button--secondary ui-button--sm" onClick={() => { setAccessUserId(u.id); setSelectedPages(u.allowedPages ?? PAGE_OPTIONS); changeAccess.reset(); }}>{t('page.usersRoles.pageAccess')}</button> : null}
-                  {changeAccess.error != null && accessUserId === u.id && <span className="error-text" role="alert">{errorMessage(changeAccess.error, t('page.usersRoles.accessError'))}</span>}
-                  {editingUserId === u.id ? (
-                    <form onSubmit={(e) => void handlePasswordSubmit(e, u.id)} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #d1d5db', background: '#ffffff', borderRadius: '6px', overflow: 'hidden' }}>
-                        <input
-                          type={showPassword ? 'text' : 'password'}
-                          placeholder="New Password"
-                          value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
-                          style={{
-                            border: 'none',
-                            background: 'transparent',
-                            padding: '0.4rem 0.6rem',
-                            fontSize: '0.8rem',
-                            outline: 'none',
-                            width: '120px'
-                          }}
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(p => !p)}
-                          title={showPassword ? "Hide password" : "Show password"}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            padding: '0 0.5rem',
-                            cursor: 'pointer',
-                            color: '#6b7280',
-                            fontSize: '0.75rem',
-                            fontWeight: 500,
-                          }}
-                        >
-                          {showPassword ? 'Hide' : 'Show'}
-                        </button>
-                      </div>
-                      <button
-                        type="submit"
-                        disabled={submitting || !newPassword}
-                        style={{
-                          background: '#1e1e2e',
-                          color: '#ffffff',
-                          border: 'none',
-                          borderRadius: '6px',
-                          padding: '0.4rem 0.8rem',
-                          fontWeight: 700,
-                          fontSize: '0.75rem',
-                          cursor: (submitting || !newPassword) ? 'not-allowed' : 'pointer',
-                          opacity: (submitting || !newPassword) ? 0.7 : 1,
-                        }}
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingUserId(null);
-                          setNewPassword('');
-                          setShowPassword(false);
-                          changePassword.reset();
-                        }}
-                        disabled={submitting}
-                        style={{
-                          background: 'transparent',
-                          color: '#6b7280',
-                          border: 'none',
-                          fontSize: '0.75rem',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Cancel
-                      </button>
-                      {editError && <span style={{ color: '#dc2626', fontSize: '0.7rem' }}>{editError}</span>}
-                    </form>
-                  ) : (
-                    canEditPassword(u) ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingUserId(u.id);
-                          setNewPassword('');
-                          setShowPassword(false);
-                          changePassword.reset();
-                        }}
-                        style={{
-                          background: '#f3f4f6',
-                          color: '#374151',
-                          border: '1px solid #e5e7eb',
-                          borderRadius: '6px',
-                          padding: '0.3rem 0.6rem',
-                          fontSize: '0.75rem',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Change Password
-                      </button>
-                    ) : (
-                      <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>Read-only</span>
-                    )
-                  )}
-                  {canEditStatus(u) && (
-                    <button
-                      type="button"
-                      className="ui-button ui-button--secondary ui-button--sm"
-                      disabled={changeStatus.pending}
-                      aria-label={u.isActive ? t('page.usersRoles.deactivateUser') : t('page.usersRoles.activateUser')}
-                      onClick={() => void handleStatusChange(u)}
-                      style={{ marginInlineStart: '0.5rem' }}
-                    >
-                      {u.isActive ? t('page.usersRoles.deactivate') : t('page.usersRoles.activate')}
-                    </button>
-                  )}
-                  {changeStatus.error != null && statusUserId === u.id && (
-                    <span className="error-text" role="alert" style={{ display: 'block', marginTop: '0.35rem' }}>
-                      {errorMessage(changeStatus.error, t('page.usersRoles.statusError'))}
-                    </span>
-                  )}
-                </td>
+            {users.map((user) => (
+              <tr key={user.id}>
+                <DataCell label={t('page.usersRoles.name')}>
+                  <strong>{user.name}</strong>{currentUser?.id === user.id && <span className="users-current-user">{t('page.usersRoles.you')}</span>}
+                </DataCell>
+                <DataCell label={t('page.usersRoles.email')}>{user.email}</DataCell>
+                <DataCell label={t('page.usersRoles.role')}><Badge>{user.role}</Badge></DataCell>
+                <DataCell label={t('page.usersRoles.status')}>
+                  <Badge tone={user.isActive ? 'success' : 'danger'}>
+                    {user.isActive ? t('page.usersRoles.active') : t('page.usersRoles.inactive')}
+                  </Badge>
+                </DataCell>
+                <DataCell label={t('page.usersRoles.actions')} actions>{renderUserActions(user)}</DataCell>
               </tr>
             ))}
             {users.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#6b7280', fontSize: '0.875rem' }}>
-                  No users found.
-                </td>
+                <DataCell colSpan={5}>{t('page.usersRoles.noUsers')}</DataCell>
               </tr>
             )}
           </tbody>
-        </table>
-      </div>
-    </div>
+      </DataTable>
+    </PageLayout>
   );
 }

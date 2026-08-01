@@ -36,6 +36,7 @@ const en: TranslationDict = {
 
   // Common
   'common.save': 'Save',
+  'common.saving': 'Saving…',
   'common.cancel': 'Cancel',
   'common.reset': 'Reset',
   'common.loading': 'Loading…',
@@ -394,6 +395,21 @@ const en: TranslationDict = {
   'page.usersRoles.activateUser': 'Activate user account',
   'page.usersRoles.deactivateUser': 'Deactivate user account',
   'page.usersRoles.statusError': 'Could not update account status.',
+  'page.usersRoles.directory': 'User directory',
+  'page.usersRoles.name': 'Name',
+  'page.usersRoles.email': 'Email',
+  'page.usersRoles.role': 'Role',
+  'page.usersRoles.status': 'Status',
+  'page.usersRoles.actions': 'Actions',
+  'page.usersRoles.active': 'Active',
+  'page.usersRoles.inactive': 'Inactive',
+  'page.usersRoles.you': '(You)',
+  'page.usersRoles.newPassword': 'New password',
+  'page.usersRoles.showPassword': 'Show',
+  'page.usersRoles.hidePassword': 'Hide',
+  'page.usersRoles.changePassword': 'Change password',
+  'page.usersRoles.readOnly': 'Read-only',
+  'page.usersRoles.noUsers': 'No users found.',
 
   // ExportCenter
   'page.export.title': 'Export Center',
@@ -755,7 +771,7 @@ const en: TranslationDict = {
   'validation.marginsExceedHeight': 'Margins exceed paper height',
 
   // TemplateSandbox
-  'page.sandbox.title': '🖨️ Template Sandbox',
+  'page.sandbox.title': 'Template Sandbox',
   'page.sandbox.description': 'Select a printer, test print, and preview template output — your control panel before committing to production.',
   'page.sandbox.loading': 'Loading data…',
   'page.sandbox.printer': '🖨️ Printer',
@@ -1303,6 +1319,7 @@ const th: TranslationDict = {
 
   // Common
   'common.save': 'บันทึก',
+  'common.saving': 'กำลังบันทึก…',
   'common.cancel': 'ยกเลิก',
   'common.reset': 'รีเซ็ต',
   'common.loading': 'กำลังโหลด…',
@@ -1656,6 +1673,21 @@ const th: TranslationDict = {
   'page.usersRoles.activateUser': 'เปิดใช้งานบัญชีผู้ใช้',
   'page.usersRoles.deactivateUser': 'ปิดใช้งานบัญชีผู้ใช้',
   'page.usersRoles.statusError': 'ไม่สามารถอัปเดตสถานะบัญชีได้',
+  'page.usersRoles.directory': 'รายชื่อผู้ใช้',
+  'page.usersRoles.name': 'ชื่อ',
+  'page.usersRoles.email': 'อีเมล',
+  'page.usersRoles.role': 'บทบาท',
+  'page.usersRoles.status': 'สถานะ',
+  'page.usersRoles.actions': 'การดำเนินการ',
+  'page.usersRoles.active': 'ใช้งานอยู่',
+  'page.usersRoles.inactive': 'ปิดใช้งาน',
+  'page.usersRoles.you': '(คุณ)',
+  'page.usersRoles.newPassword': 'รหัสผ่านใหม่',
+  'page.usersRoles.showPassword': 'แสดง',
+  'page.usersRoles.hidePassword': 'ซ่อน',
+  'page.usersRoles.changePassword': 'เปลี่ยนรหัสผ่าน',
+  'page.usersRoles.readOnly': 'ดูได้อย่างเดียว',
+  'page.usersRoles.noUsers': 'ไม่พบผู้ใช้',
 
   // ExportCenter
   'page.export.title': 'ศูนย์ส่งออก',
@@ -2016,7 +2048,7 @@ const th: TranslationDict = {
   'validation.marginsExceedHeight': 'ระยะขอบเกินความสูงกระดาษ',
 
   // TemplateSandbox
-  'page.sandbox.title': '🖨️ เทมเพลตแซนด์บ็อกซ์',
+  'page.sandbox.title': 'เทมเพลตแซนด์บ็อกซ์',
   'page.sandbox.description': 'เลือกเครื่องพิมพ์ ทดลองพิมพ์ และดูตัวอย่างจากเทมเพลต — เหมือนหน้าต่างควบคุมก่อนสั่งพิมพ์จริง',
   'page.sandbox.loading': 'กำลังโหลดข้อมูล…',
   'page.sandbox.printer': '🖨️ เครื่องพิมพ์',

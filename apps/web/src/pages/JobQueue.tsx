@@ -11,6 +11,7 @@ import { Alert } from '../components/Alert.js';
 import { Button } from '../components/Button.js';
 import { Dialog } from '../components/Dialog.js';
 import { FormField } from '../components/FormField.js';
+import { PageLayout } from '../components/PageLayout.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { JobQueueControls } from '../components/JobQueueControls.js';
 import {
@@ -289,18 +290,17 @@ export default function JobQueue() {
   );
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <h1 className="page-title" style={{ margin: 0 }}>{t('page.jobQueue.title')}</h1>
-        {/* Queue rows are only trustworthy with their age attached. */}
-        <Freshness
+    <PageLayout
+      title={t('page.jobQueue.title')}
+      density="compact"
+      actions={<Freshness
           lastSuccessAt={queue.lastSuccessAt}
           stale={queue.stale}
           refreshing={queue.refreshing}
           paused={queue.paused}
           onRefresh={queue.refresh}
-        />
-      </div>
+        />}
+    >
 
       {message && (
         <Alert
@@ -749,6 +749,6 @@ export default function JobQueue() {
           </label>
         </form>
       </Dialog>
-    </div>
+    </PageLayout>
   );
 }

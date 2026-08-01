@@ -5,6 +5,7 @@ import { ColorInput } from './editorPrimitives.js';
 import { FieldCard } from './FieldCard.js';
 import type { Translate } from './types.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
+import { Drawer } from '../../../components/ui/index.js';
 
 export function EditorDrawer({ editor, popups, t }: {
   editor: PaperProfileEditor;
@@ -15,14 +16,7 @@ export function EditorDrawer({ editor, popups, t }: {
     ? t('page.paperProfiles.dynamicFieldsEditor')
     : t('page.paperProfiles.appearanceEditor');
   return (
-    <>
-      <div className="pp-drawer-backdrop" onClick={popups.closeDrawer} />
-      <div className="pp-drawer" role="dialog" aria-modal="true" aria-label={title}
-        ref={popups.drawerRef} tabIndex={-1}>
-        <div className="pp-drawer__header"><span className="pp-drawer__title">{title}</span>
-          <button type="button" className="pp-tool-btn" ref={popups.drawerCloseButtonRef}
-            title={t('common.cancel')} aria-label={t('common.cancel')} onClick={popups.closeDrawer}><PaperProfileIcon name="close" /></button></div>
-        <div className="pp-drawer__body">
+    <Drawer open onClose={popups.closeDrawer} title={title} closeLabel={t('common.cancel')}>
           {popups.drawer === 'fields' ? (
             <>
               {editor.ux.dynamicFields.map((field) => <FieldCard key={field.id} field={field} editor={editor} t={t} />)}
@@ -50,8 +44,6 @@ export function EditorDrawer({ editor, popups, t }: {
               </label>
             </div>
           )}
-        </div>
-      </div>
-    </>
+    </Drawer>
   );
 }

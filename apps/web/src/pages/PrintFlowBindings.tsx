@@ -6,6 +6,7 @@ import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
 import { ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 import { Alert } from '../components/Alert.js';
+import { PageLayout } from '../components/PageLayout.js';
 import { Button } from '../components/Button.js';
 
 // Manages the (code_template + code_profile) -> printer bindings that the
@@ -193,9 +194,18 @@ export default function PrintFlowBindings() {
   );
 
   return (
-    <div className="settings-page print-flow-page">
-      <h1>{t('page.printFlow.title')}</h1>
-      <p className="print-flow-lead">{t('page.printFlow.description')}</p>
+    <PageLayout
+      className="settings-page print-flow-page"
+      width="standard"
+      title={t('page.printFlow.title')}
+      description={t('page.printFlow.description')}
+      actions={<Freshness
+        lastSuccessAt={flow.lastSuccessAt}
+        stale={flow.stale}
+        refreshing={flow.refreshing}
+        onRefresh={flow.refresh}
+      />}
+    >
 
       {message && (
         <Alert
@@ -216,16 +226,6 @@ export default function PrintFlowBindings() {
       {flow.stale && flow.error != null && (
         <ErrorBanner error={flow.error} title={t('error.refresh.title')} onRetry={flow.refresh} />
       )}
-
-      <div className="page-header">
-        <span />
-        <Freshness
-          lastSuccessAt={flow.lastSuccessAt}
-          stale={flow.stale}
-          refreshing={flow.refreshing}
-          onRefresh={flow.refresh}
-        />
-      </div>
 
       <div className="print-flow-endpoint" aria-label={t('page.printFlow.endpoint')}>
         <span className="print-flow-method">POST</span>
@@ -335,7 +335,7 @@ export default function PrintFlowBindings() {
               )}
               {intakeLog.map((a) => (
                 <tr key={a.id} title={[a.sourceSystem, a.sourceReference, a.codeTemplate, a.codeProfile, a.printerCode, a.clientId, a.subject].filter(Boolean).join(' · ')}>
-                  <td style={{ padding: '0.75rem', fontSize: '0.75rem', color: '#666', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '0.75rem', fontSize: '0.75rem', color: 'var(--neutral-text-muted)', whiteSpace: 'nowrap' }}>
                     {new Date(a.occurredAt).toLocaleString()}
                   </td>
                   <td>
@@ -351,9 +351,9 @@ export default function PrintFlowBindings() {
                       className="print-flow-pill"
                       style={
                         a.outcome === 'accepted'
-                          ? { background: 'var(--success-bg, #16a34a22)', color: 'var(--success-text, #16a34a)' }
+                          ? { background: 'var(--state-success-surface)', color: 'var(--state-success-text)' }
                           : a.outcome === 'rejected'
-                            ? { background: 'var(--danger-bg, #dc262622)', color: 'var(--danger-text, #dc2626)' }
+                            ? { background: 'var(--state-danger-surface)', color: 'var(--state-danger-text)' }
                             : undefined
                       }
                     >
@@ -492,6 +492,6 @@ export default function PrintFlowBindings() {
           </table>
         </div>
       </section>
-    </div>
+    </PageLayout>
   );
 }
