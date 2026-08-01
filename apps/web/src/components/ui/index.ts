@@ -5,7 +5,7 @@ export { FormField, type FormFieldControlProps, type FormFieldProps } from '../F
 export { PageLayout, PageFooter, PageSection, type PageDensity, type PageLayoutProps, type PageWidth } from '../PageLayout.js';
 export { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '../PageState.js';
 export { StatusBadge, type StatusBadgeSize } from '../StatusBadge.js';
-export { Input, Select, Textarea, Checkbox, Chip, Label, type ChipProps, type ControlSize } from './controls.js';
+export { Input, Select, Textarea, Checkbox, Chip, Label, type ChipProps, type ControlSize } from './inputs.js';
 export { Stack, Inline, Grid, Spacer, Divider, type Align, type Space, type StackProps, type GridProps } from './layout.js';
 export { Panel, Card, Fieldset, Toolbar, type PanelProps, type CardProps, type FieldsetProps } from './surfaces.js';
 export { TabList, Tab, TabPanel, type TabProps } from './tabs.js';
