@@ -5,15 +5,17 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
   type FormEvent,
 } from 'react';
-import { bootstrapOwner, getBootstrapState, getCurrentUser, login, logout, healthUrl, onUnauthorized, type BootstrapInfo, type SessionUser } from './api/client.js';
+import { bootstrapOwner, getBootstrapState, getCurrentUser, hasSessionToken, login, logout, healthUrl, onUnauthorized, type BootstrapInfo, type SessionUser } from './api/client.js';
 import { SessionProvider } from './api/session.js';
 import { LocaleProvider, useLocale } from './i18n/index.js';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary.js';
 import { NavIcon } from './components/NavIcon.js';
+import { ActionIcon } from './components/ActionIcon.js';
 import { errorMessage } from './api/errors.js';
 
 const Dashboard = lazy(() => import('./pages/Dashboard.js'));
@@ -214,17 +216,27 @@ function SplashScreen() {
 
 function LoginView({
   onLogin,
+  bootstrap,
+  onOwnerSetup,
   sessionExpired = false,
 }: {
   onLogin: (user: SessionUser) => void;
+  bootstrap: BootstrapInfo;
+  onOwnerSetup: () => void;
   /** True when the app returned here because a 401 ended the session. */
   sessionExpired?: boolean;
 }) {
   const { t } = useLocale();
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [email, setEmail] = useState(import.meta.env.DEV ? 'sysadmin@printerops.local' : '');
   const [password, setPassword] = useState(import.meta.env.DEV ? 'Dev-password1!' : '');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -243,7 +255,7 @@ function LoginView({
     <div className="login-screen">
       <form className="login-panel" onSubmit={(event) => void submit(event)}>
         <div>
-          <h1>{t('login.title')}</h1>
+          <h1 ref={headingRef} tabIndex={-1}>{t('login.title')}</h1>
           <p>{t('login.subtitle')}</p>
         </div>
 
@@ -252,19 +264,33 @@ function LoginView({
           <input
             value={email}
             onChange={(event) => setEmail(event.target.value)}
+            type="email"
             autoComplete="username"
+            required
           />
         </label>
 
-        <label>
-          {t('login.password')}
+        <label className="login-password-label" htmlFor="login-password">{t('login.password')}</label>
+        <div className="login-password-field">
           <input
+            id="login-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             autoComplete="current-password"
+            required
           />
-        </label>
+          <button
+            type="button"
+            className="login-password-toggle"
+            aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
+            aria-pressed={showPassword}
+            title={showPassword ? t('login.hidePassword') : t('login.showPassword')}
+            onClick={() => setShowPassword((visible) => !visible)}
+          >
+            <ActionIcon name={showPassword ? 'eyeOff' : 'eye'} />
+          </button>
+        </div>
 
         {sessionExpired && !error && (
           <div className="login-notice" role="status">{t('auth.sessionExpired')}</div>
@@ -276,20 +302,34 @@ function LoginView({
           {submitting ? t('common.signingIn') : t('common.signIn')}
         </button>
 
+        {bootstrap.state !== 'READY' && (
+          <div className="login-optional-setup">
+            <p>{t('setup.optionalNotice')}</p>
+            <button type="button" className="login-secondary-action" onClick={onOwnerSetup}>
+              {t('setup.openOptional')}
+            </button>
+          </div>
+        )}
+
         {import.meta.env.DEV && <div className="login-hint">{t('login.hint')}</div>}
       </form>
     </div>
   );
 }
 
-function OwnerSetupView({ bootstrap, onComplete }: { bootstrap: BootstrapInfo; onComplete: (user: SessionUser) => void }) {
+function OwnerSetupView({ bootstrap, onComplete, onBack }: { bootstrap: BootstrapInfo; onComplete: (user: SessionUser) => void; onBack: () => void }) {
   const { t } = useLocale();
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -308,7 +348,7 @@ function OwnerSetupView({ bootstrap, onComplete }: { bootstrap: BootstrapInfo; o
     <div className="login-screen">
       <form className="login-panel" onSubmit={(event) => void submit(event)}>
         <div>
-          <h1>{t('setup.title')}</h1>
+          <h1 ref={headingRef} tabIndex={-1}>{t('setup.title')}</h1>
           <p>{bootstrap.state === 'MIGRATION_REQUIRED' ? t('setup.migrationSubtitle') : t('setup.subtitle')}</p>
           {bootstrap.state === 'MIGRATION_REQUIRED' && bootstrap.ownerEmailHints.length > 0 && (
             <p className="login-hint">{t('setup.migrationOwnerHint').replace('{emails}', bootstrap.ownerEmailHints.join(', '))}</p>
@@ -321,6 +361,7 @@ function OwnerSetupView({ bootstrap, onComplete }: { bootstrap: BootstrapInfo; o
         <div className="login-hint">{t('setup.passwordHint')}</div>
         {error && <div className="login-error" role="alert">{error}</div>}
         <button type="submit" disabled={submitting} aria-busy={submitting}>{submitting ? t('setup.creating') : t('setup.create')}</button>
+        <button type="button" className="login-secondary-action" onClick={onBack}>{t('setup.backToLogin')}</button>
       </form>
     </div>
   );
@@ -603,6 +644,7 @@ export default function App() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [bootstrap, setBootstrap] = useState<BootstrapInfo>({ state: 'READY', ownerEmailHints: [] });
+  const [authMode, setAuthMode] = useState<'login' | 'owner-setup'>('login');
 
   // Subscribed BEFORE the session check below, so a 401 from that very first
   // `getCurrentUser()` is handled by the same path as one that happens an hour
@@ -646,7 +688,10 @@ export default function App() {
     getBootstrapState()
       .then(async (info) => {
         setBootstrap(info);
-        if (info.state === 'READY') {
+        // Restore every valid human role session. OWNER bootstrap state is an
+        // optional administration concern and must not block an existing
+        // ADMIN/OPERATOR/VIEWER account from using its configured permissions.
+        if (hasSessionToken()) {
           try { setUser(await getCurrentUser()); } catch { logout(); }
         }
       })
@@ -670,16 +715,19 @@ export default function App() {
     return (
       <LocaleProvider>
         <RouteErrorBoundary>
-          {bootstrap.state === 'READY' ? <LoginView
+          {authMode === 'login' ? <LoginView
             onLogin={(next) => {
               setSessionExpired(false);
               setUser(next);
             }}
+            bootstrap={bootstrap}
+            onOwnerSetup={() => setAuthMode('owner-setup')}
             sessionExpired={sessionExpired}
           /> : <OwnerSetupView bootstrap={bootstrap} onComplete={(next) => {
             setBootstrap({ state: 'READY', ownerEmailHints: [] });
+            setAuthMode('login');
             setUser(next);
-          }} />}
+          }} onBack={() => setAuthMode('login')} />}
         </RouteErrorBoundary>
       </LocaleProvider>
     );

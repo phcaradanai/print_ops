@@ -65,6 +65,11 @@ function token(): string {
   return storageGet('token') ?? '';
 }
 
+/** Whether this browser has a human dashboard session worth restoring. */
+export function hasSessionToken(): boolean {
+  return token() !== '';
+}
+
 /** Session-expiry notification. Only 401 unwinds the session; 403 does not. */
 type UnauthorizedListener = () => void;
 const unauthorizedListeners = new Set<UnauthorizedListener>();

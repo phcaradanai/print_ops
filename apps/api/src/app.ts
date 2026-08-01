@@ -546,13 +546,10 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     });
   }
 
-  const productionCredentialsReady = async () => {
-    const users = await userRepo.findAll();
-    return users.some((user) => user.isActive && user.role === 'OWNER' && user.passwordHash?.startsWith('scrypt$'));
-  };
-
-  // API key middleware
-  const apiKeyHook = buildApiKeyAuth(serviceAccountRepo, productionCredentialsReady);
+  // External intake is authenticated by service-account credentials, not by
+  // dashboard account state. OWNER bootstrap protects administration only and
+  // must not pause an already provisioned integration after a restart.
+  const apiKeyHook = buildApiKeyAuth(serviceAccountRepo);
 
   // A persistent store must never be re-seeded as a new instance on every
   // desktop start; doing so duplicates sample data and can overwrite records.
@@ -786,7 +783,6 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     dynamicPrint,
     logger: app.log,
     intakeLog: intakeAttemptRepo,
-    isIntakeEnabled: productionCredentialsReady,
   });
   const routeNatsPublisher: NatsPublisher | undefined = printIntakeCfg
     ? (subject, payload) => natsManager.publish(subject, payload)
@@ -871,7 +867,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       try { return reply.type('text/html').send(readFileSync(join(root, 'index.html'))); } catch {}
     }
     // Fallback inline UI
-    return reply.type('text/html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PrinterOps</title><style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#1e1e2e;color:#cdd6f4}a{color:#89b4fa}</style></head><body><div style="text-align:center;max-width:400px"><h1 style="font-size:2rem;margin-bottom:.5rem">🖨️ PrinterOps</h1><p style="color:#a6adc8">Print Gateway — API + Dashboard</p><div style="margin:2rem 0"><p>✅ API running on port ${process.env['PORT'] ?? 3001}</p><p>📋 <a href="/api/v1/templates">Templates</a> · <a href="/api/v1/sandbox/run">Sandbox</a></p><p>🔌 <a href="/api/v1/connectivity/report">Connectivity Report</a></p></div></div></body></html>`);
+    return reply.type('text/html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PrinterOps</title><style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#1e1e2e;color:#cdd6f4}a{color:#89b4fa}</style></head><body><div style="text-align:center;max-width:400px"><h1 style="font-size:2rem;margin-bottom:.5rem">🖨️ PrinterOps</h1><p style="color:#9ca3af">Print Gateway — API + Dashboard</p><div style="margin:2rem 0"><p>✅ API running on port ${process.env['PORT'] ?? 3001}</p><p>📋 <a href="/api/v1/templates">Templates</a> · <a href="/api/v1/sandbox/run">Sandbox</a></p><p>🔌 <a href="/api/v1/connectivity/report">Connectivity Report</a></p></div></div></body></html>`);
   });
 
   // Serve static files (JS, CSS, assets) for unmatched GET/HEAD

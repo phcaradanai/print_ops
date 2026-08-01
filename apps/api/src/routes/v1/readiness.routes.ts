@@ -77,7 +77,6 @@ function latestIso(values: Array<Date | undefined>): string | undefined {
 
 function natsAction(status: NatsRuntimeStatus): string | undefined {
   if (!status.enabled) return 'Enable NATS in Settings only when remote intake or NATS callbacks are required.';
-  if (status.lastErrorCode === 'CREDENTIALS_NOT_INITIALIZED') return 'Complete first-run OWNER setup.';
   if (!status.connected) return 'Verify the sanitized broker address, credentials, firewall, and broker availability.';
   if (!status.streamReady) return `Create or grant access to stream ${status.stream ?? '(not configured)'}.`;
   if (!status.consumerReady) return `Resolve durable consumer ${status.durable ?? '(not configured)'} configuration.`;

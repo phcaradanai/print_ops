@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { LEGACY_API_PROXY_PATTERN } from './devProxy.js';
 
 const apiTarget = process.env['PRINTOPS_DEV_API_TARGET'] ?? 'http://127.0.0.1:31415';
 
@@ -20,7 +21,7 @@ export default defineConfig({
       // string. Keep `?` as an explicit boundary: without it, `/jobs?limit=500`
       // misses this proxy and Vite's SPA fallback returns index.html with HTTP
       // 200, which the API client correctly reports as INVALID_JSON.
-      '^/(auth|health|me|jobs|printers|runners|commands|audit-logs)(/|\\?|$)': {
+      [LEGACY_API_PROXY_PATTERN]: {
         target: apiTarget,
       },
     },

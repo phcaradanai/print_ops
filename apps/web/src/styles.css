@@ -1292,8 +1292,24 @@ body {
   outline-offset: 0;
 }
 
+.login-panel .login-password-label {
+  margin-bottom: 0.35rem;
+}
+
+.login-password-field {
+  position: relative;
+  margin-bottom: 0.85rem;
+}
+
+.login-password-field input {
+  min-height: 44px;
+  margin-top: 0;
+  padding-inline-end: 3.25rem;
+}
+
 .login-panel button {
   width: 100%;
+  min-height: 44px;
   margin-top: 0.25rem;
   padding: 0.7rem 0.9rem;
   border: 0;
@@ -1314,6 +1330,26 @@ body {
   outline-offset: 2px;
 }
 
+.login-panel .login-password-toggle {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border-inline-start: 1px solid #d1d5db;
+  border-radius: 0 6px 6px 0;
+  background: transparent;
+  color: #374151;
+  display: grid;
+  place-items: center;
+}
+
+.login-panel .login-password-toggle:hover {
+  background: #f0f0f0;
+}
+
 .login-error {
   margin-bottom: 0.85rem;
   padding: 0.65rem 0.75rem;
@@ -1328,6 +1364,29 @@ body {
   color: #6b7280;
   font-size: 0.75rem;
   line-height: 1.4;
+}
+
+.login-optional-setup {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.login-optional-setup p {
+  margin: 0 0 0.65rem;
+  color: #374151;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.login-panel .login-secondary-action {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #1e1e2e;
+}
+
+.login-panel .login-secondary-action:hover {
+  background: #f0f0f0;
 }
 
 /* ---- error fallback ---- */

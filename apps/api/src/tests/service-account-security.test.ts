@@ -87,7 +87,7 @@ describe('service-account key lifecycle', () => {
     expect(response.statusCode).toBe(403);
   });
 
-  it('refuses API-key intake before owner bootstrap and accepts a valid active key afterward', async () => {
+  it('accepts an active service-account key without requiring owner bootstrap', async () => {
     const serviceAccounts = new InMemoryServiceAccountRepository();
     const key = 'po_live_test-key-material';
     const account = await serviceAccounts.create({
@@ -103,12 +103,11 @@ describe('service-account key lifecycle', () => {
     });
     const app = Fastify();
     apps.push(app);
-    let ready = false;
-    app.get('/protected', { onRequest: [buildApiKeyAuth(serviceAccounts, async () => ready)] }, async () => ({ ok: true }));
+    app.get('/protected', { onRequest: [buildApiKeyAuth(serviceAccounts)] }, async () => ({ ok: true }));
 
-    expect((await app.inject({ method: 'GET', url: '/protected', headers: { 'x-api-key': key } })).statusCode).toBe(503);
-    ready = true;
     expect((await app.inject({ method: 'GET', url: '/protected', headers: { 'x-api-key': key } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/protected' })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/protected', headers: { 'x-api-key': 'wrong-key' } })).statusCode).toBe(401);
     await serviceAccounts.update(account.id, { isActive: false });
     expect((await app.inject({ method: 'GET', url: '/protected', headers: { 'x-api-key': key } })).statusCode).toBe(401);
   });

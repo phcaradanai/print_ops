@@ -35,6 +35,31 @@ describe('production password handling', () => {
 });
 
 describe('owner bootstrap', () => {
+  it('keeps configured non-owner role accounts usable before optional owner setup', async () => {
+    const users = new InMemoryUserRepository();
+    users.seed({
+      id: 'operator-1',
+      email: 'operator@example.test',
+      name: 'Ward Operator',
+      passwordHash: await hashPassword('Strong-password1!'),
+      role: 'OPERATOR',
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const { app } = await authApp(users);
+
+    expect((await app.inject({ method: 'GET', url: '/auth/bootstrap' })).json().state).toBe('MIGRATION_REQUIRED');
+    const login = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'operator@example.test', password: 'Strong-password1!' },
+    });
+
+    expect(login.statusCode).toBe(200);
+    expect(login.json().user.role).toBe('OPERATOR');
+  });
+
   it('creates exactly one owner and disables bootstrap', async () => {
     const { app, users } = await authApp();
     const before = await app.inject({ method: 'GET', url: '/auth/bootstrap' });
