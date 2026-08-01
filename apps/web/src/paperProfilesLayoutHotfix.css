@@ -223,7 +223,7 @@
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .paper-profiles-page .pp-toolbar {
     flex-basis: 100%;
     justify-content: flex-start;

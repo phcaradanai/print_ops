@@ -39,7 +39,7 @@ const RoutePolicies = lazy(() => import('./pages/RoutePolicies.js'));
 const PrinterBindings = lazy(() => import('./pages/PrinterBindings.js'));
 const PrintFlowBindings = lazy(() => import('./pages/PrintFlowBindings.js'));
 
-const MOBILE_NAV_QUERY = '(max-width: 760px)';
+const MOBILE_NAV_QUERY = '(max-width: 1024px)';
 
 function isMobileNavViewport() {
   return typeof window !== 'undefined'
@@ -168,38 +168,30 @@ const NAV_ITEMS: NavItem[] = [
 
 // ----- splash -----
 
-function SplashScreen() {
+function SplashScreen({ error, onRetry }: { error?: boolean; onRetry?: () => void }) {
   const { t } = useLocale();
   const [status, setStatus] = useState(t('splash.starting'));
 
   useEffect(() => {
+    if (error) {
+      setStatus(t('splash.unable'));
+      return;
+    }
+    
     let cancelled = false;
     let attempts = 0;
-
-    async function waitForApi() {
-      while (!cancelled && attempts < 120) {
-        attempts++;
-        try {
-          const res = await fetch(healthUrl());
-          if (res.ok) {
-            if (!cancelled) setStatus(t('splash.ready'));
-            return;
-          }
-        } catch {
-          // retrying...
-        }
-        if (!cancelled) {
-          setStatus(t('splash.progress').replace('{n}', String(attempts)));
-          await new Promise((r) => setTimeout(r, 1000));
-        }
-      }
-      if (!cancelled) setStatus(t('splash.unable'));
-    }
-    void waitForApi();
+    
+    const interval = setInterval(() => {
+      if (cancelled) return;
+      attempts++;
+      setStatus(t('splash.progress').replace('{n}', String(attempts)));
+    }, 1000);
+    
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
-  }, [t]);
+  }, [t, error]);
 
   return (
     <div className="splash-screen">
@@ -207,7 +199,13 @@ function SplashScreen() {
         <div className="splash-logo">{t('login.title')}</div>
         <p className="splash-tagline">{t('splash.tagline')}</p>
         <div className="splash-status">{status}</div>
-        <div className="splash-spinner" />
+        {error ? (
+          <Button onClick={onRetry} variant="secondary" style={{ marginTop: '1rem' }}>
+            {t('error.retry')}
+          </Button>
+        ) : (
+          <div className="splash-spinner" />
+        )}
       </div>
     </div>
   );
@@ -471,7 +469,7 @@ function AppNav({
 
   const navContent = (
     <>
-      <h2 className="app-nav-brand">PrinterOps</h2>
+      <h2 className="app-nav-brand">PrintOps</h2>
 
       {/* Operations group — always visible */}
       {opsItems.length > 0 && (
@@ -661,6 +659,7 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
 
 export default function App() {
   const [apiReady, setApiReady] = useState(false);
+  const [apiError, setApiError] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -678,31 +677,28 @@ export default function App() {
     });
   }, []);
 
-  useEffect(() => {
+  const checkApi = useCallback(async () => {
+    setApiError(false);
     let cancelled = false;
-
-    async function checkApi() {
-      for (let i = 0; i < 120; i++) {
-        if (cancelled) return;
-        try {
-          const res = await fetch(healthUrl());
-          if (res.ok) {
-            if (!cancelled) setApiReady(true);
-            return;
-          }
-        } catch {
-          // API not ready yet
+    for (let i = 0; i < 5; i++) {
+      if (cancelled) return;
+      try {
+        const res = await fetch(healthUrl());
+        if (res.ok) {
+          setApiReady(true);
+          return;
         }
-        if (!cancelled) await new Promise((r) => setTimeout(r, 1000));
+      } catch {
+        // API not ready yet
       }
-      if (!cancelled) setApiReady(true);
+      await new Promise((r) => setTimeout(r, 1000));
     }
-
-    void checkApi();
-    return () => {
-      cancelled = true;
-    };
+    if (!cancelled) setApiError(true);
   }, []);
+
+  useEffect(() => {
+    void checkApi();
+  }, [checkApi]);
 
   useEffect(() => {
     if (!apiReady) return;
@@ -727,7 +723,7 @@ export default function App() {
   if (!apiReady || checkingSession) {
     return (
       <LocaleProvider>
-        <SplashScreen />
+        <SplashScreen error={apiError} onRetry={checkApi} />
       </LocaleProvider>
     );
   }

@@ -93,7 +93,7 @@ const en: TranslationDict = {
   'settings.resetDone': 'Settings reset to defaults.',
 
   // Login
-  'login.title': 'PrinterOps',
+  'login.title': 'PrintOps',
   'login.subtitle': 'Sign in to manage local printing operations.',
   'login.email': 'Email',
   'login.password': 'Password',
@@ -1231,7 +1231,7 @@ const en: TranslationDict = {
   'settings.nats.description':
     'Connect this workstation to a NATS JetStream broker to receive print jobs for its local printers. Each site must use a unique Client ID so jobs are never delivered to the wrong printer.',
   'settings.nats.desktopOnly':
-    'NATS configuration is only available in the PrinterOps desktop app.',
+    'NATS configuration is only available in the PrintOps desktop app.',
   'settings.nats.enabled': 'Enable NATS print intake',
   'settings.nats.url': 'NATS URL',
   'settings.nats.clientId': 'Client ID',
@@ -1381,7 +1381,7 @@ const th: TranslationDict = {
   'settings.resetDone': 'รีเซ็ตการตั้งค่าเป็นค่าเริ่มต้นแล้ว',
 
   // Login
-  'login.title': 'PrinterOps',
+  'login.title': 'PrintOps',
   'login.subtitle': 'เข้าสู่ระบบเพื่อจัดการการพิมพ์',
   'login.email': 'อีเมล',
   'login.password': 'รหัสผ่าน',
@@ -2513,7 +2513,7 @@ const th: TranslationDict = {
   'settings.nats.description':
     'เชื่อมต่อเครื่องนี้กับ NATS JetStream เพื่อรับงานพิมพ์ไปยังเครื่องพิมพ์ในเครื่อง ทุกสาขาต้องใช้ Client ID ที่ไม่ซ้ำกัน เพื่อไม่ให้งานส่งไปเครื่องพิมพ์ผิดที่',
   'settings.nats.desktopOnly':
-    'การตั้งค่า NATS ใช้งานได้ในแอป PrinterOps เดสก์ท็อปเท่านั้น',
+    'การตั้งค่า NATS ใช้งานได้ในแอป PrintOps เดสก์ท็อปเท่านั้น',
   'settings.nats.enabled': 'เปิดใช้งานรับงานพิมพ์ผ่าน NATS',
   'settings.nats.url': 'NATS URL',
   'settings.nats.clientId': 'Client ID',

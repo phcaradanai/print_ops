@@ -155,7 +155,7 @@
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .ops-page__header > .tpl-page-header,
   .ops-page__header > .wh-header,
   .ops-page__header > .pp-page-header {

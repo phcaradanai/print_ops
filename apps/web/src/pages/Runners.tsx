@@ -72,7 +72,7 @@ export default function Runners() {
       ) : runnersResource.error != null && !runnersResource.data ? (
         <ErrorState error={runnersResource.error} onRetry={runnersResource.refresh} />
       ) : (
-        // One semantic table that becomes labelled cards under 760px. This page
+        // One semantic table that becomes labelled cards under 1024px. This page
         // used to mount a `<table>` AND a parallel `<ul>` of the same runners,
         // so every row existed twice in the accessibility tree and the two
         // copies had already drifted apart in what they showed.

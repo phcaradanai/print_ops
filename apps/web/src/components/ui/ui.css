@@ -253,7 +253,7 @@
 .ui-drawer__title { margin: 0; color: var(--neutral-deep); font-size: var(--font-subheading-size); }
 .ui-drawer__body { min-height: 0; padding: var(--spacing-lg); overflow-y: auto; }
 
-@media (max-width: 760px), (pointer: coarse) {
+@media (max-width: 1024px), (pointer: coarse) {
   .ui-input--sm,
   .ui-input--md,
   .ui-select--sm,
@@ -265,7 +265,7 @@
   .ui-icon-button--md { width: 44px; height: 44px; }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .ui-grid--2,
   .ui-grid--3,
   .ui-grid--4 { grid-template-columns: minmax(0, 1fr); }

@@ -149,7 +149,7 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
                 </Button>
               } /></div>
           ) : (
-            /* One semantic table that becomes labelled cards under 760px. This
+            /* One semantic table that becomes labelled cards under 1024px. This
                component used to mount a `<table>` AND a parallel `pp-profile-cards`
                list of the same profiles, so every Edit, Export and Delete control
                existed twice in the accessibility tree — including the destructive

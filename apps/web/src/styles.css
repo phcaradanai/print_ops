@@ -628,7 +628,7 @@ body {
   line-height: 1.4;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .ops-page {
     --page-region-gap: var(--spacing-xl);
     --page-section-gap: var(--spacing-lg);
@@ -767,24 +767,20 @@ body {
 }
 
 .settings-btn-primary {
-  background: linear-gradient(180deg, #2563eb 0%, #1e66f5 100%);
+  background: #1e66f5;
   color: #ffffff;
   border: 1px solid #1d4ed8;
-  box-shadow: 0 1px 2px rgba(30, 102, 245, 0.25);
   transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .settings-btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #1d4ed8 0%, #1553d1 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(30, 102, 245, 0.32);
+  background: #1d4ed8;
 }
 
 .settings-btn-secondary {
   background: #ffffff;
   color: var(--neutral-deep, #1e1e2e);
   border: 1px solid var(--neutral-border-strong, #9399b2) !important;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -792,22 +788,17 @@ body {
   border-color: #1e66f5 !important;
   color: #1e66f5;
   background: rgba(30, 102, 245, 0.04);
-  transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(30, 102, 245, 0.12);
 }
 
 .settings-btn-danger {
-  background: linear-gradient(180deg, #be123c 0%, #9f1239 100%);
+  background: #9f1239;
   color: #ffffff;
-  border: 1px solid #9f1239 !important;
-  box-shadow: 0 1px 2px rgba(159, 18, 57, 0.25);
+  border: 1px solid #830e2e !important;
   transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .settings-btn-danger:hover:not(:disabled) {
-  background: linear-gradient(180deg, #9f1239 0%, #830e2e 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(159, 18, 57, 0.32);
+  background: #830e2e;
 }
 
 /* ---- status badges ----
@@ -2044,7 +2035,7 @@ body {
 
 /* ---- responsive ---- */
 
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .app-shell {
     flex-direction: column;
     padding-top: max(50px, calc(44px + env(safe-area-inset-top)));
@@ -3098,7 +3089,7 @@ body {
   display: none;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .pp-saved-profiles__header {
     align-items: stretch;
     flex-direction: column;
@@ -3908,7 +3899,7 @@ body {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .tpl-page-header {
     gap: var(--spacing-md);
   }
@@ -4769,7 +4760,7 @@ body {
   align-items: start;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .template-sandbox-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -5197,7 +5188,7 @@ body {
    touch-enabled workstations.  Keep this targeted: table content and static
    labels should not acquire artificial height just because the device is touch.
    --------------------------------------------------------------------------- */
-@media (pointer: coarse), (max-width: 760px) {
+@media (pointer: coarse), (max-width: 1024px) {
   .ds-btn,
 .ds-btn--icon,
 .ui-button,
@@ -5265,7 +5256,7 @@ body {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .ds-modal {
     align-items: end;
     padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
@@ -5801,7 +5792,6 @@ body {
   background: var(--neutral-surface);
   border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-lg);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 /* The two states that require an operator's attention earn a quiet, semantic
@@ -5810,14 +5800,14 @@ body {
 .job-verdict--caution {
   --job-verdict-ink: #92400e;
   --job-verdict-mark-surface: var(--semantic-warning);
-  border-inline-start: 5px solid #92400e;
+  border-color: color-mix(in srgb, #92400e 40%, transparent);
   background-color: #fff8e7;
 }
 
 .job-verdict--negative {
   --job-verdict-ink: #9f1239;
   --job-verdict-mark-surface: var(--semantic-error);
-  border-inline-start: 5px solid #9f1239;
+  border-color: color-mix(in srgb, #9f1239 40%, transparent);
   background-color: #fff5f7;
 }
 
@@ -5905,7 +5895,7 @@ body {
   gap: var(--spacing-sm);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .job-verdict {
     grid-template-columns: 2.5rem minmax(0, 1fr);
     gap: var(--spacing-md);

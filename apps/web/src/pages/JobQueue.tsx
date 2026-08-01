@@ -340,7 +340,7 @@ export default function JobQueue() {
           {view.rows.length === 0 ? (
             <EmptyState title={jobs.length === 0 ? t('page.jobQueue.noJobs') : t('page.jobQueue.noMatchingJobs')} />
           ) : (
-            /* One semantic table that becomes labelled cards under 760px.
+            /* One semantic table that becomes labelled cards under 1024px.
                Previously a `<table>` and a parallel `<ul>` of the same rows were
                both mounted, so every selection checkbox and every Reprint button
                existed twice in the accessibility tree — on a page whose buttons
