@@ -132,6 +132,7 @@ export interface PrinterTemplateBindingRepositoryPort {
   findAll(opts?: ListOptions & { printerCode?: string; templateCode?: string }): Promise<PrinterTemplateBinding[]>;
   create(input: CreatePrinterTemplateBindingInput): Promise<PrinterTemplateBinding>;
   update(id: string, patch: Partial<PrinterTemplateBinding>): Promise<PrinterTemplateBinding>;
+  delete(id: string): Promise<void>;
 }
 
 export interface WebhookEndpointRepositoryPort {

@@ -13,15 +13,16 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
-export type ButtonSize = 'sm' | 'md';
+export type ButtonSize = 'sm' | 'md' | 'lg';
 
-export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className'> {
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   /** Shows `busyLabel` (or the children) and blocks further clicks. */
   busy?: boolean;
   busyLabel?: string;
-  children: ReactNode;
+  className?: string;
+  children?: ReactNode;
 }
 
 export function Button({
@@ -31,18 +32,28 @@ export function Button({
   busyLabel,
   disabled,
   type = 'button',
+  className = '',
   children,
   ...rest
 }: ButtonProps) {
+  const combinedClassName = `ui-button ui-button--${variant} ui-button--${size}${busy ? ' ui-button--busy' : ''}${className ? ` ${className}` : ''}`;
   return (
     <button
       {...rest}
       type={type}
-      className={`ui-button ui-button--${variant} ui-button--${size}`}
+      className={combinedClassName}
       disabled={disabled || busy}
       aria-busy={busy || undefined}
     >
-      {busy && busyLabel ? busyLabel : children}
+      {busy ? (
+        <>
+          <span className="ui-button__spinner" aria-hidden="true" />
+          <span>{busyLabel ?? children}</span>
+        </>
+      ) : (
+        children
+      )}
     </button>
   );
 }
+

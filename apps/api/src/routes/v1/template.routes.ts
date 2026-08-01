@@ -407,4 +407,9 @@ export async function templateRoutes(
     const { id } = req.params as { id: string };
     return deps.bindings.update(id, req.body as Record<string, unknown>);
   });
+  app.delete('/printer-template-bindings/:id', { onRequest: [requirePermission('template:update')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    await deps.bindings.delete(id);
+    return reply.send({ deleted: true, id });
+  });
 }

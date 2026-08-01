@@ -3,8 +3,8 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react';
 export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
   label: string;
   children: ReactNode;
-  variant?: 'neutral' | 'primary' | 'danger';
-  size?: 'sm' | 'md';
+  variant?: 'neutral' | 'primary' | 'danger' | 'ghost';
+  size?: 'sm' | 'md' | 'lg';
   busy?: boolean;
 }
 
@@ -24,14 +24,15 @@ export function IconButton({
     <button
       {...props}
       type={type}
-      className={`ui-icon-button ui-icon-button--${variant} ui-icon-button--${size}${className ? ` ${className}` : ''}`}
+      className={`ui-icon-button ui-icon-button--${variant} ui-icon-button--${size}${busy ? ' ui-icon-button--busy' : ''}${className ? ` ${className}` : ''}`}
       aria-label={label}
       aria-busy={busy || undefined}
       title={title ?? label}
       disabled={disabled || busy}
     >
-      {children}
+      {busy ? <span className="ui-button__spinner" aria-hidden="true" /> : children}
     </button>
   );
 }
+
 

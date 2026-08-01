@@ -36,4 +36,8 @@ export class InMemoryPrinterTemplateBindingRepository implements PrinterTemplate
     this.store.set(id, updated);
     return updated;
   }
+
+  async delete(id: string): Promise<void> {
+    this.store.delete(id);
+  }
 }
