@@ -149,7 +149,7 @@ export function ReprintDialog({ job, open, onClose, onSuccess, onError, t }: Rep
           <dt>{t('page.jobQueue.reprintRunnerAck')}</dt>
           <dd>
             {job.runnerId && job.completedAt
-              ? t('common.yes')
+              ? t('page.jobQueue.reprintAckYes')
               : t('page.jobQueue.reprintAckUnknown')}
           </dd>
           <dt>{t('page.jobQueue.reprintCallbackDelivery')}</dt>

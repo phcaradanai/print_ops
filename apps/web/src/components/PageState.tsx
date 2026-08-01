@@ -73,18 +73,58 @@ interface ErrorViewProps {
 function ErrorDetails({ error }: { error: unknown }) {
   const { t } = useLocale();
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const technical = errorTechnicalSummary(error);
   if (!technical) return null;
+
+  const handleCopy = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(technical);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = technical;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+    } catch {
+      // Fallback ignore
+    }
+  };
+
   return (
     <div className="state-panel-details">
-      <button
-        type="button"
-        className="state-panel-details-toggle"
-        aria-expanded={open}
-        onClick={() => setOpen((prev) => !prev)}
-      >
-        {t('error.details')}
-      </button>
+      <div className="state-panel-details-bar" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <button
+          type="button"
+          className="state-panel-details-toggle"
+          aria-expanded={open}
+          onClick={() => setOpen((prev) => !prev)}
+        >
+          {t('error.details')}
+        </button>
+        {open && (
+          <button
+            type="button"
+            className="state-panel-details-copy"
+            onClick={handleCopy}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#1e66f5',
+              cursor: 'pointer',
+              fontSize: '0.75rem',
+              padding: '0 0.25rem',
+            }}
+          >
+            {copied ? t('error.copied') : t('error.copyDetails')}
+          </button>
+        )}
+      </div>
       {open && <code className="state-panel-technical">{technical}</code>}
     </div>
   );

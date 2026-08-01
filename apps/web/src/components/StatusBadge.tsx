@@ -32,7 +32,11 @@ export function StatusBadge({
   return (
     <span
       className={`status-badge status-badge--${size}`}
-      style={{ background: colors.bg, color: colors.text }}
+      style={{
+        background: 'transparent',
+        color: colors.text,
+        border: `1.5px solid ${colors.border}`,
+      }}
       title={title}
     >
       {status}

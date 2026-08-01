@@ -11,11 +11,10 @@ interface Printer {
   allowedTemplates?: string[]; maxCopiesPerJob?: number;
 }
 
-/** Live-status dot. This is printer reachability, NOT a print-job status — it
- *  deliberately does not go through <StatusBadge />, which paints job statuses. */
+/** Dot fill colors — darker ink tones that match the status-indicator border/text palette */
 const STATUS_DOT: Record<string, string> = {
-  idle: '#a6e3a1', online: '#a6e3a1', busy: '#fab387',
-  offline: '#f38ba8', error: '#f38ba8', unknown: '#9399b2',
+  idle: '#2f732a', online: '#2f732a', busy: '#c2410c',
+  offline: '#9f1239', error: '#9f1239', unknown: '#374151',
 };
 
 export default function Printers() {
@@ -45,7 +44,8 @@ export default function Printers() {
           onRetry={printersResource.refresh}
         />
       ) : (
-        <table className="data-table">
+        <>
+        <table className="data-table printer-table">
           <thead>
             <tr>
               {[t('page.printers.code'), t('page.printers.name'), t('page.printers.location'), t('page.printers.protocol'), t('page.printers.status'), t('page.printers.maxCopies'), t('page.printers.active')].map((h) => (
@@ -60,20 +60,22 @@ export default function Printers() {
             {printers.map((p) => (
               <tr key={p.id}>
                 <td style={{ fontFamily: "monospace", fontWeight: 600 }}>{p.code}</td>
-                <td>{p.name}</td>
+                <td style={{ fontWeight: 500 }}>{p.name}</td>
                 <td style={{ color: "var(--neutral-text-muted)" }}>{p.location ?? t('common.noData')}</td>
-                <td style={{ fontFamily: "monospace" }}>{p.protocol}</td>
+                <td>
+                  <span className="protocol-badge">{p.protocol}</span>
+                </td>
                 <td>
                   {p.status ? (
-                    <span className="status-indicator">
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_DOT[p.status.code] ?? '#ccc', display: 'inline-block' }} />
-                      {p.status.code}
+                    <span className={`status-indicator status-indicator--${p.status.code}`}>
+                      <span className="status-dot" style={{ background: STATUS_DOT[p.status.code] ?? '#9399b2' }} />
+                      <span className="status-indicator-text">{p.status.code}</span>
                     </span>
                   ) : t('common.noData')}
                 </td>
-                <td>{p.maxCopiesPerJob ?? t('common.noData')}</td>
+                <td style={{ fontFamily: "monospace" }}>{p.maxCopiesPerJob ?? t('common.noData')}</td>
                 <td>
-                  <span style={{ color: p.isActive ? '#40a02b' : '#f38ba8', fontWeight: 600, fontSize: '0.85rem' }}>
+                  <span className={`active-badge ${p.isActive ? 'active-badge--active' : 'active-badge--inactive'}`}>
                     {p.isActive ? t('status.active') : t('status.inactive')}
                   </span>
                 </td>
@@ -81,6 +83,30 @@ export default function Printers() {
             ))}
           </tbody>
         </table>
+        <ul className="resource-record-list printer-record-list" aria-label={t('page.printers.title')}>
+          {printers.length === 0 ? (
+            <li><EmptyState title={t('page.printers.noPrinters')} /></li>
+          ) : printers.map((p) => (
+            <li key={p.id} className="resource-record">
+              <div className="resource-record__heading">
+                <div>
+                  <strong>{p.name}</strong>
+                  <code>{p.code}</code>
+                </div>
+                <span className={`active-badge ${p.isActive ? 'active-badge--active' : 'active-badge--inactive'}`}>
+                  {p.isActive ? t('status.active') : t('status.inactive')}
+                </span>
+              </div>
+              <dl className="resource-record__facts">
+                <div><dt>{t('page.printers.location')}</dt><dd>{p.location ?? t('common.noData')}</dd></div>
+                <div><dt>{t('page.printers.protocol')}</dt><dd><span className="protocol-badge">{p.protocol}</span></dd></div>
+                <div><dt>{t('page.printers.status')}</dt><dd>{p.status ? <span className={`status-indicator status-indicator--${p.status.code}`}><span className="status-dot" style={{ background: STATUS_DOT[p.status.code] ?? '#9399b2' }} /><span className="status-indicator-text">{p.status.code}</span></span> : t('common.noData')}</dd></div>
+                <div><dt>{t('page.printers.maxCopies')}</dt><dd><code>{p.maxCopiesPerJob ?? t('common.noData')}</code></dd></div>
+              </dl>
+            </li>
+          ))}
+        </ul>
+        </>
       )}
     </div>
   );

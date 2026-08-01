@@ -3,12 +3,25 @@ import { describe, expect, it } from 'vitest';
 import {
   PrinterEvidence,
   type PrintEvidence,
+  verdictCopyKeys,
 } from '../pages/JobDetail.js';
 import { t } from '../i18n/translations.js';
+import { getJobVerdict } from '../lib/jobVerdict.js';
 
 const translate = (key: string) => t('en', key);
 
 describe('JobDetail printer-side evidence', () => {
+  it('only calls SUCCESS printer-confirmed when persisted device evidence supports it', () => {
+    const success = getJobVerdict('SUCCESS');
+
+    expect(verdictCopyKeys(success, { deviceConfirmed: true }).detail)
+      .toBe('page.jobDetail.verdict.printed.detail');
+    expect(verdictCopyKeys(success, { ippJobConfirmed: true }).detail)
+      .toBe('page.jobDetail.verdict.printed.detail');
+    expect(verdictCopyKeys(success).detail)
+      .toBe('page.jobDetail.verdict.reportedComplete.detail');
+  });
+
   it('renders persisted IPP attribution and completion evidence', () => {
     const evidence: PrintEvidence = {
       spoolerJobIds: ['7'],

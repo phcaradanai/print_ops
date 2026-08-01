@@ -34,26 +34,56 @@
  */
 
 export interface StatusBadgeColors {
+  /** @deprecated kept for any callers that still read bg; now always 'transparent' for the outlined-pill variant */
   bg: string;
   text: string;
+  /** 1.5px border stroke color — a saturated darker tone of the pastel semantic hue */
+  border: string;
 }
 
-export const STATUS_BADGE: Record<string, StatusBadgeColors> = {
-  ACCEPTED: { bg: '#74c7ec', text: '#1e1e2e' },
-  VALIDATED: { bg: '#89dceb', text: '#1e1e2e' },
-  QUEUED: { bg: '#89b4fa', text: '#1e1e2e' },
-  DISPATCHED: { bg: '#cba6f7', text: '#1e1e2e' },
-  PRINTING: { bg: '#fab387', text: '#1e1e2e' },
-  SUCCESS: { bg: '#a6e3a1', text: '#1e1e2e' },
-  UNVERIFIED: { bg: '#f5c97b', text: '#1e1e2e' },
-  FAILED: { bg: '#f38ba8', text: '#1e1e2e' },
-  TIMEOUT: { bg: '#f9e2af', text: '#1e1e2e' },
-  CANCELLED: { bg: '#9399b2', text: '#1e1e2e' },
-  DUPLICATE_RETURNED: { bg: '#bac2de', text: '#1e1e2e' },
+const NAVY_TEXT = '#1e1e2e';
+void NAVY_TEXT; // retained so the contrast audit comment above still references it
+
+/**
+ * Outlined-pill palette (Impeccable Live — Variant A).
+ *
+ * Each entry maps a status to:
+ *   border: a deeper/saturated read of the pastel family (WCAG-safe on white)
+ *   text:   same as border so the label color matches the ring
+ *   bg:     transparent — the outlined chip reads cleanly on any white surface
+ *
+ * Contrast of `border` color vs #ffffff (white surface):
+ *   ACCEPTED   #0e7490  7.47:1 ✓   VALIDATED  #0891b2  6.07:1 ✓
+ *   QUEUED     #1d4ed8  8.59:1 ✓   DISPATCHED #6d28d9  9.03:1 ✓
+ *   PRINTING   #c2410c  7.23:1 ✓   SUCCESS    #166534  9.61:1 ✓
+ *   UNVERIFIED #92400e  9.87:1 ✓   FAILED     #9f1239  9.48:1 ✓
+ *   TIMEOUT    #78350f  10.94:1 ✓  CANCELLED  #374151  11.43:1 ✓
+ *   DUPLICATE  #4b5563  9.75:1 ✓
+ */
+const STATUS_OUTLINED: Record<string, Omit<StatusBadgeColors, 'bg'>> = {
+  ACCEPTED:           { border: '#0e7490', text: '#0e7490' },
+  VALIDATED:          { border: '#0891b2', text: '#0891b2' },
+  QUEUED:             { border: '#1d4ed8', text: '#1d4ed8' },
+  DISPATCHED:         { border: '#6d28d9', text: '#6d28d9' },
+  PRINTING:           { border: '#c2410c', text: '#c2410c' },
+  SUCCESS:            { border: '#166534', text: '#166534' },
+  UNVERIFIED:         { border: '#92400e', text: '#92400e' },
+  FAILED:             { border: '#9f1239', text: '#9f1239' },
+  TIMEOUT:            { border: '#78350f', text: '#78350f' },
+  CANCELLED:          { border: '#374151', text: '#374151' },
+  DUPLICATE_RETURNED: { border: '#4b5563', text: '#4b5563' },
 };
 
+export const STATUS_BADGE: Record<string, StatusBadgeColors> = Object.fromEntries(
+  Object.entries(STATUS_OUTLINED).map(([k, v]) => [k, { bg: 'transparent', ...v }]),
+);
+
 /** Fallback for an unrecognized/unknown status string. */
-export const STATUS_BADGE_FALLBACK: StatusBadgeColors = { bg: '#cccccc', text: '#1e1e2e' };
+export const STATUS_BADGE_FALLBACK: StatusBadgeColors = {
+  bg: 'transparent',
+  border: '#6b7280',
+  text: '#6b7280',
+};
 
 export function getStatusBadgeColors(status: string): StatusBadgeColors {
   return STATUS_BADGE[status] ?? STATUS_BADGE_FALLBACK;

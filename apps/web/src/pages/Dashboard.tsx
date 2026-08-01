@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
@@ -10,11 +11,17 @@ interface Job { id: string; status: string; latency?: { totalLatencyMs?: number 
 interface Printer { id: string; isActive: boolean }
 interface Runner { id: string; status: string }
 
-function StatCard({ label, value, color }: { label: string; value: string | number; color?: string }) {
+function StatCard({ label, value, color, statusDot }: { label: string; value: string | number; color?: string; statusDot?: string }) {
   return (
-    <div className="stat-card">
-      <div className="stat-card-label">{label}</div>
-      <div style={{ fontSize: '2rem', fontWeight: 700, marginTop: '0.5rem', color: color ?? '#1e1e2e' }}>{value}</div>
+    <div
+      className="stat-card"
+      style={color ? ({ "--stat-accent": color } as unknown as CSSProperties) : undefined}
+    >
+      <span className="stat-card-value">{value}</span>
+      <span className="stat-card-label">
+        {statusDot && <span className="stat-card-dot" style={{ backgroundColor: statusDot }} />}
+        {label}
+      </span>
     </div>
   );
 }
@@ -76,7 +83,8 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+
+      <div className="page-header">
         <h1 className="page-title" style={{ margin: 0 }}>{t('page.dashboard.title')}</h1>
         <Freshness
           lastSuccessAt={lastSuccessAt}
@@ -85,6 +93,7 @@ export default function Dashboard() {
           onRefresh={refreshAll}
         />
       </div>
+
 
       {/* Names WHICH endpoint is down. Tiles fed by a failed endpoint are still
           the last known values, not zeroes, and the timestamp above says how
@@ -101,21 +110,21 @@ export default function Dashboard() {
         <ErrorState error={failed[0]!.error} title={t('page.dashboard.loadFailed')} onRetry={refreshAll} />
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
-            <StatCard label={t('page.dashboard.activePrinters')} value={activePrinters} />
-            <StatCard label={t('page.dashboard.runnersOnline')} value={onlineRunners} color="#40a02b" />
-            <StatCard label={t('page.dashboard.jobsQueued')} value={queued} color="#1e66f5" />
-            <StatCard label={t('page.dashboard.unverifiedJobs')} value={unverified} color={unverified > 0 ? '#f5c97b' : undefined} />
-            <StatCard label={t('page.dashboard.failedJobs')} value={failedJobs} color={failedJobs > 0 ? '#f38ba8' : undefined} />
+          <div className="stat-grid-primary">
+            <StatCard label={t('page.dashboard.activePrinters')} value={activePrinters} color="#1e66f5" statusDot="#1e66f5" />
+            <StatCard label={t('page.dashboard.runnersOnline')} value={onlineRunners} color="#40a02b" statusDot="#40a02b" />
+            <StatCard label={t('page.dashboard.jobsQueued')} value={queued} color="#1e66f5" statusDot="#1e66f5" />
+            <StatCard label={t('page.dashboard.unverifiedJobs')} value={unverified} color={unverified > 0 ? '#f5c97b' : undefined} statusDot={unverified > 0 ? '#f5c97b' : undefined} />
+            <StatCard label={t('page.dashboard.failedJobs')} value={failedJobs} color={failedJobs > 0 ? '#f38ba8' : undefined} statusDot={failedJobs > 0 ? '#f38ba8' : undefined} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginTop: '1rem' }}>
+          <div className="stat-grid-secondary">
             <StatCard label={t('page.dashboard.totalJobs')} value={jobs.length} />
-            <StatCard label={t('page.dashboard.currentlyPrinting')} value={printing} color="#fab387" />
+            <StatCard label={t('page.dashboard.currentlyPrinting')} value={printing} color="#fab387" statusDot="#fab387" />
             <StatCard label={t('page.dashboard.avgLatencyMs')} value={avgMs ?? t('common.noData')} />
             <StatCard label={t('page.dashboard.p95LatencyMs')} value={p95Ms ?? t('common.noData')} />
           </div>
 
-          <h2 style={{ marginTop: '2rem', marginBottom: '0.75rem', fontSize: '1rem' }}>{t('page.dashboard.recentJobs')}</h2>
+          <h2 className="section-heading">{t('page.dashboard.recentJobs')}</h2>
           <table className="data-table">
             <thead>
               <tr>

@@ -8,7 +8,6 @@ import { useApiAction } from '../hooks/useApiAction.js';
 import { ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
 import { Alert } from '../components/Alert.js';
 import { Button } from '../components/Button.js';
-import { StatusBadge } from '../components/StatusBadge.js';
 
 interface PrinterStatus {
   code: string;
@@ -27,6 +26,12 @@ interface Printer {
   department?: string;
   status: PrinterStatus;
 }
+
+/** Dot fill colors — darker ink tones that work against the transparent-background pill */
+const PRINTER_STATUS_DOT: Record<string, string> = {
+  idle: '#2f732a', online: '#2f732a', busy: '#c2410c',
+  offline: '#9f1239', error: '#9f1239', unknown: '#374151',
+};
 
 export default function PrinterDetail() {
   const { t } = useLocale();
@@ -155,7 +160,13 @@ export default function PrinterDetail() {
             {t('page.printerDetail.liveStatus')}
           </h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-            <StatusBadge status={printer.status?.code ?? 'UNKNOWN'} size="md" />
+            <span className={`status-indicator status-indicator--${(printer.status?.code ?? 'unknown').toLowerCase()}`}>
+              <span
+                className="status-dot"
+                style={{ background: PRINTER_STATUS_DOT[(printer.status?.code ?? 'unknown').toLowerCase()] ?? '#6b7280' }}
+              />
+              {printer.status?.code ?? 'unknown'}
+            </span>
             <span style={{ fontSize: '0.875rem', color: 'var(--neutral-text-muted)' }}>
               {t('page.printerDetail.lastSeen')}:{' '}
               {printer.status?.lastSeenAt

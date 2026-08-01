@@ -13,6 +13,7 @@ import { bootstrapOwner, getBootstrapState, getCurrentUser, login, logout, healt
 import { SessionProvider } from './api/session.js';
 import { LocaleProvider, useLocale } from './i18n/index.js';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary.js';
+import { NavIcon } from './components/NavIcon.js';
 import { errorMessage } from './api/errors.js';
 
 const Dashboard = lazy(() => import('./pages/Dashboard.js'));
@@ -35,6 +36,14 @@ const RoutePolicies = lazy(() => import('./pages/RoutePolicies.js'));
 const PrinterBindings = lazy(() => import('./pages/PrinterBindings.js'));
 const PrintFlowBindings = lazy(() => import('./pages/PrintFlowBindings.js'));
 
+const MOBILE_NAV_QUERY = '(max-width: 760px)';
+
+function isMobileNavViewport() {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia(MOBILE_NAV_QUERY).matches;
+}
+
 // ----- navigation definition -----
 
 type NavGroup = 'operations' | 'admin';
@@ -44,29 +53,7 @@ interface NavItem {
   key: string;
   roles: SessionUser['role'][];
   group: NavGroup;
-  icon: string;
 }
-
-/** Per-item icon for visual scanning. Single Unicode char designed for system fonts. */
-const NAV_ITEM_ICONS: Record<string, string> = {
-  '/': '\u{1F3E0}',                   // 🏠 Dashboard
-  '/printers': '\u{1F5A8}',            // 🖨️ Printers
-  '/jobs': '\u{1F4CB}',                // 📋 Job Queue
-  '/runners': '\u{26A1}',              // ⚡ Runners
-  '/templates': '\u{1F4C4}',           // 📄 Templates
-  '/paper-profiles': '\u{1F4D0}',      // 📐 Paper Profiles
-  '/discovered-printers': '\u{1F50D}', // 🔍 Printer Discovery
-  '/diagnostics': '\u{1F527}',          // 🔧 Runner Diagnostics
-  '/template-sandbox': '\u{1F9EA}',    // 🧪 Template Sandbox
-  '/webhooks': '\u{1F517}',            // 🔗 Webhooks
-  '/route-policies': '\u{1F5FA}',      // 🗺️ Route Policies
-  '/printer-bindings': '\u{1F4CE}',    // 📎 Printer Bindings
-  '/print-flow': '\u{1F500}',          // 🔀 Print Flow (dynamic bindings)
-  '/audit-logs': '\u{1F4DD}',          // 📝 Audit Logs
-  '/users': '\u{1F465}',               // 👥 Users & Roles
-  '/export': '\u{1F4E4}',              // 📤 Export Center
-  '/settings': '\u{2699}',             // ⚙️ Settings
-};
 
 const NAV_ITEMS: NavItem[] = [
   // ----- Operations (always visible, all roles) -----
@@ -75,42 +62,36 @@ const NAV_ITEMS: NavItem[] = [
     key: 'nav.dashboard',
     roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
     group: 'operations',
-    icon: NAV_ITEM_ICONS['/'],
   },
   {
     to: '/printers',
     key: 'nav.printers',
     roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
     group: 'operations',
-    icon: NAV_ITEM_ICONS['/printers'],
   },
   {
     to: '/jobs',
     key: 'nav.jobQueue',
     roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
     group: 'operations',
-    icon: NAV_ITEM_ICONS['/jobs'],
   },
   {
     to: '/runners',
     key: 'nav.runners',
     roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
     group: 'operations',
-    icon: NAV_ITEM_ICONS['/runners'],
   },
   {
     to: '/templates',
     key: 'nav.templates',
     roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
     group: 'operations',
-    icon: NAV_ITEM_ICONS['/templates'],
   },
   {
     to: '/paper-profiles',
     key: 'nav.paperProfiles',
     roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
     group: 'operations',
-    icon: NAV_ITEM_ICONS['/paper-profiles'],
   },
 
   // ----- Settings & Admin (collapsible, role-gated) -----
@@ -119,77 +100,66 @@ const NAV_ITEMS: NavItem[] = [
     key: 'nav.discovery',
     roles: ['OWNER', 'ADMIN'],
     group: 'admin',
-    icon: NAV_ITEM_ICONS['/discovered-printers'],
   },
   {
     to: '/diagnostics',
     key: 'nav.diagnostics',
     roles: ['OWNER', 'ADMIN', 'OPERATOR'],
     group: 'admin',
-    icon: NAV_ITEM_ICONS['/diagnostics'],
   },
   {
     to: '/template-sandbox',
     key: 'nav.sandbox',
     roles: ['OWNER'],
     group: 'admin',
-    icon: NAV_ITEM_ICONS['/template-sandbox'],
   },
   {
     to: '/webhooks',
     key: 'nav.webhooks',
     roles: ['OWNER', 'ADMIN'],
     group: 'admin',
-    icon: NAV_ITEM_ICONS['/webhooks'],
   },
   {
     to: '/route-policies',
     key: 'nav.routePolicies',
     roles: ['OWNER', 'ADMIN'],
     group: 'admin',
-    icon: NAV_ITEM_ICONS['/route-policies'],
   },
   {
     to: '/printer-bindings',
     key: 'nav.bindings',
     roles: ['OWNER', 'ADMIN'],
     group: 'admin',
-    icon: NAV_ITEM_ICONS['/printer-bindings'],
   },
   {
     to: '/print-flow',
     key: 'nav.printFlow',
     roles: ['OWNER'],
     group: 'admin',
-    icon: NAV_ITEM_ICONS['/print-flow'],
   },
   {
     to: '/audit-logs',
     key: 'nav.auditLogs',
     roles: ['OWNER', 'ADMIN'],
     group: 'admin',
-    icon: NAV_ITEM_ICONS['/audit-logs'],
   },
   {
     to: '/users',
     key: 'nav.usersRoles',
     roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
     group: 'admin',
-    icon: NAV_ITEM_ICONS['/users'],
   },
   {
     to: '/export',
     key: 'nav.export',
     roles: ['OWNER', 'ADMIN'],
     group: 'admin',
-    icon: NAV_ITEM_ICONS['/export'],
   },
   {
     to: '/settings',
     key: 'nav.settings',
     roles: ['OWNER', 'ADMIN'],
     group: 'admin',
-    icon: NAV_ITEM_ICONS['/settings'],
   },
 ];
 
@@ -300,9 +270,9 @@ function LoginView({
           <div className="login-notice" role="status">{t('auth.sessionExpired')}</div>
         )}
 
-        {error && <div className="login-error">{error}</div>}
+        {error && <div className="login-error" role="alert">{error}</div>}
 
-        <button type="submit" disabled={submitting}>
+        <button type="submit" disabled={submitting} aria-busy={submitting}>
           {submitting ? t('common.signingIn') : t('common.signIn')}
         </button>
 
@@ -350,7 +320,7 @@ function OwnerSetupView({ bootstrap, onComplete }: { bootstrap: BootstrapInfo; o
         <label>{t('setup.confirmPassword')}<input value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} type="password" autoComplete="new-password" required /></label>
         <div className="login-hint">{t('setup.passwordHint')}</div>
         {error && <div className="login-error" role="alert">{error}</div>}
-        <button type="submit" disabled={submitting}>{submitting ? t('setup.creating') : t('setup.create')}</button>
+        <button type="submit" disabled={submitting} aria-busy={submitting}>{submitting ? t('setup.creating') : t('setup.create')}</button>
       </form>
     </div>
   );
@@ -368,6 +338,7 @@ function AppNav({
   const { t } = useLocale();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(isMobileNavViewport);
   const [adminExpanded, setAdminExpanded] = useState(false);
 
   const visibleNav = useMemo(
@@ -405,6 +376,18 @@ function AppNav({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [mobileOpen]);
 
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const mediaQuery = window.matchMedia(MOBILE_NAV_QUERY);
+    const updateViewport = ({ matches }: { matches: boolean }) => {
+      setIsMobileViewport(matches);
+      if (!matches) setMobileOpen(false);
+    };
+    updateViewport(mediaQuery);
+    mediaQuery.addEventListener('change', updateViewport);
+    return () => mediaQuery.removeEventListener('change', updateViewport);
+  }, []);
+
   const toggleAdmin = useCallback(() => setAdminExpanded((prev) => !prev), []);
 
   const renderNavLink = (item: NavItem) => (
@@ -418,7 +401,7 @@ function AppNav({
         onClick={closeMobile}
         title={t(item.key)}
       >
-        <span className="nav-link-icon" aria-hidden="true">{item.icon}</span>
+        <NavIcon route={item.to} />
         <span className="nav-link-label">{t(item.key)}</span>
       </NavLink>
     </li>
@@ -432,7 +415,7 @@ function AppNav({
       {opsItems.length > 0 && (
         <div className="nav-group">
           <div className="nav-group-label">{t('nav.group.operations')}</div>
-          <ul className="nav-group-list">
+          <ul className="nav-group-list d1-list">
             {opsItems.map(renderNavLink)}
           </ul>
         </div>
@@ -449,18 +432,26 @@ function AppNav({
             onClick={toggleAdmin}
             title={adminExpanded ? t('nav.admin.collapse') : t('nav.admin.expand')}
           >
-            <span
+            <svg
               className={'nav-admin-chevron' + (adminExpanded ? ' nav-admin-chevron--open' : '')}
+              viewBox="0 0 12 12"
+              width="9"
+              height="9"
               aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
-              {'\u25B6'}
-            </span>
+              <path d="M4.5 2.5 L8.5 6 L4.5 9.5" />
+            </svg>
             <span className="nav-group-label nav-group-label--toggle">
               {t('nav.group.admin')}
             </span>
           </button>
           {adminExpanded && (
-            <ul id="nav-admin-list" className="nav-group-list">
+            <ul id="nav-admin-list" className="nav-group-list d1-list">
               {adminItems.map(renderNavLink)}
             </ul>
           )}
@@ -468,10 +459,17 @@ function AppNav({
       )}
 
       <div className="session-card">
-        <div className="session-name">{user.name}</div>
-        <span className="session-role">
-          {t('session.role')}: {t('session.role.' + user.role)}
-        </span>
+        <div className="session-card__identity">
+          <span className="session-avatar" aria-hidden="true">
+            {user.name.charAt(0).toUpperCase()}
+          </span>
+          <div className="session-card__info">
+            <div className="session-name">{user.name}</div>
+            <span className="session-role">
+              {t('session.role')}: {t('session.role.' + user.role)}
+            </span>
+          </div>
+        </div>
         <button
           type="button"
           className="session-signout-btn"
@@ -487,18 +485,21 @@ function AppNav({
 
   return (
     <>
-      {/* Mobile hamburger */}
-      <button
-        className="nav-toggle"
-        aria-expanded={mobileOpen}
-        aria-controls={navId}
-        aria-label={mobileOpen ? t('nav.menu.close') : t('nav.menu.open')}
-        onClick={() => setMobileOpen((prev) => !prev)}
-      >
-        <span className="nav-toggle-bar" />
-        <span className="nav-toggle-bar" />
-        <span className="nav-toggle-bar" />
-      </button>
+      <header className="app-header">
+        {/* Mobile hamburger */}
+        <button
+          type="button"
+          className="nav-toggle"
+          aria-expanded={mobileOpen}
+          aria-controls={navId}
+          aria-label={mobileOpen ? t('nav.menu.close') : t('nav.menu.open')}
+          onClick={() => setMobileOpen((prev) => !prev)}
+        >
+          <span className="nav-toggle-bar" />
+          <span className="nav-toggle-bar" />
+          <span className="nav-toggle-bar" />
+        </button>
+      </header>
 
       {/* Overlay for mobile */}
       {mobileOpen && (
@@ -509,11 +510,7 @@ function AppNav({
         />
       )}
 
-      <nav
-        id={navId}
-        className={'app-nav' + (mobileOpen ? ' app-nav--open' : '')}
-        aria-label={t('nav.ariaLabel')}
-      >
+      <nav id={navId} className={'app-nav d1-nav' + (mobileOpen ? ' app-nav--open' : '')} aria-label={t('nav.ariaLabel')} inert={isMobileViewport && !mobileOpen ? true : undefined}>
         {navContent}
       </nav>
     </>
@@ -553,8 +550,12 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
   return (
     <SessionProvider user={user}>
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">{t('nav.skipToContent')}</a>
       <AppNav user={user} onLogout={onLogout} />
-      <main className="app-main">
+
+
+
+      <main id="main-content" className="app-main" tabIndex={-1}>
         {!pageAllowed ? <div className="not-authorized" role="alert"><h1>{t('auth.notAuthorized.title')}</h1><p>{t('auth.notAuthorized.message')}</p></div> : <Suspense fallback={<div className="loading-text" role="status">{t('common.loading')}</div>}>
           <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -586,6 +587,9 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
           </Routes>
         </Suspense>}
       </main>
+
+
+
     </div>
     </SessionProvider>
   );

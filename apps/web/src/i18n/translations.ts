@@ -30,6 +30,7 @@ const en: TranslationDict = {
   'nav.menu.open': 'Open navigation menu',
   'nav.menu.close': 'Close navigation menu',
   'nav.ariaLabel': 'Main navigation',
+  'nav.skipToContent': 'Skip to main content',
   'nav.admin.expand': 'Expand admin section',
   'nav.admin.collapse': 'Collapse admin section',
 
@@ -247,6 +248,41 @@ const en: TranslationDict = {
   'page.jobDetail.printerAck': 'Printer Ack',
   'page.jobDetail.finished': 'Finished',
   'page.jobDetail.reprintOf': 'Reprint of',
+  'page.jobDetail.copyDebugJson': 'Copy Debug JSON',
+  'page.jobDetail.debugCopied': 'Copied to Clipboard!',
+  'page.jobDetail.cancelJob': 'Cancel Job',
+  'page.jobDetail.cancellingJob': 'Cancelling…',
+  'page.jobDetail.jobCancelled': 'Job cancelled successfully.',
+  'page.jobDetail.operatorActionTitle': 'Operator Troubleshooting Action',
+
+  // Error troubleshooting advice (Impeccable clarify)
+  'errorAdvice.timeout.title': 'Printer Timeout (No ACK)',
+  'errorAdvice.timeout.advice': 'The physical printer did not acknowledge job completion within the expected timeframe.',
+  'errorAdvice.timeout.action': 'Verify printer power, network connection, and ensure paper/ink is not jammed.',
+
+  'errorAdvice.connection.title': 'Printer Unreachable',
+  'errorAdvice.connection.advice': 'The print service could not establish an IPP or network connection to the target printer.',
+  'errorAdvice.connection.action': 'Check printer IP address, ethernet cable/Wi-Fi connection, and local runner status.',
+
+  'errorAdvice.jam.title': 'Paper Jam Detected',
+  'errorAdvice.jam.advice': 'The printer hardware reported a physical paper obstruction in the media path.',
+  'errorAdvice.jam.action': 'Open printer access panel, carefully clear jammed sheets, close door, and retry.',
+
+  'errorAdvice.paper.title': 'Out of Paper / Media Mismatch',
+  'errorAdvice.paper.advice': 'The paper tray is empty or does not match the required paper profile.',
+  'errorAdvice.paper.action': 'Load the specified paper size/type into the primary tray and verify alignment.',
+
+  'errorAdvice.unverified.title': 'Unconfirmed Print Outcome',
+  'errorAdvice.unverified.advice': 'The printer disconnected before sending final page impression counter verification.',
+  'errorAdvice.unverified.action': 'Physically inspect the printer output tray BEFORE reprinting to prevent duplicate labels.',
+
+  'errorAdvice.spooler.title': 'Spooler Transmission Failure',
+  'errorAdvice.spooler.advice': 'The OS print spooler or runner service failed during job payload transfer.',
+  'errorAdvice.spooler.action': 'Check runner daemon connectivity on the host machine and verify spooler queue status.',
+
+  'errorAdvice.general.title': 'Print Execution Failed',
+  'errorAdvice.general.advice': 'An unhandled exception occurred during job rendering or physical dispatch.',
+  'errorAdvice.general.action': 'Check physical hardware status indicators, verify runner logs, and re-submit if needed.',
 
   // Result delivery — the CALLBACK side. Deliberately worded so it can never be
   // mistaken for the print status shown above it.
@@ -279,6 +315,9 @@ const en: TranslationDict = {
   // these are the strings an operator acts on.
   'page.jobDetail.verdict.printed.headline': 'Printed',
   'page.jobDetail.verdict.printed.detail': 'The printer confirmed this page came out.',
+  'page.jobDetail.verdict.reportedComplete.headline': 'Reported complete — unconfirmed',
+  'page.jobDetail.verdict.reportedComplete.detail':
+    'Reported complete — no device confirmation recorded. Verify whether this job is honestly SUCCESS before treating it as printed.',
   'page.jobDetail.verdict.printing.headline': 'Printing now',
   'page.jobDetail.verdict.printing.detail': 'The printer is working on this job.',
   'page.jobDetail.verdict.waiting.headline': 'Not printed yet',
@@ -988,8 +1027,13 @@ const en: TranslationDict = {
 
   // ErrorBoundary (standalone fallback)
   'error.standalone.title': 'Something went wrong',
-  'error.standalone.message': 'An unexpected error occurred while rendering the page. Please try restarting the application.',
+  'error.standalone.message': 'An unexpected error occurred while rendering the page. You can attempt recovery or restart the application.',
   'error.standalone.restart': 'Restart App',
+  'error.standalone.tryRecover': 'Try Recovering',
+  'error.standalone.copy': 'Copy Error Details',
+  'error.standalone.copied': 'Copied to Clipboard',
+  'error.standalone.showStack': 'Show Stack Trace',
+  'error.standalone.hideStack': 'Hide Stack Trace',
 
   // Shared page states (LoadingState / EmptyState / ErrorState / ErrorBanner)
   'error.load.title': 'Could not load this data',
@@ -999,6 +1043,8 @@ const en: TranslationDict = {
   'error.refresh.title': 'Live updates stopped',
   'error.retry': 'Try again',
   'error.details': 'Technical details',
+  'error.copyDetails': 'Copy Details',
+  'error.copied': 'Copied',
   'error.dismiss': 'Dismiss',
   'state.empty.title': 'Nothing to show yet',
   'state.partial.title': 'Some data could not be loaded',
@@ -1033,13 +1079,14 @@ const en: TranslationDict = {
   'page.jobQueue.reprintRunner': 'Runner',
   'page.jobQueue.reprintCompletedAt': 'Print completion time',
   'page.jobQueue.reprintRunnerAck': 'Runner acknowledged completion',
+  'page.jobQueue.reprintAckYes': 'Acknowledged',
+  'page.jobQueue.reprintAckUnknown': 'No or unknown',
   'page.jobQueue.reprintCallbackDelivery': 'Callback delivery',
   'page.jobQueue.reprintCallbackNote':
     'See original job detail; callback delivery is not retried by this action.',
   'page.jobQueue.reprintBlockedMissing': 'Unavailable — reprint blocked',
   'page.jobQueue.reprintBlockedUnknown': 'Unknown — reprint blocked',
   'page.jobQueue.reprintNotRecorded': 'Not recorded',
-  'page.jobQueue.reprintAckUnknown': 'No or unknown',
   'page.jobQueue.reprintCopies': 'Copies for new attempt',
   'page.jobQueue.reprintReason': 'Reason for reprint',
   'page.jobQueue.reprintAcknowledge': 'I understand this action may produce an additional physical copy.',
@@ -1048,6 +1095,31 @@ const en: TranslationDict = {
   'page.jobQueue.reprintSubmitted': 'Successfully submitted reprint as job: {id}',
   'page.jobQueue.reprintFailed': 'Failed to reprint job.',
   'page.jobQueue.reprintLoadFailed': 'Unable to load the safety information required for reprint.',
+  'page.jobQueue.truncatedTitle': 'Queue data truncated (1,000 item limit):',
+  'page.jobQueue.truncatedDetail': 'The print queue contains 1,000 or more records. Showing the 1,000 most recent jobs. Use search and status filters to locate older records.',
+  'page.jobQueue.selectAllPage': 'Select all reprintable jobs on this page',
+  'page.jobQueue.selectJob': 'Select job {id}',
+  'page.jobQueue.reprintJob': 'Reprint job {id}',
+  'page.jobQueue.batchActions': 'Batch queue actions',
+  'page.jobQueue.selectedCount': '{count} jobs selected',
+  'page.jobQueue.batchReprint': 'Batch reprint ({count})',
+  'page.jobQueue.clearSelection': 'Clear selection',
+  'page.jobQueue.batchReprintTitle': 'Batch reprint ({count} jobs)',
+  'page.jobQueue.batchReprintSubmitting': 'Submitting batch…',
+  'page.jobQueue.batchReprintConfirm': 'Confirm batch reprint ({count})',
+  'page.jobQueue.batchReprintIntro': 'You are about to re-queue {count} jobs for printing. This action submits additional copies to physical printers.',
+  'page.jobQueue.batchSelectedJobs': 'Selected jobs',
+  'page.jobQueue.batchCopies': '{count} copies',
+  'page.jobQueue.batchCautionTitle': 'Check printer output before reprinting',
+  'page.jobQueue.batchCautionDetail': 'These jobs may already have produced output. Inspect the printer tray before confirming another physical copy.',
+  'page.jobQueue.batchReasonPlaceholder': 'For example: printer jam cleared / ward paper refill',
+  'page.jobQueue.batchAcknowledge': 'I confirm that these {count} print requests may create additional physical copies and should be re-sent.',
+  'page.jobQueue.batchReprintUnavailable': 'This job is no longer eligible for reprint.',
+  'page.jobQueue.batchResultsTitle': 'Batch reprint results',
+  'page.jobQueue.batchResultCreated': 'Created job {id}',
+  'page.jobQueue.batchResultFailed': 'Not created: {error}',
+  'page.jobQueue.shortJobId': '{id}…',
+  'page.jobQueue.latencyValue': '{value} ms',
 
   // FE-01.2 page conversions
   'page.routePolicies.invalidJson': 'This is not valid JSON.',
@@ -1057,6 +1129,8 @@ const en: TranslationDict = {
   'page.bindings.createFailed': 'Could not create the binding',
   'page.bindings.createSucceeded': 'Binding created.',
   'page.bindings.noBindings': 'No bindings yet',
+  'page.bindings.isDefault': 'Default',
+  'page.bindings.notDefault': '—',
   'page.export.failed': 'Export failed',
   'page.export.succeeded': 'Exported {file}.',
   'page.export.downloading': 'Preparing…',
@@ -1173,6 +1247,7 @@ const th: TranslationDict = {
   'nav.menu.open': 'เปิดเมนูนำทาง',
   'nav.menu.close': 'ปิดเมนูนำทาง',
   'nav.ariaLabel': 'เมนูนำทางหลัก',
+  'nav.skipToContent': 'ข้ามไปยังเนื้อหาหลัก',
   'nav.admin.expand': 'ขยายส่วนจัดการ',
   'nav.admin.collapse': 'ย่อส่วนจัดการ',
 
@@ -1390,6 +1465,40 @@ const th: TranslationDict = {
   'page.jobDetail.printerAck': 'เครื่องตอบรับ',
   'page.jobDetail.finished': 'เสร็จสิ้น',
   'page.jobDetail.reprintOf': 'พิมพ์ใหม่จาก',
+  'page.jobDetail.copyDebugJson': 'คัดลอกข้อมูล Debug JSON',
+  'page.jobDetail.debugCopied': 'คัดลอกลงคลิปบอร์ดแล้ว!',
+  'page.jobDetail.cancelJob': 'ยกเลิกงานพิมพ์',
+  'page.jobDetail.cancellingJob': 'กำลังยกเลิก…',
+  'page.jobDetail.jobCancelled': 'ยกเลิกงานพิมพ์เรียบร้อยแล้ว',
+  'page.jobDetail.operatorActionTitle': 'ขั้นตอนการแก้ไขสำหรับผู้ดูแล (Operator Action)',
+
+  'errorAdvice.timeout.title': 'เครื่องพิมพ์หมดเวลาตอบกลับ (No ACK)',
+  'errorAdvice.timeout.advice': 'เครื่องพิมพ์ไม่ส่งสัญญาณยืนยันการพิมพ์เสร็จสิ้นตามเวลาที่กำหนด',
+  'errorAdvice.timeout.action': 'ตรวจสอบว่าเครื่องพิมพ์เปิดอยู่ เชื่อมต่อเครือข่ายเรียบร้อย และกระดาษไม่ติด',
+
+  'errorAdvice.connection.title': 'ไม่สามารถเชื่อมต่อเครื่องพิมพ์ได้',
+  'errorAdvice.connection.advice': 'ระบบไม่สามารถเชื่อมต่อโปรโตคอล IPP หรือเครือข่ายไปยังเครื่องพิมพ์เป้าหมาย',
+  'errorAdvice.connection.action': 'ตรวจสอบสายแลน/สัญญาณ Wi-Fi, IP Address และสถานะของ Runner',
+
+  'errorAdvice.jam.title': 'ตรวจพบกระดาษติด (Paper Jam)',
+  'errorAdvice.jam.advice': 'เครื่องพิมพ์รายงานปัญหาชิ้นส่วนกระดาษติดในเส้นทางการพิมพ์',
+  'errorAdvice.jam.action': 'เปิดฝาครอบเครื่องพิมพ์ ดึงกระดาษที่ติดอยู่ออกอย่างระมัดระวัง แล้วปิดฝากลับเข้าที่',
+
+  'errorAdvice.paper.title': 'กระดาษหมด หรือประเภทกระดาษไม่ถูกต้อง',
+  'errorAdvice.paper.advice': 'ถาดกระดาษว่างเปล่า หรือขนาดกระดาษไม่ตรงกับ Paper Profile ที่กำหนด',
+  'errorAdvice.paper.action': 'เติมกระดาษขนาด/ประเภทที่ถูกต้องลงในถาดพิมพ์ แล้วตรวจสอบการจัดวาง',
+
+  'errorAdvice.unverified.title': 'ไม่สามารถยืนยันผลการพิมพ์ได้',
+  'errorAdvice.unverified.advice': 'เครื่องพิมพ์ขาดการเชื่อมต่อก่อนส่งตัวนับจำนวนหน้าพิมพ์ (Impression Counter)',
+  'errorAdvice.unverified.action': 'ตรวจสอบถาดรับกระดาษที่เครื่องพิมพ์ก่อนสั่งพิมพ์ซ้ำ เพื่อป้องกันการพิมพ์สติ๊กเกอร์ซ้ำซ้อน',
+
+  'errorAdvice.spooler.title': 'ส่งข้อมูลไปยัง Spooler ไม่สำเร็จ',
+  'errorAdvice.spooler.advice': 'ระบบ Spooler ของ OS หรือบริการ Runner ล้มเหลวระหว่างส่งข้อมูลงานพิมพ์',
+  'errorAdvice.spooler.action': 'ตรวจสอบการเชื่อมต่อของ Runner Daemon บนเครื่องโฮสต์ และเช็กสถานะ Spooler',
+
+  'errorAdvice.general.title': 'การพิมพ์ล้มเหลว',
+  'errorAdvice.general.advice': 'เกิดข้อผิดพลาดระหว่างประมวลผลงานพิมพ์หรือสั่งส่งไปยังเครื่องพิมพ์',
+  'errorAdvice.general.action': 'ตรวจสอบสถานะเครื่องพิมพ์ ตรวจสอบ Runner log และลองใหม่อีกครั้ง',
 
   'page.jobDetail.resultDelivery': 'การส่งผลลัพธ์กลับ',
   'page.jobDetail.printResult': 'ผลการพิมพ์',
@@ -1423,6 +1532,9 @@ const th: TranslationDict = {
   // under time pressure the operator must reach "check the printer" first.
   'page.jobDetail.verdict.printed.headline': 'พิมพ์แล้ว',
   'page.jobDetail.verdict.printed.detail': 'เครื่องพิมพ์ยืนยันแล้วว่าพิมพ์ออกมาจริง',
+  'page.jobDetail.verdict.reportedComplete.headline': 'รายงานว่าเสร็จสิ้น — ยังไม่ยืนยัน',
+  'page.jobDetail.verdict.reportedComplete.detail':
+    'ระบบรายงานว่าเสร็จสิ้น — ไม่มีการบันทึกการยืนยันจากเครื่องพิมพ์ ตรวจสอบว่างานนี้ควรเป็น SUCCESS จริงหรือไม่ก่อนถือว่าพิมพ์ออกมาแล้ว',
   'page.jobDetail.verdict.printing.headline': 'กำลังพิมพ์',
   'page.jobDetail.verdict.printing.detail': 'เครื่องพิมพ์กำลังทำงานอยู่',
   'page.jobDetail.verdict.waiting.headline': 'ยังไม่ได้พิมพ์',
@@ -2126,8 +2238,13 @@ const th: TranslationDict = {
 
   // ErrorBoundary (standalone fallback)
   'error.standalone.title': 'เกิดข้อผิดพลาด',
-  'error.standalone.message': 'เกิดข้อผิดพลาดที่ไม่คาดคิดขณะแสดงผลหน้า กรุณาลองเริ่มแอปพลิเคชันใหม่',
+  'error.standalone.message': 'เกิดข้อผิดพลาดที่ไม่คาดคิดขณะแสดงผลหน้า คุณสามารถลองกู้คืนหน้าหรือเริ่มแอปพลิเคชันใหม่',
   'error.standalone.restart': 'เริ่มแอปใหม่',
+  'error.standalone.tryRecover': 'ลองกู้คืนหน้า',
+  'error.standalone.copy': 'คัดลอกรายละเอียดข้อผิดพลาด',
+  'error.standalone.copied': 'คัดลอกลงคลิปบอร์ดแล้ว',
+  'error.standalone.showStack': 'แสดง Stack Trace',
+  'error.standalone.hideStack': 'ซ่อน Stack Trace',
 
   // Shared page states (LoadingState / EmptyState / ErrorState / ErrorBanner)
   'error.load.title': 'โหลดข้อมูลไม่สำเร็จ',
@@ -2137,6 +2254,8 @@ const th: TranslationDict = {
   'error.refresh.title': 'หยุดอัปเดตข้อมูลอัตโนมัติ',
   'error.retry': 'ลองใหม่',
   'error.details': 'รายละเอียดทางเทคนิค',
+  'error.copyDetails': 'คัดลอกรายละเอียด',
+  'error.copied': 'คัดลอกเรียบร้อย',
   'error.dismiss': 'ปิด',
   'state.empty.title': 'ยังไม่มีข้อมูลให้แสดง',
   'state.partial.title': 'มีข้อมูลบางส่วนที่โหลดไม่สำเร็จ',
@@ -2171,6 +2290,7 @@ const th: TranslationDict = {
   'page.jobQueue.reprintRunner': 'ตัวรับงาน',
   'page.jobQueue.reprintCompletedAt': 'เวลาที่พิมพ์เสร็จ',
   'page.jobQueue.reprintRunnerAck': 'ตัวรับงานยืนยันว่าพิมพ์เสร็จแล้ว',
+  'page.jobQueue.reprintAckYes': 'ยืนยันการรับงานแล้ว',
   'page.jobQueue.reprintCallbackDelivery': 'การส่งผลลัพธ์ (callback)',
   'page.jobQueue.reprintCallbackNote':
     'ดูรายละเอียดที่งานพิมพ์เดิม การกระทำนี้ไม่ส่ง callback ซ้ำ',
@@ -2186,6 +2306,31 @@ const th: TranslationDict = {
   'page.jobQueue.reprintSubmitted': 'ส่งงานพิมพ์ซ้ำเรียบร้อยแล้ว หมายเลขงาน: {id}',
   'page.jobQueue.reprintFailed': 'พิมพ์ซ้ำไม่สำเร็จ',
   'page.jobQueue.reprintLoadFailed': 'โหลดข้อมูลความปลอดภัยที่จำเป็นสำหรับการพิมพ์ซ้ำไม่สำเร็จ',
+  'page.jobQueue.truncatedTitle': 'ข้อมูลคิวถูกตัดทอน (จำกัด 1,000 รายการ):',
+  'page.jobQueue.truncatedDetail': 'คิวงานพิมพ์มีอย่างน้อย 1,000 รายการ ขณะนี้แสดง 1,000 งานล่าสุด ใช้การค้นหาและตัวกรองสถานะเพื่อค้นหางานที่เก่ากว่า',
+  'page.jobQueue.selectAllPage': 'เลือกงานที่พิมพ์ซ้ำได้ทั้งหมดในหน้านี้',
+  'page.jobQueue.selectJob': 'เลือกงาน {id}',
+  'page.jobQueue.reprintJob': 'พิมพ์ซ้ำงาน {id}',
+  'page.jobQueue.batchActions': 'การจัดการคิวแบบกลุ่ม',
+  'page.jobQueue.selectedCount': 'เลือกแล้ว {count} งาน',
+  'page.jobQueue.batchReprint': 'พิมพ์ซ้ำเป็นกลุ่ม ({count})',
+  'page.jobQueue.clearSelection': 'ล้างรายการที่เลือก',
+  'page.jobQueue.batchReprintTitle': 'พิมพ์ซ้ำเป็นกลุ่ม ({count} งาน)',
+  'page.jobQueue.batchReprintSubmitting': 'กำลังส่งงานเป็นกลุ่ม…',
+  'page.jobQueue.batchReprintConfirm': 'ยืนยันการพิมพ์ซ้ำเป็นกลุ่ม ({count})',
+  'page.jobQueue.batchReprintIntro': 'คุณกำลังจะส่งงาน {count} งานเข้าคิวพิมพ์อีกครั้ง การกระทำนี้จะส่งสำเนาเพิ่มไปยังเครื่องพิมพ์จริง',
+  'page.jobQueue.batchSelectedJobs': 'งานที่เลือก',
+  'page.jobQueue.batchCopies': '{count} ชุด',
+  'page.jobQueue.batchCautionTitle': 'ตรวจสอบงานพิมพ์ก่อนสั่งพิมพ์ซ้ำ',
+  'page.jobQueue.batchCautionDetail': 'งานเหล่านี้อาจมีเอกสารถูกพิมพ์ออกมาแล้ว โปรดตรวจสอบถาดรับกระดาษก่อนยืนยันสร้างสำเนาเพิ่ม',
+  'page.jobQueue.batchReasonPlaceholder': 'ตัวอย่าง: แก้ไขกระดาษติดแล้ว / เติมกระดาษที่วอร์ด',
+  'page.jobQueue.batchAcknowledge': 'ข้าพเจ้ายืนยันว่างานพิมพ์ {count} งานนี้อาจสร้างสำเนาเพิ่ม และควรส่งไปยังเครื่องพิมพ์จริงอีกครั้ง',
+  'page.jobQueue.batchReprintUnavailable': 'งานนี้ไม่สามารถพิมพ์ซ้ำได้อีกต่อไป',
+  'page.jobQueue.batchResultsTitle': 'ผลการพิมพ์ซ้ำเป็นกลุ่ม',
+  'page.jobQueue.batchResultCreated': 'สร้างงาน {id} แล้ว',
+  'page.jobQueue.batchResultFailed': 'ไม่ได้สร้างงาน: {error}',
+  'page.jobQueue.shortJobId': '{id}…',
+  'page.jobQueue.latencyValue': '{value} มิลลิวินาที',
 
   // FE-01.2 page conversions
   'page.routePolicies.invalidJson': 'รูปแบบ JSON ไม่ถูกต้อง',
@@ -2195,6 +2340,8 @@ const th: TranslationDict = {
   'page.bindings.createFailed': 'สร้างการผูกไม่สำเร็จ',
   'page.bindings.createSucceeded': 'สร้างการผูกเรียบร้อยแล้ว',
   'page.bindings.noBindings': 'ยังไม่มีการผูก',
+  'page.bindings.isDefault': 'ค่าเริ่มต้น',
+  'page.bindings.notDefault': '—',
   'page.export.failed': 'ส่งออกไม่สำเร็จ',
   'page.export.succeeded': 'ส่งออกไฟล์ {file} เรียบร้อยแล้ว',
   'page.export.downloading': 'กำลังเตรียมไฟล์…',

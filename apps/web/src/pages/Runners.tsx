@@ -53,7 +53,8 @@ export default function Runners() {
       ) : runnersResource.error != null && !runnersResource.data ? (
         <ErrorState error={runnersResource.error} onRetry={runnersResource.refresh} />
       ) : (
-        <table className="data-table">
+        <>
+        <table className="data-table runner-table">
           <thead>
             <tr>
               {[t('page.runners.name'), t('page.runners.hostname'), t('page.runners.protocols'), t('page.runners.status'), t('page.runners.lastHeartbeat'), t('page.runners.registered')].map((h) => (
@@ -77,6 +78,25 @@ export default function Runners() {
             ))}
           </tbody>
         </table>
+        <ul className="resource-record-list runner-record-list" aria-label={t('page.runners.title')}>
+          {runners.length === 0 ? (
+            <li><EmptyState title={t('page.runners.noRunners')} /></li>
+          ) : runners.map((runner) => (
+            <li key={runner.id} className="resource-record">
+              <div className="resource-record__heading">
+                <strong>{runner.name}</strong>
+                <RunnerStatusBadge status={runner.status} />
+              </div>
+              <dl className="resource-record__facts">
+                <div><dt>{t('page.runners.hostname')}</dt><dd><code>{runner.hostname}</code></dd></div>
+                <div><dt>{t('page.runners.protocols')}</dt><dd>{runner.supportedProtocols.join(', ')}</dd></div>
+                <div><dt>{t('page.runners.lastHeartbeat')}</dt><dd>{heartbeatAge(runner.lastHeartbeatAt)}</dd></div>
+                <div><dt>{t('page.runners.registered')}</dt><dd>{new Date(runner.registeredAt).toLocaleString()}</dd></div>
+              </dl>
+            </li>
+          ))}
+        </ul>
+        </>
       )}
     </div>
   );

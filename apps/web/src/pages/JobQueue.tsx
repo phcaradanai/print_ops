@@ -17,6 +17,7 @@ import {
   buildJobQueueView,
   type JobQueueStatusFilter,
 } from '../lib/jobQueueView.js';
+import { getJobVerdict, offersReprint, reprintButtonVariant } from '../lib/jobVerdict.js';
 
 export interface Job {
   id: string;
@@ -40,6 +41,12 @@ export interface Job {
   metadata?: Record<string, unknown>;
 }
 
+interface BatchReprintResult {
+  originalJob: Job;
+  createdJob?: Job;
+  error?: string;
+}
+
 /** Extract a short human hint about what was printed from payloadSnapshot.
  *  Snapshot format is "keys=[a,b,c] len=123" — surface the keys so an operator
  *  scanning the queue can tell a label apart from a prescription at a glance. */
@@ -48,6 +55,39 @@ function payloadHint(snapshot?: string): string | null {
   const match = snapshot.match(/keys=\[([^\]]*)\]/);
   if (match && match[1]) return match[1];
   return null;
+}
+
+function formatCreatedAt(createdAt: string): string {
+  return new Date(createdAt).toLocaleString(undefined, {
+    month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+/** A complete identifier remains available on hover and in the native title,
+ * while the normal table/card flow may safely ellipsize it. */
+function HoverTruncated({ value, className = '' }: { value?: string; className?: string }) {
+  const { t } = useLocale();
+  const fallback = t('common.noData');
+  const fullText = value && value.length > 0 ? value : fallback;
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+
+  return (
+    <span
+      className="truncate-wrap"
+      onMouseEnter={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        setPosition({ left: Math.min(rect.left, window.innerWidth - 580), top: rect.bottom + 8 });
+      }}
+      onMouseLeave={() => setPosition(null)}
+    >
+      <span className={`truncate ${className}`} title={fullText}>{fullText}</span>
+      {position && fullText !== fallback && (
+        <span className="hover-popover" style={{ left: Math.max(16, position.left), top: position.top }}>
+          {fullText}
+        </span>
+      )}
+    </span>
+  );
 }
 
 /** Queue cadence. Suspended while the window is hidden and never overlapping —
@@ -63,6 +103,7 @@ export default function JobQueue() {
   const jobs = queue.data ?? [];
 
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  const [batchResults, setBatchResults] = useState<BatchReprintResult[] | null>(null);
   const [reprintJob, setReprintJob] = useState<Job | null>(null);
   const [openingJobId, setOpeningJobId] = useState<string | null>(null);
   const [reprintReason, setReprintReason] = useState('');
@@ -71,6 +112,10 @@ export default function JobQueue() {
   const [statusFilter, setStatusFilter] = useState<JobQueueStatusFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchModal, setBatchModal] = useState<'reprint' | null>(null);
+  const [batchReason, setBatchReason] = useState('');
+  const [batchDuplicateRisk, setBatchDuplicateRisk] = useState(false);
 
   const view = useMemo(
     () => buildJobQueueView(jobs, {
@@ -93,6 +138,15 @@ export default function JobQueue() {
     const timer = setTimeout(() => setMessage(null), 4000);
     return () => clearTimeout(timer);
   }, [message]);
+
+  useEffect(() => {
+    setSelectedIds((previous) => new Set(
+      [...previous].filter((id) => {
+        const job = jobs.find((candidate) => candidate.id === id);
+        return job != null && offersReprint(getJobVerdict(job.status));
+      }),
+    ));
+  }, [jobs]);
 
   // Loading the FULL job is a safety step, not a convenience: the dialog
   // refuses to submit without requestId and runnerId, which the list payload
@@ -151,6 +205,89 @@ export default function JobQueue() {
 
   const reprintingId = submitReprint.pending ? reprintJob?.id ?? null : null;
 
+  const currentPageJobIds = useMemo(
+    () => view.rows.filter((job) => offersReprint(getJobVerdict(job.status))).map((job) => job.id),
+    [view.rows],
+  );
+  const allPageSelected = currentPageJobIds.length > 0 && currentPageJobIds.every(id => selectedIds.has(id));
+
+  const toggleSelectAllPage = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        currentPageJobIds.forEach(id => next.delete(id));
+      } else {
+        view.rows
+          .filter((job) => offersReprint(getJobVerdict(job.status)))
+          .forEach((job) => next.add(job.id));
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectJob = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const batchReprintAction = useApiAction(async (selectedJobs: Job[], reason: string, confirmed: boolean) => {
+    const results: BatchReprintResult[] = [];
+    for (const selectedJob of selectedJobs) {
+      try {
+        const fullJob = await apiFetch<Job>(`/jobs/${selectedJob.id}`);
+        if (!offersReprint(getJobVerdict(fullJob.status)) || !fullJob.runnerId || !fullJob.requestId) {
+          results.push({ originalJob: fullJob, error: t('page.jobQueue.batchReprintUnavailable') });
+          continue;
+        }
+        const createdJob = await apiFetch<Job>(`/jobs/${fullJob.id}/reprint`, {
+          method: 'POST',
+          body: JSON.stringify({
+            printerId: fullJob.printerId,
+            copies: fullJob.copies || 1,
+            reason,
+            confirmedDuplicateRisk: confirmed,
+          }),
+        });
+        results.push({ originalJob: fullJob, createdJob });
+      } catch (error) {
+        results.push({ originalJob: selectedJob, error: errorMessage(error) });
+      }
+    }
+    setSelectedIds(new Set());
+    setBatchModal(null);
+    return results;
+  });
+
+  const confirmBatchReprint = async () => {
+    const selectedJobs = jobs.filter((job) => selectedIds.has(job.id) && offersReprint(getJobVerdict(job.status)));
+    if (selectedJobs.length === 0) return;
+    const results = await batchReprintAction.run(selectedJobs, batchReason, batchDuplicateRisk);
+    if (results) {
+      setBatchResults(results);
+      queue.refresh();
+    }
+  };
+
+  const selectedJobs = useMemo(
+    () => jobs.filter((job) => selectedIds.has(job.id) && offersReprint(getJobVerdict(job.status))),
+    [jobs, selectedIds],
+  );
+  const selectedCautionJobs = useMemo(
+    () => selectedJobs.filter((job) => getJobVerdict(job.status).reprint === 'caution'),
+    [selectedJobs],
+  );
+  const selectedRoutineJobs = useMemo(
+    () => selectedJobs.filter((job) => getJobVerdict(job.status).reprint !== 'caution'),
+    [selectedJobs],
+  );
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
@@ -181,6 +318,15 @@ export default function JobQueue() {
         <ErrorBanner error={queue.error} title={t('error.refresh.title')} onRetry={queue.refresh} />
       )}
 
+      {jobs.length >= 1000 && (
+        <Alert
+          tone="warning"
+          dismissLabel={t('error.dismiss')}
+        >
+          <strong>{t('page.jobQueue.truncatedTitle')}</strong> {t('page.jobQueue.truncatedDetail')}
+        </Alert>
+      )}
+
       <JobQueueControls
         status={statusFilter}
         search={searchQuery}
@@ -199,99 +345,197 @@ export default function JobQueue() {
       {queue.loading && !queue.data ? <LoadingState /> : queue.error != null && !queue.data ? (
         <ErrorState error={queue.error} title={t('page.jobQueue.loadFailed')} onRetry={queue.refresh} />
       ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              {[
-                t('page.jobQueue.status'),
-                t('page.jobQueue.document'),
-                t('page.jobQueue.printer'),
-                t('page.jobQueue.source'),
-                t('page.jobQueue.copies'),
-                t('page.jobQueue.latencyMs'),
-                t('page.jobQueue.created'),
-                '',
-              ].map((h, i) => (
-                <th key={i} scope="col">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {view.rows.length === 0 && (
-              <tr><td colSpan={8}><EmptyState title={jobs.length === 0 ? t('page.jobQueue.noJobs') : t('page.jobQueue.noMatchingJobs')} /></td></tr>
-            )}
+        <>
+          {view.rows.length === 0 ? (
+            <EmptyState title={jobs.length === 0 ? t('page.jobQueue.noJobs') : t('page.jobQueue.noMatchingJobs')} />
+          ) : (
+            <>
+          <table className="data-table job-queue-table">
+            <thead>
+              <tr>
+                <th scope="col" style={{ width: '40px', textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    aria-label={t('page.jobQueue.selectAllPage')}
+                    checked={allPageSelected}
+                    onChange={toggleSelectAllPage}
+                    disabled={currentPageJobIds.length === 0}
+                  />
+                </th>
+                {[
+                  t('page.jobQueue.status'),
+                  t('page.jobQueue.document'),
+                  t('page.jobQueue.printer'),
+                  t('page.jobQueue.source'),
+                  t('page.jobQueue.copies'),
+                  t('page.jobQueue.latencyMs'),
+                  t('page.jobQueue.created'),
+                  '',
+                ].map((h, i) => (
+                  <th key={i} scope="col">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {view.rows.map((j) => {
+                const template = j.resolvedTemplateCode ?? j.templateCode;
+                const hint = payloadHint(j.payloadSnapshot);
+                const isReprintable = offersReprint(getJobVerdict(j.status));
+                const isSelected = selectedIds.has(j.id);
+                return (
+                  <tr key={j.id} className={`job-row ${j.status.toLowerCase()} ${isSelected ? 'is-selected' : ''}`}>
+                    <td style={{ textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        aria-label={t('page.jobQueue.selectJob').replace('{id}', j.id.slice(0, 8))}
+                        checked={isSelected}
+                        onChange={() => toggleSelectJob(j.id)}
+                        disabled={!isReprintable}
+                      />
+                    </td>
+                    {/* Status badge with dot */}
+                    <td className="status-cell">
+                      <span>
+                        <span className="status-dot" />
+                        <StatusBadge status={j.status} size="sm" />
+                      </span>
+                    </td>
+                    {/* Document summary — the key column that was missing */}
+                    <td className="queue-document-cell">
+                      <div className="queue-document-summary">
+                        <Link to={`/jobs/${j.id}`} className="queue-document-title">
+                          <HoverTruncated value={template ?? t('common.noData')} />
+                        </Link>
+                        {j.sourceReference && (
+                          <span className="queue-document-reference">
+                            {t('page.jobQueue.documentNumber')}: <HoverTruncated value={j.sourceReference} />
+                          </span>
+                        )}
+                        {hint && (
+                          <span className="queue-document-payload">{hint}</span>
+                        )}
+                        <HoverTruncated value={j.id} className="queue-job-id" />
+                      </div>
+                    </td>
+                    {/* Printer */}
+                    <td className="queue-printer-cell">
+                      <Link to={`/printers/${j.printerId}`}>
+                        <HoverTruncated value={j.printerCode ?? j.printerId} />
+                      </Link>
+                    </td>
+                    {/* Source system */}
+                    <td className="queue-source-cell">
+                      {j.sourceSystem ?? t('common.noData')}
+                    </td>
+                    {/* Copies */}
+                    <td className="queue-copies-cell">{j.copies}</td>
+                    {/* Latency */}
+                    <td className="queue-latency-cell">
+                      {j.latency?.totalLatencyMs != null
+                        ? t('page.jobQueue.latencyValue').replace('{value}', String(j.latency.totalLatencyMs))
+                        : t('common.noData')}
+                    </td>
+                    {/* Created */}
+                    <td className="queue-created-cell">{formatCreatedAt(j.createdAt)}</td>
+                    {/* Actions */}
+                    <td>
+                      {isReprintable && <Button
+                        variant={reprintButtonVariant(getJobVerdict(j.status))}
+                        size="sm"
+                        onClick={() => void openReprint(j)}
+                        busy={openingJobId === j.id || reprintingId === j.id}
+                        busyLabel={t('page.jobQueue.reprintSubmitting')}
+                        aria-label={t('page.jobQueue.reprintJob').replace('{id}', j.id.slice(0, 8))}
+                      >
+                        {t('page.jobQueue.reprint')}
+                      </Button>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          <ul className="job-queue-cards" aria-label={t('page.jobQueue.title')}>
             {view.rows.map((j) => {
               const template = j.resolvedTemplateCode ?? j.templateCode;
               const hint = payloadHint(j.payloadSnapshot);
+              const isReprintable = offersReprint(getJobVerdict(j.status));
+              const isSelected = selectedIds.has(j.id);
               return (
-                <tr key={j.id}>
-                  {/* Status badge */}
-                  <td>
-                    <StatusBadge status={j.status} size="sm" />
-                  </td>
-
-                  {/* Document summary — the key column that was missing */}
-                  <td>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <Link to={`/jobs/${j.id}`} style={{ color: '#1e66f5', fontWeight: 600, fontSize: '0.85rem' }}>
-                        {template ?? t('common.noData')}
-                      </Link>
-                      {j.sourceReference && (
-                        <span style={{ fontSize: '0.7rem', color: '#666' }}>
-                          {t('page.jobQueue.documentNumber')}: {j.sourceReference}
-                        </span>
-                      )}
-                      {hint && (
-                        <span style={{ fontSize: '0.65rem', color: '#999', fontFamily: 'monospace' }}>{hint}</span>
-                      )}
-                      <span style={{ fontSize: '0.6rem', color: '#aaa', fontFamily: 'monospace' }}>{j.id.slice(0, 12)}…</span>
-                    </div>
-                  </td>
-
-                  {/* Printer */}
-                  <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                    <Link to={`/printers/${j.printerId}`} style={{ color: 'var(--neutral-deep)', textDecoration: 'none' }}>
-                      {j.printerCode ?? j.printerId.slice(0, 8)}
-                    </Link>
-                  </td>
-
-                  {/* Source system */}
-                  <td style={{ color: 'var(--neutral-text-muted)', fontSize: '0.8rem' }}>
-                    {j.sourceSystem ?? t('common.noData')}
-                  </td>
-
-                  {/* Copies */}
-                  <td style={{ fontWeight: 600, textAlign: 'center' }}>{j.copies}</td>
-
-                  {/* Latency */}
-                  <td style={{ color: 'var(--neutral-text-muted)', fontSize: '0.8rem' }}>
-                    {j.latency?.totalLatencyMs != null ? `${j.latency.totalLatencyMs}ms` : t('common.noData')}
-                  </td>
-
-                  {/* Created */}
-                  <td style={{ fontSize: '0.75rem', color: '#888' }}>
-                    {new Date(j.createdAt).toLocaleString(undefined, {
-                      month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit',
-                    })}
-                  </td>
-
-                  {/* Actions */}
-                  <td>
-                    <Button
-                      variant="secondary"
+                <li key={j.id} className={`job-queue-card job-row ${j.status.toLowerCase()} ${isSelected ? 'is-selected' : ''}`}>
+                  <div className="job-queue-card__topline">
+                    <input
+                      type="checkbox"
+                      aria-label={t('page.jobQueue.selectJob').replace('{id}', j.id.slice(0, 8))}
+                      checked={isSelected}
+                      onChange={() => toggleSelectJob(j.id)}
+                      disabled={!isReprintable}
+                    />
+                    <div className="status-cell"><span><span className="status-dot" /><StatusBadge status={j.status} size="sm" /></span></div>
+                    {isReprintable && <Button
+                      variant={reprintButtonVariant(getJobVerdict(j.status))}
                       size="sm"
                       onClick={() => void openReprint(j)}
                       busy={openingJobId === j.id || reprintingId === j.id}
-                      busyLabel={'…'}
+                      busyLabel={t('page.jobQueue.reprintSubmitting')}
+                      aria-label={t('page.jobQueue.reprintJob').replace('{id}', j.id.slice(0, 8))}
                     >
                       {t('page.jobQueue.reprint')}
-                    </Button>
-                  </td>
-                </tr>
+                    </Button>}
+                  </div>
+                  <Link to={`/jobs/${j.id}`} className="queue-document-title">
+                    <HoverTruncated value={template ?? t('common.noData')} />
+                  </Link>
+                  <dl className="job-queue-card__facts">
+                    <div>
+                      <dt>{t('page.jobQueue.printer')}</dt>
+                      <dd><Link to={`/printers/${j.printerId}`}><HoverTruncated value={j.printerCode ?? j.printerId} /></Link></dd>
+                    </div>
+                    <div><dt>{t('page.jobQueue.source')}</dt><dd>{j.sourceSystem ?? t('common.noData')}</dd></div>
+                    <div><dt>{t('page.jobQueue.copies')}</dt><dd>{j.copies}</dd></div>
+                    <div><dt>{t('page.jobQueue.latencyMs')}</dt><dd>{j.latency?.totalLatencyMs != null ? t('page.jobQueue.latencyValue').replace('{value}', String(j.latency.totalLatencyMs)) : t('common.noData')}</dd></div>
+                    <div><dt>{t('page.jobQueue.created')}</dt><dd>{formatCreatedAt(j.createdAt)}</dd></div>
+                    {j.sourceReference && <div className="job-queue-card__wide"><dt>{t('page.jobQueue.documentNumber')}</dt><dd><HoverTruncated value={j.sourceReference} /></dd></div>}
+                    {hint && <div className="job-queue-card__wide job-queue-card__payload"><dt>{t('page.jobQueue.document')}</dt><dd>{hint}</dd></div>}
+                    <div className="job-queue-card__wide"><dt>{t('page.jobQueue.jobId')}</dt><dd><HoverTruncated value={j.id} /></dd></div>
+                  </dl>
+                </li>
               );
             })}
-          </tbody>
-        </table>
+          </ul>
+          </>
+          )}
+
+          {selectedJobs.length > 0 && (
+            <div className="batch-action-bar" role="region" aria-label={t('page.jobQueue.batchActions')}>
+              <div className="batch-action-count">
+                <span className="batch-action-badge">{selectedJobs.length}</span>
+                <span>{t('page.jobQueue.selectedCount').replace('{count}', String(selectedJobs.length))}</span>
+              </div>
+              <div className="batch-action-buttons">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setBatchReason('');
+                    setBatchDuplicateRisk(false);
+                    setBatchModal('reprint');
+                  }}
+                >
+                  {t('page.jobQueue.batchReprint').replace('{count}', String(selectedJobs.length))}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setSelectedIds(new Set())}
+                >
+                  {t('page.jobQueue.clearSelection')}
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
       {view.filteredCount > 0 && (
         <nav className="job-queue-pagination" aria-label={t('page.jobQueue.pagination')}>
@@ -317,6 +561,29 @@ export default function JobQueue() {
             {t('page.jobQueue.next')}
           </Button>
         </nav>
+      )}
+      {batchResults && (
+        <Alert
+          tone={batchResults.every((result) => result.createdJob) ? 'success' : 'error'}
+          onDismiss={() => setBatchResults(null)}
+          dismissLabel={t('error.dismiss')}
+        >
+          <p className="batch-result-summary">{t('page.jobQueue.batchResultsTitle')}</p>
+          <ul className="batch-result-list">
+            {batchResults.map((result) => (
+              <li key={result.originalJob.id}>
+                <code>{result.originalJob.id.slice(0, 8)}</code>{' '}
+                {result.createdJob ? (
+                  <Link to={`/jobs/${result.createdJob.id}`}>
+                    {t('page.jobQueue.batchResultCreated').replace('{id}', result.createdJob.id.slice(0, 8))}
+                  </Link>
+                ) : (
+                  <span>{t('page.jobQueue.batchResultFailed').replace('{error}', result.error ?? t('common.error'))}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Alert>
       )}
       {/* Reprint confirmation. Safety semantics are unchanged: the submit stays
           blocked without an explicit duplicate-risk acknowledgement, a reason,
@@ -368,7 +635,7 @@ export default function JobQueue() {
               <dt>{t('page.jobQueue.reprintCompletedAt')}</dt>
               <dd>{reprintJob.completedAt ? new Date(reprintJob.completedAt).toLocaleString() : t('page.jobQueue.reprintNotRecorded')}</dd>
               <dt>{t('page.jobQueue.reprintRunnerAck')}</dt>
-              <dd>{reprintJob.runnerId && reprintJob.completedAt ? t('common.yes') : t('page.jobQueue.reprintAckUnknown')}</dd>
+              <dd>{reprintJob.runnerId && reprintJob.completedAt ? t('page.jobQueue.reprintAckYes') : t('page.jobQueue.reprintAckUnknown')}</dd>
               <dt>{t('page.jobQueue.reprintCallbackDelivery')}</dt>
               <dd>{t('page.jobQueue.reprintCallbackNote')}</dd>
             </dl>
@@ -408,6 +675,79 @@ export default function JobQueue() {
             </label>
           </form>
         )}
+      </Dialog>
+
+      <Dialog
+        open={batchModal === 'reprint'}
+        onClose={() => setBatchModal(null)}
+        title={t('page.jobQueue.batchReprintTitle').replace('{count}', String(selectedJobs.length))}
+        warning={t('page.jobQueue.reprintWarning')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setBatchModal(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              form="batch-reprint-form"
+              type="submit"
+              busy={batchReprintAction.pending}
+              busyLabel={t('page.jobQueue.batchReprintSubmitting')}
+              disabled={!batchDuplicateRisk || !batchReason.trim() || selectedJobs.length === 0}
+            >
+              {t('page.jobQueue.batchReprintConfirm').replace('{count}', String(selectedJobs.length))}
+            </Button>
+          </>
+        }
+      >
+        <form id="batch-reprint-form" onSubmit={(e) => { e.preventDefault(); void confirmBatchReprint(); }}>
+          <p style={{ margin: '0 0 1rem', fontSize: '0.9rem', color: 'var(--neutral-text)' }}>
+            {t('page.jobQueue.batchReprintIntro').replace('{count}', String(selectedJobs.length))}
+          </p>
+          {selectedRoutineJobs.length > 0 && <ul className="batch-reprint-jobs" aria-label={t('page.jobQueue.batchSelectedJobs)}>
+            {selectedRoutineJobs.map((job) => (
+              <li key={job.id}>
+                <StatusBadge status={job.status} size="sm" />
+                <span>{job.printerCode ?? job.printerId}</span>
+                <span>{t('page.jobQueue.batchCopies').replace('{count}', String(job.copies))}</span>
+              </li>
+            ))}
+          </ul>}
+          {selectedCautionJobs.length > 0 && (
+            <section className="batch-reprint-caution" aria-labelledby="batch-reprint-caution-heading">
+              <h2 id="batch-reprint-caution-heading">{t('page.jobQueue.batchCautionTitle')}</h2>
+              <p>{t('page.jobQueue.batchCautionDetail')}</p>
+              <ul className="batch-reprint-jobs">
+                {selectedCautionJobs.map((job) => (
+                  <li key={job.id}>
+                    <StatusBadge status={job.status} size="sm" />
+                    <span>{job.printerCode ?? job.printerId}</span>
+                    <span>{t('page.jobQueue.batchCopies').replace('{count}', String(job.copies))}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          <FormField label={t('page.jobQueue.reprintReason')} required requiredLabel={t('common.required')}>
+            {(control) => (
+              <textarea
+                {...control}
+                value={batchReason}
+                onChange={(e) => setBatchReason(e.target.value)}
+                placeholder={t('page.jobQueue.batchReasonPlaceholder')}
+                required
+              />
+            )}
+          </FormField>
+          <label className="reprint-ack" style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+            <input
+              type="checkbox"
+              checked={batchDuplicateRisk}
+              onChange={(e) => setBatchDuplicateRisk(e.target.checked)}
+            />
+            <span>{t('page.jobQueue.batchAcknowledge').replace('{count}', String(selectedJobs.length))}</span>
+          </label>
+        </form>
       </Dialog>
     </div>
   );

@@ -116,7 +116,7 @@ export default function PrinterBindings() {
                   <td style={{ padding: 10 }}>{b.printerCode}</td>
                   <td style={{ padding: 10 }}>{b.templateCode}</td>
                   <td style={{ padding: 10 }}>{b.paperProfileId.slice(0, 8)}</td>
-                  <td style={{ padding: 10 }}>{b.isDefault ? t('common.yes') : t('common.no')}</td>
+                  <td style={{ padding: 10 }}>{b.isDefault ? t('page.bindings.isDefault') : t('page.bindings.notDefault')}</td>
                   <td style={{ padding: 10 }}>{b.enabled ? t('status.enabled') : t('status.disabled')}</td>
                 </tr>
               ))}

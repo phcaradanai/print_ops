@@ -221,6 +221,18 @@ Only three shadows exist in the entire system, and all are reserved for surfaces
 - **Error:** Muted Rose (#f38ba8) text on light rose (#fee2e2) background, 6px radius, 0.65rem 0.75rem padding.
 - **Hint text:** 0.75rem, Medium Gray (#6b7280), below button.
 
+### Error Boundary (Standalone Fallback)
+- **Container:** Centered grid on Page Gray (#f5f5f5) background, 100% viewport height.
+- **Card Panel:** White (#ffffff) background, 8px radius, Panel Float shadow (`0 8px 24px rgba(0,0,0,0.08)`), max-width 560px.
+- **Error Text Box:** Light rose (#fee2e2) background, dark rose (#991b1b) monospace text (`0.8rem`), `white-space: pre-wrap`, `word-break: break-word`.
+- **Stack Trace:** Expandable dark block (`#111827` background, `#cdd6f4` text, max-height 200px scrollable).
+- **Actions:** 6px radius buttons — `Try Recovering` / `Copy Error Details` (secondary white) and `Restart App` (primary navy `#1e1e2e`).
+
+### Status Dots (Device Reachability)
+- **Shape:** 8px circle (`border-radius: 50%`), `vertical-align: middle`.
+- **Colors:** Idle/Online (#a6e3a1), Busy (#fab387), Offline/Error (#f38ba8), Unknown (#9399b2).
+- **Text:** Paired with explicit text label (`.text-active` / `.text-inactive`) for accessible screen reader and colorblind reachability.
+
 ## 6. Do's and Don'ts
 
 ### Do:

@@ -542,12 +542,17 @@ export default function TemplateSandbox() {
               </div>
             ) : (
               <>
-                {/* Preview canvas */}
-                <div style={{
-                  background: '#f9fafb', borderRadius: 8, padding: '1rem', minHeight: 200,
-                  display: 'flex', justifyContent: 'center', alignItems: 'flex-start', overflow: 'auto',
-                }}>
-                  <div dangerouslySetInnerHTML={{ __html: preview.renderedPreview }} />
+                {/* Preview canvas (Variant 1: Print Proof Workbench) */}
+                <div className="sandbox-proof-workbench">
+                  <div className="sandbox-proof-toolbar">
+                    <span className="sandbox-proof-dim">
+                      📐 {papers.find((p) => p.id === paperProfileId)?.code ?? 'Print Canvas'} ({papers.find((p) => p.id === paperProfileId) ? `${papers.find((p) => p.id === paperProfileId)!.widthMm}×${papers.find((p) => p.id === paperProfileId)!.heightMm}mm, ${papers.find((p) => p.id === paperProfileId)!.dpi} DPI` : 'Standard Proof'})
+                    </span>
+                    <span className="sandbox-proof-latency">⚡ {preview.renderTimeMs}ms</span>
+                  </div>
+                  <div className="sandbox-paper-sheet">
+                    <div dangerouslySetInnerHTML={{ __html: preview.renderedPreview }} />
+                  </div>
                 </div>
 
                 {/* Warnings */}

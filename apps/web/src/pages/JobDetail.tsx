@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../api/client.js';
 import { ApiError } from '../api/errors.js';
@@ -12,7 +12,9 @@ import {
   reprintButtonVariant,
   verdictDetailKey,
   verdictHeadlineKey,
+  type JobVerdict,
 } from '../lib/jobVerdict.js';
+import { getErrorAdvice } from '../lib/jobErrorAdvice.js';
 import { Alert } from '../components/Alert.js';
 import { Button } from '../components/Button.js';
 import { ErrorBanner, ErrorState, Freshness, LoadingState } from '../components/PageState.js';
@@ -62,6 +64,25 @@ export interface PrintEvidence {
   ippJobStatus?: string;
   ippJobConfirmed?: boolean;
   ippObservedJobs?: IppObservedJobEvidence[];
+}
+
+/**
+ * SUCCESS is an application report, not device proof. Keep the prominent
+ * sentence honest when the runner did not persist either confirmation signal.
+ */
+export function verdictCopyKeys(verdict: JobVerdict, evidence?: PrintEvidence) {
+  const printerConfirmed = evidence?.deviceConfirmed === true || evidence?.ippJobConfirmed === true;
+  if (verdict.copyKey === 'printed' && !printerConfirmed) {
+    return {
+      headline: 'page.jobDetail.verdict.reportedComplete.headline',
+      detail: 'page.jobDetail.verdict.reportedComplete.detail',
+    };
+  }
+
+  return {
+    headline: verdictHeadlineKey(verdict),
+    detail: verdictDetailKey(verdict),
+  };
 }
 
 /**
@@ -260,7 +281,7 @@ function ResultDelivery({
       <div className="job-facts">
         <Fact
           label={t('page.jobDetail.callbackEnabled')}
-          value={!configured ? t('page.jobDetail.callbackNotConfigured') : intent?.enabled ? t('common.yes') : t('common.no')}
+          value={!configured ? t('page.jobDetail.callbackNotConfigured') : intent?.enabled ? t('status.enabled') : t('status.disabled')}
         />
         <Fact label={t('page.jobDetail.callbackTrigger')} value={intent?.trigger ?? '—'} />
         <Fact label={t('page.jobDetail.callbackTransport')} value={intent?.transports?.join(' + ') || '—'} />
@@ -399,7 +420,12 @@ export function PrinterEvidence({
         {t('page.jobDetail.ippJobs')} <span>({ippJobs.length})</span>
       </div>
       {ippJobs.length > 0 ? (
-        <div className="print-evidence__table-wrap">
+        <div
+          className="print-evidence__table-wrap"
+          tabIndex={0}
+          role="region"
+          aria-label={t('page.jobDetail.ippJobs')}
+        >
           <table className="print-evidence__table">
             <thead>
               <tr>
@@ -413,7 +439,7 @@ export function PrinterEvidence({
             <tbody>
               {ippJobs.map((ippJob, index) => (
                 <tr key={`${ippJob.key ?? ippJob.uri ?? ippJob.id ?? 'ipp-job'}-${index}`}>
-                  <td><code>{ippJob.id != null ? `#${ippJob.id}` : noData}</code></td>
+                  <th scope="row"><code>{ippJob.id != null ? `#${ippJob.id}` : noData}</code></th>
                   <td><code>{ippJob.uri ?? noData}</code></td>
                   <td>{ippJob.stateName ?? (ippJob.state != null ? String(ippJob.state) : noData)}</td>
                   <td>{formatStateReasons(ippJob.stateReasons, noData)}</td>
@@ -462,11 +488,15 @@ export function jobDetailPollingInput(
 export default function JobDetail() {
   const { t } = useLocale();
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
+  const debugMode = searchParams.get('debug') === 'true';
+
   // VIEWER holds job:read but not job:retry. Offering an action the server will
   // refuse is worse than not offering it — say why instead.
   const mayReprint = useHasPermission('job:retry');
 
   const [reprintOpen, setReprintOpen] = useState(false);
+  const [copiedDebug, setCopiedDebug] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
 
   const fetchJob = useCallback(() => apiFetch<Job>(`/jobs/${id}`), [id]);
@@ -529,6 +559,31 @@ export default function JobDetail() {
     deliveriesResource.setPollingEnabled,
   ]);
 
+  const handleCopyDebugJson = useCallback(() => {
+    if (!job) return;
+    const debugData = {
+      id: job.id,
+      status: job.status,
+      errorCode: job.errorCode,
+      errorMessage: job.errorMessage,
+      printerId: job.printerId,
+      printerCode: job.printerCode,
+      copies: job.copies,
+      latency: job.latency,
+      metadata: job.metadata,
+      trace,
+      timestamps: {
+        receivedAt: job.receivedAt,
+        spoolerSentAt: job.spoolerSentAt,
+        printerAckAt: job.printerAckAt,
+        finishedAt: job.finishedAt,
+      },
+    };
+    void navigator.clipboard.writeText(JSON.stringify(debugData, null, 2));
+    setCopiedDebug(true);
+    setTimeout(() => setCopiedDebug(false), 2500);
+  }, [job, trace]);
+
   // Depends on the `refresh` functions, not the resource objects: those are new
   // on every 1s snapshot, so an effect keyed on them would re-run continuously.
   const refreshAll = useCallback(() => {
@@ -566,6 +621,7 @@ export default function JobDetail() {
   const reprintOfJobId = job.metadata?.reprintOfJobId;
   const natsInfo = job.metadata?.nats;
   const verdict = getJobVerdict(job.status);
+  const verdictCopy = verdictCopyKeys(verdict, job.metadata?.printEvidence);
   // The server refuses a reprint without both. Surface that here rather than
   // letting the operator write a reason into a form that cannot submit.
   const identityComplete = Boolean(job.requestId) && Boolean(job.runnerId);
@@ -609,8 +665,8 @@ export default function JobDetail() {
       {/* ── Tier 0: the verdict, and the decision that follows from it ── */}
       <JobVerdictBand
         verdict={verdict}
-        headline={t(verdictHeadlineKey(verdict))}
-        detail={t(verdictDetailKey(verdict))}
+        headline={t(verdictCopy.headline)}
+        detail={t(verdictCopy.detail)}
         badge={<StatusBadge status={job.status} size="lg" />}
         note={
           reprintOfJobId ? (
@@ -652,13 +708,25 @@ export default function JobDetail() {
         }
       />
 
-      {/* The failure's own words, directly under the verdict that summarises it. */}
-      {job.errorCode && (
-        <div className="job-error" role="alert">
-          <strong>{job.errorCode}</strong>
-          {job.errorMessage && <span> — {job.errorMessage}</span>}
-        </div>
-      )}
+      {/* The failure's own words + operator physical troubleshooting advice */}
+      {job.errorCode && (() => {
+        const advice = getErrorAdvice(job.errorCode);
+        return (
+          <div className="job-error" role="alert">
+            <div className="job-error__header">
+              <span className="job-error__code">{job.errorCode}</span>
+              {advice && <span className="job-error__title">{t(advice.titleKey)}</span>}
+            </div>
+            {job.errorMessage && <p className="job-error__message">{job.errorMessage}</p>}
+            {advice && (
+              <div className="job-error__action">
+                <div className="job-error__action-title">{t('page.jobDetail.operatorActionTitle')}</div>
+                <p className="job-error__action-text">{t(advice.actionStepKey)}</p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── Tier 0b: what was printed ── */}
       <section className="job-panel" aria-labelledby="job-document-heading">
@@ -710,9 +778,20 @@ export default function JobDetail() {
       </div>
 
       {/* ── Tier 2: forensics. Present, findable, no longer competing. ── */}
-      <details className="job-technical">
+      <details className="job-technical" open={debugMode ? true : undefined}>
         <summary className="job-technical__summary">
-          {t('page.jobDetail.technicalDetail')}
+          <span>{t('page.jobDetail.technicalDetail')}</span>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleCopyDebugJson();
+            }}
+          >
+            {copiedDebug ? t('page.jobDetail.debugCopied') : t('page.jobDetail.copyDebugJson')}
+          </Button>
         </summary>
 
         <div className="job-technical__body">
