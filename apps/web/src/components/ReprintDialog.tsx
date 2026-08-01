@@ -27,6 +27,7 @@ import { Button } from './Button.js';
 import { Dialog } from './Dialog.js';
 import { FormField } from './FormField.js';
 import { StatusBadge } from './StatusBadge.js';
+import { Input, Textarea, Checkbox } from './ui/index.js';
 
 /** The fields a safe reprint needs. A partial job cannot be reprinted. */
 export interface ReprintableJob {
@@ -162,7 +163,7 @@ export function ReprintDialog({ job, open, onClose, onSuccess, onError, t }: Rep
           requiredLabel={t('common.required')}
         >
           {(control) => (
-            <input
+            <Input
               {...control}
               type="number"
               min={1}
@@ -180,7 +181,7 @@ export function ReprintDialog({ job, open, onClose, onSuccess, onError, t }: Rep
           requiredLabel={t('common.required')}
         >
           {(control) => (
-            <textarea
+            <Textarea
               {...control}
               value={reason}
               onChange={(event) => setReason(event.target.value)}
@@ -189,14 +190,11 @@ export function ReprintDialog({ job, open, onClose, onSuccess, onError, t }: Rep
           )}
         </FormField>
 
-        <label className="reprint-ack">
-          <input
-            type="checkbox"
-            checked={acknowledged}
-            onChange={(event) => setAcknowledged(event.target.checked)}
-          />
-          {t('page.jobQueue.reprintAcknowledge')}
-        </label>
+        <Checkbox
+          checked={acknowledged}
+          onChange={(event) => setAcknowledged(event.target.checked)}
+          label={t('page.jobQueue.reprintAcknowledge')}
+        />
       </form>
     </Dialog>
   );

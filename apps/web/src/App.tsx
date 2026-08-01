@@ -17,6 +17,7 @@ import { RouteErrorBoundary } from './components/RouteErrorBoundary.js';
 import { NavIcon } from './components/NavIcon.js';
 import { ActionIcon } from './components/ActionIcon.js';
 import { errorMessage } from './api/errors.js';
+import { Input, Button, FormField } from './components/ui/index.js';
 
 const Dashboard = lazy(() => import('./pages/Dashboard.js'));
 const Printers = lazy(() => import('./pages/Printers.js'));
@@ -259,38 +260,44 @@ function LoginView({
           <p>{t('login.subtitle')}</p>
         </div>
 
-        <label>
-          {t('login.email')}
-          <input
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            type="email"
-            autoComplete="username"
-            required
-          />
-        </label>
+        <FormField label={t('login.email')} required>
+          {(control) => (
+            <Input
+              {...control}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              type="email"
+              autoComplete="username"
+              required
+            />
+          )}
+        </FormField>
 
-        <label className="login-password-label" htmlFor="login-password">{t('login.password')}</label>
-        <div className="login-password-field">
-          <input
-            id="login-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            type={showPassword ? 'text' : 'password'}
-            autoComplete="current-password"
-            required
-          />
-          <button
-            type="button"
-            className="login-password-toggle"
-            aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
-            aria-pressed={showPassword}
-            title={showPassword ? t('login.hidePassword') : t('login.showPassword')}
-            onClick={() => setShowPassword((visible) => !visible)}
-          >
-            <ActionIcon name={showPassword ? 'eyeOff' : 'eye'} />
-          </button>
-        </div>
+        <FormField label={t('login.password')} required>
+          {(control) => (
+            <Input
+              {...control}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              required
+              trailing={
+                <button
+                  type="button"
+                  className="login-password-toggle"
+                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                  aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
+                  aria-pressed={showPassword}
+                  title={showPassword ? t('login.hidePassword') : t('login.showPassword')}
+                  onClick={() => setShowPassword((visible) => !visible)}
+                >
+                  <ActionIcon name={showPassword ? 'eyeOff' : 'eye'} />
+                </button>
+              }
+            />
+          )}
+        </FormField>
 
         {sessionExpired && !error && (
           <div className="login-notice" role="status">{t('auth.sessionExpired')}</div>
@@ -298,9 +305,9 @@ function LoginView({
 
         {error && <div className="login-error" role="alert">{error}</div>}
 
-        <button type="submit" disabled={submitting} aria-busy={submitting}>
+        <Button type="submit" disabled={submitting} busy={submitting} style={{ marginTop: '0.5rem' }}>
           {submitting ? t('common.signingIn') : t('common.signIn')}
-        </button>
+        </Button>
 
         {bootstrap.state !== 'READY' && (
           <div className="login-optional-setup">
@@ -354,14 +361,28 @@ function OwnerSetupView({ bootstrap, onComplete, onBack }: { bootstrap: Bootstra
             <p className="login-hint">{t('setup.migrationOwnerHint').replace('{emails}', bootstrap.ownerEmailHints.join(', '))}</p>
           )}
         </div>
-        <label>{t('setup.name')}<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required /></label>
-        <label>{t('login.email')}<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="username" required /></label>
-        <label>{t('login.password')}<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="new-password" required /></label>
-        <label>{t('setup.confirmPassword')}<input value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} type="password" autoComplete="new-password" required /></label>
-        <div className="login-hint">{t('setup.passwordHint')}</div>
+        <div style={{ display: 'grid', gap: '1rem' }}>
+          <FormField label={t('setup.name')} required>
+            {(control) => <Input {...control} value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required />}
+          </FormField>
+          <FormField label={t('login.email')} required>
+            {(control) => <Input {...control} value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="username" required />}
+          </FormField>
+          <FormField label={t('login.password')} required>
+            {(control) => <Input {...control} value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="new-password" required />}
+          </FormField>
+          <FormField label={t('setup.confirmPassword')} required>
+            {(control) => <Input {...control} value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} type="password" autoComplete="new-password" required />}
+          </FormField>
+        </div>
+        <div className="login-hint" style={{ marginTop: '0.5rem' }}>{t('setup.passwordHint')}</div>
         {error && <div className="login-error" role="alert">{error}</div>}
-        <button type="submit" disabled={submitting} aria-busy={submitting}>{submitting ? t('setup.creating') : t('setup.create')}</button>
-        <button type="button" className="login-secondary-action" onClick={onBack}>{t('setup.backToLogin')}</button>
+        <Button type="submit" disabled={submitting} busy={submitting} style={{ marginTop: '0.5rem' }}>
+          {submitting ? t('setup.creating') : t('setup.create')}
+        </Button>
+        <Button variant="ghost" type="button" className="login-secondary-action" onClick={onBack}>
+          {t('setup.backToLogin')}
+        </Button>
       </form>
     </div>
   );

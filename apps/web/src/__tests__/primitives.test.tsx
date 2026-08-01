@@ -6,6 +6,7 @@ import { Button } from '../components/Button.js';
 import { Dialog } from '../components/Dialog.js';
 import { FormField } from '../components/FormField.js';
 import { StatusBadge } from '../components/StatusBadge.js';
+import { Input } from '../components/ui/index.js';
 import { LocaleProvider } from '../i18n/index.js';
 import { STATUS_BADGE, STATUS_BADGE_FALLBACK } from '../statusColors.js';
 import { formatRelativeTime } from '../lib/relativeTime.js';
@@ -98,7 +99,7 @@ describe('FormField', () => {
 
   it('leaves a valid field without aria-invalid', () => {
     const html = render(
-      <FormField label="Copies">{(control) => <input {...control} type="number" />}</FormField>,
+      <FormField label="Copies">{(control) => <Input {...control} type="number" />}</FormField>,
     );
     expect(html).not.toContain('aria-invalid');
     expect(html).not.toContain('aria-describedby');

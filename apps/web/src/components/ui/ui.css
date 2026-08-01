@@ -27,10 +27,12 @@
 }
 
 .ui-input--md,
-.ui-select--md { min-height: var(--control-height-standard); padding: 0.5rem 0.7rem; }
+.ui-select--md,
+.ui-textarea--md { min-height: var(--control-height-standard); padding: 0.5rem 0.7rem; }
 .ui-input--sm,
-.ui-select--sm { min-height: var(--control-height-compact); padding: 0.38rem 0.6rem; }
-.ui-textarea { min-height: 7rem; padding: 0.65rem 0.7rem; }
+.ui-select--sm,
+.ui-textarea--sm { min-height: var(--control-height-compact); padding: 0.38rem 0.6rem; }
+.ui-textarea { min-height: 7rem; }
 .ui-textarea--mono { font-family: var(--font-mono-family); font-size: var(--font-mono-size); line-height: var(--font-mono-line-height); tab-size: 2; }
 .ui-textarea[data-resize='none'] { resize: none; }
 .ui-textarea[data-resize='vertical'] { resize: vertical; }

@@ -18,6 +18,7 @@ import {
   Freshness,
   Grid,
   IconButton,
+  Inline,
   Input,
   LoadingState,
   Mono,
@@ -87,7 +88,7 @@ export default function PrinterBindings() {
     paper: t('page.bindings.paper'),
     default: t('page.bindings.default'),
     enabled: t('page.bindings.enabled'),
-    actions: t('common.actions', { defaultValue: 'Actions' }),
+    actions: t('common.actions'),
   };
 
   return (
@@ -105,7 +106,7 @@ export default function PrinterBindings() {
       {saveBinding.error != null && (
         <Alert
           tone="error"
-          title={editingId ? t('page.bindings.updateFailed', { defaultValue: 'Failed to update binding' }) : t('page.bindings.createFailed')}
+          title={editingId ? t('page.bindings.updateFailed') : t('page.bindings.createFailed')}
           onDismiss={saveBinding.reset}
           dismissLabel={t('error.dismiss')}
         >
@@ -120,24 +121,24 @@ export default function PrinterBindings() {
       )}
 
       {deleteBinding.error != null && (
-        <Alert tone="error" title={t('common.error', { defaultValue: 'Error' })} onDismiss={deleteBinding.reset} dismissLabel={t('error.dismiss')}>
+        <Alert tone="error" title={t('common.error')} onDismiss={deleteBinding.reset} dismissLabel={t('error.dismiss')}>
           {errorMessage(deleteBinding.error)}
         </Alert>
       )}
 
       {toggleEnabled.error != null && (
-        <Alert tone="error" title={t('common.error', { defaultValue: 'Error' })} onDismiss={toggleEnabled.reset} dismissLabel={t('error.dismiss')}>
+        <Alert tone="error" title={t('common.error')} onDismiss={toggleEnabled.reset} dismissLabel={t('error.dismiss')}>
           {errorMessage(toggleEnabled.error)}
         </Alert>
       )}
 
       <Stack gap="xl">
         <Panel
-          title={editingId ? t('page.bindings.editTitle', { defaultValue: 'Edit Binding' }) : t('page.bindings.title')}
+          title={editingId ? t('page.bindings.editTitle') : t('page.bindings.title')}
           footer={
-            <Stack gap="sm" direction="row">
+            <Inline gap="sm">
               <Button onClick={() => void saveBinding.run(form)} busy={saveBinding.pending}>
-                {editingId ? t('common.save', { defaultValue: 'Save' }) : t('common.bind')}
+                {editingId ? t('common.save') : t('common.bind')}
               </Button>
               {editingId && (
                 <Button variant="ghost" onClick={() => {
@@ -149,10 +150,10 @@ export default function PrinterBindings() {
                     isDefault: true,
                   });
                 }}>
-                  {t('common.cancel', { defaultValue: 'Cancel' })}
+                  {t('common.cancel')}
                 </Button>
               )}
-            </Stack>
+            </Inline>
           }
         >
           <Stack gap="lg">
@@ -218,18 +219,18 @@ export default function PrinterBindings() {
                     </Badge>
                   </DataCell>
                   <DataCell label={columns.actions} align="right">
-                    <Stack gap="xs" direction="row">
+                    <Inline gap="xs">
                       <IconButton
-                        label={b.enabled ? t('common.deactivate', { defaultValue: 'Deactivate' }) : t('common.activate', { defaultValue: 'Activate' })}
+                        label={b.enabled ? t('common.deactivate') : t('common.activate')}
                         variant="ghost"
                         size="sm"
                         onClick={() => void toggleEnabled.run(b)}
-                        busy={toggleEnabled.pending && toggleEnabled.lastArgs?.[0]?.id === b.id}
+                        busy={toggleEnabled.pending}
                       >
                         <PowerIcon />
                       </IconButton>
                       <IconButton
-                        label={t('common.edit', { defaultValue: 'Edit' })}
+                        label={t('common.edit')}
                         variant="ghost"
                         size="sm"
                         onClick={() => {
@@ -246,15 +247,15 @@ export default function PrinterBindings() {
                         <EditIcon />
                       </IconButton>
                       <IconButton
-                        label={t('common.delete', { defaultValue: 'Delete' })}
+                        label={t('common.delete')}
                         variant="ghost"
                         size="sm"
                         onClick={() => void deleteBinding.run(b.id)}
-                        busy={deleteBinding.pending && deleteBinding.lastArgs?.[0] === b.id}
+                        busy={deleteBinding.pending}
                       >
                         <TrashIcon />
                       </IconButton>
-                    </Stack>
+                    </Inline>
                   </DataCell>
                 </tr>
               ))}

@@ -3,6 +3,7 @@ import { apiFetch, getCurrentUser } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useLocale } from '../i18n/index.js';
+import { Button, Input } from './ui/index.js';
 
 type ServiceAccount = {
   id: string;
@@ -86,41 +87,43 @@ export function ServiceAccountSettings() {
         <div className="login-notice" role="status">
           <strong>{t('settings.serviceAccounts.copyNow')}</strong>
           <div className="settings-hint--mono" style={{ overflowWrap: 'anywhere', marginTop: '0.5rem' }}>{issuedKey}</div>
-          <button type="button" className="settings-btn-secondary" onClick={() => void navigator.clipboard.writeText(issuedKey)}>
-            {t('settings.serviceAccounts.copy')}
-          </button>
-          <button type="button" className="settings-btn-secondary" onClick={() => setIssuedKey(null)}>
-            {t('common.close')}
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+            <Button variant="secondary" onClick={() => void navigator.clipboard.writeText(issuedKey)}>
+              {t('settings.serviceAccounts.copy')}
+            </Button>
+            <Button variant="secondary" onClick={() => setIssuedKey(null)}>
+              {t('common.close')}
+            </Button>
+          </div>
         </div>
       )}
       {error && <div className="login-error" role="alert">{error}</div>}
       <form onSubmit={(event) => void create(event)}>
         <div className="settings-field">
           <label htmlFor="service-account-name">{t('settings.serviceAccounts.name')}</label>
-          <input id="service-account-name" value={name} onChange={(event) => setName(event.target.value)} required />
+          <Input id="service-account-name" value={name} onChange={(event) => setName(event.target.value)} required />
         </div>
         <div className="settings-field">
           <label htmlFor="service-account-source">{t('settings.serviceAccounts.source')}</label>
-          <input id="service-account-source" value={sourceSystem} onChange={(event) => setSourceSystem(event.target.value)} placeholder="hospital-system" required />
+          <Input id="service-account-source" value={sourceSystem} onChange={(event) => setSourceSystem(event.target.value)} placeholder="hospital-system" required />
         </div>
         <div className="settings-actions">
-          <button className="settings-btn-primary" type="submit" disabled={busy !== null}>
+          <Button type="submit" busy={busy !== null} disabled={busy !== null}>
             {t('settings.serviceAccounts.create')}
-          </button>
+          </Button>
         </div>
       </form>
       {resource.data.accounts.map((account) => (
         <div key={account.id} className="settings-hint settings-hint--mono" style={{ marginTop: '0.75rem' }}>
           <strong>{account.name}</strong> · {account.sourceSystem} · {account.apiKeyPrefix}… · {account.isActive ? t('common.active') : t('common.inactive')}
           {account.isActive && (
-            <div className="settings-actions">
-              <button type="button" className="settings-btn-secondary" disabled={busy !== null} onClick={() => void rotate(account.id)}>
+            <div className="settings-actions" style={{ marginTop: '0.5rem' }}>
+              <Button variant="secondary" disabled={busy !== null} busy={busy === account.id} onClick={() => void rotate(account.id)}>
                 {t('settings.serviceAccounts.rotate')}
-              </button>
-              <button type="button" className="settings-btn-danger" disabled={busy !== null} onClick={() => void revoke(account.id)}>
+              </Button>
+              <Button variant="danger" disabled={busy !== null} busy={busy === account.id} onClick={() => void revoke(account.id)}>
                 {t('settings.serviceAccounts.revoke')}
-              </button>
+              </Button>
             </div>
           )}
         </div>

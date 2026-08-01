@@ -1,5 +1,6 @@
 import { JOB_STATUSES, type JobStatus } from '@printerops/domain';
 import type { JobQueueStatusFilter } from '../lib/jobQueueView.js';
+import { Input, Select } from './ui/index.js';
 
 export function JobQueueControls({
   status,
@@ -22,8 +23,7 @@ export function JobQueueControls({
     <div className="job-queue-controls" aria-label={labels.status}>
       <label className="job-queue-control">
         <span>{labels.status}</span>
-        <select
-          aria-label={labels.status}
+        <Select
           value={status}
           onChange={(event) => onStatusChange(event.target.value as JobQueueStatusFilter)}
         >
@@ -33,11 +33,11 @@ export function JobQueueControls({
               {jobStatus} ({counts[jobStatus]})
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       <label className="job-queue-control job-queue-control--search">
         <span>{labels.search}</span>
-        <input
+        <Input
           type="search"
           value={search}
           placeholder={labels.searchPlaceholder}

@@ -31,6 +31,7 @@ import {
   Stack,
   TableEmpty,
   Text,
+  Textarea,
   type BadgeTone,
 } from '../components/ui/index.js';
 
@@ -956,11 +957,14 @@ export default function Templates() {
                 <div className="tpl-code-gutter" aria-hidden="true" ref={gutterRef}>
                   {contentLines.map((_, i) => <span key={i}>{i + 1}</span>)}
                 </div>
-                <textarea
-                  ref={contentRef}
+                <Textarea
+                  id="template-content"
+                  className="tpl-editor-content"
+                  mono={form.engine === 'JSON_LAYOUT' || form.engine === 'ZPL' || form.engine === 'RAW_TEXT' || form.engine === 'TSPL' || form.engine === 'EPL'}
                   value={form.content}
-                  spellCheck={false}
                   onChange={(e) => setForm({ ...form, content: e.target.value })}
+                  ref={contentRef}
+                  placeholder={t('page.templates.contentPlaceholder')}
                   onScroll={(e) => {
                     if (gutterRef.current) gutterRef.current.scrollTop = e.currentTarget.scrollTop;
                   }}
