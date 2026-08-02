@@ -19,7 +19,6 @@ import { EndpointList } from './components/EndpointList.js';
 import { WebhookDialogs } from './components/WebhookDialogs.js';
 import { useWebhookWorkspace } from './useWebhookWorkspace.js';
 import './webhooks.css';
-import './webhooks.mobile.css';
 
 export default function WebhookWorkspace() {
   const controller = useWebhookWorkspace();
