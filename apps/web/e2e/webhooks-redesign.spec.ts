@@ -279,12 +279,48 @@ async function openWebhooks(
   await expect(page.locator('.webhook-list, .webhook-editor-stage, .webhook-delivery-history').first()).toBeVisible();
 }
 
+function desktopEndpointTable(page: Page) {
+  return page.locator('.webhook-endpoint-table');
+}
+
+async function openCreateEditor(page: Page) {
+  await page.locator('.ui-page-header__actions')
+    .getByRole('button', { name: 'Create endpoint', exact: true })
+    .click();
+  await expect(page.locator('.webhook-editor-stage')).toBeVisible();
+}
+
 async function expectNoPageOverflow(page: Page) {
-  const overflow = await page.locator('.app-main').evaluate((element) => ({
-    scrollWidth: element.scrollWidth,
-    clientWidth: element.clientWidth,
-  }));
-  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
+  const overflow = await page.locator('.app-main').evaluate((element) => {
+    const mainRect = element.getBoundingClientRect();
+    const offenders = Array.from(element.querySelectorAll<HTMLElement>('*'))
+      .map((candidate) => {
+        const rect = candidate.getBoundingClientRect();
+        return {
+          tag: candidate.tagName.toLowerCase(),
+          className: candidate.className,
+          text: candidate.textContent?.trim().slice(0, 80) ?? '',
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          width: Math.round(rect.width),
+          scrollWidth: candidate.scrollWidth,
+          clientWidth: candidate.clientWidth,
+        };
+      })
+      .filter((candidate) => candidate.right > Math.ceil(mainRect.right) + 1)
+      .sort((left, right) => right.right - left.right)
+      .slice(0, 8);
+
+    return {
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+      offenders,
+    };
+  });
+  expect(
+    overflow.scrollWidth,
+    `Horizontal overflow: ${JSON.stringify(overflow.offenders, null, 2)}`,
+  ).toBeLessThanOrEqual(overflow.clientWidth + 1);
 }
 
 test.describe('Webhooks redesign visual evidence', () => {
@@ -294,7 +330,7 @@ test.describe('Webhooks redesign visual evidence', () => {
     await expectNoPageOverflow(page);
     await page.screenshot({ path: `${artifactRoot}/endpoint-list.png`, fullPage: true });
 
-    await page.getByRole('button', { name: 'Create endpoint' }).click();
+    await openCreateEditor(page);
     await expect(page.getByText('Create intake endpoint')).toBeVisible();
     await page.screenshot({ path: `${artifactRoot}/editor.png`, fullPage: true });
 
@@ -328,17 +364,17 @@ test.describe('Webhooks redesign visual evidence', () => {
     await page.screenshot({ path: `${artifactRoot}/import-preview.png`, fullPage: true });
     await page.getByRole('button', { name: 'Cancel' }).click();
 
-    await page.getByLabel('Delete endpoint labels-v1').click();
+    await desktopEndpointTable(page).getByLabel('Delete endpoint labels-v1').click();
     await expect(page.getByText(/may stop working immediately/i)).toBeVisible();
     await page.screenshot({ path: `${artifactRoot}/delete-confirmation.png`, fullPage: true });
     await page.getByRole('button', { name: 'Cancel' }).click();
 
-    await page.locator('.webhook-endpoint-table tbody input[type="checkbox"]').first().check();
+    await desktopEndpointTable(page).locator('tbody input[type="checkbox"]').first().check();
     await expect(page.getByText('1 endpoint(s) selected')).toBeVisible();
     await page.screenshot({ path: `${artifactRoot}/batch-selection.png`, fullPage: true });
     await page.getByRole('button', { name: 'Clear selection' }).click();
 
-    await page.getByLabel('Test sending a callback labels-v1').click();
+    await desktopEndpointTable(page).getByLabel('Test sending a callback labels-v1').click();
     await expect(page.getByText('Callback test result')).toBeVisible();
     await expect(page.getByText(/HTTP: delivered/)).toBeVisible();
     await expect(page.getByText(/NATS: Failed.*no responders/i)).toBeVisible();
@@ -347,7 +383,10 @@ test.describe('Webhooks redesign visual evidence', () => {
     await page.getByRole('button', { name: 'Open delivery history' }).click();
     await expect(page.getByText('Delivery history')).toBeVisible();
     await page.screenshot({ path: `${artifactRoot}/delivery-history.png`, fullPage: true });
-    await page.locator('.webhook-delivery-table tbody').getByRole('button', { name: 'View details' }).first().click();
+    await page.locator('.webhook-delivery-table tbody')
+      .getByRole('button', { name: 'View details' })
+      .first()
+      .click();
     await expect(page.getByRole('heading', { name: 'Callback delivery evidence' })).toBeVisible();
     await page.screenshot({ path: `${artifactRoot}/callback-failure-detail.png`, fullPage: true });
   });
@@ -371,7 +410,7 @@ test.describe('Webhooks redesign visual evidence', () => {
     await expect(page.locator('.webhook-endpoint-cards')).toBeVisible();
     await expectNoPageOverflow(page);
     await page.screenshot({ path: `${artifactRoot}/mobile-endpoint-list.png`, fullPage: true });
-    await page.getByRole('button', { name: 'Create endpoint' }).click();
+    await openCreateEditor(page);
     await expectNoPageOverflow(page);
     await page.screenshot({ path: `${artifactRoot}/mobile-editor.png`, fullPage: true });
 
@@ -399,11 +438,11 @@ test.describe('Webhooks redesign operational behavior', () => {
     const state = freshState();
     await openWebhooks(page, state);
 
-    await page.getByRole('button', { name: 'Create endpoint' }).click();
+    await openCreateEditor(page);
     await page.getByLabel('Endpoint code').fill('created-draft');
     await page.getByLabel('Display name').fill('Created draft');
     await page.getByLabel('Route policy').selectOption('policy-1');
-    await page.getByRole('button', { name: 'Save draft' }).click();
+    await page.locator('.webhook-editor-actions').getByRole('button', { name: 'Save draft' }).click();
     await expect(page.getByText('Draft endpoint created')).toBeVisible();
 
     const draftRequest = state.requests.find((request) => request.method === 'POST');
@@ -416,11 +455,13 @@ test.describe('Webhooks redesign operational behavior', () => {
       callbackOnPrintResult: false,
     });
 
-    await page.getByRole('button', { name: 'Create endpoint' }).click();
+    await openCreateEditor(page);
     await page.getByLabel('Endpoint code').fill('created-enabled');
     await page.getByLabel('Display name').fill('Created enabled');
     await page.getByLabel('Route policy').selectOption('policy-1');
-    await page.getByRole('button', { name: 'Create endpoint' }).last().click();
+    await page.locator('.webhook-editor-actions')
+      .getByRole('button', { name: 'Create endpoint', exact: true })
+      .click();
     await expect(page.getByText('New endpoint created')).toBeVisible();
     expect(state.requests.filter((request) => request.method === 'POST').at(-1)?.body)
       .toMatchObject({ endpointCode: 'created-enabled', enabled: true });
@@ -430,20 +471,21 @@ test.describe('Webhooks redesign operational behavior', () => {
     const state = freshState({ failDeleteId: 'endpoint-2' });
     await openWebhooks(page, state);
 
-    await page.getByLabel('Edit labels-v1').click();
+    await desktopEndpointTable(page).getByLabel('Edit labels-v1').click();
+    await expect(page.locator('.webhook-editor-stage')).toBeVisible();
     await page.getByLabel('Display name').fill('Updated integration labels');
-    await page.getByRole('button', { name: 'Save endpoint' }).click();
+    await page.locator('.webhook-editor-actions').getByRole('button', { name: 'Save endpoint' }).click();
     await expect(page.getByText('Endpoint changes saved')).toBeVisible();
     expect(state.requests.find((request) => request.method === 'PUT')?.body)
       .toMatchObject({ name: 'Updated integration labels', enabled: true });
 
-    await page.getByLabel('Set to draft labels-v1').click();
+    await desktopEndpointTable(page).getByLabel('Set to draft labels-v1').click();
     await expect.poll(() => state.requests.filter((request) => request.method === 'PUT').length).toBeGreaterThan(1);
     expect(state.requests.filter((request) => request.method === 'PUT').at(-1)?.body)
       .toEqual({ enabled: false });
 
-    await page.locator('.webhook-endpoint-table tbody input[type="checkbox"]').first().check();
-    await page.locator('.webhook-endpoint-table tbody input[type="checkbox"]').nth(1).check();
+    await desktopEndpointTable(page).locator('tbody input[type="checkbox"]').first().check();
+    await desktopEndpointTable(page).locator('tbody input[type="checkbox"]').nth(1).check();
     await page.getByRole('button', { name: 'Delete selected' }).click();
     await expect(page.getByText(/Deleting 2 endpoint/)).toBeVisible();
     await page.getByRole('button', { name: 'Delete 2 endpoints' }).click();
