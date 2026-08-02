@@ -39,4 +39,22 @@ describe('SelectFilter', () => {
     expect(markup).toContain('ui-select--invalid');
     expect(markup).toContain('กรุณาเลือกสถานะ');
   });
+
+  it('treats a false error node as no error', () => {
+    const markup = renderToStaticMarkup(
+      <SelectFilter
+        label="สถานะ"
+        value="ALL"
+        error={false}
+        onValueChange={() => undefined}
+      >
+        <option value="ALL">ทั้งหมด</option>
+      </SelectFilter>,
+    );
+
+    expect(markup).not.toContain('aria-invalid="true"');
+    expect(markup).not.toContain('ui-select--invalid');
+    expect(markup).not.toContain('ui-field--invalid');
+    expect(markup).not.toContain('ui-field-error');
+  });
 });
