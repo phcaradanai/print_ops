@@ -1,0 +1,74 @@
+name: Webhooks verification
+
+on:
+  push:
+    branches:
+      - mvp_nippon
+    paths:
+      - '.github/workflows/webhooks-verification.yml'
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'apps/api/**'
+      - 'apps/runner-go/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'playwright.config.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Typecheck, test, build, and browser evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/runner-go/go.mod
+          cache-dependency-path: apps/runner-go/go.sum
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck all workspaces
+        run: npm run typecheck
+
+      - name: Test all workspaces
+        run: npm run test
+
+      - name: Build runtime packages
+        run: npm run build
+
+      - name: Build web application
+        run: npm run build -w @printerops/web
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Webhooks browser verification
+        run: npx playwright test apps/web/e2e/webhooks-redesign.spec.ts
+
+      - name: Upload Webhooks visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: webhooks-ui-evidence
+          path: |
+            artifacts/ui-unification/webhooks
+            artifacts/browser/test-results
+            artifacts/browser/report
+          if-no-files-found: warn
+          retention-days: 14
