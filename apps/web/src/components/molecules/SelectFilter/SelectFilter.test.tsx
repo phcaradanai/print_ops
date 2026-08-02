@@ -18,4 +18,25 @@ describe('SelectFilter', () => {
     expect(markup).toMatch(/<label[^>]+for="([^"]+)"/);
     expect(markup).toMatch(/<select[^>]+id="([^"]+)"/);
   });
+
+  it('keeps required and error states aligned across label, aria, and styling', () => {
+    const markup = renderToStaticMarkup(
+      <SelectFilter
+        label="สถานะ"
+        value=""
+        required
+        requiredLabel="จำเป็น"
+        error="กรุณาเลือกสถานะ"
+        onValueChange={() => undefined}
+      >
+        <option value="">เลือกสถานะ</option>
+      </SelectFilter>,
+    );
+
+    expect(markup).toContain('aria-label="จำเป็น"');
+    expect(markup).toContain('required=""');
+    expect(markup).toContain('aria-invalid="true"');
+    expect(markup).toContain('ui-select--invalid');
+    expect(markup).toContain('กรุณาเลือกสถานะ');
+  });
 });
