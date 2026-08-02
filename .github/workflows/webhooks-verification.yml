@@ -74,7 +74,11 @@ jobs:
         run: npm run test -w packages/adapters
 
       - name: Test API workspace
-        run: npm run test -w apps/api
+        shell: bash
+        run: |
+          mkdir -p artifacts/verification
+          set -o pipefail
+          npm run test -w apps/api -- --reporter=verbose 2>&1 | tee artifacts/verification/api-tests.log
 
       - name: Test web workspace
         run: npm run test -w apps/web
@@ -124,5 +128,6 @@ jobs:
             artifacts/ui-unification/webhooks-second-pass
             artifacts/browser/test-results
             artifacts/browser/report
+            artifacts/verification
           if-no-files-found: warn
           retention-days: 14
