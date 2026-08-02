@@ -55,6 +55,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build TypeScript workspace dependencies
+        run: npm run build:packages
+
       - name: Typecheck all workspaces
         run: npm run typecheck
 
