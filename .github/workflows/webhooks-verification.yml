@@ -13,6 +13,18 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'playwright.config.ts'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/webhooks-verification.yml'
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'apps/api/**'
+      - 'apps/runner-go/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'playwright.config.ts'
   workflow_dispatch:
 
 permissions:
