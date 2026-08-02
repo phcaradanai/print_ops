@@ -165,7 +165,8 @@
 
   .webhook-workspace-page .webhook-endpoint-cards,
   .webhook-workspace-page .webhook-delivery-cards {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
   }
 
   .webhook-workspace-page .webhook-endpoint-surface.ui-card,
