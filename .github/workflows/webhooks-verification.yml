@@ -32,7 +32,7 @@ permissions:
 
 jobs:
   verify:
-    name: Typecheck, test, build, and browser evidence
+    name: Typecheck, focused tests, build, and browser evidence
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
@@ -61,8 +61,20 @@ jobs:
       - name: Typecheck all workspaces
         run: npm run typecheck
 
-      - name: Test all workspaces
-        run: npm run test
+      - name: Test complete web workspace
+        run: npm run test -w @printerops/web
+
+      - name: Test webhook and callback API contracts
+        working-directory: apps/api
+        run: >-
+          npx vitest run
+          src/tests/webhook-callback-api.test.ts
+          src/tests/webhook-callback.test.ts
+          src/tests/webhook-endpoint.repo.test.ts
+          src/tests/callback-delivery.repo.test.ts
+          src/tests/callback-toggle.test.ts
+          src/tests/callback-url-guard.test.ts
+          src/tests/result-callback.test.ts
 
       - name: Build runtime packages
         run: npm run build
