@@ -2,7 +2,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
 const indexHtml = readFileSync(new URL('../dist/index.html', import.meta.url), 'utf8');
-const artifactRoot = 'artifacts/ui-unification/webhooks';
+const artifactRoot = 'artifacts/ui-unification/webhooks-second-pass';
 
 type Endpoint = {
   id: string;
@@ -143,20 +143,15 @@ async function installApi(page: Page, state: MockState, locale: 'en' | 'th' = 'e
 
   await page.route('**/api/**', async (route) => {
     const request = route.request();
-    const url = new URL(request.url());
-    const path = url.pathname;
+    const path = new URL(request.url()).pathname;
     const method = request.method();
 
-    if (path === '/api/health') {
-      await route.fulfill({ json: { ok: true } });
-      return;
-    }
+    if (path === '/api/health') return route.fulfill({ json: { ok: true } });
     if (path === '/api/auth/bootstrap') {
-      await route.fulfill({ json: { state: 'READY', ownerEmailHints: [] } });
-      return;
+      return route.fulfill({ json: { state: 'READY', ownerEmailHints: [] } });
     }
     if (path === '/api/me') {
-      await route.fulfill({
+      return route.fulfill({
         json: {
           id: 'owner-1',
           email: 'owner@example.test',
@@ -164,15 +159,12 @@ async function installApi(page: Page, state: MockState, locale: 'en' | 'th' = 'e
           role: 'OWNER',
         },
       });
-      return;
     }
     if (path === '/api/v1/webhook-route-policies') {
-      await route.fulfill({ json: state.policies });
-      return;
+      return route.fulfill({ json: state.policies });
     }
     if (path === '/api/v1/webhook-endpoints/callback-log') {
-      await route.fulfill({ json: state.attempts });
-      return;
+      return route.fulfill({ json: state.attempts });
     }
 
     const callbackTestMatch = path.match(/^\/api\/v1\/webhook-endpoints\/([^/]+)\/callback-test$/);
@@ -190,7 +182,7 @@ async function installApi(page: Page, state: MockState, locale: 'en' | 'th' = 'e
         trigger: 'test',
         occurredAt: new Date().toISOString(),
       });
-      await route.fulfill({
+      return route.fulfill({
         json: {
           ok: false,
           id: 'attempt-test-latest',
@@ -213,12 +205,10 @@ async function installApi(page: Page, state: MockState, locale: 'en' | 'th' = 'e
           },
         },
       });
-      return;
     }
 
     if (path === '/api/v1/webhook-endpoints' && method === 'GET') {
-      await route.fulfill({ json: state.endpoints });
-      return;
+      return route.fulfill({ json: state.endpoints });
     }
     if (path === '/api/v1/webhook-endpoints' && method === 'POST') {
       const body = await jsonBody(route) as Partial<Endpoint>;
@@ -232,8 +222,7 @@ async function installApi(page: Page, state: MockState, locale: 'en' | 'th' = 'e
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
-      await route.fulfill({ status: 201, json: state.endpoints.at(-1) });
-      return;
+      return route.fulfill({ status: 201, json: state.endpoints.at(-1) });
     }
 
     const endpointMatch = path.match(/^\/api\/v1\/webhook-endpoints\/([^/]+)$/);
@@ -244,25 +233,22 @@ async function installApi(page: Page, state: MockState, locale: 'en' | 'th' = 'e
       state.endpoints = state.endpoints.map((endpoint) => endpoint.id === id
         ? { ...endpoint, ...body, updatedAt: new Date().toISOString() }
         : endpoint);
-      await route.fulfill({ json: state.endpoints.find((endpoint) => endpoint.id === id) ?? {} });
-      return;
+      return route.fulfill({ json: state.endpoints.find((endpoint) => endpoint.id === id) ?? {} });
     }
     if (endpointMatch && method === 'DELETE') {
       const id = endpointMatch[1] ?? '';
       state.requests.push({ method, path });
       if (state.failDeleteId === id) {
-        await route.fulfill({
+        return route.fulfill({
           status: 500,
           json: { message: 'Endpoint remains in use by an integration bridge.' },
         });
-        return;
       }
       state.endpoints = state.endpoints.filter((endpoint) => endpoint.id !== id);
-      await route.fulfill({ status: 204, body: '' });
-      return;
+      return route.fulfill({ status: 204, body: '' });
     }
 
-    await route.fulfill({ status: 200, json: [] });
+    return route.fulfill({ status: 200, json: [] });
   });
 }
 
@@ -290,6 +276,11 @@ async function openCreateEditor(page: Page) {
   await expect(page.locator('.webhook-editor-stage')).toBeVisible();
 }
 
+async function openRowMenu(page: Page, endpointCode: string) {
+  await page.getByLabel(`Actions for ${endpointCode}`).click();
+  await expect(page.getByRole('menu', { name: `Actions for ${endpointCode}` })).toBeVisible();
+}
+
 async function expectNoPageOverflow(page: Page) {
   const overflow = await page.locator('.app-main').evaluate((element) => {
     const mainRect = element.getBoundingClientRect();
@@ -300,22 +291,14 @@ async function expectNoPageOverflow(page: Page) {
           tag: candidate.tagName.toLowerCase(),
           className: candidate.className,
           text: candidate.textContent?.trim().slice(0, 80) ?? '',
-          left: Math.round(rect.left),
           right: Math.round(rect.right),
           width: Math.round(rect.width),
-          scrollWidth: candidate.scrollWidth,
-          clientWidth: candidate.clientWidth,
         };
       })
       .filter((candidate) => candidate.right > Math.ceil(mainRect.right) + 1)
       .sort((left, right) => right.right - left.right)
       .slice(0, 8);
-
-    return {
-      scrollWidth: element.scrollWidth,
-      clientWidth: element.clientWidth,
-      offenders,
-    };
+    return { scrollWidth: element.scrollWidth, clientWidth: element.clientWidth, offenders };
   });
   expect(
     overflow.scrollWidth,
@@ -323,7 +306,7 @@ async function expectNoPageOverflow(page: Page) {
   ).toBeLessThanOrEqual(overflow.clientWidth + 1);
 }
 
-test.describe('Webhooks redesign visual evidence', () => {
+test.describe('Webhooks second-pass visual evidence', () => {
   test('captures focused desktop workflow and diagnostic states', async ({ page }) => {
     const state = freshState();
     await openWebhooks(page, state);
@@ -348,8 +331,7 @@ test.describe('Webhooks redesign visual evidence', () => {
     await page.screenshot({ path: `${artifactRoot}/invalid-json.png`, fullPage: true });
 
     await page.getByRole('button', { name: 'Back to endpoints' }).click();
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.setInputFiles({
+    await page.locator('input[type="file"]').setInputFiles({
       name: 'webhook-endpoints.json',
       mimeType: 'application/json',
       buffer: Buffer.from(JSON.stringify({
@@ -364,7 +346,8 @@ test.describe('Webhooks redesign visual evidence', () => {
     await page.screenshot({ path: `${artifactRoot}/import-preview.png`, fullPage: true });
     await page.getByRole('button', { name: 'Cancel' }).click();
 
-    await desktopEndpointTable(page).getByLabel('Delete endpoint labels-v1').click();
+    await openRowMenu(page, 'labels-v1');
+    await page.getByRole('menuitem', { name: 'Delete endpoint labels-v1' }).click();
     await expect(page.getByText(/may stop working immediately/i)).toBeVisible();
     await page.screenshot({ path: `${artifactRoot}/delete-confirmation.png`, fullPage: true });
     await page.getByRole('button', { name: 'Cancel' }).click();
@@ -374,14 +357,15 @@ test.describe('Webhooks redesign visual evidence', () => {
     await page.screenshot({ path: `${artifactRoot}/batch-selection.png`, fullPage: true });
     await page.getByRole('button', { name: 'Clear selection' }).click();
 
-    await desktopEndpointTable(page).getByLabel('Test sending a callback labels-v1').click();
+    await openRowMenu(page, 'labels-v1');
+    await page.getByRole('menuitem', { name: 'Test sending a callback labels-v1' }).click();
     await expect(page.getByText('Callback test result')).toBeVisible();
     await expect(page.getByText(/HTTP: delivered/)).toBeVisible();
     await expect(page.getByText(/NATS: Failed.*no responders/i)).toBeVisible();
     await page.screenshot({ path: `${artifactRoot}/callback-test-partial.png`, fullPage: true });
 
     await page.getByRole('button', { name: 'Open delivery history' }).click();
-    await expect(page.getByText('Delivery history')).toBeVisible();
+    await expect(page.locator('.webhook-delivery-history')).toBeVisible();
     await page.screenshot({ path: `${artifactRoot}/delivery-history.png`, fullPage: true });
     await page.locator('.webhook-delivery-table tbody')
       .getByRole('button', { name: 'View details' })
@@ -403,6 +387,7 @@ test.describe('Webhooks redesign visual evidence', () => {
     await page.screenshot({ path: `${artifactRoot}/tablet-1024.png`, fullPage: true });
 
     await page.setViewportSize({ width: 768, height: 1024 });
+    await expect(page.locator('.webhook-endpoint-cards')).toBeVisible();
     await expectNoPageOverflow(page);
     await page.screenshot({ path: `${artifactRoot}/tablet-768.png`, fullPage: true });
 
@@ -414,10 +399,11 @@ test.describe('Webhooks redesign visual evidence', () => {
     await expectNoPageOverflow(page);
     await page.screenshot({ path: `${artifactRoot}/mobile-editor.png`, fullPage: true });
 
-    await page.evaluate(() => {
-      document.documentElement.style.zoom = '2';
-    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole('button', { name: 'Back to endpoints' }).click();
+    await page.evaluate(() => { document.documentElement.style.zoom = '2'; });
     await expectNoPageOverflow(page);
+    await page.screenshot({ path: `${artifactRoot}/desktop-200-percent-zoom.png`, fullPage: true });
   });
 
   test('captures Thai desktop and mobile surfaces', async ({ page }) => {
@@ -433,7 +419,7 @@ test.describe('Webhooks redesign visual evidence', () => {
   });
 });
 
-test.describe('Webhooks redesign operational behavior', () => {
+test.describe('Webhooks second-pass operational behavior', () => {
   test('creates drafts and enabled endpoints while preserving the API payload contract', async ({ page }) => {
     const state = freshState();
     await openWebhooks(page, state);
@@ -445,8 +431,7 @@ test.describe('Webhooks redesign operational behavior', () => {
     await page.locator('.webhook-editor-actions').getByRole('button', { name: 'Save draft' }).click();
     await expect(page.getByText('Draft endpoint created')).toBeVisible();
 
-    const draftRequest = state.requests.find((request) => request.method === 'POST');
-    expect(draftRequest?.body).toMatchObject({
+    expect(state.requests.find((request) => request.method === 'POST')?.body).toMatchObject({
       endpointCode: 'created-draft',
       enabled: false,
       authMode: 'NONE',
@@ -472,15 +457,16 @@ test.describe('Webhooks redesign operational behavior', () => {
     await openWebhooks(page, state);
 
     await desktopEndpointTable(page).getByLabel('Edit labels-v1').click();
-    await expect(page.locator('.webhook-editor-stage')).toBeVisible();
     await page.getByLabel('Display name').fill('Updated integration labels');
     await page.locator('.webhook-editor-actions').getByRole('button', { name: 'Save endpoint' }).click();
     await expect(page.getByText('Endpoint changes saved')).toBeVisible();
     expect(state.requests.find((request) => request.method === 'PUT')?.body)
       .toMatchObject({ name: 'Updated integration labels', enabled: true });
 
-    await desktopEndpointTable(page).getByLabel('Set to draft labels-v1').click();
-    await expect.poll(() => state.requests.filter((request) => request.method === 'PUT').length).toBeGreaterThan(1);
+    await openRowMenu(page, 'labels-v1');
+    await page.getByRole('menuitem', { name: 'Set to draft labels-v1' }).click();
+    await expect.poll(() => state.requests.filter((request) => request.method === 'PUT').length)
+      .toBeGreaterThan(1);
     expect(state.requests.filter((request) => request.method === 'PUT').at(-1)?.body)
       .toEqual({ enabled: false });
 
