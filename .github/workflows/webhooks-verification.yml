@@ -89,7 +89,10 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run Webhooks browser verification
-        run: npx playwright test apps/web/e2e/webhooks-redesign.spec.ts
+        run: >-
+          npx playwright test
+          apps/web/e2e/webhooks-redesign.spec.ts
+          apps/web/e2e/webhooks-final-visual.spec.ts
 
       - name: Upload Webhooks visual evidence
         if: always()
