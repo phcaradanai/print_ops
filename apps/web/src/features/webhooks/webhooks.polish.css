@@ -2,6 +2,10 @@
    high-specificity corrections that must win over shared responsive component
    rules; generic component styling remains in the shared UI layer. */
 
+.webhook-workspace-page {
+  container-type: inline-size;
+}
+
 .webhook-list .webhook-endpoint-table .ui-data-table {
   min-width: 67rem;
 }
@@ -96,5 +100,160 @@
     min-width: 0;
     padding-inline: var(--spacing-xs);
     font-size: var(--font-label-size);
+  }
+}
+
+/* Browser zoom changes the workspace's available inline size without always
+   crossing a viewport media query. Container queries keep the page readable at
+   200% zoom and inside any future narrower shell without changing page modes. */
+@container (max-width: 58rem) {
+  .webhook-workspace-page .ui-page-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+
+  .webhook-workspace-page .ui-page-header__actions,
+  .webhook-workspace-page .webhook-page-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .webhook-workspace-page .webhook-list .ui-resource-toolbar,
+  .webhook-workspace-page .webhook-delivery-history .ui-resource-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .webhook-workspace-page .webhook-list .ui-resource-toolbar__actions,
+  .webhook-workspace-page .webhook-delivery-history .ui-resource-toolbar__actions,
+  .webhook-workspace-page .webhook-toolbar-actions {
+    grid-column: 1;
+    justify-content: flex-start;
+  }
+}
+
+@container (max-width: 46rem) {
+  .webhook-workspace-page .webhook-list .ui-resource-toolbar__controls,
+  .webhook-workspace-page .webhook-delivery-history .ui-resource-toolbar__controls,
+  .webhook-workspace-page .webhook-form-grid--three,
+  .webhook-workspace-page .webhook-form-grid--two,
+  .webhook-workspace-page .webhook-record-grid,
+  .webhook-workspace-page .webhook-template-guide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .webhook-workspace-page .webhook-toolbar-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--spacing-sm);
+  }
+
+  .webhook-workspace-page .webhook-toolbar-actions .ui-button {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    justify-content: center;
+    padding-inline: var(--spacing-xs);
+    white-space: normal;
+  }
+
+  .webhook-workspace-page .webhook-endpoint-table,
+  .webhook-workspace-page .webhook-delivery-table {
+    display: none;
+  }
+
+  .webhook-workspace-page .webhook-endpoint-cards,
+  .webhook-workspace-page .webhook-delivery-cards {
+    display: flex;
+  }
+
+  .webhook-workspace-page .webhook-endpoint-surface.ui-card,
+  .webhook-workspace-page .webhook-delivery-history > .ui-card {
+    overflow: visible;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .webhook-workspace-page .webhook-pagination-row {
+    min-width: 0;
+    align-items: stretch;
+    flex-direction: column;
+    padding-inline: 0;
+    border-top: 0;
+  }
+
+  .webhook-workspace-page .webhook-pagination-controls {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    align-items: stretch;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .webhook-workspace-page .webhook-pagination-controls .ui-pagination {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .webhook-workspace-page .webhook-pagination-controls .ui-select {
+    flex: 1 1 9rem;
+    width: auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .webhook-workspace-page .webhook-editor-stage__header,
+  .webhook-workspace-page .webhook-template-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .webhook-workspace-page .webhook-editor-stage__header {
+    gap: var(--spacing-sm);
+  }
+
+  .webhook-workspace-page .webhook-editor-stage__header > .ui-button {
+    width: fit-content;
+    margin-top: 0;
+  }
+}
+
+@container (max-width: 32rem) {
+  .webhook-workspace-page .webhook-page-actions {
+    align-items: stretch;
+  }
+
+  .webhook-workspace-page .webhook-page-actions > .ui-button {
+    width: 100%;
+  }
+
+  .webhook-workspace-page .webhook-pagination-controls {
+    flex-direction: column;
+  }
+
+  .webhook-workspace-page .webhook-pagination-controls .ui-pagination,
+  .webhook-workspace-page .webhook-pagination-controls .ui-select {
+    width: 100%;
+  }
+
+  .webhook-workspace-page .webhook-editor-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .webhook-workspace-page .webhook-editor-actions > .ui-button,
+  .webhook-workspace-page .webhook-test-action,
+  .webhook-workspace-page .webhook-test-action > .ui-button {
+    width: 100%;
+  }
+
+  .webhook-workspace-page .webhook-test-action,
+  .webhook-workspace-page .webhook-editor-actions > .ui-button:last-child {
+    grid-column: 1 / -1;
   }
 }
