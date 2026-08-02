@@ -30,7 +30,7 @@ export function SelectFilter({
   children,
   ...selectProps
 }: SelectFilterProps) {
-  const isInvalid = invalid || error != null;
+  const isInvalid = invalid || Boolean(error);
 
   return (
     <div className={`ui-select-filter${className ? ` ${className}` : ''}`}>
