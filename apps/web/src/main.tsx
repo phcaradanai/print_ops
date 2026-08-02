@@ -13,6 +13,7 @@ import './components/ui/Card.css';
 import './components/ui/CardDetail.css';
 import './experienceSystem.css';
 import './templatesLibrary.css';
+import './templatesEditor.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
