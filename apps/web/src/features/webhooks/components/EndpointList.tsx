@@ -285,11 +285,7 @@ export function EndpointList({
                   <Text>{formatWebhookDate(endpoint.updatedAt ?? endpoint.createdAt, locale)}</Text>
                 </div>
               </div>
-              {rowActions(
-                endpoint,
-                `${t('page.webhooks.endpoint')} ${t('page.webhooks.actionsFor')
-                  .replace('{code}', endpoint.endpointCode)}`,
-              )}
+              {rowActions(endpoint, `${endpoint.endpointCode} — ${t('page.webhooks.actions')}`)}
             </RecordCard>
           ))}
         </RecordList>
