@@ -169,6 +169,7 @@
   padding-top: var(--spacing-md);
   background: #0b1220;
   color: #7f8da3;
+  line-height: 1.65;
 }
 
 .templates-page .tpl-editor-content {
