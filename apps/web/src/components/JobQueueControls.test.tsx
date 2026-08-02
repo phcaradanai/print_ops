@@ -6,7 +6,7 @@ import { JobQueueControls } from './JobQueueControls.js';
 const counts = Object.fromEntries(JOB_STATUSES.map((status) => [status, status === 'FAILED' ? 2 : 0])) as Record<JobStatus, number>;
 
 describe('JobQueueControls', () => {
-  it('composes status and search fields without queue-specific layout markup', () => {
+  it('composes a visually scoped status and search surface', () => {
     const markup = renderToStaticMarkup(
       <JobQueueControls
         status="FAILED"
@@ -25,6 +25,9 @@ describe('JobQueueControls', () => {
     );
 
     expect(markup).toContain('ui-resource-toolbar');
+    expect(markup).toContain('job-queue-toolbar');
+    expect(markup).toContain('job-queue-toolbar__status');
+    expect(markup).toContain('job-queue-toolbar__search');
     expect(markup).toContain('ui-select-filter');
     expect(markup).toContain('ui-search-field');
     expect(markup).toContain('ทั้งหมด (7)');

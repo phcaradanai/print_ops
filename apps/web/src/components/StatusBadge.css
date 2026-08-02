@@ -1,0 +1,27 @@
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  line-height: 1.2;
+  letter-spacing: 0.025em;
+  vertical-align: middle;
+}
+
+.status-badge.status-badge--sm {
+  min-height: 24px;
+  padding: 3px 9px;
+  font-size: 0.75rem;
+}
+
+.status-badge.status-badge--md {
+  min-height: 26px;
+  padding: 4px 11px;
+  font-size: 0.78rem;
+}
+
+.status-badge.status-badge--lg {
+  min-height: 30px;
+  padding: 5px 14px;
+  font-size: 0.85rem;
+}
