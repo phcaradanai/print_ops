@@ -1,0 +1,13 @@
+/* Review follow-up for UX-02 Paper Profile library thumbnails.
+ *
+ * Thumbnail dimensions are fitted together in SavedProfilesTable from the
+ * effective orientation-aware geometry. Do not independently clamp one axis:
+ * doing so distorts A4, receipt, and other non-square profiles.
+ */
+
+.paper-profiles-page .pp-profile-thumbnail {
+  width: var(--pp-thumb-width) !important;
+  height: var(--pp-thumb-height) !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}

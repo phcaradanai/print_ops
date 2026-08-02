@@ -15,6 +15,7 @@ import './experienceSystem.css';
 import './templatesLibrary.css';
 import './templatesEditor.css';
 import './paperProfilesLibrary.css';
+import './paperProfilesLibraryGeometryHotfix.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
