@@ -92,8 +92,6 @@
   outline: 0;
 }
 
-/* Editor actions belong to the document flow. The former sticky panel covered
-   callback evidence and made the focused editor behave like another overlay. */
 .webhook-editor-actions {
   display: flex;
   justify-content: flex-end;
@@ -254,11 +252,18 @@
 
 @media (max-width: 1024px) {
   .webhook-list .ui-resource-toolbar,
-  .webhook-list .ui-resource-toolbar__controls,
-  .webhook-list .ui-resource-toolbar__actions {
+  .webhook-list .ui-resource-toolbar__controls {
     width: 100%;
+    align-items: stretch;
+    flex-direction: column;
   }
 
+  .webhook-list .ui-resource-toolbar__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .webhook-list .ui-resource-toolbar__controls > *,
   .webhook-list .ui-search-field,
   .webhook-list .ui-select-filter,
   .webhook-list .ui-search-field .ui-field,
@@ -266,6 +271,7 @@
   .webhook-list .ui-input-group,
   .webhook-list .ui-select {
     width: 100%;
+    flex-basis: auto;
   }
 
   .webhook-toolbar-actions {
@@ -277,9 +283,6 @@
   }
 }
 
-/* Portrait tablet and mobile use records rather than a horizontally compressed
-   desktop table. The wide table remains available on desktop with internal
-   scrolling only when its evidence columns genuinely need it. */
 @media (max-width: 860px) {
   .webhook-endpoint-table,
   .webhook-delivery-table {
