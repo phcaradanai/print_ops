@@ -3,7 +3,7 @@ import { FormField } from '../../FormField.js';
 import { Input, type InputProps } from '../../ui/inputs.js';
 import './SearchField.css';
 
-export interface SearchFieldProps extends Omit<InputProps, 'type' | 'value' | 'onChange' | 'className'> {
+export interface SearchFieldProps extends Omit<InputProps, 'type' | 'value' | 'defaultValue' | 'onChange' | 'className'> {
   label: ReactNode;
   value: string;
   onValueChange: (value: string) => void;
@@ -13,7 +13,7 @@ export interface SearchFieldProps extends Omit<InputProps, 'type' | 'value' | 'o
   inputClassName?: string;
 }
 
-/** Labelled search input with shared field wiring and no route knowledge. */
+/** Labelled controlled search input with shared field wiring and no route knowledge. */
 export function SearchField({
   label,
   value,
