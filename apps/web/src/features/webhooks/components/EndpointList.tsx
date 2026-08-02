@@ -169,7 +169,33 @@ export function EndpointList({
         </SelectFilter>
       </ResourceToolbar>
 
-      <Card className="webhook-endpoint-surface">
+      {selectedIds.length > 0 && (
+        <div
+          className="webhook-selection-actions"
+          role="region"
+          aria-label={t('page.webhooks.selectedActions')}
+        >
+          <Text weight="semibold">
+            {t('page.webhooks.selectCount').replace('{n}', String(selectedIds.length))}
+          </Text>
+          <Inline gap="sm" className="webhook-selection-actions__buttons">
+            <Button variant="secondary" onClick={() => void exportEndpoints('selected')}>
+              <TransferIcon action="export" /> {t('page.webhooks.exportSelected')}
+            </Button>
+            <Button variant="ghost" onClick={() => setSelectedIds([])}>
+              {t('page.webhooks.clearSelection')}
+            </Button>
+            <Button variant="danger" onClick={() => setBatchDeleteOpen(true)}>
+              <ActionIcon name="delete" /> {t('page.webhooks.deleteSelected')}
+            </Button>
+          </Inline>
+          <span className="ui-visually-hidden">
+            {selectedEndpoints.map((endpoint) => endpoint.endpointCode).join(', ')}
+          </span>
+        </div>
+      )}
+
+      <Card className="webhook-endpoint-surface" padding="none">
         <div className="webhook-endpoint-table">
           <DataTable label={t('page.webhooks.allEndpoints')}>
             <thead>
@@ -243,7 +269,9 @@ export function EndpointList({
 
         <RecordList className="webhook-endpoint-cards">
           {pagedEndpoints.length === 0 ? (
-            <RecordCard><EmptyState title={emptyTitle} /></RecordCard>
+            <RecordCard className="webhook-empty-record">
+              <EmptyState title={emptyTitle} />
+            </RecordCard>
           ) : pagedEndpoints.map((endpoint) => (
             <RecordCard key={endpoint.id} data-selected={selectedIds.includes(endpoint.id) || undefined}>
               <RecordHeader>
@@ -325,32 +353,6 @@ export function EndpointList({
           </Inline>
         </div>
       </Card>
-
-      {selectedIds.length > 0 && (
-        <div
-          className="webhook-selection-actions"
-          role="region"
-          aria-label={t('page.webhooks.selectedActions')}
-        >
-          <Text weight="semibold">
-            {t('page.webhooks.selectCount').replace('{n}', String(selectedIds.length))}
-          </Text>
-          <Inline gap="sm" className="webhook-selection-actions__buttons">
-            <Button variant="secondary" onClick={() => void exportEndpoints('selected')}>
-              <TransferIcon action="export" /> {t('page.webhooks.exportSelected')}
-            </Button>
-            <Button variant="ghost" onClick={() => setSelectedIds([])}>
-              {t('page.webhooks.clearSelection')}
-            </Button>
-            <Button variant="danger" onClick={() => setBatchDeleteOpen(true)}>
-              <ActionIcon name="delete" /> {t('page.webhooks.deleteSelected')}
-            </Button>
-          </Inline>
-          <span className="ui-visually-hidden">
-            {selectedEndpoints.map((endpoint) => endpoint.endpointCode).join(', ')}
-          </span>
-        </div>
-      )}
     </Stack>
   );
 }
