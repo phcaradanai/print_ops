@@ -29,7 +29,7 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
           <div><span className="pp-preview-header__title">{t('page.paperProfiles.labelCanvas')}</span>
             <span className="pp-preview-header__subtitle">{t('page.paperProfiles.canvasDragHint')}</span></div>
           <span className="pp-preview-header__size">
-            {displayValue(form.widthMm, ux.displayUnit, form.dpi)} × {displayValue(form.heightMm, ux.displayUnit, form.dpi)} {ux.displayUnit}
+            {displayValue(geometry.widthMm, ux.displayUnit, form.dpi)} × {displayValue(geometry.heightMm, ux.displayUnit, form.dpi)} {ux.displayUnit}
           </span>
         </div>
         <CanvasToolbar options={options} setOptions={setOptions} onExpand={popups.openFullPreview} t={t} />
@@ -55,10 +55,10 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
           </RulerSheet>
         </div>
         <div className="pp-preview-quick-info">
-          <span>{t('page.paperProfiles.quickSize')}: {form.widthMm} × {form.heightMm} mm</span>
+          <span>{t('page.paperProfiles.quickSize')}: {geometry.widthMm} × {geometry.heightMm} mm</span>
           <span>{t('page.paperProfiles.quickDpi')}: {form.dpi}</span>
-          <span>{t('page.paperProfiles.quickPrintable')}: {(form.widthMm - form.marginLeftMm - form.marginRightMm).toFixed(1)} × {(form.heightMm - form.marginTopMm - form.marginBottomMm).toFixed(1)} mm</span>
-          <span>{t('page.paperProfiles.quickPixels')}: {Math.round(toPixels(form.widthMm, form.dpi))} × {Math.round(toPixels(form.heightMm, form.dpi))} px</span>
+          <span>{t('page.paperProfiles.quickPrintable')}: {geometry.printableWidthMm.toFixed(1)} × {geometry.printableHeightMm.toFixed(1)} mm</span>
+          <span>{t('page.paperProfiles.quickPixels')}: {Math.round(toPixels(geometry.widthMm, form.dpi))} × {Math.round(toPixels(geometry.heightMm, form.dpi))} px</span>
           <span>{t('page.paperProfiles.quickScale')}: {scale.toFixed(2)}x</span>
           <span>{t('page.paperProfiles.quickFields')}: {ux.dynamicFields.length}</span>
         </div>

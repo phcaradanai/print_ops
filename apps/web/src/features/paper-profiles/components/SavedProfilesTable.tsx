@@ -44,6 +44,16 @@ function fittedThumbnailSize(widthMm: number, heightMm: number) {
   };
 }
 
+function effectiveSize(profile: PaperProfile): string {
+  const geometry = getVisualPaperGeometry(profile);
+  return `${geometry.widthMm}×${geometry.heightMm} mm`;
+}
+
+function effectiveMargins(profile: PaperProfile): string {
+  const geometry = getVisualPaperGeometry(profile);
+  return `${geometry.marginTopMm}/${geometry.marginRightMm}/${geometry.marginBottomMm}/${geometry.marginLeftMm} mm`;
+}
+
 function PaperProfileThumbnail({ profile }: { profile: PaperProfile }) {
   const geometry = getVisualPaperGeometry(profile);
   const thumbnailSize = fittedThumbnailSize(geometry.widthMm, geometry.heightMm);
@@ -219,7 +229,7 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
                         <div className="pp-profile-identity__copy">
                           <Mono weight="semibold">{profile.code}</Mono>
                           <Text size="label" tone="muted" className="pp-profile-identity__size">
-                            {profile.widthMm}×{profile.heightMm} mm
+                            {effectiveSize(profile)}
                           </Text>
                         </div>
                       </div>
@@ -231,12 +241,10 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
                         their unit rather than relying on a header two rows away —
                         the card view has no header to rely on at all. */}
                     <DataCell label={columns.size} className="pp-profile-cell--size">
-                      <Mono nowrap>{profile.widthMm}×{profile.heightMm} mm</Mono>
+                      <Mono nowrap>{effectiveSize(profile)}</Mono>
                     </DataCell>
                     <DataCell label={columns.margins}>
-                      <Mono nowrap>
-                        {profile.marginTopMm}/{profile.marginRightMm}/{profile.marginBottomMm}/{profile.marginLeftMm} mm
-                      </Mono>
+                      <Mono nowrap>{effectiveMargins(profile)}</Mono>
                     </DataCell>
                     <DataCell label={columns.orient}>
                       <Badge>{orientationLabel(profile)}</Badge>
