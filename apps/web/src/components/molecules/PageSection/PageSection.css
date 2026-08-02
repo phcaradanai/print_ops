@@ -1,0 +1,4 @@
+.ui-page-section {
+  min-width: 0;
+  padding: var(--spacing-xl);
+}

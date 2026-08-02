@@ -6,6 +6,8 @@ import {
   type PageWidth,
 } from './organisms/PageScaffold/index.js';
 
+export { PageFooter, type PageFooterProps } from './molecules/PageFooter/index.js';
+export { PageSection, type PageSectionProps } from './molecules/PageSection/index.js';
 export type { PageDensity, PageWidth } from './organisms/PageScaffold/index.js';
 
 export interface PageLayoutProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
@@ -60,12 +62,4 @@ export function PageLayout({
       {children}
     </PageScaffold>
   );
-}
-
-export function PageSection({ className = '', ...props }: HTMLAttributes<HTMLElement>) {
-  return <section {...props} className={`ops-surface${className ? ` ${className}` : ''}`} />;
-}
-
-export function PageFooter({ className = '', ...props }: HTMLAttributes<HTMLElement>) {
-  return <footer {...props} className={`ops-action-footer${className ? ` ${className}` : ''}`} />;
 }
