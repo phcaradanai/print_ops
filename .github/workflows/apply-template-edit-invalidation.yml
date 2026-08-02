@@ -1,0 +1,78 @@
+name: Apply Template edit invalidation
+
+on:
+  push:
+    branches:
+      - fix/templates-preview-edit-invalidation
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/templates-preview-edit-invalidation
+          fetch-depth: 0
+
+      - name: Apply exact editor invalidation fixes
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'apps/web/src/pages/Templates.tsx';
+          let source = fs.readFileSync(path, 'utf8');
+
+          function replaceOnce(pattern, replacement, label) {
+            const next = source.replace(pattern, replacement);
+            if (next === source) throw new Error(`Replacement not found: ${label}`);
+            source = next;
+          }
+
+          replaceOnce(
+            "import { useCallback, useEffect, useMemo, useRef, useState } from 'react';",
+            "import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';",
+            'SetStateAction import',
+          );
+
+          replaceOnce(
+            "  const formDirty = Object.keys(EMPTY_FORM).some((key) => form[key as keyof typeof form] !== baselineForm[key as keyof typeof baselineForm]);\n\n  function insertSnippet(snippet: string) {",
+            `  const formDirty = Object.keys(EMPTY_FORM).some((key) => form[key as keyof typeof form] !== baselineForm[key as keyof typeof baselineForm]);\n\n  function updateEditorForm(next: SetStateAction<typeof form>) {\n    // Any user edit invalidates both the selected saved-template identity and\n    // every proof generated for the previous form. This keeps stale server\n    // responses and already-rendered proofs from being mistaken for evidence\n    // of the values currently visible in the editor.\n    previewRequestIdRef.current += 1;\n    setSelectedId(null);\n    setPreview(null);\n    setPreviewHtml('');\n    setPreviewNote('');\n    setPreviewError('');\n    setForm(next);\n  }\n\n  function insertSnippet(snippet: string) {`,
+            'editor update helper',
+          );
+
+          replaceOnce(
+            "      setForm((prev) => ({ ...prev, content: prev.content + snippet }));",
+            "      updateEditorForm((prev) => ({ ...prev, content: prev.content + snippet }));",
+            'snippet fallback update',
+          );
+
+          replaceOnce(
+            "    setForm((prev) => ({ ...prev, content: next }));",
+            "    updateEditorForm((prev) => ({ ...prev, content: next }));",
+            'snippet selection update',
+          );
+
+          const replacements = [
+            ["onChange={(e) => setForm({ ...form, templateCode: e.target.value })}", "onChange={(e) => updateEditorForm({ ...form, templateCode: e.target.value })}", 'template code edit'],
+            ["onChange={(e) => setForm({ ...form, name: e.target.value })}", "onChange={(e) => updateEditorForm({ ...form, name: e.target.value })}", 'template name edit'],
+            ["onChange={(e) => setForm({ ...form, paperProfileId: e.target.value })}", "onChange={(e) => updateEditorForm({ ...form, paperProfileId: e.target.value })}", 'paper profile edit'],
+            ["onClick={() => setForm({ ...form, engine })}", "onClick={() => updateEditorForm({ ...form, engine })}", 'engine edit'],
+            ["onChange={(e) => setForm({ ...form, content: e.target.value })}", "onChange={(e) => updateEditorForm({ ...form, content: e.target.value })}", 'content edit'],
+          ];
+          for (const [from, to, label] of replacements) replaceOnce(from, to, label);
+
+          fs.writeFileSync(path, source);
+          NODE
+
+      - name: Commit patched source
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/pages/Templates.tsx
+          git commit -m "fix(web): invalidate stale proofs on Template edits"
+          git push origin HEAD:fix/templates-preview-edit-invalidation
