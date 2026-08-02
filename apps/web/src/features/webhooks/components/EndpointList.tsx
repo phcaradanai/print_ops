@@ -9,7 +9,6 @@ import {
   DataHead,
   DataTable,
   EmptyState,
-  IconButton,
   Inline,
   Mono,
   Pagination,
@@ -17,13 +16,13 @@ import {
   RecordHeader,
   RecordList,
   ResourceToolbar,
+  RowActionMenu,
   SearchField,
   Select,
   SelectFilter,
   Stack,
   TableEmpty,
   Text,
-  Toolbar,
 } from '../../../components/ui/index.js';
 import { useLocale } from '../../../i18n/index.js';
 import { formatWebhookDate } from '../model.js';
@@ -33,6 +32,12 @@ import type { WebhookWorkspaceController } from '../useWebhookWorkspace.js';
 function policyLabel(controller: WebhookWorkspaceController, endpoint: Endpoint): string {
   const policy = controller.policies.find((item) => item.id === endpoint.routePolicyId);
   return policy ? `${policy.policyCode} — ${policy.name}` : endpoint.routePolicyId || '—';
+}
+
+function transportLabel(controller: WebhookWorkspaceController, endpoint: Endpoint): string {
+  if (endpoint.callbackTransport === 'NONE') return controller.t('page.webhooks.transport.none');
+  if (endpoint.callbackTransport === 'BOTH') return controller.t('page.webhooks.transport.both');
+  return endpoint.callbackTransport;
 }
 
 export function EndpointList({
@@ -72,48 +77,66 @@ export function EndpointList({
     exportEndpoints,
   } = controller;
 
-  const actionLabel = (endpoint: Endpoint) =>
-    t('page.webhooks.actionsFor').replace('{code}', endpoint.endpointCode);
+  const distinctLabel = (key: string, endpoint: Endpoint) =>
+    `${t(key)} ${endpoint.endpointCode}`;
 
-  const actions = (endpoint: Endpoint, compact = false) => (
-    <Toolbar label={actionLabel(endpoint)} align="end" className={compact ? 'webhook-record-actions' : ''}>
-      <Button size="sm" variant="secondary" onClick={() => setDetailsEndpoint(endpoint)}>
-        <ActionIcon name="link" /> {t('page.webhooks.viewDetails')}
-      </Button>
-      <IconButton
+  const rowActions = (endpoint: Endpoint) => (
+    <Inline gap="xs" className="webhook-row-actions">
+      <Button
         size="sm"
-        label={`${t('page.webhooks.testCallbackTitle')} ${endpoint.endpointCode}`}
-        onClick={() => void testCallback(endpoint)}
-      >
-        <ActionIcon name="play" />
-      </IconButton>
-      <IconButton
-        size="sm"
-        label={`${t('page.webhooks.edit')} ${endpoint.endpointCode}`}
+        variant="secondary"
+        aria-label={distinctLabel('page.webhooks.edit', endpoint)}
         onClick={() => openEdit(endpoint)}
       >
-        <ActionIcon name="edit" />
-      </IconButton>
-      <IconButton
-        size="sm"
-        label={`${endpoint.enabled ? t('page.webhooks.setDraftTitle') : t('page.webhooks.enableTitle')} ${endpoint.endpointCode}`}
-        onClick={() => void toggleEndpoint(endpoint)}
-      >
-        <ActionIcon name={endpoint.enabled ? 'pause' : 'check'} />
-      </IconButton>
-      <IconButton
-        size="sm"
-        variant="danger"
-        label={`${t('page.webhooks.deleteTitle')} ${endpoint.endpointCode}`}
-        onClick={() => setPendingDelete(endpoint)}
-      >
-        <ActionIcon name="delete" />
-      </IconButton>
-    </Toolbar>
+        <ActionIcon name="edit" /> {t('page.webhooks.edit')}
+      </Button>
+      <RowActionMenu
+        label={t('page.webhooks.actionsFor').replace('{code}', endpoint.endpointCode)}
+        items={[
+          {
+            id: 'details',
+            label: distinctLabel('page.webhooks.viewDetails', endpoint),
+            icon: <ActionIcon name="link" />,
+            onSelect: () => setDetailsEndpoint(endpoint),
+          },
+          {
+            id: 'test',
+            label: distinctLabel('page.webhooks.testCallbackTitle', endpoint),
+            icon: <ActionIcon name="play" />,
+            onSelect: () => void testCallback(endpoint),
+          },
+          {
+            id: 'toggle',
+            label: distinctLabel(
+              endpoint.enabled ? 'page.webhooks.setDraftTitle' : 'page.webhooks.enableTitle',
+              endpoint,
+            ),
+            icon: <ActionIcon name={endpoint.enabled ? 'pause' : 'check'} />,
+            onSelect: () => void toggleEndpoint(endpoint),
+          },
+          {
+            id: 'delete',
+            label: distinctLabel('page.webhooks.deleteTitle', endpoint),
+            icon: <ActionIcon name="delete" />,
+            danger: true,
+            onSelect: () => setPendingDelete(endpoint),
+          },
+        ]}
+      />
+    </Inline>
   );
 
+  const emptyTitle = endpoints.length === 0
+    ? t('page.webhooks.noResults')
+    : t('page.webhooks.noResults');
+
   return (
-    <Stack gap="md" className={selectedIds.length > 0 ? 'webhook-list webhook-list--selection-active' : 'webhook-list'}>
+    <Stack
+      gap="md"
+      className={selectedIds.length > 0
+        ? 'webhook-list webhook-list--selection-active'
+        : 'webhook-list'}
+    >
       <ResourceToolbar
         ariaLabel={t('page.webhooks.resourceToolbar')}
         actions={
@@ -176,7 +199,7 @@ export function EndpointList({
             <tbody>
               {pagedEndpoints.length === 0 ? (
                 <TableEmpty columns={9}>
-                  <EmptyState title={endpoints.length === 0 ? t('page.webhooks.noCallbackHistory') : t('page.webhooks.noResults')} />
+                  <EmptyState title={emptyTitle} />
                 </TableEmpty>
               ) : pagedEndpoints.map((endpoint) => (
                 <tr key={endpoint.id} data-selected={selectedIds.includes(endpoint.id) || undefined}>
@@ -199,18 +222,22 @@ export function EndpointList({
                   <DataCell>{policyLabel(controller, endpoint)}</DataCell>
                   <DataCell>
                     <Badge tone={endpoint.enabled ? 'success' : 'neutral'}>
-                      {endpoint.enabled ? t('page.webhooks.statusEnabled') : t('page.webhooks.statusDraft')}
+                      {endpoint.enabled
+                        ? t('page.webhooks.statusEnabled')
+                        : t('page.webhooks.statusDraft')}
                     </Badge>
                   </DataCell>
                   <DataCell>
                     <Badge tone={endpoint.callbackTransport === 'NONE' ? 'neutral' : 'info'}>
-                      {endpoint.callbackTransport === 'NONE'
-                        ? t('page.webhooks.transport.none')
-                        : endpoint.callbackTransport}
+                      {transportLabel(controller, endpoint)}
                     </Badge>
                   </DataCell>
-                  <DataCell><Text size="label" tone="muted">{formatWebhookDate(endpoint.updatedAt ?? endpoint.createdAt, locale)}</Text></DataCell>
-                  <DataCell actions>{actions(endpoint)}</DataCell>
+                  <DataCell>
+                    <Text size="label" tone="muted">
+                      {formatWebhookDate(endpoint.updatedAt ?? endpoint.createdAt, locale)}
+                    </Text>
+                  </DataCell>
+                  <DataCell actions>{rowActions(endpoint)}</DataCell>
                 </tr>
               ))}
             </tbody>
@@ -219,11 +246,11 @@ export function EndpointList({
 
         <RecordList className="webhook-endpoint-cards">
           {pagedEndpoints.length === 0 ? (
-            <RecordCard><EmptyState title={t('page.webhooks.noResults')} /></RecordCard>
+            <RecordCard><EmptyState title={emptyTitle} /></RecordCard>
           ) : pagedEndpoints.map((endpoint) => (
             <RecordCard key={endpoint.id} data-selected={selectedIds.includes(endpoint.id) || undefined}>
               <RecordHeader>
-                <Inline gap="sm">
+                <Inline gap="sm" className="webhook-record-identity">
                   <Checkbox
                     hideLabel
                     label={`${t('page.webhooks.endpoint')} ${endpoint.endpointCode}`}
@@ -231,21 +258,37 @@ export function EndpointList({
                     onChange={() => toggleSelect(endpoint.id)}
                   />
                   <Stack gap="xs">
-                    <Text weight="semibold">{endpoint.name}</Text>
-                    <Mono>{endpoint.endpointCode}</Mono>
+                    <Text weight="semibold" wrap>{endpoint.name}</Text>
+                    <Mono wrap>{endpoint.endpointCode}</Mono>
                   </Stack>
                 </Inline>
                 <Badge tone={endpoint.enabled ? 'success' : 'neutral'}>
-                  {endpoint.enabled ? t('page.webhooks.statusEnabled') : t('page.webhooks.statusDraft')}
+                  {endpoint.enabled
+                    ? t('page.webhooks.statusEnabled')
+                    : t('page.webhooks.statusDraft')}
                 </Badge>
               </RecordHeader>
               <div className="webhook-record-grid">
-                <div><Text size="label" tone="muted">{t('page.webhooks.source')}</Text><Text>{endpoint.sourceSystem}</Text></div>
-                <div><Text size="label" tone="muted">{t('page.webhooks.callbackTransport')}</Text><Badge>{endpoint.callbackTransport}</Badge></div>
-                <div><Text size="label" tone="muted">{t('page.webhooks.routePolicy')}</Text><Text>{policyLabel(controller, endpoint)}</Text></div>
-                <div><Text size="label" tone="muted">{t('page.webhooks.updatedAt')}</Text><Text>{formatWebhookDate(endpoint.updatedAt ?? endpoint.createdAt, locale)}</Text></div>
+                <div>
+                  <Text size="label" tone="muted">{t('page.webhooks.source')}</Text>
+                  <Text wrap>{endpoint.sourceSystem || 'integration-service'}</Text>
+                </div>
+                <div>
+                  <Text size="label" tone="muted">{t('page.webhooks.callbackTransport')}</Text>
+                  <Badge tone={endpoint.callbackTransport === 'NONE' ? 'neutral' : 'info'}>
+                    {transportLabel(controller, endpoint)}
+                  </Badge>
+                </div>
+                <div>
+                  <Text size="label" tone="muted">{t('page.webhooks.routePolicy')}</Text>
+                  <Text wrap>{policyLabel(controller, endpoint)}</Text>
+                </div>
+                <div>
+                  <Text size="label" tone="muted">{t('page.webhooks.updatedAt')}</Text>
+                  <Text>{formatWebhookDate(endpoint.updatedAt ?? endpoint.createdAt, locale)}</Text>
+                </div>
               </div>
-              {actions(endpoint, true)}
+              {rowActions(endpoint)}
             </RecordCard>
           ))}
         </RecordList>
@@ -257,14 +300,16 @@ export function EndpointList({
               .replace('{to}', String(Math.min(page * pageSize, filteredEndpoints.length)))
               .replace('{total}', String(filteredEndpoints.length))}
           </Text>
-          <Inline gap="sm">
+          <Inline gap="sm" className="webhook-pagination-controls">
             <Pagination
               ariaLabel={t('page.webhooks.allEndpoints')}
               page={page}
               totalPages={totalPages}
               previousLabel={t('page.jobQueue.previous')}
               nextLabel={t('page.jobQueue.next')}
-              status={t('page.webhooks.pageStatus').replace('{page}', String(page)).replace('{total}', String(totalPages))}
+              status={t('page.webhooks.pageStatus')
+                .replace('{page}', String(page))
+                .replace('{total}', String(totalPages))}
               onPrevious={() => setPage(page - 1)}
               onNext={() => setPage(page + 1)}
             />
@@ -275,7 +320,9 @@ export function EndpointList({
               onChange={(event) => setPageSize(Number(event.target.value))}
             >
               {[5, 10, 20, 50].map((size) => (
-                <option key={size} value={size}>{t('page.webhooks.perPage').replace('{n}', String(size))}</option>
+                <option key={size} value={size}>
+                  {t('page.webhooks.perPage').replace('{n}', String(size))}
+                </option>
               ))}
             </Select>
           </Inline>
@@ -283,18 +330,28 @@ export function EndpointList({
       </Card>
 
       {selectedIds.length > 0 && (
-        <div className="webhook-selection-actions" role="region" aria-label={t('page.webhooks.selectedActions')}>
-          <Text weight="semibold">{t('page.webhooks.selectCount').replace('{n}', String(selectedIds.length))}</Text>
+        <div
+          className="webhook-selection-actions"
+          role="region"
+          aria-label={t('page.webhooks.selectedActions')}
+        >
+          <Text weight="semibold">
+            {t('page.webhooks.selectCount').replace('{n}', String(selectedIds.length))}
+          </Text>
           <Inline gap="sm" className="webhook-selection-actions__buttons">
             <Button variant="secondary" onClick={() => void exportEndpoints('selected')}>
               <TransferIcon action="export" /> {t('page.webhooks.exportSelected')}
             </Button>
-            <Button variant="ghost" onClick={() => setSelectedIds([])}>{t('page.webhooks.clearSelection')}</Button>
+            <Button variant="ghost" onClick={() => setSelectedIds([])}>
+              {t('page.webhooks.clearSelection')}
+            </Button>
             <Button variant="danger" onClick={() => setBatchDeleteOpen(true)}>
               <ActionIcon name="delete" /> {t('page.webhooks.deleteSelected')}
             </Button>
           </Inline>
-          <span className="ui-visually-hidden">{selectedEndpoints.map((endpoint) => endpoint.endpointCode).join(', ')}</span>
+          <span className="ui-visually-hidden">
+            {selectedEndpoints.map((endpoint) => endpoint.endpointCode).join(', ')}
+          </span>
         </div>
       )}
     </Stack>
