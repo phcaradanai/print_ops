@@ -15,6 +15,7 @@ import {
 import { CallbackTemplateGuide } from '../CallbackTemplateGuide.js';
 import { intakeFieldTokens, previewCallbackTemplate } from '../callbackTemplate.js';
 import { SOURCE_SYSTEM_PRESETS, parsePayloadTemplate } from '../model.js';
+import type { WebhookEditorForm } from '../types.js';
 import type { WebhookWorkspaceController } from '../useWebhookWorkspace.js';
 
 function localizedError(t: (key: string) => string, value?: string): string | undefined {
