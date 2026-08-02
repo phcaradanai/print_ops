@@ -2,13 +2,16 @@
 .webhook-editor-stage__header,
 .webhook-toolbar-actions,
 .webhook-selection-actions__buttons,
-.webhook-pagination-row {
+.webhook-pagination-row,
+.webhook-pagination-controls,
+.webhook-row-actions {
   flex-wrap: wrap;
 }
 
 .webhook-editor-stage,
 .webhook-list,
-.webhook-delivery-history {
+.webhook-delivery-history,
+.webhook-endpoint-surface {
   min-width: 0;
 }
 
@@ -36,7 +39,7 @@
 
 .webhook-template-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(18rem, 0.8fr);
+  grid-template-columns: minmax(0, 1.55fr) minmax(18rem, 0.8fr);
   gap: var(--spacing-lg);
   align-items: start;
   min-width: 0;
@@ -70,9 +73,8 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0;
   min-width: 0;
-  padding: var(--spacing-sm) var(--spacing-sm);
+  padding: var(--spacing-sm);
   overflow: hidden;
   border-right: 1px solid var(--neutral-border);
   background: var(--neutral-subtle);
@@ -90,18 +92,16 @@
   outline: 0;
 }
 
+/* Editor actions belong to the document flow. The former sticky panel covered
+   callback evidence and made the focused editor behave like another overlay. */
 .webhook-editor-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 8;
   display: flex;
   justify-content: flex-end;
   align-items: flex-start;
   flex-wrap: wrap;
   gap: var(--spacing-sm);
-  padding: var(--spacing-md);
-  border: 1px solid var(--neutral-border);
-  border-radius: var(--rounded-lg);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--neutral-border);
   background: var(--neutral-surface);
 }
 
@@ -109,10 +109,18 @@
   align-items: flex-start;
 }
 
-.webhook-endpoint-surface,
-.webhook-endpoint-table,
-.webhook-delivery-table {
+.webhook-list .ui-resource-toolbar {
+  justify-content: flex-start;
+}
+
+.webhook-list .ui-resource-toolbar__controls > *,
+.webhook-list .ui-resource-toolbar__actions > *,
+.webhook-list .ui-field,
+.webhook-list .ui-input-group,
+.webhook-list .ui-input,
+.webhook-list .ui-select {
   min-width: 0;
+  max-width: 100%;
 }
 
 .webhook-endpoint-surface {
@@ -121,17 +129,35 @@
 
 .webhook-endpoint-table,
 .webhook-delivery-table {
+  min-width: 0;
   overflow-x: auto;
 }
 
-.webhook-endpoint-table table,
+.webhook-endpoint-table table {
+  min-width: 58rem;
+}
+
 .webhook-delivery-table table {
-  min-width: 68rem;
+  min-width: 62rem;
 }
 
 .webhook-endpoint-cards,
 .webhook-delivery-cards {
   display: none;
+}
+
+.webhook-row-actions {
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.webhook-record-identity {
+  min-width: 0;
+  align-items: flex-start;
+}
+
+.webhook-record-identity > * {
+  min-width: 0;
 }
 
 .webhook-record-grid {
@@ -148,17 +174,16 @@
   min-width: 0;
 }
 
-.webhook-record-actions {
-  justify-content: flex-start;
-  flex-wrap: wrap;
-}
-
 .webhook-pagination-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-md);
   padding-top: var(--spacing-lg);
+}
+
+.webhook-pagination-controls {
+  align-items: center;
 }
 
 .webhook-list--selection-active {
@@ -227,16 +252,38 @@
   }
 }
 
-@media (max-width: 760px) {
-  .webhook-form-grid--three,
-  .webhook-form-grid--two,
-  .webhook-record-grid {
-    grid-template-columns: minmax(0, 1fr);
+@media (max-width: 1024px) {
+  .webhook-list .ui-resource-toolbar,
+  .webhook-list .ui-resource-toolbar__controls,
+  .webhook-list .ui-resource-toolbar__actions {
+    width: 100%;
   }
 
+  .webhook-list .ui-search-field,
+  .webhook-list .ui-select-filter,
+  .webhook-list .ui-search-field .ui-field,
+  .webhook-list .ui-select-filter .ui-field,
+  .webhook-list .ui-input-group,
+  .webhook-list .ui-select {
+    width: 100%;
+  }
+
+  .webhook-toolbar-actions {
+    justify-content: flex-start;
+  }
+
+  .webhook-selection-actions {
+    left: max(var(--spacing-xl), env(safe-area-inset-left, 0px));
+  }
+}
+
+/* Portrait tablet and mobile use records rather than a horizontally compressed
+   desktop table. The wide table remains available on desktop with internal
+   scrolling only when its evidence columns genuinely need it. */
+@media (max-width: 860px) {
   .webhook-endpoint-table,
   .webhook-delivery-table {
-    display: none !important;
+    display: none;
   }
 
   .webhook-endpoint-cards,
@@ -254,37 +301,58 @@
     min-width: 0;
   }
 
-  .webhook-endpoint-surface {
-    width: 100%;
-    min-width: 0;
-    padding: var(--spacing-md);
-    overflow: hidden;
-  }
-
   .webhook-pagination-row {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .webhook-pagination-row > * {
+  .webhook-pagination-row > *,
+  .webhook-pagination-controls {
     max-width: 100%;
     min-width: 0;
   }
+}
 
-  .webhook-pagination-row > .ui-inline {
+@media (max-width: 760px) {
+  .webhook-form-grid--three,
+  .webhook-form-grid--two,
+  .webhook-record-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .webhook-list .ui-resource-toolbar__controls,
+  .webhook-list .ui-resource-toolbar__actions,
+  .webhook-toolbar-actions,
+  .webhook-pagination-controls,
+  .webhook-row-actions {
     width: 100%;
+    min-width: 0;
+  }
+
+  .webhook-toolbar-actions > button {
+    flex: 1 1 100%;
+    width: 100%;
+    min-height: 44px;
+    white-space: normal;
+  }
+
+  .webhook-pagination-controls {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .webhook-pagination-row .ui-pagination,
-  .webhook-pagination-row .ui-select {
+  .webhook-pagination-controls .ui-pagination,
+  .webhook-pagination-controls .ui-select {
     width: 100%;
     min-width: 0;
   }
 
-  .webhook-editor-actions {
-    position: static;
+  .webhook-row-actions {
+    justify-content: space-between;
+  }
+
+  .webhook-row-actions > .ui-button {
+    flex: 1 1 auto;
   }
 
   .webhook-editor-actions > button,
@@ -307,27 +375,14 @@
   }
 
   .webhook-page-actions,
-  .webhook-toolbar-actions {
+  .webhook-page-actions > button {
     width: 100%;
     min-width: 0;
-    align-items: stretch;
   }
 
-  .webhook-page-actions > button,
-  .webhook-toolbar-actions > button {
-    flex: 1 1 auto;
-    min-width: 0;
+  .webhook-page-actions > button {
     min-height: 44px;
     white-space: normal;
-  }
-
-  .webhook-record-actions {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .webhook-record-actions > * {
-    min-width: 0;
   }
 
   .webhook-technical-summary {
