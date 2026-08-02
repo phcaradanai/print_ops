@@ -61,6 +61,9 @@ jobs:
       - name: Typecheck all workspaces
         run: npm run typecheck
 
+      - name: Build packaged SPA test fixture
+        run: npm run build -w @printerops/web
+
       - name: Test all workspaces
         run: npm run test
 
