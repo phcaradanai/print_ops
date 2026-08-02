@@ -5,6 +5,12 @@ import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { saveOrDownloadJsonFile } from '../utils/fileExport.js';
 import { parseWebhookImportJson } from '../features/webhooks/parseImportJson.js';
+import {
+  DEFAULT_CALLBACK_TEMPLATE,
+  intakeFieldTokens,
+  previewCallbackTemplate,
+} from '../features/webhooks/callbackTemplate.js';
+import { CallbackTemplateGuide } from '../features/webhooks/CallbackTemplateGuide.js';
 import { TransferIcon } from '../components/TransferIcon.js';
 import { ActionIcon } from '../components/ActionIcon.js';
 import {
@@ -13,7 +19,6 @@ import {
   Button,
   Card,
   Checkbox,
-  Chip,
   CodeBlock,
   DataCell,
   DataHead,
@@ -65,6 +70,14 @@ interface Policy {
   id: string;
   policyCode: string;
   name: string;
+  /**
+   * `{ targetKey: "$.sourcePath" }` — the JSON paths this policy already
+   * declares its callers will send. GET /v1/webhook-route-policies returns the
+   * full domain object, so this arrives with the list the page already fetches;
+   * it simply was not typed before, which is why the variable panel had to
+   * invent its own field names.
+   */
+  payloadMapping?: Record<string, string>;
 }
 
 interface CallbackTransportResult {
@@ -97,22 +110,7 @@ interface CallbackAttempt {
   occurredAt: string;
 }
 
-const DEFAULT_JSON_TEMPLATE = `{
-  "event": "\${.event}",
-  "printerId": "\${.printerId}",
-  "jobId": "\${.jobId}",
-  "status": "\${.status}",
-  "timestamp": "\${.timestamp}"
-}`;
-
-const AVAILABLE_VARIABLES = [
-  '$.event',
-  '$.printerId',
-  '$.jobId',
-  '$.status',
-  '$.timestamp',
-  '$.fieldName',
-];
+const DEFAULT_JSON_TEMPLATE = DEFAULT_CALLBACK_TEMPLATE;
 
 const SOURCE_SYSTEM_PRESETS = [
   'integration-service',
@@ -256,7 +254,10 @@ export default function Webhooks() {
   };
 
   const insertVariableIntoTemplate = (variable: string) => {
-    const varPattern = `\${.${variable.replace('$.', '')}}`;
+    // Inserted verbatim. This used to rewrite `$.event` into `${.event}`, which
+    // the resolver matches as neither a field path nor an embedded token — so
+    // every chip produced a literal string in the delivered callback.
+    const varPattern = variable;
     const textarea = textareaRef.current;
     if (!textarea) {
       setForm((prev) => ({
@@ -670,6 +671,25 @@ export default function Webhooks() {
     return Array.from({ length: Math.max(lineCount, 7) }, (_, i) => i + 1);
   }, [form.callbackPayloadTemplate]);
 
+  // What the receiver would actually get, resolved from the template being
+  // edited. A hand-written example cannot go stale in a way anyone notices;
+  // this one changes the moment the template stops resolving.
+  const templatePreview = useMemo(
+    () => previewCallbackTemplate(form.callbackPayloadTemplate),
+    [form.callbackPayloadTemplate],
+  );
+
+  // The endpoint's own intake fields, not a generic list: the route policy
+  // bound to this endpoint already declares which JSON paths its callers send.
+  const selectedPolicy = useMemo(
+    () => policies.find((p) => p.id === form.routePolicyId),
+    [policies, form.routePolicyId],
+  );
+  const intakeFields = useMemo(
+    () => intakeFieldTokens(selectedPolicy?.payloadMapping),
+    [selectedPolicy],
+  );
+
   const formatDate = (d?: string | Date) => {
     if (!d) return '-';
     try {
@@ -1029,34 +1049,13 @@ export default function Webhooks() {
               table below as well.
               See docs/frontend/LAYOUT_COMPONENT_STANDARD.md. */}
           <div className="wh-sidebar">
-            {/* Box 1: Sample Payload */}
-            <Panel title={t('page.webhooks.samplePayload')} padding="lg">
-              <CodeBlock label={t('page.webhooks.samplePayload')} scroll={false}>
-{`{
-  "event": "PRINT_COMPLETED",
-  "printerId": "PRN-001",
-  "jobId": "JOB-12345",
-  "status": "COMPLETED",
-  "timestamp": "2025-05-22T10:30:00Z"
-}`}
-              </CodeBlock>
-            </Panel>
-
-            {/* Box 2: Available Variables. These insert into the template, so
-                they are chips — the shape the system reserves for exactly this. */}
-            <Panel title={t('page.webhooks.availableVariables')} padding="lg">
-              <Inline gap="xs">
-                {AVAILABLE_VARIABLES.map((v) => (
-                  <Chip
-                    key={v}
-                    title={t('page.webhooks.insertVariableTitle').replace('{v}', v.replace('$.', ''))}
-                    onClick={() => insertVariableIntoTemplate(v)}
-                  >
-                    {v}
-                  </Chip>
-                ))}
-              </Inline>
-            </Panel>
+            <CallbackTemplateGuide
+              preview={templatePreview}
+              intakeFields={intakeFields}
+              hasPolicy={Boolean(form.routePolicyId)}
+              onInsert={insertVariableIntoTemplate}
+              t={t}
+            />
 
             {/* Box 3: Usage Instructions */}
             <Panel title={t('page.webhooks.howToUse')} padding="lg">
