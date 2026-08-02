@@ -1,12 +1,20 @@
 @media (max-width: 760px) {
   .webhook-list .ui-resource-toolbar,
-  .webhook-list .ui-resource-toolbar__controls,
   .webhook-list .ui-resource-toolbar__actions {
     width: 100%;
     max-width: 100%;
     min-width: 0;
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .webhook-list .ui-resource-toolbar__controls {
+    display: grid !important;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
   }
 
   .webhook-list .ui-resource-toolbar__controls > *,
