@@ -19,6 +19,7 @@ import { EndpointList } from './components/EndpointList.js';
 import { WebhookDialogs } from './components/WebhookDialogs.js';
 import { useWebhookWorkspace } from './useWebhookWorkspace.js';
 import './webhooks.css';
+import './webhooks.mobile.css';
 
 export default function WebhookWorkspace() {
   const controller = useWebhookWorkspace();
@@ -39,6 +40,7 @@ export default function WebhookWorkspace() {
 
   const openHistoryEvidence = (logEntryId?: string) => {
     setView('history');
+    setFeedback(null);
     if (!logEntryId) return;
     requestAnimationFrame(() => {
       document.getElementById(`callback-attempt-${logEntryId}`)?.scrollIntoView({ block: 'center' });
