@@ -1,0 +1,10 @@
+.ui-page-section {
+  min-width: 0;
+  padding: var(--spacing-xl);
+}
+
+@media (max-width: 1024px) {
+  .ui-page-section {
+    padding: var(--spacing-lg);
+  }
+}
