@@ -1,15 +1,9 @@
 /**
  * Modal wrapper over the native `<dialog>` element (FE-01.1).
  *
- * `JobQueue`'s reprint confirmation is the only modal in the app and it wires
- * `showModal()` / `close()` / `onCancel` by hand through a ref and an effect.
- * That is the part everyone gets wrong: forgetting `onCancel` leaves Escape
- * closing the element without telling React, so the dialog reopens on the next
- * render. Centralised here, together with the labelling.
- *
  * `showModal()` gives us focus trapping, inert background and Escape handling
- * from the platform — no focus-management library needed. Nothing here creates
- * a `window.confirm`-style blocking dialog.
+ * from the platform. React remains the source of truth for open state so focus
+ * restoration and cancellation stay consistent across pages.
  */
 
 import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
@@ -31,8 +25,6 @@ export function useModalFocusTrap(open: boolean, panelRef: RefObject<HTMLElement
       const panel = panelRef.current;
       if (panel && !panel.contains(document.activeElement)) (focusable()[0] ?? panel).focus();
     };
-    // Focus synchronously for assistive technology, then repeat on the next
-    // frame in case a just-mounted drawer is still settling its descendants.
     moveFocusInside();
     const frame = requestAnimationFrame(moveFocusInside);
     const onKeyDown = (event: KeyboardEvent) => {
@@ -62,7 +54,7 @@ export function useModalFocusTrap(open: boolean, panelRef: RefObject<HTMLElement
 
 export interface DialogProps {
   open: boolean;
-  /** Called for Escape, backdrop dismissal and the close button. */
+  /** Called for an allowed dismissal path or an explicit close/cancel action. */
   onClose: () => void;
   title: ReactNode;
   children: ReactNode;
@@ -72,9 +64,23 @@ export interface DialogProps {
   footer?: ReactNode;
   /** Prominent warning shown under the title (e.g. duplicate-copy risk). */
   warning?: ReactNode;
+  /** Disable for destructive dialogs so an incidental backdrop click cannot discard the confirmation context. */
+  dismissOnBackdrop?: boolean;
+  /** Escape normally performs a safe cancel; disable only for flows that require an explicit choice. */
+  dismissOnEscape?: boolean;
 }
 
-export function Dialog({ open, onClose, title, children, closeLabel, footer, warning }: DialogProps) {
+export function Dialog({
+  open,
+  onClose,
+  title,
+  children,
+  closeLabel,
+  footer,
+  warning,
+  dismissOnBackdrop = true,
+  dismissOnEscape = true,
+}: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -93,15 +99,11 @@ export function Dialog({ open, onClose, title, children, closeLabel, footer, war
       className="ui-dialog"
       aria-labelledby={titleId}
       onClick={(event) => {
-        // Native `<dialog>` reports a backdrop click on the dialog element
-        // itself. Content clicks target descendants and must not dismiss it.
-        if (event.target === event.currentTarget) onClose();
+        if (dismissOnBackdrop && event.target === event.currentTarget) onClose();
       }}
       onCancel={(event) => {
-        // Let React own the open state: without this the element would close
-        // itself on Escape and immediately be reopened by the next render.
         event.preventDefault();
-        onClose();
+        if (dismissOnEscape) onClose();
       }}
     >
       <div className="ui-dialog-header">
