@@ -1,0 +1,534 @@
+/*
+ * PrintOps unified experience layer.
+ *
+ * Loaded last on purpose. The project still contains route-era styles and two
+ * Paper Profiles closure sheets; this file establishes the DESIGN.md contract
+ * at the shared-shell and shared-component level without hiding route-specific
+ * behavior. New work should use the shared UI primitives rather than add another
+ * global hotfix file.
+ */
+
+:root {
+  --rounded-pill: 9999px;
+  --danger-action: #9f1239;
+  --danger-action-hover: #830e2e;
+  --page-content-standard: 72rem;
+  --page-content-wide: 96rem;
+  --surface-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --popover-shadow: 0 8px 24px rgba(17, 24, 39, 0.14);
+}
+
+body {
+  background: var(--neutral-page);
+  color: var(--neutral-text);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+/* The rail is deliberately compact. Labels may wrap rather than forcing the
+   entire application canvas to surrender width. */
+@media (min-width: 1025px) {
+  .app-nav {
+    width: 200px;
+    flex-basis: 200px;
+    padding: var(--spacing-lg) var(--spacing-md);
+    gap: var(--spacing-xl);
+  }
+
+  .nav-link {
+    min-height: 38px;
+    padding: 0.42rem 0.55rem 0.42rem 0.72rem;
+  }
+
+  .nav-link-label {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    line-height: 1.35;
+  }
+}
+
+.app-nav,
+.app-header {
+  background: var(--nav-bg);
+}
+
+.app-nav-brand,
+.app-header-brand {
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+.session-card {
+  box-shadow: none;
+}
+
+.session-avatar {
+  background: var(--primary);
+  box-shadow: none;
+}
+
+.session-signout-btn,
+.nav-link,
+.nav-admin-toggle,
+.nav-toggle {
+  min-height: 38px;
+}
+
+.app-main {
+  scrollbar-gutter: stable;
+}
+
+/* Route anatomy */
+.ops-page {
+  gap: var(--spacing-2xl);
+}
+
+.ops-page__header {
+  gap: var(--spacing-lg);
+  padding-bottom: var(--spacing-lg);
+}
+
+.ops-page__title,
+.ops-page__header h1,
+.tpl-page-header h1,
+.wh-header h1,
+.pp-page-header h1 {
+  letter-spacing: 0;
+  text-wrap: pretty;
+}
+
+.ops-page__description,
+.ops-page__header p,
+.tpl-page-header p,
+.wh-header p,
+.pp-page-header p {
+  text-wrap: pretty;
+}
+
+.ops-page__body,
+.ops-page__detail {
+  min-width: 0;
+}
+
+.ops-page__actions > *,
+.tpl-page-tools > *,
+.wh-header-actions > *,
+.pp-toolbar > * {
+  flex: 0 0 auto;
+}
+
+/* Flat-by-default surfaces */
+.ui-panel,
+.ui-card,
+.ui-record-card,
+.ops-surface {
+  box-shadow: none;
+}
+
+.ui-panel--subtle {
+  background: color-mix(in srgb, var(--neutral-subtle) 70%, var(--neutral-surface));
+}
+
+.ui-panel__title,
+.ui-section-heading__title {
+  text-wrap: pretty;
+}
+
+/* Buttons: a single action-blue family, rose only for consequence. */
+.ui-button,
+.ui-icon-button {
+  font-family: var(--font-body-family);
+  font-weight: 600;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.ui-button--primary,
+.ui-icon-button--primary {
+  border-color: var(--primary);
+  background: var(--primary);
+  box-shadow: none;
+}
+
+.ui-button--primary:hover:not(:disabled),
+.ui-icon-button--primary:hover:not(:disabled) {
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
+  box-shadow: 0 3px 8px rgba(30, 102, 245, 0.3);
+}
+
+.ui-button--danger,
+.ui-icon-button--danger {
+  border-color: var(--danger-action);
+  background: var(--danger-action);
+  box-shadow: none;
+}
+
+.ui-button--danger:hover:not(:disabled),
+.ui-icon-button--danger:hover:not(:disabled) {
+  border-color: var(--danger-action-hover);
+  background: var(--danger-action-hover);
+  box-shadow: 0 3px 8px rgba(159, 18, 57, 0.24);
+}
+
+.ui-button--secondary:hover:not(:disabled) {
+  background: var(--neutral-subtle);
+}
+
+.ui-button--ghost:hover:not(:disabled),
+.ui-icon-button--ghost:hover:not(:disabled) {
+  background: var(--state-info-surface);
+}
+
+.ui-button:disabled,
+.ui-icon-button:disabled {
+  opacity: 1;
+  border-color: var(--neutral-border);
+  background: var(--neutral-subtle);
+  color: var(--neutral-text-muted);
+}
+
+/* Forms remain compact on desktop while preserving a 44px interaction floor
+   on coarse pointers. */
+.ui-input,
+.ui-select,
+.ui-textarea,
+.ui-input-group {
+  box-shadow: none;
+}
+
+.ui-input::placeholder,
+.ui-textarea::placeholder {
+  color: color-mix(in srgb, var(--neutral-text-muted) 84%, var(--neutral-surface));
+  opacity: 1;
+}
+
+.ui-input:focus-visible,
+.ui-select:focus-visible,
+.ui-textarea:focus-visible,
+.ui-input-group:focus-within {
+  outline: 2px solid color-mix(in srgb, var(--primary) 38%, transparent);
+  outline-offset: 1px;
+}
+
+.ui-label,
+.ui-fieldset__legend {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Data tables are operational reading surfaces, not oversized marketing
+   tables. Do not uppercase localized headers and do not impose arbitrary widths
+   on the second or final column. */
+.ui-data-table-frame {
+  overflow: auto;
+  scrollbar-gutter: stable both-edges;
+  overscroll-behavior-inline: contain;
+}
+
+.ui-data-table {
+  min-width: 100%;
+  table-layout: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.ui-data-table thead {
+  box-shadow: none;
+}
+
+.ui-data-head {
+  height: 42px;
+  padding: 0.62rem var(--spacing-md);
+  border-bottom: 1px solid var(--neutral-border-strong);
+  background: var(--neutral-subtle);
+  color: var(--neutral-text);
+  font-size: var(--font-label-size);
+  font-weight: var(--font-label-weight);
+  line-height: var(--font-label-line-height);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ui-data-head:first-child,
+.ui-data-head:last-child,
+.ui-data-cell:first-child,
+.ui-data-cell:last-child {
+  padding-inline: var(--spacing-md);
+}
+
+.ui-data-head:first-child,
+.ui-data-head:nth-child(2),
+.ui-data-head:last-child {
+  width: auto;
+  min-width: 0;
+}
+
+.ui-data-cell {
+  max-width: 28rem;
+  padding: 0.68rem var(--spacing-md);
+  border-top-color: var(--neutral-border);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+
+.ui-data-cell[data-actions] {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.ui-data-table tbody tr {
+  height: auto;
+}
+
+.ui-data-table tbody tr:focus-within .ui-data-cell,
+.ui-data-table tbody tr:hover .ui-data-cell {
+  background: color-mix(in srgb, var(--primary) 3%, var(--neutral-surface));
+}
+
+.ui-data-table tbody tr.is-selected .ui-data-cell,
+.ui-data-table tbody tr[aria-selected='true'] .ui-data-cell {
+  background: var(--state-info-surface);
+}
+
+/* Status text must remain readable at fatigue distance. */
+.status-badge,
+.ui-status-badge,
+.ui-badge {
+  min-height: 1.65rem;
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+/* Queue selection is a current task, so keep it visible without covering the
+   last row or device safe area. */
+.batch-action-bar {
+  position: sticky;
+  inset-block-end: max(var(--spacing-md), env(safe-area-inset-bottom));
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border: 1px solid color-mix(in srgb, var(--primary) 26%, var(--neutral-border));
+  border-radius: var(--rounded-lg);
+  background: color-mix(in srgb, var(--state-info-surface) 88%, var(--neutral-surface));
+  box-shadow: var(--surface-shadow);
+}
+
+.batch-action-count,
+.batch-action-buttons,
+.job-queue-pagination {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.batch-action-badge {
+  display: inline-grid;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  place-items: center;
+  border-radius: var(--rounded-pill);
+  background: var(--primary);
+  color: var(--neutral-surface);
+  font-size: var(--font-label-size);
+  font-weight: 700;
+}
+
+.job-queue-pagination {
+  justify-content: center;
+  margin-top: var(--spacing-lg);
+}
+
+/* Links show interaction without looking like a second accent system. */
+.ui-link {
+  color: var(--primary-hover);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+}
+
+.ui-link:hover {
+  color: var(--primary-pressed);
+}
+
+/* Consequential overlays float; ordinary cards do not. */
+.ui-dialog,
+.dialog-panel,
+[role='dialog'] {
+  box-shadow: var(--popover-shadow);
+}
+
+/* Auth is a focused task, not an empty centered wireframe. */
+.login-screen,
+.splash-screen {
+  background:
+    linear-gradient(90deg, rgba(30, 102, 245, 0.035) 1px, transparent 1px),
+    linear-gradient(rgba(30, 102, 245, 0.035) 1px, transparent 1px),
+    var(--neutral-page);
+  background-size: 28px 28px;
+}
+
+.login-panel,
+.splash-content {
+  border: 1px solid var(--neutral-border);
+  border-radius: 12px;
+  background: var(--neutral-surface);
+  box-shadow: var(--shadow-floating);
+}
+
+/* Responsive behavior. Existing component card conversions remain in place;
+   these rules make the converted surfaces readable and touch-safe. */
+@media (max-width: 1024px) {
+  .app-main {
+    padding: var(--spacing-lg);
+  }
+
+  .app-nav {
+    width: min(20rem, 88vw);
+  }
+
+  .ops-page__header,
+  .page-header,
+  .tpl-page-header,
+  .wh-header,
+  .pp-page-header {
+    align-items: stretch;
+  }
+
+  .ui-data-table[data-responsive] tbody tr {
+    box-shadow: none;
+  }
+
+  .ui-data-table[data-responsive] .ui-data-cell {
+    grid-template-columns: minmax(7.5rem, 34%) minmax(0, 1fr);
+    padding: 0.72rem var(--spacing-lg);
+  }
+
+  .ui-data-table[data-responsive] .ui-data-cell::before {
+    align-items: start;
+    color: var(--neutral-text-muted);
+    line-height: 1.35;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-main {
+    padding: var(--spacing-md);
+  }
+
+  .ops-page {
+    gap: var(--spacing-xl);
+  }
+
+  .ops-page__header,
+  .page-header,
+  .tpl-page-header,
+  .wh-header,
+  .pp-page-header {
+    flex-direction: column;
+    gap: var(--spacing-md);
+    padding-bottom: var(--spacing-md);
+  }
+
+  .ops-page__actions,
+  .tpl-page-tools,
+  .wh-header-actions,
+  .pp-toolbar {
+    justify-content: flex-start;
+  }
+
+  .ops-page__actions > *,
+  .tpl-page-tools > *,
+  .wh-header-actions > *,
+  .pp-toolbar > * {
+    flex: 1 1 auto;
+  }
+
+  .ui-panel--pad-xl {
+    padding: var(--spacing-lg);
+  }
+
+  .ui-data-table[data-responsive] .ui-data-cell {
+    grid-template-columns: minmax(6.5rem, 42%) minmax(0, 1fr);
+    gap: var(--spacing-sm);
+    padding: 0.68rem var(--spacing-md);
+  }
+
+  .batch-action-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .batch-action-buttons > .ui-button {
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-main {
+    padding-inline: max(var(--spacing-sm), env(safe-area-inset-left)) max(var(--spacing-sm), env(safe-area-inset-right));
+    padding-bottom: max(var(--spacing-lg), env(safe-area-inset-bottom));
+  }
+
+  .ui-data-table[data-responsive] .ui-data-cell {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .ui-data-table[data-responsive] .ui-data-cell::before {
+    margin-bottom: 0.15rem;
+  }
+}
+
+@media (pointer: coarse), (max-width: 760px) {
+  .ui-button,
+  .ui-icon-button,
+  .ui-input,
+  .ui-select,
+  .ui-chip,
+  .nav-link,
+  .nav-admin-toggle,
+  .session-signout-btn {
+    min-height: 44px;
+  }
+
+  .ui-check > input {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    view-transition-name: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .ui-button,
+  .ui-icon-button,
+  .ui-chip,
+  .status-badge,
+  .ui-status-badge,
+  .ui-badge {
+    forced-color-adjust: auto;
+  }
+}

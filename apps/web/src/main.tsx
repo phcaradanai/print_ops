@@ -11,6 +11,7 @@ import './components/ui/ui.css';
 import './components/ui/inputs.css';
 import './components/ui/Card.css';
 import './components/ui/CardDetail.css';
+import './experienceSystem.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
