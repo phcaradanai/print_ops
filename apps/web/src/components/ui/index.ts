@@ -5,6 +5,7 @@ export { FormField, type FormFieldControlProps, type FormFieldProps } from '../F
 export { PageLayout, type PageDensity, type PageLayoutProps, type PageWidth } from '../PageLayout.js';
 export { PageFooter, type PageFooterProps } from '../molecules/PageFooter/index.js';
 export { PageHeader, type PageHeaderProps } from '../molecules/PageHeader/index.js';
+export { Pagination, type PaginationProps } from '../molecules/Pagination/index.js';
 export { PageSection, type PageSectionProps } from '../molecules/PageSection/index.js';
 export { SearchField, type SearchFieldProps } from '../molecules/SearchField/index.js';
 export { SectionHeading, type SectionHeadingProps } from '../molecules/SectionHeading/index.js';
