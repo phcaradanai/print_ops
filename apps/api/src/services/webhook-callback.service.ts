@@ -16,6 +16,13 @@ import type { WebhookEndpoint, WebhookCallbackAttemptRepositoryPort, CallbackAtt
  * payload, so the destination can be supplied dynamically per request
  * (e.g. a reply subject the publisher placed in the payload).
  *
+ * `callbackPayloadTemplate` shapes the ACCEPTANCE callback body and reads from
+ * two sources: `$.field` from the caller's intake payload, `$$.field` from the
+ * intake response PrintOps produced. Before `$$.` existed, writing any custom
+ * template meant giving up every system field — request_id and print_job_id
+ * included — because the default envelope is used only when the template is
+ * empty.
+ *
  * The callback is best-effort: a delivery failure is logged, never throws
  * into the intake path (a failed webhook must not fail the print job).
  */
@@ -71,6 +78,25 @@ export interface CallbackSendResult {
 const FIELD_PATH = /^\$\.[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/;
 /** Matches `$.field` / `$.a.b` tokens embedded anywhere in a template string. */
 const EMBEDDED_FIELD = /\$\.[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*/g;
+/**
+ * `$$.field` — a payload-template reference to what PrintOps produced (the
+ * intake response), as opposed to `$.field`, which is what the caller sent.
+ *
+ * A separate sigil rather than a namespace under `$.`: `$.result.x` and
+ * `$.payload.x` both name real, reachable data today. The NATS intake envelope
+ * carries a top-level `payload` object, and `/api/v1/print-jobs` passes
+ * `body.payload` straight through as the intake payload — so reserving those
+ * prefixes would silently reinterpret tokens that already resolve for saved
+ * endpoints. `$$.` cannot collide: an anchored `$.field` never matches it, so
+ * a stored `$$.status` is a literal string today and no endpoint can be
+ * relying on it as a lookup.
+ *
+ * Scope is the payload template only. Destination templates (callbackUrl,
+ * callbackNatsSubject) still resolve against the intake payload alone — they
+ * are resolved at accept time and persisted with the job, and widening them is
+ * a separate decision.
+ */
+const SYSTEM_FIELD_PATH = /^\$\$\.[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/;
 
 /**
  * Resolve a destination template (`$.reply_to`, `results/$.tenant`, or a plain
@@ -112,11 +138,18 @@ function renderFieldTokens(template: string, payload: Record<string, unknown>): 
 function resolveTemplate(
   template: Record<string, unknown> | undefined,
   intakePayload: Record<string, unknown>,
+  result: Record<string, unknown>,
 ): Record<string, unknown> {
   if (!template) return {};
   const out: Record<string, unknown> = {};
   for (const [key, raw] of Object.entries(template)) {
-    if (typeof raw === 'string' && FIELD_PATH.test(raw)) {
+    if (typeof raw !== 'string') {
+      out[key] = raw;
+    } else if (SYSTEM_FIELD_PATH.test(raw)) {
+      // `$$.status` -> look up `status` on the intake response. Dropping one
+      // `$` leaves a path fieldValue already understands.
+      out[key] = fieldValue(result, raw.slice(1));
+    } else if (FIELD_PATH.test(raw)) {
       out[key] = fieldValue(intakePayload, raw);
     } else {
       out[key] = raw;
@@ -192,7 +225,7 @@ export class WebhookCallbackService {
         : renderFieldTokens(endpoint.callbackNatsSubject, intakePayload);
     }
 
-    const userTemplate = resolveTemplate(endpoint.callbackPayloadTemplate, intakePayload);
+    const userTemplate = resolveTemplate(endpoint.callbackPayloadTemplate, intakePayload, result);
     const payload: Record<string, unknown> = ctx.payloadOverride ??
       (Object.keys(userTemplate).length > 0
         ? userTemplate

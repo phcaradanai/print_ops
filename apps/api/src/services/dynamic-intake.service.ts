@@ -12,6 +12,7 @@ import type {
   WebhookRoutePolicyRepositoryPort,
   WebhookEndpoint,
   EventBusPort,
+  AcceptanceCallbackSystemField,
 } from '@printerops/domain';
 import { CALLBACK_INTENT_METADATA_KEY } from '@printerops/domain';
 import { NotFoundError, ValidationError } from '@printerops/shared';
@@ -36,6 +37,16 @@ export interface IntakeResponse {
   status: string;
   duplicate?: boolean;
 }
+
+/**
+ * This response is the only `result` a templatable callback ever sees, so the
+ * `$$.field` keys the Webhooks page offers an operator must all exist on it.
+ * Compile-time, because a field that silently resolves to `undefined` looks
+ * exactly like a working callback until an integrator reads the body.
+ */
+type _SystemFieldsExist = AcceptanceCallbackSystemField extends keyof IntakeResponse ? true : never;
+const _systemFieldsExist: _SystemFieldsExist = true;
+void _systemFieldsExist;
 
 function snapshotPayload(payload: Record<string, unknown>): string {
   const keys = Object.keys(payload).filter((key) => !/secret|token|password|key/i.test(key));

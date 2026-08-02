@@ -124,6 +124,30 @@ export interface WebhookRoutePolicy {
 
 export type CreateWebhookRoutePolicyInput = Omit<WebhookRoutePolicy, 'id' | 'createdAt' | 'updatedAt'>;
 
+/**
+ * The fields PrintOps itself contributes to an acceptance callback — the shape
+ * of the intake response, which is the only `result` ever handed to a
+ * templatable callback. A `callbackPayloadTemplate` reaches these with the
+ * `$$.field` namespace; `$.field` stays reserved for the caller's own intake
+ * payload. Terminal result callbacks use a fixed envelope and ignore templates
+ * entirely (docs/architecture/result-callbacks.md §5).
+ *
+ * Shared so the API resolves and the Webhooks page offers exactly the same
+ * seven keys — a UI that advertises a field the resolver cannot supply is how
+ * the fabricated `$.event` / `$.printerId` list happened in the first place.
+ */
+export const ACCEPTANCE_CALLBACK_SYSTEM_FIELDS = [
+  'print_job_id',
+  'request_id',
+  'trace_id',
+  'resolved_printer_code',
+  'resolved_template_code',
+  'status',
+  'duplicate',
+] as const;
+
+export type AcceptanceCallbackSystemField = (typeof ACCEPTANCE_CALLBACK_SYSTEM_FIELDS)[number];
+
 export interface WebhookEndpoint {
   id: string;
   endpointCode: string;
@@ -145,10 +169,13 @@ export interface WebhookEndpoint {
   /** NATS reply subject template. May be a literal subject or a `$.field` path into the intake payload. */
   callbackNatsSubject?: string;
   /**
-   * Optional JSON payload template sent to the callback. Keys map to literal
-   * values, `$.field` references resolve from the ORIGINAL intake payload
-   * (so the caller gets back what they sent). When empty, a default envelope
-   * `{ request_id, print_job_id, status, trace_id, duplicate }` is used.
+   * Optional JSON payload template sent to the ACCEPTANCE callback. Keys map to
+   * literal values; `$.field` resolves from the ORIGINAL intake payload (so the
+   * caller gets back what they sent) and `$$.field` resolves from the intake
+   * response PrintOps produced (see ACCEPTANCE_CALLBACK_SYSTEM_FIELDS), so a
+   * custom template can carry both instead of trading one for the other. When
+   * empty, a default envelope `{ request_id, print_job_id, status, trace_id,
+   * duplicate }` is used.
    */
   callbackPayloadTemplate?: Record<string, unknown>;
   /** Send the callback only after the print result (success/failure) is known, instead of immediately after job creation. Defaults to false. */
