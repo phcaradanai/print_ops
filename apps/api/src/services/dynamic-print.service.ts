@@ -2,15 +2,20 @@ import type {
   JobPriority,
   IntakeAttemptRepositoryPort,
   IntakeSource,
-  JobCallbackIntent,
   PrintTemplateRepositoryPort,
   WebhookEndpointRepositoryPort,
 } from '@printerops/domain';
 import { CALLBACK_INTENT_METADATA_KEY } from '@printerops/domain';
 import { AppError, ValidationError } from '@printerops/shared';
+import type { WebhookEndpoint } from '@printerops/domain';
 import type { AcceptExternalJobService, ExternalPrintJobResponse } from './accept-external-job.service.js';
 import type { ResolvePrinterBindingService } from './resolve-printer-binding.service.js';
-import { resolveEndpointCallbackIntent } from './callback-intent.service.js';
+import {
+  resolveCallbackEndpoint,
+  wantsAcceptanceCallback,
+  type ResolvedCallbackEndpoint,
+} from './callback-intent.service.js';
+import type { WebhookCallbackService, WebhookCallbackLogger } from './webhook-callback.service.js';
 
 /**
  * DynamicPrintRequest is the transport-neutral input for the dynamic print
@@ -48,13 +53,32 @@ export interface DynamicPrintRequest {
  * audit are identical regardless of transport.
  */
 export class DynamicPrintService {
+  private callbacks: WebhookCallbackService | undefined;
+  private callbackLogger: WebhookCallbackLogger = {
+    info: (obj, msg) => console.info(msg, obj),
+    warn: (obj, msg) => console.warn(msg, obj),
+    error: (obj, msg) => console.error(msg, obj),
+  };
+
   constructor(
     private readonly resolver: ResolvePrinterBindingService,
     private readonly acceptExternalJob: AcceptExternalJobService,
     private readonly intakeLog?: IntakeAttemptRepositoryPort,
     private readonly endpoints?: WebhookEndpointRepositoryPort,
     private readonly templates?: PrintTemplateRepositoryPort,
-  ) {}
+    callbacks?: WebhookCallbackService,
+    callbackLogger?: WebhookCallbackLogger,
+  ) {
+    this.callbacks = callbacks;
+    if (callbackLogger) this.callbackLogger = callbackLogger;
+  }
+
+  /** Late-bind the callback service once the NATS publisher exists, mirroring
+   *  DynamicIntakeService — the consumer that needs it starts after the HTTP
+   *  wiring that creates it. */
+  setCallbackService(service: WebhookCallbackService): void {
+    this.callbacks = service;
+  }
 
   /**
    * @param opts.allowedPrinterCodes when non-empty, the RESOLVED printer must be
@@ -136,9 +160,9 @@ export class DynamicPrintService {
       }
     }
 
-    const callbackIntent = await this.resolveCallbackIntent(req, reject);
+    const resolvedEndpoint = await this.resolveCallbackEndpoint(req, reject);
 
-    return this.acceptExternalJob.execute(
+    const response = await this.acceptExternalJob.execute(
       {
         request_id: req.request_id,
         source_system: req.source_system,
@@ -152,25 +176,77 @@ export class DynamicPrintService {
         metadata: {
           ...(req.metadata ?? {}),
           code_profile: req.code_profile,
-          ...(callbackIntent ? { [CALLBACK_INTENT_METADATA_KEY]: callbackIntent } : {}),
+          ...(resolvedEndpoint ? { [CALLBACK_INTENT_METADATA_KEY]: resolvedEndpoint.intent } : {}),
         },
       },
       actorId,
       source,
     );
+
+    // Until now `endpoint_code` on this path bought a terminal callback and
+    // nothing else: NATS-submitted and /printer/:template/:profile jobs could
+    // never receive an acceptance notification at all, whatever the endpoint
+    // was configured for.
+    if (resolvedEndpoint) {
+      this.fireAcceptanceCallback(resolvedEndpoint.endpoint, req, printerCode, response);
+    }
+
+    return response;
   }
 
   /**
-   * Resolve `endpoint_code` into the immutable callback intent stored with the
-   * job, logging the rejection to the intake log so an operator can see WHY a
-   * NATS message was dead-lettered rather than printed.
+   * Fires the ACCEPTANCE notification for a job submitted through this path.
+   *
+   * Gating comes from the shared helper, deliberately: this entry point must
+   * not develop its own reading of `callbackOnPrintResult`.
    */
-  private async resolveCallbackIntent(
+  private fireAcceptanceCallback(
+    endpoint: WebhookEndpoint,
+    req: DynamicPrintRequest,
+    printerCode: string,
+    response: ExternalPrintJobResponse,
+  ): void {
+    if (!this.callbacks) return;
+    if (!wantsAcceptanceCallback(endpoint, response.duplicate)) return;
+
+    // Built here rather than reusing ExternalPrintJobResponse, which carries
+    // neither resolved_printer_code nor resolved_template_code. `$$.field` must
+    // mean the same thing regardless of which entry point the traffic came
+    // through, and that public response shape is returned to HTTP callers of
+    // /print-jobs and /printer/:tpl/:profile — widening it is a separate change.
+    const result: Record<string, unknown> = {
+      accepted: true,
+      print_job_id: response.print_job_id,
+      request_id: response.request_id,
+      trace_id: response.trace_id,
+      resolved_printer_code: printerCode,
+      resolved_template_code: req.code_template,
+      status: response.status,
+      duplicate: response.duplicate,
+    };
+
+    void this.callbacks
+      .send({ endpoint, intakePayload: req.payload ?? {}, result })
+      .catch((err: unknown) => {
+        this.callbackLogger.error(
+          { endpointId: endpoint.id, error: err instanceof Error ? err.message : String(err) },
+          'acceptance callback send failed',
+        );
+      });
+  }
+
+  /**
+   * Resolve `endpoint_code` into the validated endpoint plus the immutable
+   * callback intent stored with the job, logging the rejection to the intake
+   * log so an operator can see WHY a NATS message was dead-lettered rather
+   * than printed.
+   */
+  private async resolveCallbackEndpoint(
     req: DynamicPrintRequest,
     reject: (reason: string, error: AppError) => never,
-  ): Promise<JobCallbackIntent | undefined> {
+  ): Promise<ResolvedCallbackEndpoint | undefined> {
     try {
-      return await resolveEndpointCallbackIntent(
+      return await resolveCallbackEndpoint(
         this.endpoints,
         req.endpoint_code,
         req.source_system,

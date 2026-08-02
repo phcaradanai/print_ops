@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { PrintJobTerminal, WebhookEndpoint } from '@printerops/domain';
-import { readCallbackIntent } from '@printerops/domain';
+import { ACCEPTANCE_CALLBACK_SYSTEM_FIELDS, readCallbackIntent } from '@printerops/domain';
 
 import { InMemoryPrinterRepository } from '../infra/repos/in-memory-printer.repo.js';
 import { InMemoryJobRepository } from '../infra/repos/in-memory-job.repo.js';
@@ -930,6 +930,123 @@ describe('NATS callback delivery mode', () => {
 /* ------------------------------------------------------------------ */
 /* Phase 13 — the DynamicIntake (webhook) path                         */
 /* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* Acceptance callbacks on the shared dynamic-print path                */
+/*                                                                      */
+/* Both the NATS print-intake consumer and POST /printer/:tpl/:profile  */
+/* submit through DynamicPrintService. Until this landed, `endpoint_code`*/
+/* on that path bought a TERMINAL callback and nothing else: those jobs  */
+/* could never receive an acceptance notification of any kind.          */
+/* ------------------------------------------------------------------ */
+
+describe('dynamic print acceptance callback', () => {
+  let h: Harness;
+  let sent: Array<{ result: Record<string, unknown>; intakePayload: Record<string, unknown> }>;
+
+  beforeEach(async () => {
+    h = await buildHarness();
+    sent = [];
+    h.dynamicPrint.setCallbackService({
+      send: async (ctx: { result: Record<string, unknown>; intakePayload: Record<string, unknown> }) => {
+        sent.push({ result: ctx.result, intakePayload: ctx.intakePayload });
+        return { transport: 'HTTP' };
+      },
+    } as never);
+  });
+
+  it('fires for a NATS-submitted job, carrying all seven system fields', async () => {
+    await makeEndpoint(h, {
+      endpointCode: 'nats-accept', callbackUrl: 'https://receiver.example/r',
+      callbackOnPrintResult: false,
+    });
+    const accepted = await h.dynamicPrint.submit(
+      {
+        request_id: 'R-NATS-1', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE,
+        payload: { label: 'A' }, endpoint_code: 'nats-accept',
+      },
+      'nats:medisync',
+      { source: 'nats' },
+    );
+
+    expect(sent).toHaveLength(1);
+    // `$$.field` must mean the same thing regardless of entry point, so every
+    // key the Webhooks page offers has to be present here too.
+    for (const field of ACCEPTANCE_CALLBACK_SYSTEM_FIELDS) {
+      expect(sent[0]!.result).toHaveProperty(field);
+    }
+    expect(sent[0]!.result).toMatchObject({
+      print_job_id: accepted.print_job_id,
+      request_id: 'R-NATS-1',
+      trace_id: accepted.trace_id,
+      resolved_printer_code: PRINTER,
+      resolved_template_code: TEMPLATE,
+      duplicate: false,
+    });
+    // The caller's payload, so `$.field` resolves the same way too.
+    expect(sent[0]!.intakePayload).toEqual({ label: 'A' });
+  });
+
+  it('fires for the /printer/:template/:profile HTTP path', async () => {
+    await makeEndpoint(h, {
+      endpointCode: 'http-accept', callbackUrl: 'https://receiver.example/r',
+      callbackOnPrintResult: false,
+    });
+    await h.dynamicPrint.submit(
+      {
+        request_id: 'R-HTTP-1', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE,
+        payload: { label: 'B' }, endpoint_code: 'http-accept',
+      },
+      'actor',
+    );
+    expect(sent).toHaveLength(1);
+  });
+
+  it('respects the same toggle as every other entry point', async () => {
+    await makeEndpoint(h, {
+      endpointCode: 'nats-result', callbackUrl: 'https://receiver.example/r',
+      callbackOnPrintResult: true,
+    });
+    await h.dynamicPrint.submit(
+      {
+        request_id: 'R-NATS-2', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE,
+        payload: {}, endpoint_code: 'nats-result',
+      },
+      'nats:medisync',
+      { source: 'nats' },
+    );
+    expect(sent).toHaveLength(0);
+  });
+
+  it('notifies a duplicate at acceptance even in result mode', async () => {
+    await makeEndpoint(h, {
+      endpointCode: 'nats-dupe', callbackUrl: 'https://receiver.example/r',
+      callbackOnPrintResult: true,
+    });
+    const req = {
+      request_id: 'R-NATS-3', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE,
+      payload: {}, endpoint_code: 'nats-dupe',
+    };
+    await h.dynamicPrint.submit(req, 'nats:medisync', { source: 'nats' });
+    expect(sent).toHaveLength(0);
+
+    await h.dynamicPrint.submit(req, 'nats:medisync', { source: 'nats' });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.result).toMatchObject({ duplicate: true, status: 'DUPLICATE_RETURNED' });
+  });
+
+  it('stays silent when no endpoint_code was supplied', async () => {
+    await h.dynamicPrint.submit(
+      {
+        request_id: 'R-NATS-4', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE,
+        payload: {},
+      },
+      'nats:medisync',
+      { source: 'nats' },
+    );
+    expect(sent).toHaveLength(0);
+  });
+});
 
 describe('webhook intake path', () => {
   let h: Harness;

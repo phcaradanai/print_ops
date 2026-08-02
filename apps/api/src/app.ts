@@ -418,6 +418,12 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     // printer_code skipped binding resolution and left code_template unchecked.
     webhookEndpointRepo,
     templateRepo,
+    // Same reasoning as DynamicIntakeService above: an HTTP-capable service
+    // eagerly, so a pure-HTTP endpoint's acceptance callback fires whether or
+    // not the optional NATS consumer ever connects. Replaced with a
+    // NATS-capable instance below when it does.
+    new WebhookCallbackService(app.log, httpCallbackSender, undefined, webhookCallbackAttemptRepo),
+    app.log,
   );
 
   // --- Terminal result callbacks -----------------------------------------
@@ -882,6 +888,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   if (printIntakeCfg) {
     const natsPublisherLocal: NatsPublisher = (subject, payload) => natsManager.publish(subject, payload);
     dynamicIntake.setCallbackService(new WebhookCallbackService(app.log, httpCallbackSender, natsPublisherLocal, webhookCallbackAttemptRepo));
+    // The NATS print-intake consumer submits through dynamicPrint, so its
+    // acceptance callbacks need the same NATS-capable sender.
+    dynamicPrint.setCallbackService(new WebhookCallbackService(app.log, httpCallbackSender, natsPublisherLocal, webhookCallbackAttemptRepo));
     resultCallbackNats = natsPublisherLocal;
   }
   natsManager.start();

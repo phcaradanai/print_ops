@@ -142,6 +142,31 @@ export async function resolveEndpointCallbackIntent(
   sourceSystem: string,
   intakePayload: Record<string, unknown>,
 ): Promise<JobCallbackIntent | undefined> {
+  return (await resolveCallbackEndpoint(endpoints, endpointCode, sourceSystem, intakePayload))?.intent;
+}
+
+export interface ResolvedCallbackEndpoint {
+  endpoint: WebhookEndpoint;
+  intent: JobCallbackIntent;
+}
+
+/**
+ * As `resolveEndpointCallbackIntent`, but also hands back the endpoint it
+ * validated.
+ *
+ * The acceptance callback needs the endpoint itself — its transport, its
+ * destinations, its payload template — not just the derived terminal intent.
+ * Exposed here rather than re-looked-up by the caller so the exists / enabled /
+ * source_system ownership rules stay in exactly one place; duplicating them was
+ * the alternative, and one copy drifting is how a client ends up able to route
+ * results through another client's destination.
+ */
+export async function resolveCallbackEndpoint(
+  endpoints: WebhookEndpointRepositoryPort | undefined,
+  endpointCode: string | undefined,
+  sourceSystem: string,
+  intakePayload: Record<string, unknown>,
+): Promise<ResolvedCallbackEndpoint | undefined> {
   const code = endpointCode?.trim();
   if (!endpoints) {
     // Backward-compatible deployments and focused service tests may not
@@ -175,7 +200,7 @@ export async function resolveEndpointCallbackIntent(
   }
 
   try {
-    return buildCallbackIntent(endpoint, intakePayload);
+    return { endpoint, intent: buildCallbackIntent(endpoint, intakePayload) };
   } catch (err) {
     if (err instanceof CallbackUrlRejected) {
       throw new AppError('CALLBACK_DESTINATION_REJECTED', err.message, 422);

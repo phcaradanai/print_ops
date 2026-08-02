@@ -123,6 +123,31 @@ describe('NATS print-intake message handler', () => {
     expect(nc.published).toHaveLength(0);
   });
 
+  it('forwards endpoint_code, which is what makes an acceptance callback reachable over NATS', () => {
+    // DynamicPrintService fires the acceptance callback for whichever endpoint
+    // this code names. If the handler dropped the field, a NATS-submitted job
+    // would silently get no notification — which is exactly what happened
+    // before DynamicPrintService had a callback service at all.
+    const dynamicPrint = makeDynamicPrint();
+    const nc = makeNc();
+    const msg = makeMsg({
+      target_client_id: CLIENT_ID,
+      request_id: 'REQ-NATS-CB',
+      source_system: 'medisync',
+      code_template: 'prescription-sticker',
+      code_profile: 'sticker-profile',
+      endpoint_code: 'medisync-accept-hook',
+      payload: { hn: 'HN-0002' },
+    });
+
+    return handlePrintIntakeMessage(msg, { dynamicPrint, logger }, nc, cfg).then(() => {
+      const submitted = dynamicPrint.submitted[0]!;
+      expect(submitted['endpoint_code']).toBe('medisync-accept-hook');
+      expect(submitted['payload']).toEqual({ hn: 'HN-0002' });
+      expect(msg.ack).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('dead-letters when target_client_id does not match the client', async () => {
     const dynamicPrint = makeDynamicPrint();
     const nc = makeNc();
