@@ -16,7 +16,7 @@ import type {
 } from '@printerops/domain';
 import { CALLBACK_INTENT_METADATA_KEY } from '@printerops/domain';
 import { NotFoundError, ValidationError } from '@printerops/shared';
-import { buildCallbackIntentSafe } from './callback-intent.service.js';
+import { buildCallbackIntentSafe, wantsAcceptanceCallback } from './callback-intent.service.js';
 import { CreatePrintJobService } from './create-print-job.service.js';
 import { RoutePolicyResolverService } from './route-policy-resolver.service.js';
 import type { WebhookCallbackService, WebhookCallbackLogger } from './webhook-callback.service.js';
@@ -260,11 +260,10 @@ export class DynamicIntakeService {
     result: IntakeResponse,
   ): void {
     if (!this.callbacks) return;
-    if ((endpoint.callbackTransport ?? 'NONE') === 'NONE') return;
-    // Every newly accepted command receives one FINAL outcome from the terminal
-    // dispatcher, regardless of the legacy callbackOnPrintResult toggle.
-    // Duplicates create no new print, so acceptance is their final outcome.
-    if (result.duplicate !== true) return;
+    // This used to be `if (result.duplicate !== true) return;` — the acceptance
+    // callback fired ONLY for a resent request_id, never for a normal first
+    // accept, which is the case every endpoint is actually configured for.
+    if (!wantsAcceptanceCallback(endpoint, result.duplicate === true)) return;
     void this.callbacks
       .send({ endpoint, intakePayload, result: result as unknown as Record<string, unknown> })
       .catch((err: unknown) => {

@@ -276,7 +276,11 @@ describe('callback intent persistence', () => {
     expect(intent?.transports).toEqual(['HTTP']);
   });
 
-  it('still sends the final result when the legacy callbackOnPrintResult flag is off', async () => {
+  it('suppresses the terminal result when callbackOnPrintResult is off, and says why', async () => {
+    // Previously titled "still sends the final result when the legacy
+    // callbackOnPrintResult flag is off" — it asserted the undocumented
+    // behaviour where the terminal callback fired regardless of the toggle.
+    // result-callbacks.md §1 says off means acceptance-only.
     await makeEndpoint(h, {
       endpointCode: 'off', callbackTransport: 'HTTP',
       callbackUrl: 'https://receiver.example/r', callbackOnPrintResult: false,
@@ -287,11 +291,15 @@ describe('callback intent persistence', () => {
     );
     const job = await h.jobRepo.findById(accepted.print_job_id);
     const intent = readCallbackIntent(job?.metadata);
-    expect(intent?.enabled).toBe(true);
+    expect(intent?.enabled).toBe(false);
+    // A disabled intent still records the destination and the reason, so Job
+    // Detail can say why nothing was delivered instead of showing a blank.
+    expect(intent?.httpUrl).toBe('https://receiver.example/r');
+    expect(intent?.disabledReason).toContain('callbackOnPrintResult is off');
 
     await printAndSettle(h, accepted.print_job_id);
-    expect(h.httpCalls).toHaveLength(1);
-    expect(await h.deliveries.findAll({ printJobId: accepted.print_job_id })).toHaveLength(1);
+    expect(h.httpCalls).toHaveLength(0);
+    expect(await h.deliveries.findAll({ printJobId: accepted.print_job_id })).toHaveLength(0);
   });
 
   it('rejects an endpoint_code belonging to another source system, before printing', async () => {
@@ -948,7 +956,12 @@ describe('webhook intake path', () => {
     expect(h.httpCalls[0]!.body['print_status']).toBe('SUCCESS');
   });
 
-  it('sends one final result when the legacy callbackOnPrintResult flag is off', async () => {
+  it('sends the acceptance notification, and only that, when callbackOnPrintResult is off', async () => {
+    // Previously titled "sends one final result when the legacy
+    // callbackOnPrintResult flag is off" and asserted `sent` was EMPTY at
+    // acceptance — i.e. it locked in the bug this fix closes: a normal
+    // first-time accept fired nothing, because fireCallback returned early
+    // unless the request was a duplicate.
     const sent: Array<Record<string, unknown>> = [];
     h.dynamicIntake.setCallbackService({
       send: async (ctx: { result: Record<string, unknown> }) => { sent.push(ctx.result); return { transport: 'HTTP' }; },
@@ -962,10 +975,36 @@ describe('webhook intake path', () => {
       headers: {},
       body: { request_id: 'WI-2', type: 'test_label', label: 'A' },
     });
-    expect(sent).toHaveLength(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ print_job_id: res.print_job_id, request_id: 'WI-2' });
+    expect(sent[0]!['duplicate']).toBeFalsy();
 
     await printAndSettle(h, res.print_job_id);
-    expect(h.httpCalls).toHaveLength(1);
-    expect(h.httpCalls[0]!.body['print_status']).toBe('SUCCESS');
+    expect(h.httpCalls).toHaveLength(0);
+  });
+
+  it('notifies a duplicate at acceptance even when the endpoint is in result mode', async () => {
+    // A duplicate creates no new print, so it can never reach a terminal state.
+    // Suppressing its acceptance notification would leave the caller with
+    // nothing at all.
+    const sent: Array<Record<string, unknown>> = [];
+    h.dynamicIntake.setCallbackService({
+      send: async (ctx: { result: Record<string, unknown> }) => { sent.push(ctx.result); return { transport: 'HTTP' }; },
+    } as never);
+    await makeEndpoint(h, { endpointCode: 'intake-dupe', callbackUrl: 'https://receiver.example/results' });
+
+    const first = await h.dynamicIntake.execute({
+      endpointCode: 'intake-dupe', headers: {},
+      body: { request_id: 'WI-3', type: 'test_label', label: 'A' },
+    });
+    expect(sent).toHaveLength(0); // result mode: nothing at acceptance
+
+    const second = await h.dynamicIntake.execute({
+      endpointCode: 'intake-dupe', headers: {},
+      body: { request_id: 'WI-3', type: 'test_label', label: 'A' },
+    });
+    expect(second.print_job_id).toBe(first.print_job_id);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ duplicate: true, status: 'DUPLICATE_RETURNED' });
   });
 });

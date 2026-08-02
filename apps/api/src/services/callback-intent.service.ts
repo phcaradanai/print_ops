@@ -74,8 +74,47 @@ export function buildCallbackIntent(
   intent.enabled = transports.length > 0;
   if (!intent.enabled) {
     intent.disabledReason = `callbackTransport ${transport} is configured but no destination could be resolved from the payload`;
+  } else if (!wantsTerminalCallback(endpoint)) {
+    // The toggle decided here rather than in ResultCallbackDispatcher, for the
+    // same reason destinations are: the intent is an accept-time snapshot, and
+    // an operator flipping this switch must not retarget prints already on the
+    // wire. The dispatcher only ever sees the intent, never the endpoint — its
+    // existing `!intent.enabled` guard already carries the comment "an endpoint
+    // with callbackOnPrintResult off is a deliberate operator choice", which is
+    // the behaviour this line finally supplies.
+    //
+    // Destinations above are still resolved and SSRF-checked before this point,
+    // so a bad callback URL is still refused while a caller exists to be told,
+    // and Job Detail can still show where the result would have gone.
+    intent.enabled = false;
+    intent.disabledReason =
+      'endpoint callbackOnPrintResult is off: it is notified at acceptance, not on the print result';
   }
   return intent;
+}
+
+/**
+ * Which of the two callbacks an endpoint has asked for.
+ *
+ * `callbackOnPrintResult` was persisted and shown in the Webhooks UI but read
+ * by no dispatch code: the terminal callback fired unconditionally and the
+ * acceptance callback fired only for duplicate request_ids. These two helpers
+ * are the single place the toggle is interpreted, so no entry point can
+ * special-case it (see docs/architecture/result-callbacks.md §1).
+ */
+export function wantsTerminalCallback(endpoint: WebhookEndpoint): boolean {
+  return endpoint.callbackOnPrintResult === true;
+}
+
+/**
+ * A duplicate creates no new print, so it can never reach a terminal state:
+ * acceptance is its final outcome whatever the toggle says. Without this
+ * exception, a caller resending a request_id to an endpoint in result mode
+ * would be told nothing at all, ever.
+ */
+export function wantsAcceptanceCallback(endpoint: WebhookEndpoint, duplicate: boolean): boolean {
+  if ((endpoint.callbackTransport ?? 'NONE') === 'NONE') return false;
+  return duplicate || !wantsTerminalCallback(endpoint);
 }
 
 /**
