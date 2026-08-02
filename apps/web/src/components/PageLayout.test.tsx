@@ -33,4 +33,43 @@ describe('PageLayout compatibility facade', () => {
     expect(markup).not.toContain('<h1');
     expect(occurrences(markup, '<header')).toBe(1);
   });
+
+  it('renders the detail and footer landmarks only when those slots are filled', () => {
+    const bodyOnly = renderToStaticMarkup(<PageLayout title="Queue">Jobs</PageLayout>);
+
+    expect(bodyOnly).not.toContain('<aside');
+    expect(bodyOnly).not.toContain('<footer');
+
+    const withRegions = renderToStaticMarkup(
+      <PageLayout title="Queue" detail={<p>Evidence</p>} footer={<button>Reprint</button>}>
+        Jobs
+      </PageLayout>,
+    );
+
+    expect(occurrences(withRegions, '<aside')).toBe(1);
+    expect(occurrences(withRegions, '<footer')).toBe(1);
+    expect(withRegions).toContain('Evidence');
+    expect(withRegions).toContain('Reprint');
+  });
+
+  it('omits the header landmark entirely when a page passes no header content', () => {
+    const markup = renderToStaticMarkup(<PageLayout>Jobs</PageLayout>);
+
+    expect(markup).not.toContain('<header');
+    expect(markup).toContain('Jobs');
+  });
+
+  it('keeps a page to a single set of landmarks, so `detail` is the only aside', () => {
+    // The contract the guard in __tests__/layoutContract.test.ts enforces:
+    // one header, one aside, one footer per route, all owned by the scaffold.
+    const markup = renderToStaticMarkup(
+      <PageLayout title="Queue" detail={<p>Evidence</p>} footer={<button>Reprint</button>}>
+        Jobs
+      </PageLayout>,
+    );
+
+    expect(occurrences(markup, '<header')).toBe(1);
+    expect(occurrences(markup, '<aside')).toBe(1);
+    expect(occurrences(markup, '<footer')).toBe(1);
+  });
 });
