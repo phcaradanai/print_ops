@@ -1021,7 +1021,13 @@ export default function Webhooks() {
             </Inline>
           </div>
 
-          {/* Right Column: Sidebar Info Panel */}
+          {/* Right Column: Sidebar Info Panel.
+              Not a PageLayout `detail` region: this reference column belongs to
+              the endpoint editor (its variable chips write into the template
+              field beside it) and only exists while the editor is open, whereas
+              `detail` is a page-level region rendered alongside the endpoint
+              table below as well.
+              See docs/frontend/LAYOUT_COMPONENT_STANDARD.md. */}
           <div className="wh-sidebar">
             {/* Box 1: Sample Payload */}
             <Panel title={t('page.webhooks.samplePayload')} padding="lg">

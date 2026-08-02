@@ -22,8 +22,13 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
   const { form, ux } = editor;
   const geometry = getVisualPaperGeometry(form);
   const scale = Math.min(560 / geometry.widthMm, 560 / geometry.heightMm, 5);
+  // Not a PageLayout `detail` region: this canvas is the surface the operator
+  // edits against (drag, nudge, select a field), so it is half of the primary
+  // task rather than supporting evidence. Kept as a plain div — a page's only
+  // complementary landmark is the scaffold's `detail` slot.
+  // See docs/frontend/LAYOUT_COMPONENT_STANDARD.md.
   return (
-    <aside className="pp-preview-panel">
+    <div className="pp-preview-panel">
       <div className="pp-preview-panel__body">
         <div className="pp-preview-header">
           <div><span className="pp-preview-header__title">{t('page.paperProfiles.labelCanvas')}</span>
@@ -64,6 +69,6 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
         </div>
         <SelectionStatus field={editor.selectedField} t={t} />
       </div>
-    </aside>
+    </div>
   );
 }

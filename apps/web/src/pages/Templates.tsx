@@ -1001,7 +1001,13 @@ export default function Templates() {
                   aria-label={t('page.templates.content')}
                 />
               </div>
-              <aside className="tpl-vars">
+              {/* Not a PageLayout `detail` region: these buttons insert tokens at
+                  the caret of the textarea beside them, so they are part of the
+                  primary editing task and must stay adjacent to it in both
+                  document order and layout. Kept as a plain div — a page's only
+                  complementary landmark is the scaffold's `detail` slot.
+                  See docs/frontend/LAYOUT_COMPONENT_STANDARD.md. */}
+              <div className="tpl-vars">
                 <h3>{t('page.templates.availableKeys')}</h3>
                 <div className="tpl-vars__barcode-actions">
                   <button type="button" onClick={() => insertBarcodeToken('barcode')} title={t('page.templates.insertBarcodeHint')}>
@@ -1030,7 +1036,7 @@ export default function Templates() {
                   ))}
                 </ul>
                 <p className="tpl-vars__hint">{t('page.templates.insertHint')}</p>
-              </aside>
+              </div>
             </div>
           </div>
 

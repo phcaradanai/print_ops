@@ -785,7 +785,11 @@ export default function JobDetail() {
           />
         </Grid>
 
-        {/* ── Tier 2: forensics. Present, findable, no longer competing. ── */}
+        {/* ── Tier 2: forensics. Present, findable, no longer competing. ──
+            Deliberately not PageLayout's `detail` slot: collapsed-by-default
+            below the verdict is the tiering this page is built on, and a
+            side rail would put forensics back in permanent competition with
+            it. See docs/frontend/LAYOUT_COMPONENT_STANDARD.md. */}
         <details className="job-technical" open={debugMode ? true : undefined}>
           <summary className="job-technical__summary">
             <span>{t('page.jobDetail.technicalDetail')}</span>
