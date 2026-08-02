@@ -554,7 +554,6 @@ body {
 .ops-page__header,
 .page-header,
 .tpl-page-header,
-.wh-header,
 .pp-page-header {
   display: flex;
   min-width: 0;
@@ -572,7 +571,6 @@ body {
 
 .ops-page__heading,
 .tpl-page-heading,
-.wh-header-text,
 .pp-page-heading {
   min-width: 0;
   max-width: 72ch;
@@ -581,7 +579,6 @@ body {
 .ops-page__title,
 .ops-page__header h1,
 .tpl-page-header h1,
-.wh-header h1,
 .pp-page-header h1 {
   margin: 0;
   color: var(--neutral-deep);
@@ -595,7 +592,6 @@ body {
 .ops-page__description,
 .ops-page__header p,
 .tpl-page-header p,
-.wh-header p,
 .pp-page-header p {
   max-width: 72ch;
   margin: var(--spacing-xs) 0 0;
@@ -606,7 +602,6 @@ body {
 
 .ops-page__actions,
 .tpl-page-tools,
-.wh-header-actions,
 .pp-toolbar {
   display: flex;
   flex: 0 1 auto;
@@ -667,7 +662,6 @@ body {
   .ops-page__header,
 .page-header,
 .tpl-page-header,
-.wh-header,
 .pp-page-header {
     align-items: stretch;
     flex-direction: column;
@@ -676,7 +670,6 @@ body {
 
   .ops-page__actions,
   .tpl-page-tools,
-  .wh-header-actions,
   .pp-toolbar {
     width: 100%;
     justify-content: flex-start;
@@ -4034,52 +4027,6 @@ body {
   box-sizing: border-box;
 }
 
-.wh-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.wh-header-title-area {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-}
-
-.wh-header-text h1 {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #0f172a;
-  line-height: 1.2;
-}
-
-.wh-header-text p {
-  margin: 0.2rem 0 0;
-  font-size: 0.875rem;
-  color: #64748b;
-}
-
-.wh-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-
-.wh-card-title {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: #0f172a;
-  margin: 0 0 1.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
 .wh-form-layout {
   display: grid;
   grid-template-columns: 1fr 340px;
@@ -4239,15 +4186,6 @@ body {
   align-items: flex-start;
   gap: 0.5rem;
   line-height: 1.4;
-}
-
-.wh-table-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-  gap: 1rem;
 }
 
 .wh-tab {

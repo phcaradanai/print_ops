@@ -92,7 +92,6 @@ body {
 .ops-page__title,
 .ops-page__header h1,
 .tpl-page-header h1,
-.wh-header h1,
 .pp-page-header h1 {
   letter-spacing: 0;
   text-wrap: pretty;
@@ -101,7 +100,6 @@ body {
 .ops-page__description,
 .ops-page__header p,
 .tpl-page-header p,
-.wh-header p,
 .pp-page-header p {
   text-wrap: pretty;
 }
@@ -113,7 +111,6 @@ body {
 
 .ops-page__actions > *,
 .tpl-page-tools > *,
-.wh-header-actions > *,
 .pp-toolbar > * {
   flex: 0 0 auto;
 }
@@ -400,7 +397,6 @@ body {
   .ops-page__header,
   .page-header,
   .tpl-page-header,
-  .wh-header,
   .pp-page-header {
     align-items: stretch;
   }
@@ -435,7 +431,6 @@ body {
   .ops-page__header,
   .page-header,
   .tpl-page-header,
-  .wh-header,
   .pp-page-header {
     flex-direction: column;
     gap: var(--spacing-md);
@@ -444,14 +439,12 @@ body {
 
   .ops-page__actions,
   .tpl-page-tools,
-  .wh-header-actions,
   .pp-toolbar {
     justify-content: flex-start;
   }
 
   .ops-page__actions > *,
   .tpl-page-tools > *,
-  .wh-header-actions > *,
   .pp-toolbar > * {
     flex: 1 1 auto;
   }

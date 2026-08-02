@@ -12,6 +12,24 @@
   gap: var(--spacing-xs);
 }
 
+/* The title and its scope control read as one phrase, so they share a row and
+   wrap together rather than the scope being pushed to the far end. */
+.ui-section-heading__title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-lg);
+  flex-wrap: wrap;
+}
+
+.ui-section-heading__scope {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
 .ui-section-heading__description {
   max-width: 72ch;
   overflow-wrap: anywhere;

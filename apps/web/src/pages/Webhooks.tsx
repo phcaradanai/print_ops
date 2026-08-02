@@ -30,7 +30,6 @@ import {
   CardDetail,
   FormField,
   Freshness,
-  Heading,
   IconButton,
   Inline,
   Input,
@@ -707,22 +706,25 @@ export default function Webhooks() {
   };
 
   return (
-    <PageLayout className="wh-container" width="full" header={
-      <div className="wh-header">
-        <div className="wh-header-title-area">
-          <div className="wh-header-text">
-            <h1>{t('page.webhooks.title')}</h1>
-            <p>{t('page.webhooks.subtitle')}</p>
-            <Freshness
-              lastSuccessAt={endpointsResource.lastSuccessAt}
-              stale={endpointsResource.stale}
-              refreshing={endpointsResource.refreshing}
-              onRefresh={loadData}
-            />
-          </div>
-        </div>
-
-        <Toolbar label={t('page.webhooks.title')} align="end" className="wh-header-actions">
+    // `detail` is deliberately unused here. All three body sections — the
+    // endpoint editor, the endpoint table, and the callback log — are
+    // full-width primary content; none is a narrow supporting rail the way
+    // JobDetail's verdict panel is, and PageScaffold renders `detail` as an
+    // <aside> styled for a narrower column. See
+    // docs/frontend/LAYOUT_COMPONENT_STANDARD.md.
+    <PageLayout
+      className="wh-container"
+      width="full"
+      title={t('page.webhooks.title')}
+      description={t('page.webhooks.subtitle')}
+      actions={<>
+        <Freshness
+          lastSuccessAt={endpointsResource.lastSuccessAt}
+          stale={endpointsResource.stale}
+          refreshing={endpointsResource.refreshing}
+          onRefresh={loadData}
+        />
+        <Toolbar label={t('page.webhooks.title')} align="end">
           <Button variant="ghost" onClick={() => handleExportJSON()} title={t('page.webhooks.exportTitle')}>
             <TransferIcon action="export" /> {t('page.webhooks.export')}
           </Button>
@@ -746,8 +748,8 @@ export default function Webhooks() {
 
           <Button onClick={scrollToFormAndFocus}>{t('page.webhooks.create')}</Button>
         </Toolbar>
-      </div>
-    }>
+      </>}
+    >
       {/* Hidden File Input for Import */}
       <input
         ref={fileInputRef}
@@ -821,14 +823,16 @@ export default function Webhooks() {
 
       {/* Main Card 1: Form Section */}
       <Card ref={formCardRef}>
-        <div className="wh-card-title">
-          <span>{editingId ? t('page.webhooks.editingTitle').replace('{code}', form.endpointCode) : t('page.webhooks.createCardTitle')}</span>
-          {editingId && (
+        {/* Was a <span> in a bespoke wrapper — no heading semantics at all,
+            above sub-headings that were already real h3s. */}
+        <SectionHeading
+          title={editingId ? t('page.webhooks.editingTitle').replace('{code}', form.endpointCode) : t('page.webhooks.createCardTitle')}
+          actions={editingId ? (
             <Button variant="ghost" size="sm" onClick={resetForm}>
               <ActionIcon name="close" /> {t('page.webhooks.cancelEdit')}
             </Button>
-          )}
-        </div>
+          ) : undefined}
+        />
 
         <div className="wh-form-layout">
           {/* Left Column: Form Fields */}
@@ -1072,11 +1076,11 @@ export default function Webhooks() {
 
       {/* Main Card 2: Endpoints Table List */}
       <Card>
-        <div className="wh-table-header">
-          <Inline gap="lg">
-            <Heading level={2}>{t('page.webhooks.allEndpoints')}</Heading>
-
-            {/* Filter Tabs */}
+        <SectionHeading
+          title={t('page.webhooks.allEndpoints')}
+          /* Filter tabs stay on the title's row: "All endpoints
+             [All|Enabled|Draft|None]" is one phrase. */
+          scope={
             <TabList label={t('page.webhooks.allEndpoints')}>
               <Tab selected={tabFilter === 'all'} count={counts.all} onClick={() => setTabFilter('all')}>
                 {t('page.webhooks.tabAll')}
@@ -1091,8 +1095,8 @@ export default function Webhooks() {
                 {t('page.webhooks.transport.none')}
               </Tab>
             </TabList>
-          </Inline>
-
+          }
+          actions={
           <Toolbar label={t('page.webhooks.allEndpoints')} className="wh-table-controls">
             <Input
               aria-label={t('page.webhooks.searchPlaceholder')}
@@ -1119,7 +1123,8 @@ export default function Webhooks() {
               <ActionIcon name="refresh" />
             </IconButton>
           </Toolbar>
-        </div>
+          }
+        />
 
         {/* Table Content */}
         <DataTable label={t('page.webhooks.allEndpoints')} responsive>
@@ -1279,20 +1284,24 @@ export default function Webhooks() {
           not just "we called send()". Covers both live traffic and every
           "ทดสอบ callback" fire above. */}
       <Card>
-        <div className="wh-table-header">
-          <Inline gap="lg">
-            <Heading level={2}>{t('page.webhooks.callbackLogTitle')}</Heading>
+        <SectionHeading
+          title={t('page.webhooks.callbackLogTitle')}
+          description={t('page.webhooks.callbackLogDescription')}
+          /* Same shape as the endpoints table above: the toggle narrows what
+             the log shows, so it reads with the title, not as an action. */
+          scope={
             <Checkbox
               label={t('page.webhooks.callbackLogFailedOnly')}
               checked={callbackLogFailedOnly}
               onChange={(e) => setCallbackLogFailedOnly(e.target.checked)}
             />
-          </Inline>
-          <IconButton label={t('common.refresh')} onClick={loadCallbackLog} disabled={callbackLogLoading}>
-            <ActionIcon name="refresh" />
-          </IconButton>
-        </div>
-        <Text as="p" tone="muted">{t('page.webhooks.callbackLogDescription')}</Text>
+          }
+          actions={
+            <IconButton label={t('common.refresh')} onClick={loadCallbackLog} disabled={callbackLogLoading}>
+              <ActionIcon name="refresh" />
+            </IconButton>
+          }
+        />
         <DataTable label={t('page.webhooks.callbackLogTitle')} responsive>
             <thead>
               <tr>

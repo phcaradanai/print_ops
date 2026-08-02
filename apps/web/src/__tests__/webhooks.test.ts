@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 
 // Unit tests for Webhooks UI state logic (Import, Export, Batch Operations, Template Variables, Filtering)
@@ -105,6 +107,40 @@ function filterEndpoints(
     return true;
   });
 }
+
+describe('Webhooks page layout composition', () => {
+  // Source-level, deliberately: rendering this page needs the locale provider,
+  // the API client and four resource hooks, and the thing worth guarding is
+  // structural — that the header goes through PageLayout's own props instead of
+  // drifting back to the bespoke `wh-header` markup this page used to carry.
+  // See docs/frontend/webhooks-layout-audit.md.
+  const source = readFileSync(
+    fileURLToPath(new URL('../pages/Webhooks.tsx', import.meta.url)),
+    'utf8',
+  );
+
+  it('composes the page header from title, description and actions', () => {
+    expect(source).toContain("title={t('page.webhooks.title')}");
+    expect(source).toContain("description={t('page.webhooks.subtitle')}");
+    expect(source).toMatch(/actions=\{<>/);
+  });
+
+  it('passes no custom header, so the shared PageHeader owns the landmark', () => {
+    expect(source).not.toMatch(/\bheader=\{/);
+  });
+
+  it('no longer references the retired bespoke layout classes', () => {
+    for (const dead of ['wh-header', 'wh-header-title-area', 'wh-header-text',
+                        'wh-header-actions', 'wh-card-title', 'wh-table-header']) {
+      expect(source).not.toContain(dead);
+    }
+  });
+
+  it('routes all three card headings through SectionHeading', () => {
+    // One per Card, plus the two level-3 sub-headings inside the editor.
+    expect(source.match(/<SectionHeading/g) ?? []).toHaveLength(5);
+  });
+});
 
 describe('Webhooks Import JSON logic', () => {
   it('parses valid endpoint array JSON structure', () => {
