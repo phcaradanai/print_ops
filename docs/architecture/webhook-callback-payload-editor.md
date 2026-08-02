@@ -463,3 +463,199 @@ Report back, per task:
   NATS print-intake and `/printer/:template/:profile`), and the result of
   the new NATS regression test.
 ```
+
+## Status as of 2026-08-02 (re-verified against code)
+
+Tasks 1-4 are **done**, and done well — this was checked directly against
+current source, not assumed:
+
+- **Task 1** — `$$.field` (system fields) alongside `$.field` (intake
+  payload) is implemented in `apps/api/src/services/webhook-callback.service.ts`
+  (`SYSTEM_FIELD_PATH`, updated `resolveTemplate`) and mirrored client-side
+  in the new `apps/web/src/features/webhooks/callbackTemplate.ts`
+  (`resolveCallbackTemplate`). Chose option (a) from the two offered, with
+  the exact non-collision reasoning this document laid out.
+- **Task 2** — `DEFAULT_CALLBACK_TEMPLATE` (in `callbackTemplate.ts`) now
+  mixes both sources correctly; the old `${.event}` syntax is gone. The
+  "Sample Payload" panel now calls `previewCallbackTemplate()` to render an
+  actually-resolved body instead of a hand-written fake.
+- **Task 3** — Available Variables is now two real groups: system fields
+  (`SYSTEM_FIELD_TOKENS`, from `ACCEPTANCE_CALLBACK_SYSTEM_FIELDS` in
+  `packages/domain`) and intake fields derived from the selected policy's
+  `payloadMapping` (`intakeFieldTokens()`). `Policy.payloadMapping` is now
+  typed on the frontend.
+- **Task 4** — `docs/webhook-callback.md`'s "Endpoint callback settings"
+  section now documents the `$.` / `$$.` split with the field table.
+
+Tasks 0, 5, and 6 are now **also done**:
+
+- **Task 0** — the duplicate-only early exit is gone from `fireCallback()`.
+  `callbackOnPrintResult` is now read, in exactly one place
+  (`wantsAcceptanceCallback` / `wantsTerminalCallback` in
+  `callback-intent.service.ts`): off → acceptance fires and terminal does
+  not; on → the reverse; duplicates always get acceptance. The terminal
+  gate lives in `buildCallbackIntent()` so the decision is snapshotted with
+  the job at accept time rather than re-derived at terminal time. The two
+  tests that asserted the old, undocumented behaviour were rewritten, and
+  `callback-toggle.test.ts` states the contract directly.
+- **Task 5** — the false NATS claim in `docs/webhook-callback.md` is
+  replaced with the corrected code map (and, since Task 6 shipped in the
+  same body of work, the new coverage rather than just the retraction).
+- **Task 6** — `DynamicPrintService` now takes a `WebhookCallbackService`
+  and fires the acceptance callback for both paths that share it: the NATS
+  print-intake consumer and `POST /api/v1/printer/:code_template/:code_profile`.
+  `resolveCallbackEndpoint()` hands back the validated endpoint alongside
+  the intent so the exists/enabled/source_system rules stay in one place.
+  The callback `result` is built separately from `ExternalPrintJobResponse`,
+  whose public shape is unchanged, so `$$.field` means the same thing at
+  every entry point.
+
+`POST /api/v1/print-jobs` still gets terminal callbacks only — it goes
+through `AcceptExternalJobService` directly rather than
+`DynamicPrintService`, and widening it was not in scope.
+
+## Part C — reissue: remaining work only (Task 0, 5, 6)
+
+Part B above is kept as the full historical record. Use this prompt instead
+when re-dispatching the work — it assumes Tasks 1-4 are already merged and
+gives the exact current file/symbol names so the agent doesn't rediscover
+or redo them.
+
+```
+You are working in the PrintOps monorepo. The acceptance-callback payload
+editor on the Webhooks page was already fixed (system fields via `$$.`,
+correct default template, real Available Variables panel, updated docs) —
+do not redo that work. What's left is why the callback often doesn't fire
+at all, a stale doc claim, and extending coverage to NATS-submitted jobs.
+
+Read first:
+- docs/architecture/webhook-callback-payload-editor.md — read the whole
+  file, especially "Critical — the acceptance callback does not fire for
+  ordinary traffic today" and the "Status as of 2026-08-02" section, which
+  tells you exactly what is and isn't done already.
+- docs/architecture/result-callbacks.md §1 — the documented
+  acceptance-vs-terminal contract your fix in Task 0 must match.
+- apps/api/src/services/dynamic-intake.service.ts — `fireCallback()`
+  (currently ~line 257-269) and its two call sites.
+- apps/api/src/services/callback-intent.service.ts — `buildCallbackIntent`,
+  `resolveEndpointCallbackIntent`.
+- apps/api/src/services/result-callback-dispatcher.ts — where the terminal
+  callback's firing condition (`intent.enabled`) is decided today.
+- apps/api/src/services/dynamic-print.service.ts and
+  apps/api/src/infra/nats/print-intake.ts — the shared entry point for
+  NATS-submitted jobs and the `/printer/:code_template/:code_profile` HTTP
+  route.
+- apps/api/src/services/webhook-callback.service.ts and
+  apps/web/src/features/webhooks/callbackTemplate.ts — the ALREADY-DONE
+  `$$.`/`$.` resolution (backend and client mirror) that Task 6's new
+  entry points must reuse, not reimplement.
+- apps/api/src/services/accept-external-job.service.ts —
+  `ExternalPrintJobResponse` shape, needed for Task 6.
+
+Do this in three commits, in order:
+
+Task 0 — Fix the acceptance-callback firing gate (do this first; nothing
+else in this repo depends on the acceptance callback actually firing until
+this lands).
+`fireCallback()` in dynamic-intake.service.ts currently has
+`if (result.duplicate !== true) return;`, so it only ever sends for a
+resubmitted (duplicate) request_id — never for a normal first accept.
+Separately, `endpoint.callbackOnPrintResult` is persisted and shown in the
+UI (Webhooks.tsx, the "send on print done" checkbox) but read nowhere in
+dispatch logic: neither `fireCallback`, nor `buildCallbackIntent` in
+callback-intent.service.ts, nor `ResultCallbackDispatcher` check it. The
+terminal callback fires unconditionally today, confirmed by the existing
+test titled "still sends the final result when the legacy
+callbackOnPrintResult flag is off" (result-callback.test.ts, search for
+that string — line numbers have likely shifted since the last audit).
+Bring the code in line with docs/architecture/result-callbacks.md §1:
+`callbackOnPrintResult=false` → acceptance fires, terminal does not.
+`callbackOnPrintResult=true` → terminal fires, acceptance does not — EXCEPT
+duplicates, which always get the acceptance notification since a duplicate
+can never reach a terminal state.
+  - Remove the duplicate-only early exit in `fireCallback` so a normal
+    accept can send too.
+  - Gate the acceptance send on `callbackOnPrintResult !== true` (duplicates
+    always send regardless).
+  - Gate the terminal send on `callbackOnPrintResult === true` — decide
+    whether `intent.enabled` in `buildCallbackIntent()` should become the
+    place this is checked, or whether `ResultCallbackDispatcher` checks it
+    directly; document the choice.
+  - Update the existing test(s) asserting the old, undocumented behavior to
+    assert the corrected contract instead — search for
+    "callbackOnPrintResult" across apps/api/src/tests to find all of them,
+    do not rely on the line numbers in this prompt.
+  - Add a regression test: a normal (non-duplicate) accept through
+    DynamicIntakeService with `callbackOnPrintResult: false` must now
+    produce an acceptance send.
+  - Call out in the PR description that this changes live dispatch
+    behavior for every configured endpoint, not just a refactor.
+
+Task 5 — Correct the stale NATS claim in docs/webhook-callback.md.
+It currently says the NATS intake path reuses DynamicIntakeService and
+therefore fires the acceptance callback for NATS-sourced jobs. That is not
+true as of this audit (see docs/architecture/webhook-callback-payload-editor.md,
+"NATS coverage" section) — the only NATS consumer
+(infra/nats/print-intake.ts) calls DynamicPrintService, a different class.
+If Task 6 (below) ships in the same body of work, update the line to
+reflect the NEW correct state instead of just removing the false claim.
+
+Task 6 — Wire NATS-submitted and `/printer/:code_template/:code_profile`
+HTTP-submitted jobs into the same acceptance callback.
+Both share `DynamicPrintService.submit()`, which already accepts an
+optional `endpoint_code` and resolves it via `resolveEndpointCallbackIntent`
+for the TERMINAL callback only — it never fires an acceptance send.
+  - `resolveEndpointCallbackIntent` looks up and validates the
+    `WebhookEndpoint` but returns only the derived `JobCallbackIntent`.
+    Either extend it to also return the resolved endpoint, or add one
+    additional cheap lookup in `DynamicPrintService.submit()` — do not
+    hand-duplicate the exists/enabled/source_system validation it already
+    does.
+  - Give `DynamicPrintService` a `WebhookCallbackService` dependency the
+    way `DynamicIntakeService` already has one (constructor param, or a
+    late-bound `setCallbackService`-style method if NATS consumer startup
+    ordering requires it — see the existing pattern in
+    dynamic-intake.service.ts).
+  - `ExternalPrintJobResponse` doesn't carry `resolved_printer_code` /
+    `resolved_template_code`. `DynamicPrintService.submit()` already knows
+    both (it resolves `printerCode` and has `req.code_template`) — build a
+    separate `result` object for the callback send containing all 7 system
+    fields already defined in `packages/domain`'s
+    `ACCEPTANCE_CALLBACK_SYSTEM_FIELDS`, so the meaning of `$$.field` is
+    identical regardless of entry point. Do not change
+    `ExternalPrintJobResponse`'s public shape — it's returned to HTTP
+    callers today.
+  - Handle the duplicate branch in `AcceptExternalJobService.execute()` the
+    same way dynamic-intake.service.ts does: duplicates always fire the
+    acceptance callback.
+  - Reuse Task 0's corrected `callbackOnPrintResult` gating here — do not
+    special-case this entry point.
+  - Tests: extend apps/api/src/tests/dynamic-print-http.test.ts, and add or
+    extend a NATS-consumer test exercising
+    `infra/nats/print-intake.ts`'s exported `handlePrintIntakeMessage`
+    (it's exported specifically for unit testing) to assert a
+    NATS-submitted job with `endpoint_code` set now fires the acceptance
+    callback with the correct system fields.
+  - Update docs/architecture/dynamic-webhook-intake.md and
+    docs/webhook-callback.md once this ships — both currently describe only
+    the `/intake/:endpointCode` HTTP path.
+
+Constraints (unchanged from the original scope):
+- Do not add template support to terminal result callbacks or rejection
+  callbacks — both stay fixed-envelope (docs/architecture/result-callbacks.md
+  §5). Task 0 changes WHEN the terminal callback fires, never WHAT it
+  contains.
+- Existing saved endpoints must keep behaving exactly as before until an
+  operator edits and re-saves — no silent reinterpretation of a stored
+  template (this constraint is about the payload shape, which Tasks 1-4
+  already handled; Task 0 is a deliberate, called-out behavior change to
+  WHEN things fire, and should be treated as a bugfix, not something to
+  preserve).
+- SSRF/destination-URL handling is out of scope — do not touch
+  callback-url-guard.ts.
+
+Report back: the before/after firing conditions for Task 0, which tests you
+updated and why, and which entry points fire the acceptance callback after
+Task 6 (confirm NATS print-intake and `/printer/:template/:profile`
+specifically).
+```

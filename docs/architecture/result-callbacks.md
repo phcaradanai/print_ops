@@ -12,7 +12,7 @@ There are **two** different callbacks, and conflating them was the original defe
 |---|---|---|
 | Fired when | the job is queued | the print reaches a terminal state |
 | Carries | `status: "QUEUED"` | `print_status: SUCCESS \| FAILED \| UNVERIFIED \| TIMEOUT \| CANCELLED` |
-| Sent by | `DynamicIntakeService` via `WebhookCallbackService` | `ResultCallbackDispatcher` |
+| Sent by | `DynamicIntakeService` / `DynamicPrintService` via `WebhookCallbackService` | `ResultCallbackDispatcher` |
 | Retries | no (best-effort, single shot) | yes (bounded, persisted) |
 | Delivery record | attempt log only | durable `CallbackDelivery` |
 
@@ -28,6 +28,18 @@ The one exception is a **duplicate** submission: it creates no new print, so it
 can never produce a terminal result. Duplicates always get the acceptance
 notification, whatever the toggle says, so the caller is not left waiting on a
 result that cannot arrive.
+
+The toggle is read in exactly one place — `wantsAcceptanceCallback()` /
+`wantsTerminalCallback()` in `callback-intent.service.ts` — so no intake path
+can develop its own interpretation of it. For a long time none of them read it
+at all: the terminal callback fired unconditionally, and the acceptance
+callback fired only for duplicates, which is why this section did not describe
+the code.
+
+Acceptance callbacks fire for `POST /api/v1/intake/:endpointCode`, for
+`POST /api/v1/printer/:code_template/:code_profile`, and for the NATS
+print-intake envelope — the latter two identified by an optional
+`endpoint_code`. `POST /api/v1/print-jobs` gets terminal callbacks only.
 
 ## 2. Flow
 

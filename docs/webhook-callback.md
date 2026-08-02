@@ -55,11 +55,23 @@ caller** after the job is accepted — over **HTTP, NATS, or both**.
   `payloadMapping` of the route policy bound to the endpoint. It also previews
   the resolved body, so what is shown as an example is derived from the
   template rather than written by hand.
-- `callbackOnPrintResult`: if checked, the callback is deferred until the print
-  result is known (success/failure) instead of firing right after job creation.
-  > Note: the MVP fires on job-acceptance (`BOTH`/`HTTP`/`NATS` after
-  > `createPrintJob`). The `callbackOnPrintResult` flag is stored and surfaced;
-  > wiring it to the async worker-completion event is the next milestone.
+- `callbackOnPrintResult`: which of the two callbacks this endpoint gets. They
+  are mutually exclusive — an endpoint receives one or the other, never both.
+
+  | Setting | Fires | Carries |
+  |---|---|---|
+  | off (default) | acceptance, right after the job is queued | `status: "QUEUED"`, shaped by `callbackPayloadTemplate` |
+  | on | terminal, once the print reaches a final state | the fixed versioned envelope, with `print_status` |
+
+  **Duplicates are the one exception**: a resent `request_id` creates no new
+  print and so can never reach a terminal state, so it always gets the
+  acceptance notification whatever this is set to.
+
+  This is enforced in `buildCallbackIntent()`, which snapshots the decision with
+  the job at accept time — flipping the toggle later does not redirect prints
+  already on the wire. An endpoint in acceptance mode still stores a callback
+  intent, with `enabled: false` and a `disabledReason`, so Job Detail can say
+  why no result was delivered and where it would have gone.
 
 ## How it works (code map)
 - `packages/domain/.../template.ts` — `WebhookEndpoint` gains the 5 callback fields.
@@ -70,9 +82,27 @@ caller** after the job is accepted — over **HTTP, NATS, or both**.
 - `apps/api/src/services/webhook-callback.service.ts` — resolves the dynamic
   URL/subject, renders the payload template, and fires HTTP (POST) and/or NATS
   (publish) transports. Best-effort: failures are logged, never fail the accept.
-- `apps/api/src/services/dynamic-intake.service.ts` — fires the callback right
-  after the job is created (HTTP intake path; the NATS intake path reuses the same
-  `DynamicIntakeService`, so it fires for NATS-sourced jobs too).
+- `apps/api/src/services/callback-intent.service.ts` — the single place
+  `callbackOnPrintResult` is interpreted (`wantsAcceptanceCallback`,
+  `wantsTerminalCallback`), so no entry point can develop its own reading of it.
+- `apps/api/src/services/dynamic-intake.service.ts` — fires the acceptance
+  callback right after the job is created, for `POST /api/v1/intake/:endpointCode`.
+- `apps/api/src/services/dynamic-print.service.ts` — fires the same acceptance
+  callback for the two paths that share it: the NATS print-intake consumer
+  (`infra/nats/print-intake.ts`) and `POST /api/v1/printer/:code_template/:code_profile`.
+  Both identify the endpoint with an optional `endpoint_code` on the envelope or
+  body.
+
+  > Corrects an earlier claim here that "the NATS intake path reuses the same
+  > `DynamicIntakeService`, so it fires for NATS-sourced jobs too". It never
+  > did: the NATS consumer calls `DynamicPrintService`, a different class, and
+  > until that class was given a `WebhookCallbackService` a NATS-submitted job
+  > could not receive an acceptance callback at all. `POST /api/v1/print-jobs`
+  > goes through `AcceptExternalJobService` directly and still gets terminal
+  > callbacks only.
+
+  Which transport a callback is *delivered* over is independent of which path
+  the job came in on: that is `callbackTransport` (HTTP, NATS, or both).
 - `apps/api/src/routes/v1/webhook.routes.ts` — `POST /webhook-endpoints/:id/callback-test`
   lets you fire a sample callback from the UI (button "Test callback").
 - `apps/web/src/pages/Webhooks.tsx` + i18n EN/TH — edit form + test button.
