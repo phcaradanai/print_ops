@@ -28,27 +28,29 @@ describe('webhook workspace source guards', () => {
 
   it('keeps authentication, route policy, and callback transport separate', () => {
     const editor = read('./components/EndpointEditor.tsx');
-    expect(editor).toContain("authModeLabel");
-    expect(editor).toContain("routePolicyLabel");
-    expect(editor).toContain("callbackTransportTitle");
-    expect(editor).toContain("showHttp");
-    expect(editor).toContain("showNats");
+    expect(editor).toContain('authModeLabel');
+    expect(editor).toContain('routePolicyLabel');
+    expect(editor).toContain('callbackTransportTitle');
+    expect(editor).toContain('showHttp');
+    expect(editor).toContain('showNats');
   });
 
   it('keeps endpoint and delivery failures on independent resources', () => {
     const workspace = read('./WebhookWorkspace.tsx');
-    expect(workspace).toContain("endpointsResource.error");
-    expect(workspace).toContain("callbackLogResource.error");
+    expect(workspace).toContain('endpointsResource.error');
+    expect(workspace).toContain('callbackLogResource.error');
     expect(workspace).toContain("view === 'history'");
   });
 
-  it('renders mobile record surfaces instead of relying on a miniature table', () => {
+  it('renders record surfaces at portrait-tablet and mobile widths instead of a miniature table', () => {
     const endpoints = read('./components/EndpointList.tsx');
     const history = read('./components/CallbackDeliveryLog.tsx');
     const css = read('./webhooks.css');
     expect(endpoints).toContain('RecordList');
     expect(history).toContain('RecordList');
     expect(css).toContain('.webhook-endpoint-cards');
-    expect(css).toContain('@media (max-width: 760px)');
+    expect(css).toContain('.webhook-delivery-cards');
+    expect(css).toMatch(/@media \(max-width: (?:860|1100)px\)[\s\S]*?\.webhook-endpoint-table,[\s\S]*?display: none;/);
+    expect(css).toMatch(/@media \(max-width: (?:860|1100)px\)[\s\S]*?\.webhook-endpoint-cards,[\s\S]*?display: flex;/);
   });
 });
