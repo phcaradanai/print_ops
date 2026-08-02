@@ -61,7 +61,6 @@ export function WebhookDialogs({ controller }: { controller: WebhookWorkspaceCon
     if (!detailsUrl) return;
     await navigator.clipboard.writeText(detailsUrl);
     setCopied(true);
-    window.setTimeout(() => setCopied(false), 2500);
   };
 
   return (
@@ -91,13 +90,19 @@ export function WebhookDialogs({ controller }: { controller: WebhookWorkspaceCon
                 <Button variant="secondary" size="sm" onClick={() => void copyUrl()}>
                   <ActionIcon name="copy" /> {t('page.webhooks.copyIntakeUrl')}
                 </Button>
-                {copied && <Text size="label" tone="success" aria-live="polite">{t('page.webhooks.copySuccess')}</Text>}
+                {copied && (
+                  <Text size="label" tone="success" aria-live="polite">
+                    {t('page.webhooks.copySuccess')}
+                  </Text>
+                )}
               </Inline>
             </Stack>
 
             <Stack gap="xs">
               <Text size="label" tone="muted">{t('page.webhooks.curlExampleLabel')}</Text>
-              <CodeBlock label={t('page.webhooks.curlExampleLabel')}>{curlExample(origin, detailsEndpoint.endpointCode)}</CodeBlock>
+              <CodeBlock label={t('page.webhooks.curlExampleLabel')}>
+                {curlExample(origin, detailsEndpoint.endpointCode)}
+              </CodeBlock>
             </Stack>
 
             <CardDetail>
@@ -108,11 +113,15 @@ export function WebhookDialogs({ controller }: { controller: WebhookWorkspaceCon
                 <Mono>{detailsEndpoint.authMode || 'NONE'}</Mono>
               </CardDetailItem>
               <CardDetailItem label={t('page.webhooks.routePolicy')}>
-                {detailsPolicy ? `${detailsPolicy.policyCode} — ${detailsPolicy.name}` : detailsEndpoint.routePolicyId || '—'}
+                {detailsPolicy
+                  ? `${detailsPolicy.policyCode} — ${detailsPolicy.name}`
+                  : detailsEndpoint.routePolicyId || '—'}
               </CardDetailItem>
               <CardDetailItem label={t('page.webhooks.statusLabelColon')}>
                 <Badge tone={detailsEndpoint.enabled ? 'success' : 'neutral'}>
-                  {detailsEndpoint.enabled ? t('page.webhooks.statusEnabled') : t('page.webhooks.statusDraft')}
+                  {detailsEndpoint.enabled
+                    ? t('page.webhooks.statusEnabled')
+                    : t('page.webhooks.statusDraft')}
                 </Badge>
               </CardDetailItem>
               <CardDetailItem label={t('page.webhooks.callbackTrigger')}>
@@ -145,10 +154,13 @@ export function WebhookDialogs({ controller }: { controller: WebhookWorkspaceCon
       <Dialog
         open={pendingDelete != null}
         onClose={() => setPendingDelete(null)}
+        dismissOnBackdrop={false}
         title={t('page.webhooks.deleteTitle')}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setPendingDelete(null)}>{t('common.cancel')}</Button>
+            <Button variant="secondary" onClick={() => setPendingDelete(null)}>
+              {t('common.cancel')}
+            </Button>
             <Button variant="danger" busy={busy} onClick={() => void confirmDelete()}>
               <ActionIcon name="delete" /> {t('page.webhooks.deleteTitle')}
             </Button>
@@ -167,20 +179,28 @@ export function WebhookDialogs({ controller }: { controller: WebhookWorkspaceCon
       <Dialog
         open={batchDeleteOpen}
         onClose={() => setBatchDeleteOpen(false)}
+        dismissOnBackdrop={false}
         title={t('page.webhooks.batchDeleteTitle')}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setBatchDeleteOpen(false)}>{t('common.cancel')}</Button>
+            <Button variant="secondary" onClick={() => setBatchDeleteOpen(false)}>
+              {t('common.cancel')}
+            </Button>
             <Button variant="danger" busy={busy} onClick={() => void confirmBatchDelete()}>
-              <ActionIcon name="delete" /> {t('page.webhooks.batchDeleteConfirm').replace('{n}', String(selectedEndpoints.length))}
+              <ActionIcon name="delete" />{' '}
+              {t('page.webhooks.batchDeleteConfirm').replace('{n}', String(selectedEndpoints.length))}
             </Button>
           </>
         }
       >
         <Stack gap="md">
-          <Text>{t('page.webhooks.batchDeleteBody').replace('{n}', String(selectedEndpoints.length))}</Text>
+          <Text>
+            {t('page.webhooks.batchDeleteBody').replace('{n}', String(selectedEndpoints.length))}
+          </Text>
           <div className="webhook-dialog-code-list" tabIndex={0}>
-            {selectedEndpoints.map((endpoint) => <Mono key={endpoint.id}>{endpoint.endpointCode}</Mono>)}
+            {selectedEndpoints.map((endpoint) => (
+              <Mono key={endpoint.id}>{endpoint.endpointCode}</Mono>
+            ))}
           </div>
         </Stack>
       </Dialog>
@@ -191,8 +211,12 @@ export function WebhookDialogs({ controller }: { controller: WebhookWorkspaceCon
         title={t('page.webhooks.importPreviewTitle')}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setImportCandidates(null)}>{t('common.cancel')}</Button>
-            <Button busy={busy} onClick={() => void confirmImport()}>{t('page.webhooks.importApply')}</Button>
+            <Button variant="secondary" onClick={() => setImportCandidates(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button busy={busy} onClick={() => void confirmImport()}>
+              {t('page.webhooks.importApply')}
+            </Button>
           </>
         }
       >
@@ -211,10 +235,20 @@ export function WebhookDialogs({ controller }: { controller: WebhookWorkspaceCon
               <tbody>
                 {importCandidates.map((candidate, index) => (
                   <tr key={`${candidate.endpointCode}-${index}`}>
-                    <DataCell label={t('page.webhooks.colEndpointCode')}><Mono>{candidate.endpointCode}</Mono></DataCell>
-                    <DataCell label={t('page.webhooks.name')}>{candidate.endpoint.name || '—'}</DataCell>
+                    <DataCell label={t('page.webhooks.colEndpointCode')}>
+                      <Mono>{candidate.endpointCode}</Mono>
+                    </DataCell>
+                    <DataCell label={t('page.webhooks.name')}>
+                      {candidate.endpoint.name || '—'}
+                    </DataCell>
                     <DataCell label={t('page.webhooks.colExistingStatus')}>
-                      <Badge tone={candidate.status === 'invalid' ? 'danger' : candidate.status === 'existing' ? 'warning' : 'success'}>
+                      <Badge
+                        tone={candidate.status === 'invalid'
+                          ? 'danger'
+                          : candidate.status === 'existing'
+                            ? 'warning'
+                            : 'success'}
+                      >
                         {translateCandidateStatus(candidate)}
                       </Badge>
                     </DataCell>
@@ -242,13 +276,25 @@ export function WebhookDialogs({ controller }: { controller: WebhookWorkspaceCon
       >
         {selectedAttempt && (
           <CardDetail>
-            <CardDetailItem label={t('page.webhooks.endpoint')}><Mono>{selectedAttempt.endpointCode}</Mono></CardDetailItem>
-            <CardDetailItem label={t('page.webhooks.colChannel')}><Badge>{selectedAttempt.transport}</Badge></CardDetailItem>
+            <CardDetailItem label={t('page.webhooks.endpoint')}>
+              <Mono>{selectedAttempt.endpointCode}</Mono>
+            </CardDetailItem>
+            <CardDetailItem label={t('page.webhooks.colChannel')}>
+              <Badge>{selectedAttempt.transport}</Badge>
+            </CardDetailItem>
             <CardDetailItem label={t('page.webhooks.colTrigger')}>
-              {selectedAttempt.trigger === 'test' ? t('page.webhooks.triggerTest') : t('page.webhooks.triggerLive')}
+              {selectedAttempt.trigger === 'test'
+                ? t('page.webhooks.triggerTest')
+                : t('page.webhooks.triggerLive')}
             </CardDetailItem>
             <CardDetailItem label={t('page.webhooks.colOutcome')}>
-              <Badge tone={selectedAttempt.outcome === 'success' ? 'success' : selectedAttempt.outcome === 'failed' ? 'danger' : 'neutral'}>
+              <Badge
+                tone={selectedAttempt.outcome === 'success'
+                  ? 'success'
+                  : selectedAttempt.outcome === 'failed'
+                    ? 'danger'
+                    : 'neutral'}
+              >
                 {selectedAttempt.outcome === 'success'
                   ? t('page.webhooks.outcomeSuccess')
                   : selectedAttempt.outcome === 'failed'
@@ -256,11 +302,19 @@ export function WebhookDialogs({ controller }: { controller: WebhookWorkspaceCon
                     : t('page.webhooks.outcomeSkipped')}
               </Badge>
             </CardDetailItem>
-            <CardDetailItem label={t('page.webhooks.colHttpStatus')}><Mono>{selectedAttempt.httpStatus ?? '—'}</Mono></CardDetailItem>
-            <CardDetailItem label={t('page.webhooks.colDuration')}><Mono>{selectedAttempt.durationMs} ms</Mono></CardDetailItem>
-            <CardDetailItem label={t('page.webhooks.target')}><Mono className="webhook-bounded-code">{selectedAttempt.target || '—'}</Mono></CardDetailItem>
+            <CardDetailItem label={t('page.webhooks.colHttpStatus')}>
+              <Mono>{selectedAttempt.httpStatus ?? '—'}</Mono>
+            </CardDetailItem>
+            <CardDetailItem label={t('page.webhooks.colDuration')}>
+              <Mono>{selectedAttempt.durationMs} ms</Mono>
+            </CardDetailItem>
+            <CardDetailItem label={t('page.webhooks.target')}>
+              <Mono className="webhook-bounded-code">{selectedAttempt.target || '—'}</Mono>
+            </CardDetailItem>
             <CardDetailItem label={t('page.webhooks.errorDetail')}>
-              <Text tone={selectedAttempt.errorMessage ? 'danger' : 'muted'}>{selectedAttempt.errorMessage || '—'}</Text>
+              <Text tone={selectedAttempt.errorMessage ? 'danger' : 'muted'}>
+                {selectedAttempt.errorMessage || '—'}
+              </Text>
             </CardDetailItem>
           </CardDetail>
         )}
