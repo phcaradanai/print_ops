@@ -17,6 +17,7 @@ import './templatesEditor.css';
 import './paperProfilesLibrary.css';
 import './paperProfilesLibraryGeometryHotfix.css';
 import './paperProfilesEditor.css';
+import './paperProfilesCompletion.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
