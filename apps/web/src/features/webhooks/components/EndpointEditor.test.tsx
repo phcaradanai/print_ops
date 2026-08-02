@@ -121,6 +121,17 @@ describe('EndpointEditor', () => {
     expect(html).toContain('page.webhooks.validationJsonParse');
   });
 
+  it('keeps line numbers aligned to actual newline-delimited rows', () => {
+    const html = renderToStaticMarkup(
+      <EndpointEditor controller={controllerFor({ callbackPayloadTemplate: '{\n  "long": "value"\n}' })} />,
+    );
+    const gutter = html.match(/<div class="webhook-json-editor__gutter"[^>]*>(.*?)<\/div>/s)?.[1] ?? '';
+
+    expect(gutter).toContain('<span>1</span><span>2</span><span>3</span>');
+    expect(gutter).not.toContain('<span>4</span>');
+    expect(html).toContain('wrap="off"');
+  });
+
   it('disables callback testing for an unsaved endpoint and explains why', () => {
     const html = renderToStaticMarkup(<EndpointEditor controller={controllerFor()} />);
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>.*Test callback/s);
