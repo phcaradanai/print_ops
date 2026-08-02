@@ -92,9 +92,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: webhooks-ui-evidence
+          name: webhooks-second-pass-ui-evidence
           path: |
-            artifacts/ui-unification/webhooks
+            artifacts/ui-unification/webhooks-second-pass
             artifacts/browser/test-results
             artifacts/browser/report
           if-no-files-found: warn
