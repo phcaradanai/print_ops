@@ -39,4 +39,20 @@ describe('SearchField', () => {
     expect(markup).toContain('ui-input--invalid');
     expect(markup).toContain('กรุณาระบุคำค้น');
   });
+
+  it('treats an empty error string as no error', () => {
+    const markup = renderToStaticMarkup(
+      <SearchField
+        label="ค้นหางาน"
+        value=""
+        error=""
+        onValueChange={() => undefined}
+      />,
+    );
+
+    expect(markup).not.toContain('aria-invalid="true"');
+    expect(markup).not.toContain('ui-input--invalid');
+    expect(markup).not.toContain('ui-field--invalid');
+    expect(markup).not.toContain('ui-field-error');
+  });
 });

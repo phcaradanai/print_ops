@@ -28,7 +28,7 @@ export function SearchField({
   inputClassName,
   ...inputProps
 }: SearchFieldProps) {
-  const isInvalid = invalid || error != null;
+  const isInvalid = invalid || Boolean(error);
 
   return (
     <div className={`ui-search-field${className ? ` ${className}` : ''}`}>
