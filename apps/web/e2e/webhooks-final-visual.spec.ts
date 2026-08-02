@@ -196,8 +196,13 @@ async function openDesktopRowMenu(page: Page, endpointCode: string) {
     name: `Actions for ${endpointCode}`,
     exact: true,
   });
+  await trigger.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(50);
   await trigger.click();
-  await expect(page.getByRole('menu', { name: `Actions for ${endpointCode}`, exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', {
+    name: `View details ${endpointCode}`,
+    exact: true,
+  })).toBeVisible();
 }
 
 test('captures complete desktop operating evidence', async ({ page }) => {
@@ -285,7 +290,10 @@ test('captures empty, tablet, mobile, Thai, and 200 percent zoom without page ov
     const responsivePage = await browser.newPage({ viewport });
     await openWebhooks(responsivePage, 'en', viewport);
     await settleResponsiveNav(responsivePage);
-    await expect(responsivePage.locator('.webhook-endpoint-cards')).toBeVisible();
+    const expectedSurface = viewport.width > 860
+      ? responsivePage.locator('.webhook-endpoint-table')
+      : responsivePage.locator('.webhook-endpoint-cards');
+    await expect(expectedSurface).toBeVisible();
     await screenshot(responsivePage, viewport.name);
     if (viewport.width === 390) {
       await responsivePage.locator('.ui-page-header__actions')
