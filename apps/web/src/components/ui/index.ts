@@ -6,8 +6,11 @@ export { PageLayout, type PageDensity, type PageLayoutProps, type PageWidth } fr
 export { PageFooter, type PageFooterProps } from '../molecules/PageFooter/index.js';
 export { PageHeader, type PageHeaderProps } from '../molecules/PageHeader/index.js';
 export { PageSection, type PageSectionProps } from '../molecules/PageSection/index.js';
+export { SearchField, type SearchFieldProps } from '../molecules/SearchField/index.js';
 export { SectionHeading, type SectionHeadingProps } from '../molecules/SectionHeading/index.js';
+export { SelectFilter, type SelectFilterProps } from '../molecules/SelectFilter/index.js';
 export { PageScaffold, type PageScaffoldProps } from '../organisms/PageScaffold/index.js';
+export { ResourceToolbar, type ResourceToolbarProps } from '../organisms/ResourceToolbar/index.js';
 export { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '../PageState.js';
 export { StatusBadge, type StatusBadgeSize } from '../StatusBadge.js';
 export { Input, Select, Textarea, Checkbox, Chip, Label, type ChipProps, type ControlSize } from './inputs.js';
