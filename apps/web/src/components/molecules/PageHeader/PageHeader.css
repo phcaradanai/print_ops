@@ -1,6 +1,7 @@
 .ui-page-header {
   display: flex;
   min-width: 0;
+  grid-area: header;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--spacing-xl);
@@ -41,15 +42,19 @@
   flex-wrap: wrap;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .ui-page-header {
     align-items: stretch;
     flex-direction: column;
-    gap: var(--spacing-lg);
-    padding-bottom: var(--spacing-lg);
+    gap: var(--spacing-md);
   }
 
   .ui-page-header__actions {
+    width: 100%;
     justify-content: flex-start;
+  }
+
+  .ui-page-header__actions > * {
+    min-height: 44px;
   }
 }

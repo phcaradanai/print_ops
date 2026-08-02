@@ -25,6 +25,11 @@
   --page-region-gap: var(--spacing-xl);
 }
 
+.ui-page-scaffold__header {
+  min-width: 0;
+  grid-area: header;
+}
+
 .ui-page-scaffold__body {
   display: grid;
   min-width: 0;
@@ -35,15 +40,29 @@
 .ui-page-scaffold__detail {
   min-width: 0;
   grid-area: detail;
+  padding-top: var(--spacing-xl);
+  border-top: 1px solid var(--neutral-border);
 }
 
 .ui-page-scaffold__footer {
+  display: flex;
   min-width: 0;
   grid-area: footer;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
+  padding-top: var(--spacing-xl);
+  border-top: 1px solid var(--neutral-border);
+  flex-wrap: wrap;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .ui-page-scaffold {
     --page-region-gap: var(--spacing-xl);
+    --page-section-gap: var(--spacing-lg);
+  }
+
+  .ui-page-scaffold__footer > * {
+    min-height: 44px;
   }
 }
