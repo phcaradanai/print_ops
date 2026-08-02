@@ -34,7 +34,7 @@ jobs:
   verify:
     name: Typecheck, tests, build, and browser evidence
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
 
     steps:
       - name: Check out repository
@@ -64,7 +64,28 @@ jobs:
       - name: Build packaged SPA test fixture
         run: npm run build -w @printerops/web
 
-      - name: Test all workspaces
+      - name: Test domain workspace
+        run: npm run test -w packages/domain
+
+      - name: Test shared workspace
+        run: npm run test -w packages/shared
+
+      - name: Test adapters workspace
+        run: npm run test -w packages/adapters
+
+      - name: Test API workspace
+        run: npm run test -w apps/api
+
+      - name: Test web workspace
+        run: npm run test -w apps/web
+
+      - name: Test desktop workspace
+        run: npm run test -w apps/desktop --if-present
+
+      - name: Test Go runner
+        run: npm run test:runner-go
+
+      - name: Test all workspaces through root command
         run: npm run test
 
       - name: Test webhook and callback API contracts
