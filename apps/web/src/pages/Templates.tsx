@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';
 import { apiFetch } from '../api/client.js';
 import { ApiError, errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
@@ -402,16 +402,30 @@ export default function Templates() {
   } : EMPTY_FORM;
   const formDirty = Object.keys(EMPTY_FORM).some((key) => form[key as keyof typeof form] !== baselineForm[key as keyof typeof baselineForm]);
 
+  function updateEditorForm(next: SetStateAction<typeof form>) {
+    // Any user edit invalidates both the selected saved-template identity and
+    // every proof generated for the previous form. This keeps stale server
+    // responses and already-rendered proofs from being mistaken for evidence
+    // of the values currently visible in the editor.
+    previewRequestIdRef.current += 1;
+    setSelectedId(null);
+    setPreview(null);
+    setPreviewHtml('');
+    setPreviewNote('');
+    setPreviewError('');
+    setForm(next);
+  }
+
   function insertSnippet(snippet: string) {
     const el = contentRef.current;
     if (!el) {
-      setForm((prev) => ({ ...prev, content: prev.content + snippet }));
+      updateEditorForm((prev) => ({ ...prev, content: prev.content + snippet }));
       return;
     }
     const start = el.selectionStart ?? form.content.length;
     const end = el.selectionEnd ?? start;
     const next = form.content.slice(0, start) + snippet + form.content.slice(end);
-    setForm((prev) => ({ ...prev, content: next }));
+    updateEditorForm((prev) => ({ ...prev, content: next }));
     requestAnimationFrame(() => {
       el.focus();
       el.setSelectionRange(start + snippet.length, start + snippet.length);
@@ -921,7 +935,7 @@ export default function Templates() {
                   <Input
                     {...control}
                     value={form.templateCode}
-                    onChange={(e) => setForm({ ...form, templateCode: e.target.value })}
+                    onChange={(e) => updateEditorForm({ ...form, templateCode: e.target.value })}
                     placeholder={t('page.templates.templateCodePlaceholder')}
                   />
                 )}
@@ -935,7 +949,7 @@ export default function Templates() {
                   <Input
                     {...control}
                     value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    onChange={(e) => updateEditorForm({ ...form, name: e.target.value })}
                     placeholder={t('page.templates.templateNamePlaceholder')}
                   />
                 )}
@@ -945,7 +959,7 @@ export default function Templates() {
                   <Select
                     {...control}
                     value={form.paperProfileId}
-                    onChange={(e) => setForm({ ...form, paperProfileId: e.target.value })}
+                    onChange={(e) => updateEditorForm({ ...form, paperProfileId: e.target.value })}
                   >
                     <option value="">{t('page.templates.selectPaperProfile')}</option>
                     {profiles.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}
@@ -963,7 +977,7 @@ export default function Templates() {
                     key={engine}
                     className={`tpl-engine-card${form.engine === engine ? ' is-selected' : ''}`}
                     aria-pressed={form.engine === engine}
-                    onClick={() => setForm({ ...form, engine })}
+                    onClick={() => updateEditorForm({ ...form, engine })}
                   >
                     <span className="tpl-engine-card__icon" aria-hidden="true"><TemplateIcon name={ENGINE_ICON[engine]} /></span>
                     <span className="tpl-engine-card__text">
@@ -989,7 +1003,7 @@ export default function Templates() {
                   className="tpl-editor-content"
                   mono={form.engine === 'JSON_LAYOUT' || form.engine === 'ZPL' || form.engine === 'RAW_TEXT' || form.engine === 'TSPL' || form.engine === 'EPL'}
                   value={form.content}
-                  onChange={(e) => setForm({ ...form, content: e.target.value })}
+                  onChange={(e) => updateEditorForm({ ...form, content: e.target.value })}
                   ref={contentRef}
                   placeholder={t('page.templates.contentPlaceholder')}
                   onScroll={(e) => {
