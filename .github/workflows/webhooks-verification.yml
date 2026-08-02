@@ -81,7 +81,11 @@ jobs:
           npm run test -w apps/api -- --reporter=verbose 2>&1 | tee artifacts/verification/api-tests.log
 
       - name: Test web workspace
-        run: npm run test -w apps/web
+        shell: bash
+        run: |
+          mkdir -p artifacts/verification
+          set -o pipefail
+          npm run test -w apps/web -- --reporter=verbose 2>&1 | tee artifacts/verification/web-tests.log
 
       - name: Test desktop workspace
         run: npm run test -w apps/desktop --if-present
