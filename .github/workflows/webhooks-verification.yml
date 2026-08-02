@@ -32,9 +32,9 @@ permissions:
 
 jobs:
   verify:
-    name: Typecheck, focused tests, build, and browser evidence
+    name: Typecheck, tests, build, and browser evidence
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
 
     steps:
       - name: Check out repository
@@ -61,8 +61,8 @@ jobs:
       - name: Typecheck all workspaces
         run: npm run typecheck
 
-      - name: Test complete web workspace
-        run: npm run test -w @printerops/web
+      - name: Test all workspaces
+        run: npm run test
 
       - name: Test webhook and callback API contracts
         working-directory: apps/api
