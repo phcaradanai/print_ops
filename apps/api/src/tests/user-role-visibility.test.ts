@@ -1,0 +1,111 @@
+import Fastify from 'fastify';
+import jwt from '@fastify/jwt';
+import { describe, expect, it } from 'vitest';
+import type { Role, User } from '@printerops/domain';
+import { InMemoryUserRepository } from '../infra/repos/in-memory-user.repo.js';
+import { v1UserRoutes } from '../routes/v1/users.routes.js';
+
+const ROLES: Role[] = ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'];
+
+async function buildTestApp() {
+  const app = Fastify();
+  await app.register(jwt, { secret: 'user-role-visibility-test-secret' });
+  app.decorate('authenticate', async function (req) {
+    await req.jwtVerify();
+  });
+
+  const users = new InMemoryUserRepository();
+  const now = new Date('2026-07-31T00:00:00.000Z');
+  for (const role of ROLES) {
+    users.seed({
+      id: role.toLowerCase(),
+      email: `${role.toLowerCase()}@example.test`,
+      name: role,
+      passwordHash: `scrypt$hidden-${role}`,
+      role,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    } satisfies User);
+  }
+
+  await app.register(async (v1) => v1UserRoutes(v1, { users }), { prefix: '/api/v1' });
+  return app;
+}
+
+describe('user directory role visibility', () => {
+  it.each([
+    ['OWNER', ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER']],
+    ['ADMIN', ['ADMIN', 'OPERATOR', 'VIEWER']],
+    ['OPERATOR', ['OPERATOR', 'VIEWER']],
+    ['VIEWER', ['VIEWER']],
+  ] as const)('%s sees only its own role and lower roles', async (role, visibleRoles) => {
+    const app = await buildTestApp();
+    const authorization = `Bearer ${app.jwt.sign({ sub: role.toLowerCase(), role, email: `${role.toLowerCase()}@example.test` })}`;
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/users',
+      headers: { authorization },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().map((user: { role: Role }) => user.role)).toEqual(visibleRoles);
+    expect(response.body).not.toContain('passwordHash');
+    expect(response.body).not.toContain('scrypt$');
+    await app.close();
+  });
+
+  it('allows a higher role to set lower-role page access', async () => {
+    const app = await buildTestApp();
+    const authorization = `Bearer ${app.jwt.sign({ sub: 'admin', role: 'ADMIN', email: 'admin@example.test' })}`;
+    const response = await app.inject({ method: 'PUT', url: '/api/v1/users/operator/access', headers: { authorization }, payload: { allowedPages: ['/', '/jobs'] } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ id: 'operator', allowedPages: ['/', '/jobs'] });
+    await app.close();
+  });
+
+  it('prevents self-service and upward access changes while OWNER remains immutable', async () => {
+    const app = await buildTestApp();
+    const operatorAuth = `Bearer ${app.jwt.sign({ sub: 'operator', role: 'OPERATOR', email: 'operator@example.test' })}`;
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/users/operator/access', headers: { authorization: operatorAuth }, payload: { allowedPages: ['/'] } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/users/admin/access', headers: { authorization: operatorAuth }, payload: { allowedPages: ['/'] } })).statusCode).toBe(403);
+    const ownerAuth = `Bearer ${app.jwt.sign({ sub: 'owner', role: 'OWNER', email: 'owner@example.test' })}`;
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/users/owner/access', headers: { authorization: ownerAuth }, payload: { allowedPages: ['/'] } })).statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('allows only a higher role to activate or deactivate a lower-role account', async () => {
+    const app = await buildTestApp();
+    const adminAuth = `Bearer ${app.jwt.sign({ sub: 'admin', role: 'ADMIN', email: 'admin@example.test' })}`;
+    const deactivate = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/users/operator/status',
+      headers: { authorization: adminAuth },
+      payload: { isActive: false },
+    });
+    expect(deactivate.statusCode).toBe(200);
+    expect(deactivate.json()).toEqual({ id: 'operator', isActive: false });
+
+    const activate = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/users/operator/status',
+      headers: { authorization: adminAuth },
+      payload: { isActive: true },
+    });
+    expect(activate.statusCode).toBe(200);
+    expect(activate.json()).toEqual({ id: 'operator', isActive: true });
+    await app.close();
+  });
+
+  it('rejects self, equal-role, upward, OWNER, and malformed status changes', async () => {
+    const app = await buildTestApp();
+    const operatorAuth = `Bearer ${app.jwt.sign({ sub: 'operator', role: 'OPERATOR', email: 'operator@example.test' })}`;
+    const ownerAuth = `Bearer ${app.jwt.sign({ sub: 'owner', role: 'OWNER', email: 'owner@example.test' })}`;
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/users/operator/status', headers: { authorization: operatorAuth }, payload: { isActive: false } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/users/admin/status', headers: { authorization: operatorAuth }, payload: { isActive: false } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/users/owner/status', headers: { authorization: ownerAuth }, payload: { isActive: false } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: '/api/v1/users/viewer/status', headers: { authorization: ownerAuth }, payload: { isActive: 'yes' } })).statusCode).toBe(400);
+    await app.close();
+  });
+});

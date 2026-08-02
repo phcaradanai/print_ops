@@ -1,12 +1,36 @@
-export type JobStatus =
-  | 'PENDING'
-  | 'QUEUED'
-  | 'RUNNING'
-  | 'SUCCESS'
-  | 'FAILED'
-  | 'TIMEOUT'
-  | 'CANCELLED'
-  | 'RETRYING';
+/**
+ * Canonical job-status vocabulary. Runtime consumers such as the queue filter
+ * use this export so the UI cannot silently drift from the backend enum.
+ */
+export const JOB_STATUSES = [
+  'ACCEPTED',
+  'VALIDATED',
+  'QUEUED',
+  'DISPATCHED',
+  'PRINTING',
+  'SUCCESS',
+  /**
+   * Sent, and nothing reported a fault, but no device channel could confirm a
+   * page came out. Distinct from FAILED on purpose: a page may well exist, so
+   * reprinting is an operator decision rather than a safe automatic retry.
+   */
+  'UNVERIFIED',
+  'FAILED',
+  'TIMEOUT',
+  'CANCELLED',
+  'DUPLICATE_RETURNED',
+] as const;
+
+export type JobStatus = (typeof JOB_STATUSES)[number];
+
+export type JobPriority = 'urgent' | 'high' | 'normal' | 'low';
+
+export const PRIORITY_WEIGHT: Record<JobPriority, number> = {
+  urgent: 100,
+  high: 75,
+  normal: 50,
+  low: 25,
+};
 
 export interface TraceStep {
   stepName: string;
@@ -41,16 +65,38 @@ export interface JobTrace {
   steps: TraceStep[];
 }
 
+/** Fast-print-path timing measurements (all in milliseconds). */
+export interface JobLatency {
+  totalLatencyMs?: number;
+  validationMs?: number;
+  queueWaitMs?: number;
+  dispatchMs?: number;
+  runnerExecMs?: number;
+  spoolerMs?: number;
+  printerAckMs?: number;
+}
+
 export interface Job {
   id: string;
   printerId: string;
+  printerCode?: string;
+  templateCode?: string;
+  resolvedTemplateCode?: string;
+  paperProfileId?: string;
+  routePolicyId?: string;
+  renderedPrintPayload?: string;
   createdBy: string;
+  sourceSystem?: string;
+  sourceReference?: string;
+  requestId?: string;
   status: JobStatus;
   priority: number;
+  priorityLabel: JobPriority;
   traceId: string;
   correlationId: string;
   documentUrl?: string;
   documentBase64?: string;
+  payloadSnapshot?: string;
   mimeType: string;
   copies: number;
   duplex: boolean;
@@ -59,11 +105,30 @@ export interface Job {
   resolution?: string;
   retryCount: number;
   maxRetries: number;
+  receivedAt?: Date;
+  validatedAt?: Date;
   queuedAt?: Date;
+  dispatchedAt?: Date;
+  runnerReceivedAt?: Date;
+  spoolerSentAt?: Date;
+  printerAckAt?: Date;
   startedAt?: Date;
   finishedAt?: Date;
+  completedAt?: Date;
+  latency?: JobLatency;
+  templateTiming?: {
+    intakeReceivedAt?: Date;
+    routeResolvedAt?: Date;
+    templateResolvedAt?: Date;
+    renderedAt?: Date;
+    queuedAt?: Date;
+    routeResolveMs?: number;
+    renderMs?: number;
+  };
   errorCode?: string;
   errorMessage?: string;
+  runnerId?: string;
+  adapterUsed?: string;
   metadata: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
@@ -82,7 +147,19 @@ export type CreateJobInput = Pick<
   documentUrl?: string;
   documentBase64?: string;
   priority?: number;
+  priorityLabel?: JobPriority;
   maxRetries?: number;
   mediaType?: string;
   resolution?: string;
+  printerCode?: string;
+  templateCode?: string;
+  resolvedTemplateCode?: string;
+  paperProfileId?: string;
+  routePolicyId?: string;
+  renderedPrintPayload?: string;
+  templateTiming?: Job['templateTiming'];
+  sourceSystem?: string;
+  sourceReference?: string;
+  requestId?: string;
+  payloadSnapshot?: string;
 };

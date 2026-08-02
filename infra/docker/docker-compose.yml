@@ -1,5 +1,13 @@
 version: '3.9'
 
+# NOTE: postgres/redis below are NOT used by the API today — the API only
+# supports in-memory or SQLite (sql.js) storage (DB_MODE=memory|sqlite; see
+# apps/api/src/app.ts) and an in-memory job queue (no Redis/BullMQ). These
+# services are kept here as scaffolding for future PostgreSQL work
+# (infra/migrations/ has an unapplied schema for that), not because the app
+# currently talks to them. Wire up SqlitePrinterRepository etc. via
+# DB_MODE=sqlite + PRINTOPS_DB_PATH if you just want durable storage today.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -28,19 +36,29 @@ services:
       - '3001:3001'
     environment:
       PORT: '3001'
+      # Must be overridden with a real secret in any non-throwaway
+      # environment — the API refuses to start with NODE_ENV=production and
+      # no JWT_SECRET set, rather than silently signing tokens with this
+      # placeholder (see apps/api/src/app.ts).
       JWT_SECRET: change-me-in-production
     depends_on:
       - postgres
       - redis
 
+  # apps/runner (the old TypeScript runner) no longer exists in this repo —
+  # it has been fully replaced by the Go runner in apps/runner-go. This
+  # previously pointed at a nonexistent infra/docker/Dockerfile.runner and a
+  # source tree that no longer exists, so `docker-compose up` could never
+  # have built it.
   runner:
     build:
       context: ../../
-      dockerfile: infra/docker/Dockerfile.runner
+      dockerfile: infra/docker/Dockerfile.runner-go
     environment:
-      API_URL: http://api:3001
-      RUNNER_NAME: runner-docker
-      SUPPORTED_PROTOCOLS: fake,ipp,cups
+      PRINTOPS_API_BASE_URL: http://api:3001
+      PRINTOPS_RUNNER_NAME: runner-docker
+      PRINTOPS_DISCOVERY_MODE: fake
+      PRINTOPS_EXECUTOR_MODE: fake
     depends_on:
       - api
 

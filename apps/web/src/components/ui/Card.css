@@ -1,0 +1,12 @@
+.ui-card {
+  min-width: 0;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg);
+  background: var(--neutral-surface);
+  color: var(--neutral-text);
+}
+.ui-card--subtle { background: var(--neutral-subtle); }
+.ui-card--pad-none { padding: 0; }
+.ui-card--pad-md { padding: var(--spacing-md); }
+.ui-card--pad-lg { padding: var(--spacing-lg); }
+.ui-card--pad-xl { padding: var(--spacing-xl); }

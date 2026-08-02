@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-nats-settings"
+description = "Enables the save_nats_settings command without any pre-configured scope."
+commands.allow = ["save_nats_settings"]
+
+[[permission]]
+identifier = "deny-save-nats-settings"
+description = "Denies the save_nats_settings command without any pre-configured scope."
+commands.deny = ["save_nats_settings"]

@@ -1,6 +1,6 @@
 {
   "name": "@printerops/adapters",
-  "version": "0.1.0",
+  "version": "0.1.9",
   "private": true,
   "type": "module",
   "exports": {
@@ -20,6 +20,7 @@
     "@printerops/shared": "*"
   },
   "devDependencies": {
+    "@types/node": "^20.19.43",
     "vitest": "^1.6.0"
   }
 }

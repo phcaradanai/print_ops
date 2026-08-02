@@ -1,0 +1,15 @@
+{
+  "name": "@printerops/desktop",
+  "version": "0.1.17",
+  "private": true,
+  "scripts": {
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

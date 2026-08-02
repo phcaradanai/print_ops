@@ -2,11 +2,23 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App.js';
+import { ErrorBoundary } from './ErrorBoundary.js';
+import './styles.css';
+import './paperProfilesClosure.css';
+import './paperProfilesLayoutHotfix.css';
+import './layoutSystem.css';
+import './components/ui/ui.css';
+import './components/ui/inputs.css';
+import './components/ui/Card.css';
+import './components/ui/CardDetail.css';
+import './experienceSystem.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
-  </React.StrictMode>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </ErrorBoundary>
+  </React.StrictMode>,
 );

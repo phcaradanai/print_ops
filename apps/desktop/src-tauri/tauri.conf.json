@@ -1,0 +1,58 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PrinterOps",
+  "version": "0.1.17",
+  "identifier": "com.printerops.desktop",
+  "build": {
+    "beforeDevCommand": "",
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": "node src-tauri/scripts/build-all.js"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "PrinterOps",
+        "url": "http://127.0.0.1:31415",
+        "width": 1280,
+        "height": 800,
+        "resizable": true,
+        "center": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "msi",
+      "nsis"
+    ],
+    "windows": {
+      "wix": {},
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "installerHooks": "nsis-hooks.nsh"
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "resources": [
+      "resources/server.exe",
+      "resources/static",
+      "resources/sql-wasm.wasm",
+      "resources/printops-runner.exe",
+      "resources/print-helper"
+    ],
+    "externalBin": []
+  }
+}

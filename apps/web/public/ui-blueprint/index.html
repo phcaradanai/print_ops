@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <title>PrintOps UI Blueprint</title>
+  <link rel="stylesheet" href="./blueprint.css" />
+</head>
+<body>
+  <a class="skip-link" href="#preview">Skip to preview</a>
+  <div class="blueprint-shell">
+    <aside class="blueprint-rail" aria-label="Blueprint pages">
+      <div class="brand-block">
+        <div class="brand-mark" aria-hidden="true">P</div>
+        <div>
+          <strong>PrintOps</strong>
+          <span>UI Blueprint</span>
+        </div>
+      </div>
+
+      <div class="rail-note">
+        Static reference based on <code>DESIGN.md</code> and <code>PRODUCT.md</code>. No production API calls.
+      </div>
+
+      <nav id="page-navigation"></nav>
+
+      <div class="rail-footer">
+        <span class="health-dot" aria-hidden="true"></span>
+        Reference build
+      </div>
+    </aside>
+
+    <div class="blueprint-workspace">
+      <header class="blueprint-toolbar">
+        <button class="rail-toggle" id="rail-toggle" type="button" aria-label="Open page navigation" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="toolbar-copy">
+          <strong id="toolbar-title">Dashboard</strong>
+          <span id="toolbar-subtitle">Operator overview</span>
+        </div>
+        <div class="toolbar-actions">
+          <label class="viewport-control">
+            <span>Viewport</span>
+            <select id="viewport-select">
+              <option value="desktop">Desktop</option>
+              <option value="tablet">Tablet</option>
+              <option value="mobile">Mobile</option>
+            </select>
+          </label>
+          <div class="segmented" aria-label="Preview language">
+            <button type="button" data-locale="en" aria-pressed="true">EN</button>
+            <button type="button" data-locale="th" aria-pressed="false">ไทย</button>
+          </div>
+        </div>
+      </header>
+
+      <main id="preview" class="preview-canvas" tabindex="-1">
+        <div class="preview-frame" data-viewport="desktop">
+          <section id="screen" class="screen" aria-live="polite"></section>
+        </div>
+      </main>
+    </div>
+  </div>
+  <div class="rail-scrim" id="rail-scrim" hidden></div>
+  <script type="module" src="./blueprint.js"></script>
+</body>
+</html>

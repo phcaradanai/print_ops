@@ -1,0 +1,174 @@
+# PROD-01 Windows production architecture
+
+## Supported pilot boundary
+
+PROD-01 supports **installed Windows printers through their normal Windows driver**. The packaged application uses the TypeScript `WindowsSpoolerAdapter`.
+
+IPP, CUPS, raw TCP 9100, ZPL/TSPL runner dispatch, macOS, Linux, and remote/headless execution are deferred. Implementations or skeletons in the repository do not make those paths production-supported.
+
+## Packaged process topology
+
+```text
+External HTTP producer ─┐
+                        ├─> bundled server.exe (Fastify)
+NATS JetStream intake ──┘       │
+                                ├─> SQLite job + audit persistence
+                                ├─> in-memory queue rebuilt under recovery rules
+                                ├─> API local print worker (sole executor)
+                                └─> TypeScript WindowsSpoolerAdapter
+                                         │
+                                         └─> installed Windows printer driver
+                                                  │
+                                                  └─> physical printer
+
+printops-runner.exe
+  ├─> Windows Get-Printer/Get-PrinterPort discovery
+  ├─> discovery synchronization
+  └─> heartbeat
+
+PRINTOPS_JOBS_ENABLED=false
+  └─> no polling, claiming, rendering, spooler submission, or result reporting
+```
+
+The Tauri shell owns both child processes. It sets one shared constant,
+`DESKTOP_DISCOVERY_RUNNER_JOBS_ENABLED=false`, into:
+
+- `server.exe` as `PRINTOPS_DISCOVERY_RUNNER_JOBS_ENABLED=false`; and
+- `printops-runner.exe` as `PRINTOPS_JOBS_ENABLED=false`.
+
+It also sets `PRINTOPS_RUNTIME_MODE=packaged-windows-desktop` and
+`PRINTOPS_LOCAL_WORKER=true` for the API.
+
+The API validates those values before creating repositories or starting a worker. Packaged startup fails with `DESKTOP_EXECUTOR_INVARIANT` if the API worker is disabled or the discovery runner is declared job-enabled. The runtime diagnostics endpoint reports `SINGLE_EXECUTOR` only after this check passes.
+
+## Execution ownership
+
+| Responsibility | Packaged owner | Notes |
+| --- | --- | --- |
+| HTTP intake | Bundled API | Authenticated external endpoint |
+| NATS intake | Bundled API | Client-scoped subject and durable consumer |
+| Job persistence | Bundled API / SQLite | Queue state is persisted before dispatch |
+| Job claim and execution | Bundled API local worker | Sole packaged executor |
+| Windows print submission | TypeScript `WindowsSpoolerAdapter` | Uses installed Windows printer and driver |
+| Physical completion verdict | API execution/evidence policy | Spooler acceptance alone is not `SUCCESS`; ambiguous completion is `UNVERIFIED` |
+| Printer discovery | Go runner | Read-only Windows discovery |
+| Runner heartbeat | Go runner | Does not imply execution readiness |
+
+## Persistence boundaries
+
+- The per-user SQLite database stores configuration, registered/discovered
+  printers, jobs, traces, audits, and durable callback-delivery state. Recent
+  intake and per-attempt callback diagnostics are bounded in-memory rings and
+  reset when the API sidecar restarts.
+- The queue is in memory. On startup, safe pre-dispatch states can be restored; uncertain `DISPATCHED` or `PRINTING` jobs become `UNVERIFIED` and are not replayed automatically.
+- Tauri stores the database, settings, JWT secret, and logs outside the installation directory so an application upgrade does not replace them.
+- NATS configuration is stored by the desktop shell and injected into a restarted API sidecar.
+- SQLite uses `PRAGMA user_version`. Version-zero databases are copied byte for
+  byte into a timestamped `.backups` directory before the transactional
+  migration to version 1. A corrupt, newer, unreadable, locked, or unwritable
+  database fails startup with a stage-specific error; the primary file is
+  never overwritten in place.
+- An OWNER can download a consistent SQLite snapshot from Settings. The export
+  is marked `no-store` and audited. It contains operational history and must be
+  handled as sensitive data.
+- The desktop supervises both packaged sidecars. Unexpected server or discovery
+  runner exits are logged and restarted with the same validated packaged
+  configuration. Normal shutdown sets a guard before terminating children so
+  the supervisor cannot resurrect them.
+- On Windows, both sidecars are assigned to a desktop-owned Job Object with
+  `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. Abrupt desktop termination therefore
+  closes the job and terminates its contained children, preventing orphaned
+  sidecars from retaining the database lock or loopback port on the next launch.
+
+## NATS lifecycle
+
+`NatsConnectionManager` owns the core connection, JetStream stream lookup, durable consumer compatibility, consume loop, and reconnect diagnostics.
+
+- Consumer identity is client-scoped.
+- A compatible durable is reused.
+- Delivery tuning may be updated.
+- Subject, durable, pull/push, or policy conflicts fail rather than silently retargeting a consumer.
+- Cross-process create races re-read and validate the winning durable.
+- Core callback publishing readiness is reported separately from JetStream intake readiness.
+
+## Callback lifecycle
+
+Acceptance callbacks and terminal result callbacks are resolved by the API. Terminal callback intent is persisted with the job. Delivery attempts and retry state are persisted in SQLite. Retryable transport/HTTP failures remain queued; ordinary non-retryable 4xx responses terminate retry. HTTP signatures are added when a callback secret is configured.
+
+The Go discovery runner does not send packaged terminal results because it never executes packaged jobs.
+
+## Runtime diagnostics contract
+
+`GET /api/v1/print-flow/runtime-architecture` returns:
+
+- runtime mode;
+- active job executor owner and implementation;
+- discovery owner and effective job-claim state;
+- the `SINGLE_EXECUTOR` invariant;
+- supported production protocol; and
+- explicitly deferred protocols.
+
+Settings → System status presents the same contract to the operator. It must not infer execution ownership from a runner heartbeat or configured executor backend.
+
+`GET /api/v1/system/readiness` is the authenticated, no-store operational
+snapshot. It reports desktop shell, local API, database, local worker,
+discovery runner, registered Windows printer, NATS core, JetStream, stream,
+durable consumer, HTTP callback, NATS callback, and callback retry queue as
+independent components. Optional transports use `NOT_CONFIGURED`; they do not
+make a healthy local printing path look offline. Every unavailable component
+includes a suggested operator action and NATS diagnostics include sanitized
+server, last connection/attempt, next retry, and error code/stage.
+
+`GET /api/v1/system/support-bundle` is OWNER-only, audited, and returns a
+no-store JSON support artifact. It contains build identity, runtime modes,
+readiness, NATS state, schema version, bounded recent intake/callback summaries,
+discovery state, and bounded desktop/server/runner log tails. Callback targets,
+runner IP addresses/metadata, printer attributes, callback payloads, and
+credential-shaped fields are excluded or redacted before serialization.
+
+## Authentication and secret boundaries
+
+Packaged mode starts without users, passwords, or service-account keys. Until a
+hashed active OWNER exists:
+
+- the dashboard shows the owner bootstrap flow;
+- HTTP API-key print intake returns `503`;
+- NATS can establish its core connection and durable consumer, but does not
+  start consuming print messages; and
+- the NATS readiness status reports `CREDENTIALS_NOT_INITIALIZED`.
+
+Owner passwords use Node's maintained `crypto.scrypt` implementation with a
+random 128-bit salt and constant-time verification. Passwordless and plaintext
+legacy records never authenticate. An existing development database enters an
+explicit migration state and requires the email of its existing OWNER; other
+passwordless accounts are disabled when migration completes.
+
+Integration keys are random `po_live_…` values. The API returns plaintext only
+from create and rotate operations, stores only SHA-256 plus an eight-character
+non-secret prefix, and audits create/rotate/revoke with actor and timestamp.
+
+The desktop shell separately persists:
+
+- a CSPRNG-generated JWT signing secret; and
+- a CSPRNG-generated runner bootstrap secret.
+
+The discovery runner exchanges the latter for a short-lived runner JWT. Runner
+JWTs are restricted to registration, heartbeat, and discovery synchronization;
+they cannot access operator or print-intake APIs. Neither secret is a human
+password or the public development credential.
+
+Packaged CORS accepts only the loopback/desktop origins required by the local
+WebView. Development fixtures exist only when `PRINTOPS_DEV_SEED=true`.
+
+## Future remote/headless mode
+
+The Go runner contains polling and executor implementations for development and future remote/headless deployments. In such a deployment it may be configured with `PRINTOPS_JOBS_ENABLED=true` and become the execution owner.
+
+That mode is not part of PROD-01. Before it can be called production-supported it requires:
+
+- a mutually exclusive API-worker configuration;
+- production runner authentication without development login;
+- protocol-specific physical evidence;
+- restart and uncertain-dispatch recovery evidence;
+- cross-machine callback evidence; and
+- its own upgrade and operations runbook.

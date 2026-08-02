@@ -1,0 +1,267 @@
+/*
+ * Paper Profile layout regression closure.
+ *
+ * This file intentionally loads after styles.css and paperProfilesClosure.css.
+ * It fixes the remaining runtime overlap visible in the packaged/editor view:
+ * - the preview panel inherited position: sticky from the legacy stylesheet
+ * - wrapped panels therefore painted over the form body
+ * - the command bar kept non-shrinking actions on one row and text covered icons
+ *
+ * Keep this file layout-only. It must not change profile data or print geometry.
+ */
+
+.paper-profiles-page {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Header actions must stay reachable instead of disappearing beyond the shell. */
+.paper-profiles-page .pp-page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem 1rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.paper-profiles-page .pp-page-heading {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.paper-profiles-page .pp-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
+  margin-left: auto;
+}
+
+/*
+ * Use a deterministic two-pane grid at desktop sizes. The previous flex-wrap
+ * implementation interacted with the legacy sticky preview and allowed panels
+ * to occupy the same painted region.
+ */
+.paper-profiles-page .pp-main-layout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.65fr);
+  align-items: stretch !important;
+  gap: 0.75rem !important;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: clamp(520px, calc(100dvh - 190px), 780px) !important;
+  overflow: visible;
+}
+
+.paper-profiles-page .pp-main-layout > * {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Preview is left, editor is right. Override the legacy sticky rules fully. */
+.paper-profiles-page .pp-preview-panel {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  order: 0 !important;
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  align-self: stretch !important;
+  width: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: hidden;
+}
+
+.paper-profiles-page .pp-form-panel {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  order: 1 !important;
+  position: relative;
+  align-self: stretch;
+  width: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible;
+}
+
+.paper-profiles-page .pp-preview-panel__body,
+.paper-profiles-page .pp-form-scroll {
+  min-width: 0;
+  min-height: 0;
+}
+
+.paper-profiles-page .pp-form-scroll {
+  flex: 1 1 auto;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+
+/*
+ * The command bar is two explicit regions. Actions may wrap, while the status
+ * owns remaining space and is never allowed to paint underneath the section
+ * navigation icons.
+ */
+.paper-profiles-page .pp-command-bar {
+  position: relative;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  overflow: visible;
+}
+
+.paper-profiles-page .pp-command-bar .pp-index {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  min-width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.paper-profiles-page .pp-command-actions {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+  margin-left: 0 !important;
+}
+
+.paper-profiles-page .pp-command-status {
+  display: flex;
+  flex: 1 1 150px;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal !important;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.paper-profiles-page .pp-command-status > span:last-of-type {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.paper-profiles-page .pp-presets,
+.paper-profiles-page .pp-command-actions > button,
+.paper-profiles-page .pp-command-actions > .pp-icon-btn-wrapper {
+  flex: 0 0 auto;
+}
+
+/* Preview toolbar must wrap intentionally, never cover its canvas. */
+.paper-profiles-page .pp-preview-header,
+.paper-profiles-page .pp-canvas-toolbar {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.paper-profiles-page .pp-canvas-toolbar {
+  row-gap: 0.5rem;
+}
+
+.paper-profiles-page .pp-canvas-fit {
+  flex: 0 0 auto;
+}
+
+.paper-profiles-page .pp-preview-stage {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto !important;
+}
+
+/*
+ * When the real window cannot sustain both panes, stack them. Preview comes
+ * first, then the editor. Each panel receives a real block height, preventing
+ * a sticky/zero-height panel from overlaying its sibling.
+ */
+@media (max-width: 1180px) {
+  .paper-profiles-page .pp-main-layout {
+    display: flex !important;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    height: auto !important;
+    min-height: 0;
+  }
+
+  .paper-profiles-page .pp-preview-panel,
+  .paper-profiles-page .pp-form-panel {
+    flex: none !important;
+    width: 100% !important;
+    max-width: 100%;
+  }
+
+  .paper-profiles-page .pp-preview-panel {
+    order: 0 !important;
+    height: clamp(460px, 62dvh, 680px) !important;
+    min-height: 460px !important;
+  }
+
+  .paper-profiles-page .pp-form-panel {
+    order: 1 !important;
+    height: clamp(540px, 72dvh, 760px) !important;
+    min-height: 540px !important;
+  }
+}
+
+@media (max-width: 1024px) {
+  .paper-profiles-page .pp-toolbar {
+    flex-basis: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .paper-profiles-page .pp-command-bar {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .paper-profiles-page .pp-command-bar .pp-index {
+    width: 100%;
+  }
+
+  .paper-profiles-page .pp-command-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .paper-profiles-page .pp-command-status {
+    flex-basis: 100%;
+    order: -1;
+  }
+
+  .paper-profiles-page .pp-preview-panel {
+    height: max(440px, 62dvh) !important;
+    min-height: 440px !important;
+  }
+
+  .paper-profiles-page .pp-form-panel {
+    height: max(560px, 76dvh) !important;
+    min-height: 560px !important;
+  }
+}
+
+@media (max-height: 600px) and (min-width: 1181px) {
+  .paper-profiles-page .pp-main-layout {
+    height: 520px !important;
+  }
+}

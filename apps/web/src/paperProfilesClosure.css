@@ -1,0 +1,484 @@
+/*
+ * FE-02A.1 Paper Profile visual-interaction closure.
+ *
+ * Loaded after styles.css so this file can correct the remaining runtime UX
+ * defects without changing persisted profile data, print geometry, barcode/QR
+ * rendering, or API contracts. Keep every selector scoped to the Paper Profile
+ * workspace.
+ */
+
+.paper-profiles-page {
+  min-width: 0;
+}
+
+.paper-profiles-page,
+.paper-profiles-page *,
+.paper-profiles-page *::before,
+.paper-profiles-page *::after {
+  box-sizing: border-box;
+}
+
+/* --------------------------------------------------------------------------
+   Workspace sizing.
+
+   Use flex wrapping instead of viewport-only breakpoints or a query container.
+   It reacts to the ACTUAL width left by the navigation rail and shell padding.
+   Avoiding `container-type` on this root is deliberate: layout containment can
+   change the containing block used by fixed drawers and modals.
+   -------------------------------------------------------------------------- */
+
+.paper-profiles-page .pp-main-layout {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: stretch;
+  height: auto !important;
+  min-height: 0;
+}
+
+.paper-profiles-page .pp-preview-panel,
+.paper-profiles-page .pp-form-panel,
+.paper-profiles-page .pp-preview-panel__body,
+.paper-profiles-page .pp-form-scroll {
+  min-width: 0;
+}
+
+.paper-profiles-page .pp-preview-panel {
+  order: 0;
+  flex: 999 1 540px;
+  width: auto !important;
+  height: calc(100vh - var(--pp-editor-offset, 200px));
+  min-height: var(--pp-panel-min-h, min(620px, calc(100vh - 220px)));
+}
+
+.paper-profiles-page .pp-form-panel {
+  flex: 1 1 380px;
+  width: auto !important;
+  height: calc(100vh - var(--pp-editor-offset, 200px));
+  min-height: var(--pp-panel-min-h, min(620px, calc(100vh - 220px)));
+}
+
+/* Once the available shell width cannot fit both preferred bases, flex-wrap
+   gives each panel its own row. Each panel remains independently bounded, so
+   the app shell may scroll between panels while form/canvas scrolling stays
+   local to the corresponding panel. */
+@media (max-width: 1180px) {
+  .paper-profiles-page .pp-preview-panel,
+  .paper-profiles-page .pp-form-panel {
+    flex-basis: 100%;
+    width: 100% !important;
+  }
+
+  .paper-profiles-page .pp-preview-panel {
+    min-height: clamp(420px, 56vh, 620px);
+  }
+
+  .paper-profiles-page .pp-form-panel {
+    min-height: 520px;
+    max-height: min(720px, 72vh);
+  }
+}
+
+@media (max-width: 660px) {
+  .paper-profiles-page .pp-preview-panel {
+    min-height: 420px;
+  }
+
+  .paper-profiles-page .pp-form-panel {
+    max-height: none;
+  }
+
+  .paper-profiles-page .pp-preview-header,
+  .paper-profiles-page .pp-canvas-toolbar,
+  .paper-profiles-page .pp-command-bar {
+    flex-wrap: wrap;
+  }
+
+  .paper-profiles-page .pp-canvas-fit {
+    margin-left: 0;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Inputs and native selects, including WebView2 dark-system-theme defence.
+   -------------------------------------------------------------------------- */
+
+.paper-profiles-page .pp-input,
+.paper-profiles-page .pp-number,
+.paper-profiles-page .pp-select,
+.paper-profiles-page .pp-small-input,
+.paper-profiles-page .paper-preview-modal__field-grid input,
+.paper-profiles-page .paper-preview-modal__field-grid select,
+.paper-profiles-page .pp-drawer input:not([type='checkbox']):not([type='color']):not([type='file']),
+.paper-profiles-page .pp-drawer select,
+.paper-profiles-page .pp-drawer textarea {
+  min-width: 0;
+  min-height: 36px;
+  color-scheme: light;
+  background-color: #fff !important;
+  color: var(--neutral-text, #374151) !important;
+  caret-color: var(--neutral-deep, #1e1e2e);
+  border-color: var(--neutral-border-strong, #d1d5db) !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.paper-profiles-page .pp-select,
+.paper-profiles-page .paper-preview-modal__field-grid select,
+.paper-profiles-page .pp-drawer select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.25rem !important;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #6b7280 50%),
+    linear-gradient(135deg, #6b7280 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) 50%,
+    calc(100% - 10px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.paper-profiles-page select option,
+.paper-profiles-page select optgroup {
+  color-scheme: light;
+  background-color: #fff !important;
+  color: #111827 !important;
+}
+
+.paper-profiles-page .pp-input:hover:not(:disabled),
+.paper-profiles-page .pp-number:hover:not(:disabled),
+.paper-profiles-page .pp-select:hover:not(:disabled),
+.paper-profiles-page .pp-small-input:hover:not(:disabled),
+.paper-profiles-page .paper-preview-modal__field-grid input:hover:not(:disabled),
+.paper-profiles-page .paper-preview-modal__field-grid select:hover:not(:disabled),
+.paper-profiles-page .pp-drawer input:hover:not(:disabled),
+.paper-profiles-page .pp-drawer select:hover:not(:disabled),
+.paper-profiles-page .pp-drawer textarea:hover:not(:disabled) {
+  border-color: #9399b2 !important;
+}
+
+.paper-profiles-page .pp-input:focus-visible,
+.paper-profiles-page .pp-number:focus-visible,
+.paper-profiles-page .pp-select:focus-visible,
+.paper-profiles-page .pp-small-input:focus-visible,
+.paper-profiles-page .paper-preview-modal__field-grid input:focus-visible,
+.paper-profiles-page .paper-preview-modal__field-grid select:focus-visible,
+.paper-profiles-page .pp-drawer input:focus-visible,
+.paper-profiles-page .pp-drawer select:focus-visible,
+.paper-profiles-page .pp-drawer textarea:focus-visible {
+  border-color: var(--primary, #1e66f5) !important;
+  outline: 2px solid rgba(30, 102, 245, 0.28) !important;
+  outline-offset: 1px !important;
+  box-shadow: 0 0 0 1px #fff;
+}
+
+.paper-profiles-page [aria-invalid='true'],
+.paper-profiles-page .is-invalid {
+  border-color: var(--state-danger-text, #9f1239) !important;
+  box-shadow: inset 0 0 0 1px var(--state-danger-text, #9f1239);
+}
+
+.paper-profiles-page :disabled,
+.paper-profiles-page [aria-disabled='true'] {
+  cursor: not-allowed !important;
+}
+
+.paper-profiles-page input:disabled,
+.paper-profiles-page select:disabled,
+.paper-profiles-page textarea:disabled {
+  opacity: 1;
+  background-color: var(--neutral-subtle, #f0f0f0) !important;
+  color: var(--neutral-text-muted, #6b7280) !important;
+}
+
+/* --------------------------------------------------------------------------
+   Hover, focus, selected and drag states.
+   -------------------------------------------------------------------------- */
+
+.paper-profiles-page .pp-section__toggle {
+  border-radius: 0;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.paper-profiles-page .pp-section__toggle:hover {
+  background: var(--neutral-page, #f5f5f5) !important;
+}
+
+.paper-profiles-page .pp-section__toggle:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--primary, #1e66f5);
+  outline-offset: -2px;
+}
+
+.paper-profiles-page .pp-field-row {
+  cursor: default;
+}
+
+.paper-profiles-page .pp-field-row:hover:not(.is-selected) {
+  border-color: #9399b2 !important;
+  background: #fbfdff !important;
+}
+
+.paper-profiles-page .pp-field-row:focus-within {
+  border-color: var(--primary, #1e66f5) !important;
+  box-shadow: 0 0 0 2px rgba(30, 102, 245, 0.16);
+}
+
+.paper-profiles-page .pp-field-row.is-selected {
+  border-color: var(--primary, #1e66f5) !important;
+  background: #eef4ff !important;
+  box-shadow: inset 3px 0 0 var(--primary, #1e66f5);
+}
+
+.paper-profiles-page .pp-field-row.is-selected:focus-within {
+  box-shadow: inset 3px 0 0 var(--primary, #1e66f5),
+    0 0 0 2px rgba(30, 102, 245, 0.2);
+}
+
+.paper-profiles-page .pp-preview-stage button[style*='cursor: grab'],
+.paper-profiles-page .paper-preview-modal button[style*='cursor: grab'] {
+  touch-action: none;
+  transition: border-color 0.12s ease, background-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.paper-profiles-page .pp-preview-stage button[style*='cursor: grab']:hover,
+.paper-profiles-page .paper-preview-modal button[style*='cursor: grab']:hover {
+  border-color: var(--primary, #1e66f5) !important;
+  box-shadow: 0 2px 8px rgba(30, 102, 245, 0.18);
+}
+
+.paper-profiles-page .pp-preview-stage button[style*='cursor: grab']:focus-visible,
+.paper-profiles-page .paper-preview-modal button[style*='cursor: grab']:focus-visible {
+  outline: 2px solid var(--primary, #1e66f5);
+  outline-offset: 2px;
+}
+
+.paper-profiles-page .pp-preview-stage button[style*='cursor: grab']:active,
+.paper-profiles-page .paper-preview-modal button[style*='cursor: grab']:active {
+  cursor: grabbing !important;
+  box-shadow: 0 4px 12px rgba(30, 102, 245, 0.26);
+}
+
+.paper-profiles-page table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.paper-profiles-page table tbody tr:focus-within {
+  background: #eef4ff;
+  outline: 2px solid rgba(30, 102, 245, 0.24);
+  outline-offset: -2px;
+}
+
+.paper-profiles-page table td:last-child .ds-btn:focus-visible,
+.paper-profiles-page table td:last-child .ds-btn:hover:not(:disabled) {
+  border-color: var(--primary, #1e66f5);
+  color: var(--primary, #1e66f5);
+}
+
+.paper-profiles-page table td:last-child .ds-btn--danger:hover:not(:disabled) {
+  border-color: var(--state-danger-text, #9f1239);
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+/* Avoid sticky mouse hover styling on touch-first devices. */
+@media (hover: none) {
+  .paper-profiles-page .pp-field-row:hover:not(.is-selected),
+  .paper-profiles-page table tbody tr:hover,
+  .paper-profiles-page .pp-preview-stage button[style*='cursor: grab']:hover,
+  .paper-profiles-page .paper-preview-modal button[style*='cursor: grab']:hover {
+    background: revert !important;
+    box-shadow: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Viewport-safe tooltips and popups.
+   -------------------------------------------------------------------------- */
+
+.paper-profiles-page .pp-icon-btn-tooltip {
+  visibility: hidden;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 1rem));
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  text-align: left;
+  opacity: 0;
+  transition: opacity 0.12s ease, visibility 0s linear 0.12s;
+  transition-delay: 0s;
+}
+
+.paper-profiles-page .pp-icon-btn-wrapper:hover .pp-icon-btn-tooltip {
+  visibility: visible;
+  opacity: 1;
+  transition-delay: 0.4s;
+}
+
+.paper-profiles-page .pp-icon-btn-wrapper:focus-within .pp-icon-btn-tooltip {
+  visibility: visible;
+  opacity: 1;
+  transition-delay: 0s;
+}
+
+.paper-profiles-page .pp-toolbar .pp-icon-btn-wrapper:first-child .pp-icon-btn-tooltip,
+.paper-profiles-page .pp-command-actions .pp-icon-btn-wrapper:first-child .pp-icon-btn-tooltip,
+.paper-profiles-page .pp-canvas-toolbar .pp-icon-btn-wrapper:first-child .pp-icon-btn-tooltip {
+  left: 0;
+  right: auto;
+  transform: none;
+}
+
+.paper-profiles-page .pp-toolbar .pp-icon-btn-wrapper:last-child .pp-icon-btn-tooltip,
+.paper-profiles-page .pp-command-actions .pp-icon-btn-wrapper:last-child .pp-icon-btn-tooltip,
+.paper-profiles-page .pp-canvas-toolbar .pp-icon-btn-wrapper:last-child .pp-icon-btn-tooltip {
+  right: 0;
+  left: auto;
+  transform: none;
+}
+
+.paper-profiles-page .pp-presets-menu {
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+@media (max-width: 900px) {
+  .paper-profiles-page .pp-presets-menu {
+    position: fixed;
+    top: auto;
+    right: 1rem;
+    bottom: 1rem;
+    left: 1rem;
+    width: auto;
+    max-height: min(68vh, 520px);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .paper-profiles-page .pp-presets-menu {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Canvas and preview information must remain readable and reachable.
+   -------------------------------------------------------------------------- */
+
+.paper-profiles-page .pp-preview-stage {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
+}
+
+.paper-profiles-page .pp-preview-quick-info span {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.paper-profiles-page .pp-selection-status {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.paper-profiles-page .pp-selection-status strong,
+.paper-profiles-page .pp-selection-status span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.paper-profiles-page .pp-selection-status span {
+  flex: 1 1 260px;
+  margin-left: 0;
+}
+
+/* Keep the measurement callout inside the clipped paper surface instead of
+   placing it below the field where the sheet's intentional overflow:hidden
+   cuts it off. The persistent selection strip still provides the full value. */
+.paper-profiles-page .pp-field-measurement {
+  top: 100%;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  width: max-content;
+  max-width: min(240px, 80vw);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.paper-profiles-page .pp-barcode-preview {
+  max-width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.paper-profiles-page .pp-barcode-preview > span:first-child {
+  max-width: 100%;
+}
+
+/* --------------------------------------------------------------------------
+   Drawer and full-preview scroll ownership.
+   -------------------------------------------------------------------------- */
+
+.paper-profiles-page .pp-drawer__header,
+.paper-profiles-page .paper-preview-modal__header {
+  flex: 0 0 auto;
+}
+
+.paper-profiles-page .pp-drawer__body,
+.paper-profiles-page .paper-preview-modal__field-list,
+.paper-profiles-page .paper-preview-modal__sheet-stage {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.paper-profiles-page .paper-preview-modal__header {
+  flex-wrap: wrap;
+}
+
+.paper-profiles-page .paper-preview-modal__toolstrip {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  padding-bottom: 0.2rem;
+}
+
+.paper-profiles-page .paper-preview-modal__header > button:last-child {
+  flex: 0 0 auto;
+}
+
+.paper-profiles-page .paper-preview-modal__controls,
+.paper-profiles-page .paper-preview-modal__canvas {
+  min-width: 0;
+  min-height: 0;
+}
+
+@media (max-width: 720px) {
+  .paper-profiles-page .pp-preview-quick-info {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .paper-profiles-page .pp-selection-status strong,
+  .paper-profiles-page .pp-selection-status span {
+    flex-basis: 100%;
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paper-profiles-page *,
+  .paper-profiles-page *::before,
+  .paper-profiles-page *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
