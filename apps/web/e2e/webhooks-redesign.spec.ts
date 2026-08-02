@@ -375,7 +375,7 @@ test.describe('Webhooks second-pass visual evidence', () => {
     await page.screenshot({ path: `${artifactRoot}/callback-failure-detail.png`, fullPage: true });
   });
 
-  test('captures empty, tablet, mobile, zoom, and Thai layouts without page overflow', async ({ page }) => {
+  test('captures empty, tablet, mobile, 200% reflow, and Thai layouts without page overflow', async ({ page }) => {
     await openWebhooks(page, freshState({ endpoints: [] }), 'en', { width: 1440, height: 900 });
     await expectNoPageOverflow(page);
     await page.screenshot({ path: `${artifactRoot}/empty-state.png`, fullPage: true });
@@ -401,9 +401,11 @@ test.describe('Webhooks second-pass visual evidence', () => {
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole('button', { name: 'Back to endpoints' }).click();
-    await page.evaluate(() => { document.documentElement.style.zoom = '2'; });
+    // Playwright does not expose browser zoom. A 720px CSS viewport models
+    // the reflow produced by viewing the 1440px desktop surface at 200%.
+    await page.setViewportSize({ width: 720, height: 900 });
     await expectNoPageOverflow(page);
-    await page.screenshot({ path: `${artifactRoot}/desktop-200-percent-zoom.png`, fullPage: true });
+    await page.screenshot({ path: `${artifactRoot}/desktop-200-percent-reflow.png`, fullPage: true });
   });
 
   test('captures Thai desktop and mobile surfaces', async ({ page }) => {
