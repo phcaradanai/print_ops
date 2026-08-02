@@ -66,7 +66,7 @@ export function RowActionMenu({
   const close = (restoreFocus: boolean) => {
     setOpen(false);
     setPosition(null);
-    if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus());
+    if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }));
   };
 
   const toggle = (event: MouseEvent<HTMLButtonElement>) => {
@@ -90,11 +90,10 @@ export function RowActionMenu({
       window.innerWidth,
       window.innerHeight,
     ));
-    menu.querySelector<HTMLButtonElement>('[role="menuitem"]:not([disabled])')?.focus();
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !position) return;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
@@ -102,15 +101,32 @@ export function RowActionMenu({
       close(false);
     };
     const onViewportChange = () => close(false);
+
     document.addEventListener('pointerdown', onPointerDown, true);
     window.addEventListener('resize', onViewportChange);
-    window.addEventListener('scroll', onViewportChange, true);
+
+    // Focus can cause a browser scroll when a portal first appears. Focus with
+    // preventScroll, then arm the scroll-dismiss listener on the following
+    // frame so the menu cannot close itself during its own opening sequence.
+    let scrollListenerArmed = false;
+    const focusFrame = requestAnimationFrame(() => {
+      menuRef.current
+        ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not([disabled])')
+        ?.focus({ preventScroll: true });
+      requestAnimationFrame(() => {
+        if (!menuRef.current) return;
+        window.addEventListener('scroll', onViewportChange, true);
+        scrollListenerArmed = true;
+      });
+    });
+
     return () => {
+      cancelAnimationFrame(focusFrame);
       document.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('resize', onViewportChange);
-      window.removeEventListener('scroll', onViewportChange, true);
+      if (scrollListenerArmed) window.removeEventListener('scroll', onViewportChange, true);
     };
-  }, [open]);
+  }, [open, position]);
 
   const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
@@ -135,7 +151,7 @@ export function RowActionMenu({
     if (event.key === 'ArrowUp') nextIndex = (currentIndex <= 0 ? controls.length : currentIndex) - 1;
     if (nextIndex == null) return;
     event.preventDefault();
-    controls[nextIndex]?.focus();
+    controls[nextIndex]?.focus({ preventScroll: true });
   };
 
   return (
