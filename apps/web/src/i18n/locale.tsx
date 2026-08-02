@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { type Locale, t as translate } from './translations.js';
+import { webhookFieldTranslation } from './webhookFieldTranslations.js';
 import { webhookTranslation } from './webhookTranslations.js';
 
 const LOCALE_STORAGE_KEY = 'printops-locale';
@@ -51,7 +52,10 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     () => ({
       locale,
       setLocale,
-      t: (key: string) => webhookTranslation(locale, key) ?? translate(locale, key),
+      t: (key: string) =>
+        webhookFieldTranslation(locale, key)
+        ?? webhookTranslation(locale, key)
+        ?? translate(locale, key),
     }),
     [locale, setLocale],
   );
