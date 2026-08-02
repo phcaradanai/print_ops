@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../api/client.js';
-import { errorMessage } from '../api/errors.js';
+import { ApiError, errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { exportJsonFile } from '../tauri.js';
@@ -174,8 +174,6 @@ const VARIABLES: { token: string; labelKey: string }[] = [
   { token: 'seq', labelKey: 'page.templates.varSeq' },
 ];
 
-const PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g;
-
 /** Matches either explicit `{{barcode:key}}` / `{{qrcode:key}}`, or a plain
  * `{{key}}` — mirrors the server's SimpleTemplateRenderer token pattern. */
 const COMBINED_PREVIEW_PATTERN = /\{\{\s*(?:(barcode|qrcode)\s*:\s*([a-zA-Z0-9_.-]+)|([a-zA-Z0-9_.-]+))\s*\}\}/g;
@@ -217,18 +215,23 @@ function defaultSampleFor(key: string): string {
   }
 }
 
-function placeholdersOf(content: string): string[] {
-  return Array.from(new Set(Array.from(content.matchAll(PLACEHOLDER_PATTERN)).map((m) => m[1] ?? '')));
+export function placeholdersOf(content: string): string[] {
+  return Array.from(new Set(
+    Array.from(content.matchAll(COMBINED_PREVIEW_PATTERN))
+      .map((match) => match[2] ?? match[3] ?? '')
+      .filter(Boolean),
+  ));
 }
 
-function buildSample(
+export function buildSample(
   mode: SampleMode,
   content: string,
   profile?: PaperProfileOption,
 ): Record<string, unknown> {
   if (mode === 'empty') return {};
   const payload: Record<string, unknown> = {};
-  if (mode === 'profile' && profile) {
+  if (mode === 'profile') {
+    if (!profile) return {};
     for (const field of profile.fields ?? []) {
       if (field.key) payload[field.key] = field.defaultValue ?? field.label ?? field.key;
     }
@@ -301,6 +304,13 @@ function localPreview(
   return `<pre class="tpl-preview-raw">${out}</pre>`;
 }
 
+export function classifyTemplateDeleteFailure(err: unknown): 'bound' | 'forbidden' | 'generic' {
+  if (!(err instanceof ApiError)) return 'generic';
+  if (err.status === 409) return 'bound';
+  if (err.status === 403) return 'forbidden';
+  return 'generic';
+}
+
 function formatDate(value: string | undefined, locale: string): string {
   if (!value) return '—';
   const date = new Date(value);
@@ -347,6 +357,7 @@ export default function Templates() {
   const formRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLElement | null>(null);
   const libraryRef = useRef<HTMLElement | null>(null);
+  const previewRequestIdRef = useRef(0);
 
   // Both lists were `.catch(() => {})`: with the API down the page rendered as
   // "no templates configured", which is indistinguishable from a fresh install
@@ -420,6 +431,7 @@ export default function Templates() {
   }
 
   function showLocalPreview() {
+    previewRequestIdRef.current += 1;
     const sample = buildSample(sampleMode, form.content, formProfile);
     setSelectedId(null);
     setPreview(null);
@@ -429,6 +441,7 @@ export default function Templates() {
   }
 
   async function renderServerPreview(tpl: Template, mode: SampleMode = sampleMode, revealWorkspace = true) {
+    const requestId = ++previewRequestIdRef.current;
     setSelectedId(tpl.id);
     if (revealWorkspace) {
       setWorkspaceOpen(true);
@@ -458,10 +471,12 @@ export default function Templates() {
           paperProfileId: tpl.paperProfileId,
         }),
       });
+      if (requestId !== previewRequestIdRef.current) return;
       setPreview(res);
       setPreviewHtml(sanitizePreviewHtml(res.renderedPreview));
       setPreviewError('');
     } catch (err: unknown) {
+      if (requestId !== previewRequestIdRef.current) return;
       setPreview(null);
       setPreviewHtml('');
       setPreviewError(`${t('page.templates.previewFailed')} ${errorMessage(err)}`);
@@ -470,10 +485,14 @@ export default function Templates() {
 
   function refreshPreview(mode: SampleMode) {
     setSampleMode(mode);
-    if (selected) {
+    if (selected && !formDirty) {
       void renderServerPreview(selected, mode, false);
       return;
     }
+    previewRequestIdRef.current += 1;
+    setSelectedId(null);
+    setPreview(null);
+    setPreviewError('');
     const sample = buildSample(mode, form.content, formProfile);
     setPreviewNote(t('page.templates.localPreviewNote'));
     setPreviewHtml(localPreview(form.content, form.engine, sample, formProfile));
@@ -494,6 +513,7 @@ export default function Templates() {
         await apiFetch('/v1/templates', { method: 'POST', body });
         setMessage({ tone: 'ok', text: t('page.templates.created') });
       }
+      previewRequestIdRef.current += 1;
       setForm({ ...EMPTY_FORM });
       setEditingId(null);
       await load();
@@ -507,6 +527,7 @@ export default function Templates() {
   }
 
   function startEdit(tpl: Template) {
+    previewRequestIdRef.current += 1;
     setWorkspaceOpen(true);
     setEditingId(tpl.id);
     setSelectedId(tpl.id);
@@ -526,6 +547,7 @@ export default function Templates() {
   }
 
   function newTemplate() {
+    previewRequestIdRef.current += 1;
     setWorkspaceOpen(true);
     setEditingId(null);
     setSelectedId(null);
@@ -541,6 +563,7 @@ export default function Templates() {
   }
 
   function closeWorkspace() {
+    previewRequestIdRef.current += 1;
     setWorkspaceOpen(false);
     setEditingId(null);
     setSelectedId(null);
@@ -598,6 +621,7 @@ export default function Templates() {
     try {
       await apiFetch(`/v1/templates/${target.id}`, { method: 'DELETE' });
       if (selectedId === target.id) {
+        previewRequestIdRef.current += 1;
         setSelectedId(null);
         setPreview(null);
         setPreviewHtml('');
@@ -610,10 +634,10 @@ export default function Templates() {
       setMessage({ tone: 'ok', text: t('page.templates.deletedOk') });
       await load();
     } catch (err) {
-      const status = String(err instanceof Error ? err.message : '');
-      const text = status.endsWith('409')
+      const failure = classifyTemplateDeleteFailure(err);
+      const text = failure === 'bound'
         ? t('page.templates.deleteBound')
-        : status.endsWith('403')
+        : failure === 'forbidden'
           ? t('page.templates.deleteForbidden')
           : t('page.templates.actionFailed');
       setMessage({ tone: 'error', text });
