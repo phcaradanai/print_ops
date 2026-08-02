@@ -1,0 +1,90 @@
+.job-queue-toolbar {
+  position: relative;
+  overflow: hidden;
+  padding: var(--spacing-lg);
+  border: 1px solid var(--neutral-border);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.055), rgba(255, 255, 255, 0) 44%),
+    var(--neutral-surface);
+  box-shadow: var(--shadow-subtle);
+}
+
+.job-queue-toolbar::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--primary-strong), var(--semantic-info));
+}
+
+.job-queue-toolbar .ui-resource-toolbar__controls {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(13rem, 17rem) minmax(20rem, 1fr);
+  align-items: end;
+  gap: var(--spacing-lg);
+}
+
+.job-queue-toolbar .ui-field {
+  gap: 0.45rem;
+  margin-top: 0;
+}
+
+.job-queue-toolbar .ui-field-label {
+  color: var(--neutral-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.job-queue-toolbar .ui-field:focus-within .ui-field-label {
+  color: var(--primary-strong);
+}
+
+.job-queue-toolbar :is(.ui-input, .ui-select) {
+  border-color: var(--neutral-border-strong);
+  background: var(--neutral-surface);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease;
+}
+
+.job-queue-toolbar :is(.ui-input, .ui-select):hover:not(:disabled) {
+  border-color: #9ca3af;
+}
+
+.job-queue-toolbar :is(.ui-input, .ui-select):focus {
+  border-color: var(--primary-strong);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.job-queue-toolbar__status,
+.job-queue-toolbar__search {
+  min-width: 0;
+  max-width: none;
+  flex: none;
+}
+
+@media (max-width: 860px) {
+  .job-queue-toolbar .ui-resource-toolbar__controls {
+    grid-template-columns: minmax(12rem, 0.8fr) minmax(16rem, 1.2fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .job-queue-toolbar {
+    padding: 0.875rem;
+    border-radius: 10px;
+  }
+
+  .job-queue-toolbar .ui-resource-toolbar__controls {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--spacing-md);
+  }
+}
