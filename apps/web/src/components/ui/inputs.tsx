@@ -33,6 +33,8 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   invalid?: boolean;
   leading?: ReactNode;
   trailing?: ReactNode;
+  /** Monospace input for exact technical values such as NATS subjects and identifiers. */
+  mono?: boolean;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({
@@ -40,16 +42,21 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({
   invalid = false,
   leading,
   trailing,
+  mono = false,
   className,
   'aria-invalid': ariaInvalid,
   ...props
 }, ref) {
+  const resolvedClassName = mono
+    ? `ui-input--mono${className ? ` ${className}` : ''}`
+    : className;
   const input = (
     <input
       {...props}
       ref={ref}
-      className={controlClass('ui-input', controlSize, invalid, className)}
+      className={controlClass('ui-input', controlSize, invalid, resolvedClassName)}
       aria-invalid={ariaInvalid ?? (invalid || undefined)}
+      spellCheck={props.spellCheck ?? (mono ? false : undefined)}
     />
   );
   if (leading == null && trailing == null) return input;
@@ -111,14 +118,6 @@ export interface ChipProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>,
   children: ReactNode;
 }
 
-/**
- * The filter/toggle chip DESIGN.md specifies and nothing implemented.
- *
- * Pages were building it by hand from a `<button className="print-flow-pill">`
- * or a `<span>` that only looked clickable, with no pressed state exposed to
- * assistive technology. Pills are reserved for exactly this and for status —
- * never for primary actions.
- */
 export function Chip({ selected = false, className = '', children, type = 'button', ...props }: ChipProps) {
   return (
     <button
@@ -135,12 +134,6 @@ export function Chip({ selected = false, className = '', children, type = 'butto
 export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> {
   label: ReactNode;
   description?: ReactNode;
-  /**
-   * Keeps the label in the accessibility tree but out of the layout — for row
-   * selection in a table, where the visible column header is the only sensible
-   * place for the name but each row still needs its own. Prefer this to a bare
-   * `aria-label`: the label element stays associated with the input.
-   */
   hideLabel?: boolean;
 }
 
@@ -157,4 +150,3 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
     </label>
   );
 });
-
