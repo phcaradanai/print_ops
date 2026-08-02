@@ -1,6 +1,7 @@
 import { IconButton } from './editorPrimitives.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
+import { getVisualPaperGeometry } from '../model/geometry.js';
 import { displayValue } from '../model/units.js';
 import type { Translate } from './types.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
@@ -15,6 +16,7 @@ export function PaperProfilePageHeader({ editor, popups, stage, onCreate, onBack
   t: Translate;
 }) {
   const { form, ux } = editor;
+  const geometry = getVisualPaperGeometry(form);
   if (stage === 'library') {
     return (
       <div className="pp-page-header pp-page-header--library">
@@ -37,13 +39,13 @@ export function PaperProfilePageHeader({ editor, popups, stage, onCreate, onBack
           <PaperProfileIcon name="arrow-left" /> <span>{t('page.paperProfiles.backToLibrary')}</span>
         </button>
         <div className="pp-page-heading">
-        <div>
-          <h1>{editor.state.editingProfileId ? t('page.paperProfiles.editProfileTitle') : t('page.paperProfiles.createProfileTitle')}</h1>
-          <div className="pp-page-heading__meta">
-            <span>{form.code || 'auto'}</span>
-            <span>{displayValue(form.widthMm, ux.displayUnit, form.dpi)} × {displayValue(form.heightMm, ux.displayUnit, form.dpi)} {ux.displayUnit}</span>
+          <div>
+            <h1>{editor.state.editingProfileId ? t('page.paperProfiles.editProfileTitle') : t('page.paperProfiles.createProfileTitle')}</h1>
+            <div className="pp-page-heading__meta">
+              <span>{form.code || 'auto'}</span>
+              <span>{displayValue(geometry.widthMm, ux.displayUnit, form.dpi)} × {displayValue(geometry.heightMm, ux.displayUnit, form.dpi)} {ux.displayUnit}</span>
+            </div>
           </div>
-        </div>
         </div>
       </div>
       <div className="pp-toolbar" role="toolbar" aria-label={t('page.paperProfiles.pageActions')}>
