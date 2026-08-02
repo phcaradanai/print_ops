@@ -1,0 +1,273 @@
+/* UX-01 Templates library visual remediation.
+ *
+ * This layer is intentionally scoped to `.templates-page`. It improves the
+ * resource-library composition without changing template/editor behaviour or
+ * leaking page-specific decisions into the shared components.
+ */
+
+.templates-page {
+  --tpl-library-accent: var(--primary-strong, #2563eb);
+  --tpl-library-border: var(--neutral-border, #e5e7eb);
+  --tpl-library-surface: var(--neutral-surface, #ffffff);
+  --tpl-library-subtle: #f8fafc;
+}
+
+/* Header actions read as one control surface instead of four loose controls. */
+.templates-page .tpl-page-tools {
+  flex: 1 1 42rem;
+  justify-content: flex-end;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--tpl-library-border);
+  border-radius: 12px;
+  background: var(--tpl-library-surface);
+  box-shadow: var(--shadow-subtle);
+}
+
+.templates-page .tpl-page-tools > .ui-input-group,
+.templates-page .tpl-page-tools > .ui-input {
+  flex: 1 1 24rem;
+  min-width: min(22rem, 100%);
+}
+
+.templates-page .tpl-page-tools .ui-input-group {
+  border-radius: var(--rounded-md);
+}
+
+.templates-page .tpl-page-tools .ui-input:focus-visible,
+.templates-page .tpl-page-tools .ui-button:focus-visible {
+  position: relative;
+  z-index: 1;
+}
+
+/* The library is the primary work surface, not another padded card inside the
+ * page. Header, filters, table, and pagination therefore share one edge. */
+.templates-page .tpl-list {
+  overflow: visible;
+  padding: 0;
+  border: 1px solid var(--tpl-library-border);
+  border-radius: 12px;
+  background: var(--tpl-library-surface);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.templates-page .tpl-list-header {
+  min-height: 4.25rem;
+  margin: 0;
+  padding: var(--spacing-lg) var(--spacing-xl);
+  border-bottom: 1px solid var(--tpl-library-border);
+}
+
+.templates-page .tpl-list-header h2 {
+  margin: 0;
+  color: var(--neutral-deep);
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.templates-page .tpl-list-tools {
+  padding: 0.2rem;
+  border: 1px solid var(--tpl-library-border);
+  border-radius: var(--rounded-md);
+  background: var(--tpl-library-subtle);
+}
+
+/* Many status/engine values should stay scan-friendly. Horizontal scrolling is
+ * more stable than wrapping the filter bar into several irregular rows. */
+.templates-page .tpl-chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  margin: 0;
+  padding: var(--spacing-md) var(--spacing-xl);
+  border-bottom: 1px solid var(--tpl-library-border);
+  background: var(--tpl-library-subtle);
+  scrollbar-width: thin;
+}
+
+.templates-page .tpl-chips > * {
+  flex: 0 0 auto;
+}
+
+.templates-page .tpl-list .ui-data-table-frame {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.templates-page .tpl-list .data-table,
+.templates-page .tpl-list .ui-data-table {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.templates-page .tpl-list .data-table thead,
+.templates-page .tpl-list .ui-data-table thead {
+  border-bottom-color: var(--tpl-library-accent);
+}
+
+.templates-page .tpl-list .data-table th,
+.templates-page .tpl-list .ui-data-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.72rem;
+  letter-spacing: 0.025em;
+}
+
+.templates-page .tpl-list .data-table td,
+.templates-page .tpl-list .ui-data-table td {
+  padding-block: 0.85rem;
+}
+
+.templates-page .tpl-list tbody tr {
+  transition: box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.templates-page .tpl-list tbody tr:focus-within td,
+.templates-page .tpl-list tbody tr:hover td {
+  background: #f8fbff;
+}
+
+.templates-page .tpl-list tbody tr.is-selected td {
+  background: #eff6ff;
+}
+
+.templates-page .tpl-list tbody tr.is-selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--tpl-library-accent);
+}
+
+.templates-page .tpl-list td:first-child .ui-mono {
+  color: #1e3a8a;
+  font-weight: 700;
+}
+
+.templates-page .tpl-row-actions {
+  justify-content: flex-end;
+  min-width: max-content;
+  padding: 0.15rem;
+  border: 1px solid transparent;
+  border-radius: var(--rounded-md);
+}
+
+.templates-page .tpl-list tbody tr:hover .tpl-row-actions,
+.templates-page .tpl-list tbody tr:focus-within .tpl-row-actions {
+  border-color: var(--tpl-library-border);
+  background: var(--tpl-library-surface);
+}
+
+.templates-page .tpl-menu {
+  z-index: 60;
+  min-width: 11rem;
+  box-shadow: var(--shadow-floating);
+}
+
+/* Pagination belongs to the resource surface and stays visually attached to
+ * the table rather than appearing as a detached row below it. */
+.templates-page .tpl-pagination {
+  margin: 0;
+  padding: var(--spacing-md) var(--spacing-xl);
+  border-top: 1px solid var(--tpl-library-border);
+  border-radius: 0 0 12px 12px;
+  background: var(--tpl-library-subtle);
+}
+
+.templates-page .tpl-pagination__count {
+  min-width: 11rem;
+  font-size: 0.78rem;
+}
+
+.templates-page .tpl-pagination__pages {
+  justify-content: center;
+}
+
+.templates-page > .page-header {
+  margin-block: calc(var(--spacing-sm) * -1) var(--spacing-sm);
+}
+
+@media (max-width: 1024px) {
+  .templates-page .tpl-page-tools {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, auto));
+    width: 100%;
+    justify-content: start;
+  }
+
+  .templates-page .tpl-page-tools > .ui-input-group,
+  .templates-page .tpl-page-tools > .ui-input {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .templates-page .tpl-list-header,
+  .templates-page .tpl-chips,
+  .templates-page .tpl-pagination {
+    padding-inline: var(--spacing-lg);
+  }
+}
+
+@media (max-width: 720px) {
+  .templates-page .tpl-page-tools {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .templates-page .tpl-page-tools > .ui-button {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .templates-page .tpl-page-tools > .ui-button:last-of-type {
+    grid-column: 1 / -1;
+  }
+
+  .templates-page .tpl-list-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .templates-page .tpl-list-tools {
+    align-self: flex-end;
+  }
+
+  .templates-page .tpl-chips {
+    padding-inline: var(--spacing-md);
+  }
+
+  .templates-page .tpl-row-actions {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+    border-color: var(--tpl-library-border);
+    background: var(--tpl-library-subtle);
+  }
+
+  .templates-page .tpl-pagination {
+    align-items: stretch;
+    flex-direction: column;
+    padding-inline: var(--spacing-md);
+  }
+
+  .templates-page .tpl-pagination__count {
+    min-width: 0;
+    text-align: center;
+  }
+
+  .templates-page .tpl-pagination__pages {
+    width: 100%;
+    justify-content: center;
+    overflow-x: auto;
+    padding-block: 0.15rem;
+  }
+
+  .templates-page .tpl-pagination > .ui-select {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .templates-page .tpl-list tbody tr {
+    transition: none;
+  }
+}
