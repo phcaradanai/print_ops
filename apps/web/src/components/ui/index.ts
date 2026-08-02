@@ -3,6 +3,9 @@ export { Button, type ButtonProps, type ButtonSize, type ButtonVariant } from '.
 export { Dialog, useModalFocusTrap, type DialogProps } from '../Dialog.js';
 export { FormField, type FormFieldControlProps, type FormFieldProps } from '../FormField.js';
 export { PageLayout, PageFooter, PageSection, type PageDensity, type PageLayoutProps, type PageWidth } from '../PageLayout.js';
+export { PageHeader, type PageHeaderProps } from '../molecules/PageHeader/index.js';
+export { SectionHeading, type SectionHeadingProps } from '../molecules/SectionHeading/index.js';
+export { PageScaffold, type PageScaffoldProps } from '../organisms/PageScaffold/index.js';
 export { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '../PageState.js';
 export { StatusBadge, type StatusBadgeSize } from '../StatusBadge.js';
 export { Input, Select, Textarea, Checkbox, Chip, Label, type ChipProps, type ControlSize } from './inputs.js';
@@ -26,14 +29,13 @@ export {
   Text,
   Mono,
   Heading,
-  SectionHeading,
   CodeBlock,
   type TextProps,
   type TextTone,
   type TextSize,
   type TextWeight,
   type HeadingProps,
-  type SectionHeadingProps,
+  type CodeBlockProps,
 } from './typography.js';
 export { StatusDot, StatusIndicator, statusTone, type StatusTone } from './status.js';
 export { MetricGrid, MetricTile, type MetricTone } from './metrics.js';

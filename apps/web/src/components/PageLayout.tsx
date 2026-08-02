@@ -1,7 +1,12 @@
 import type { HTMLAttributes, ReactNode } from 'react';
+import { PageHeader } from './molecules/PageHeader/index.js';
+import {
+  PageScaffold,
+  type PageDensity,
+  type PageWidth,
+} from './organisms/PageScaffold/index.js';
 
-export type PageWidth = 'standard' | 'wide' | 'full';
-export type PageDensity = 'comfortable' | 'compact';
+export type { PageDensity, PageWidth } from './organisms/PageScaffold/index.js';
 
 export interface PageLayoutProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
   title?: ReactNode;
@@ -16,12 +21,11 @@ export interface PageLayoutProps extends Omit<HTMLAttributes<HTMLElement>, 'titl
 }
 
 /**
- * Canonical route anatomy for PrintOps.
+ * Backward-compatible page composition facade.
  *
- * Header carries identity and current actions, Body carries the primary task,
- * Detail holds supporting evidence, and Footer is reserved for completion or
- * lifecycle controls. Detail and Footer are optional because an empty landmark
- * is worse for assistive technology than an absent one.
+ * Existing routes keep the same API while the implementation is composed from
+ * a reusable header molecule and scaffold organism. New page-level behavior
+ * belongs in those bounded components instead of accumulating here.
  */
 export function PageLayout({
   title,
@@ -37,36 +41,24 @@ export function PageLayout({
   ...rest
 }: PageLayoutProps) {
   const hasHeader = header != null || title != null || description != null || actions != null;
+  const headerRegion = !hasHeader
+    ? undefined
+    : header != null
+      ? <header className="ops-page__header ui-page-header">{header}</header>
+      : <PageHeader title={title} description={description} actions={actions} />;
 
   return (
-    <article
+    <PageScaffold
       {...rest}
-      className={`ops-page ops-page--${width} ops-page--${density}${className ? ` ${className}` : ''}`}
+      header={headerRegion}
+      detail={detail}
+      footer={footer}
+      width={width}
+      density={density}
+      className={className}
     >
-      {hasHeader && (
-        <header className="ops-page__header">
-          {header ?? (
-            <>
-              <div className="ops-page__heading">
-                {title != null && <h1 className="ops-page__title">{title}</h1>}
-                {description != null && <p className="ops-page__description">{description}</p>}
-              </div>
-              {actions != null && <div className="ops-page__actions">{actions}</div>}
-            </>
-          )}
-        </header>
-      )}
-
-      <div className="ops-page__body">{children}</div>
-
-      {detail != null && (
-        <aside className="ops-page__detail">{detail}</aside>
-      )}
-
-      {footer != null && (
-        <footer className="ops-page__footer">{footer}</footer>
-      )}
-    </article>
+      {children}
+    </PageScaffold>
   );
 }
 
