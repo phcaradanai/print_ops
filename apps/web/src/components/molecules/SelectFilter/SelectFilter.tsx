@@ -3,7 +3,7 @@ import { FormField } from '../../FormField.js';
 import { Select, type SelectProps } from '../../ui/inputs.js';
 import './SelectFilter.css';
 
-export interface SelectFilterProps extends Omit<SelectProps, 'value' | 'onChange' | 'className'> {
+export interface SelectFilterProps extends Omit<SelectProps, 'value' | 'defaultValue' | 'multiple' | 'onChange' | 'className'> {
   label: ReactNode;
   value: string;
   onValueChange: (value: string) => void;
@@ -14,7 +14,7 @@ export interface SelectFilterProps extends Omit<SelectProps, 'value' | 'onChange
   children: ReactNode;
 }
 
-/** Labelled select filter with shared field wiring and no domain mapping. */
+/** Labelled controlled single-select filter with no domain mapping. */
 export function SelectFilter({
   label,
   value,
