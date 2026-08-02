@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { PaperProfilePersistence } from '../hooks/usePaperProfilePersistence.js';
+import { getVisualPaperGeometry } from '../model/geometry.js';
 import type { PaperProfile } from '../model/types.js';
 import type { Translate } from './types.js';
 import { TransferIcon } from '../../../components/TransferIcon.js';
@@ -25,20 +26,34 @@ import {
   Text,
 } from '../../../components/ui/index.js';
 
+const THUMBNAIL_MAX_WIDTH_REM = 3.4;
+const THUMBNAIL_MAX_HEIGHT_REM = 3.6;
+
 function marginPercent(value: number, total: number): string {
   if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return '0%';
   return `${Math.max(0, Math.min(42, (value / total) * 100))}%`;
 }
 
+function fittedThumbnailSize(widthMm: number, heightMm: number) {
+  const width = Math.max(1, widthMm);
+  const height = Math.max(1, heightMm);
+  const scale = Math.min(THUMBNAIL_MAX_WIDTH_REM / width, THUMBNAIL_MAX_HEIGHT_REM / height);
+  return {
+    widthRem: Number((width * scale).toFixed(4)),
+    heightRem: Number((height * scale).toFixed(4)),
+  };
+}
+
 function PaperProfileThumbnail({ profile }: { profile: PaperProfile }) {
-  const width = Math.max(1, profile.widthMm);
-  const height = Math.max(1, profile.heightMm);
+  const geometry = getVisualPaperGeometry(profile);
+  const thumbnailSize = fittedThumbnailSize(geometry.widthMm, geometry.heightMm);
   const style = {
-    aspectRatio: `${width} / ${height}`,
-    '--pp-margin-top': marginPercent(profile.marginTopMm, height),
-    '--pp-margin-right': marginPercent(profile.marginRightMm, width),
-    '--pp-margin-bottom': marginPercent(profile.marginBottomMm, height),
-    '--pp-margin-left': marginPercent(profile.marginLeftMm, width),
+    '--pp-thumb-width': `${thumbnailSize.widthRem}rem`,
+    '--pp-thumb-height': `${thumbnailSize.heightRem}rem`,
+    '--pp-margin-top': marginPercent(geometry.marginTopMm, geometry.heightMm),
+    '--pp-margin-right': marginPercent(geometry.marginRightMm, geometry.widthMm),
+    '--pp-margin-bottom': marginPercent(geometry.marginBottomMm, geometry.heightMm),
+    '--pp-margin-left': marginPercent(geometry.marginLeftMm, geometry.widthMm),
   } as CSSProperties;
 
   return (
