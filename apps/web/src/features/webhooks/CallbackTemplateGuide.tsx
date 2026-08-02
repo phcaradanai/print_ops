@@ -36,7 +36,7 @@ export function CallbackTemplateGuide({
   const insertTitle = (token: string) => t('page.webhooks.insertVariableTitle').replace('{v}', token);
 
   return (
-    <>
+    <Stack gap="md" className="webhook-template-guide">
       {/* What the receiver actually gets, resolved from the template currently
           in the editor rather than written by hand. */}
       <Panel title={t('page.webhooks.resolvedPreview')} padding="lg">
@@ -115,6 +115,6 @@ export function CallbackTemplateGuide({
           </Stack>
         </Stack>
       </Panel>
-    </>
+    </Stack>
   );
 }
