@@ -1,0 +1,42 @@
+name: Apply Template preview close
+
+on:
+  push:
+    branches:
+      - fix/template-preview-dialog-close
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/template-preview-dialog-close
+          fetch-depth: 0
+
+      - name: Add visible close control to print preview
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'apps/web/src/pages/Templates.tsx';
+          let source = fs.readFileSync(path, 'utf8');
+          const from = `      <Dialog\n        open={fullPage}\n        onClose={() => setFullPage(false)}\n        title={t('page.templates.previewTitle')}\n      >`;
+          const to = `      <Dialog\n        open={fullPage}\n        onClose={() => setFullPage(false)}\n        title={t('page.templates.previewTitle')}\n        closeLabel={t('common.close')}\n      >`;
+          if (!source.includes(from)) throw new Error('Full-page preview Dialog block not found');
+          source = source.replace(from, to);
+          fs.writeFileSync(path, source);
+          NODE
+
+      - name: Commit patched source
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/pages/Templates.tsx
+          git commit -m "fix(web): make Template print preview closable"
+          git push origin HEAD:fix/template-preview-dialog-close
