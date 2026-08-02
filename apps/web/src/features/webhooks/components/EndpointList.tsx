@@ -80,51 +80,59 @@ export function EndpointList({
   const distinctLabel = (key: string, endpoint: Endpoint) =>
     `${t(key)} ${endpoint.endpointCode}`;
 
-  const rowActions = (endpoint: Endpoint) => (
-    <Inline gap="xs" className="webhook-row-actions">
-      <Button
-        size="sm"
-        variant="secondary"
-        aria-label={distinctLabel('page.webhooks.edit', endpoint)}
-        onClick={() => openEdit(endpoint)}
-      >
-        <ActionIcon name="edit" /> {t('page.webhooks.edit')}
-      </Button>
-      <RowActionMenu
-        label={t('page.webhooks.actionsFor').replace('{code}', endpoint.endpointCode)}
-        items={[
-          {
-            id: 'details',
-            label: distinctLabel('page.webhooks.viewDetails', endpoint),
-            icon: <ActionIcon name="link" />,
-            onSelect: () => setDetailsEndpoint(endpoint),
-          },
-          {
-            id: 'test',
-            label: distinctLabel('page.webhooks.testCallbackTitle', endpoint),
-            icon: <ActionIcon name="play" />,
-            onSelect: () => void testCallback(endpoint),
-          },
-          {
-            id: 'toggle',
-            label: distinctLabel(
-              endpoint.enabled ? 'page.webhooks.setDraftTitle' : 'page.webhooks.enableTitle',
-              endpoint,
-            ),
-            icon: <ActionIcon name={endpoint.enabled ? 'pause' : 'check'} />,
-            onSelect: () => void toggleEndpoint(endpoint),
-          },
-          {
-            id: 'delete',
-            label: distinctLabel('page.webhooks.deleteTitle', endpoint),
-            icon: <ActionIcon name="delete" />,
-            danger: true,
-            onSelect: () => setPendingDelete(endpoint),
-          },
-        ]}
-      />
-    </Inline>
-  );
+  const rowActions = (endpoint: Endpoint, surface: 'table' | 'card') => {
+    const menuLabel = surface === 'table'
+      ? t('page.webhooks.actionsFor').replace('{code}', endpoint.endpointCode)
+      : `${t('page.webhooks.endpoint')} ${endpoint.endpointCode} — ${t('page.webhooks.actions')}`;
+
+    return (
+      <Inline gap="xs" className="webhook-row-actions">
+        <Button
+          size="sm"
+          variant="secondary"
+          aria-label={surface === 'table'
+            ? distinctLabel('page.webhooks.edit', endpoint)
+            : `${t('page.webhooks.endpoint')} ${endpoint.endpointCode} — ${t('page.webhooks.edit')}`}
+          onClick={() => openEdit(endpoint)}
+        >
+          <ActionIcon name="edit" /> {t('page.webhooks.edit')}
+        </Button>
+        <RowActionMenu
+          label={menuLabel}
+          items={[
+            {
+              id: 'details',
+              label: distinctLabel('page.webhooks.viewDetails', endpoint),
+              icon: <ActionIcon name="link" />,
+              onSelect: () => setDetailsEndpoint(endpoint),
+            },
+            {
+              id: 'test',
+              label: distinctLabel('page.webhooks.testCallbackTitle', endpoint),
+              icon: <ActionIcon name="play" />,
+              onSelect: () => void testCallback(endpoint),
+            },
+            {
+              id: 'toggle',
+              label: distinctLabel(
+                endpoint.enabled ? 'page.webhooks.setDraftTitle' : 'page.webhooks.enableTitle',
+                endpoint,
+              ),
+              icon: <ActionIcon name={endpoint.enabled ? 'pause' : 'check'} />,
+              onSelect: () => void toggleEndpoint(endpoint),
+            },
+            {
+              id: 'delete',
+              label: distinctLabel('page.webhooks.deleteTitle', endpoint),
+              icon: <ActionIcon name="delete" />,
+              danger: true,
+              onSelect: () => setPendingDelete(endpoint),
+            },
+          ]}
+        />
+      </Inline>
+    );
+  };
 
   const emptyTitle = endpoints.length === 0
     ? t('page.webhooks.noResults')
@@ -237,7 +245,7 @@ export function EndpointList({
                       {formatWebhookDate(endpoint.updatedAt ?? endpoint.createdAt, locale)}
                     </Text>
                   </DataCell>
-                  <DataCell actions>{rowActions(endpoint)}</DataCell>
+                  <DataCell actions>{rowActions(endpoint, 'table')}</DataCell>
                 </tr>
               ))}
             </tbody>
@@ -288,7 +296,7 @@ export function EndpointList({
                   <Text>{formatWebhookDate(endpoint.updatedAt ?? endpoint.createdAt, locale)}</Text>
                 </div>
               </div>
-              {rowActions(endpoint)}
+              {rowActions(endpoint, 'card')}
             </RecordCard>
           ))}
         </RecordList>
