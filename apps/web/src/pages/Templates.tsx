@@ -7,6 +7,7 @@ import { exportJsonFile } from '../tauri.js';
 import { qrQuietZoneMm, renderBarcodeSvg, type BarcodeKind, type BarcodeSymbology } from '../lib/barcode.js';
 import { sanitizePreviewHtml } from '../lib/previewHtml.js';
 import { TransferIcon } from '../components/TransferIcon.js';
+import { TemplateRowMenu } from './TemplateRowMenu.js';
 import {
   Alert,
   Badge,
@@ -345,7 +346,6 @@ export default function Templates() {
   const [sortDesc, setSortDesc] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Template | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -371,14 +371,6 @@ export default function Templates() {
   const profiles = profilesResource.data ?? [];
 
   const load = useCallback(() => templatesResource.refresh(), [templatesResource.refresh]);
-
-  // Row "more" menu closes on any outside click, like a native popup menu.
-  useEffect(() => {
-    if (!menuFor) return;
-    const close = () => setMenuFor(null);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [menuFor]);
 
   useEffect(() => {
     if (!message) return;
@@ -556,7 +548,6 @@ export default function Templates() {
       content: tpl.content,
       paperProfileId: tpl.paperProfileId ?? '',
     });
-    setMenuFor(null);
     requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
 
@@ -598,7 +589,6 @@ export default function Templates() {
   }
 
   async function duplicate(tpl: Template) {
-    setMenuFor(null);
     try {
       await apiFetch('/v1/templates', {
         method: 'POST',
@@ -618,7 +608,6 @@ export default function Templates() {
   }
 
   async function publish(id: string) {
-    setMenuFor(null);
     try {
       await apiFetch(`/v1/templates/${id}/publish`, { method: 'POST' });
       setMessage({ tone: 'ok', text: t('page.templates.publishedOk') });
@@ -1219,31 +1208,26 @@ export default function Templates() {
                         title={t('page.templates.edit')}
                         onClick={() => startEdit(tpl)}
                       ><TemplateIcon name="edit" /></IconButton>
-                      <div className="tpl-menu-wrap" onClick={(e) => e.stopPropagation()}>
-                        <IconButton
-                          size="sm"
-                          label={t('page.templates.moreTemplateActions').replace('{name}', tpl.name)}
-                          title={t('page.templates.more')}
-                          aria-expanded={menuFor === tpl.id}
-                          aria-haspopup="menu"
-                          onClick={() => setMenuFor(menuFor === tpl.id ? null : tpl.id)}
-                        ><TemplateIcon name="more" /></IconButton>
-                        {menuFor === tpl.id && (
-                          <div className="tpl-menu" role="menu">
-                            <button type="button" role="menuitem" onClick={() => void publish(tpl.id)}>
-                              <TemplateIcon name="check" /> {t('common.publish')}
-                            </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="tpl-menu__danger"
-                              onClick={() => { setMenuFor(null); setPendingDelete(tpl); }}
-                            >
-                              <TemplateIcon name="delete" /> {t('page.templates.delete')}
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                      <TemplateRowMenu
+                        label={t('page.templates.moreTemplateActions').replace('{name}', tpl.name)}
+                        icon={<TemplateIcon name="more" />}
+                        items={[
+                          {
+                            id: 'publish',
+                            label: t('common.publish'),
+                            icon: <TemplateIcon name="check" />,
+                            onSelect: () => void publish(tpl.id),
+                          },
+                          {
+                            id: 'delete',
+                            label: t('page.templates.delete'),
+                            icon: <TemplateIcon name="delete" />,
+                            danger: true,
+                            restoreFocus: false,
+                            onSelect: () => setPendingDelete(tpl),
+                          },
+                        ]}
+                      />
                     </Inline>
                   </DataCell>
                 </tr>
