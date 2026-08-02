@@ -1,8 +1,8 @@
-import type { NavHTMLAttributes, ReactNode } from 'react';
+import type { HTMLAttributes, ReactNode } from 'react';
 import { Button } from '../../Button.js';
 import './Pagination.css';
 
-export interface PaginationProps extends Omit<NavHTMLAttributes<HTMLElement>, 'children' | 'aria-label'> {
+export interface PaginationProps extends Omit<HTMLAttributes<HTMLElement>, 'children' | 'aria-label'> {
   ariaLabel: string;
   page: number;
   totalPages: number;
