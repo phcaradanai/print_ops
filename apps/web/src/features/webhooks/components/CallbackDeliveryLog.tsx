@@ -98,7 +98,7 @@ export function CallbackDeliveryLog({ controller }: { controller: WebhookWorkspa
         </SelectFilter>
       </ResourceToolbar>
 
-      <Card>
+      <Card padding="none">
         <div className="webhook-delivery-table">
           <DataTable label={t('page.webhooks.callbackLogTitle')}>
             <thead>
@@ -144,7 +144,9 @@ export function CallbackDeliveryLog({ controller }: { controller: WebhookWorkspa
 
         <RecordList className="webhook-delivery-cards">
           {visibleAttempts.length === 0 ? (
-            <RecordCard><EmptyState title={t('page.webhooks.noMatchingHistory')} /></RecordCard>
+            <RecordCard className="webhook-empty-record">
+              <EmptyState title={t('page.webhooks.noMatchingHistory')} />
+            </RecordCard>
           ) : visibleAttempts.map((attempt) => (
             <RecordCard key={attempt.id} id={`callback-attempt-card-${attempt.id}`}>
               <RecordHeader>
