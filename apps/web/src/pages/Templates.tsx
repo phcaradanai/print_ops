@@ -1337,6 +1337,7 @@ export default function Templates() {
         open={fullPage}
         onClose={() => setFullPage(false)}
         title={t('page.templates.previewTitle')}
+        closeLabel={t('common.close')}
       >
         <div className="tpl-preview-stage">
           <div className="tpl-preview-paper" dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(previewHtml) }} />
