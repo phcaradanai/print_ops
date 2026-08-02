@@ -14,6 +14,35 @@
   min-width: 64rem;
 }
 
+/* Match the technical editor treatment used by the Templates workspace. The
+   dark canvas keeps JSON visually distinct from form controls while the gutter,
+   focus ring, validation border, and resize behavior remain unchanged. */
+.webhook-workspace-page .webhook-json-editor {
+  border-color: #334155;
+  background: var(--neutral-inverse, #111827);
+}
+
+.webhook-workspace-page .webhook-json-editor__gutter {
+  border-right-color: #334155;
+  background: #0f172a;
+  color: #94a3b8;
+}
+
+.webhook-workspace-page .webhook-json-editor textarea {
+  background: var(--neutral-inverse, #111827);
+  color: #e5e7eb;
+  caret-color: #ffffff;
+}
+
+.webhook-workspace-page .webhook-json-editor textarea::placeholder {
+  color: #94a3b8;
+}
+
+.webhook-workspace-page .webhook-json-editor textarea::selection {
+  background: color-mix(in srgb, var(--primary) 42%, transparent);
+  color: #ffffff;
+}
+
 .webhook-list .webhook-endpoint-table .ui-data-head,
 .webhook-delivery-history .webhook-delivery-table .ui-data-head {
   overflow-wrap: normal;
