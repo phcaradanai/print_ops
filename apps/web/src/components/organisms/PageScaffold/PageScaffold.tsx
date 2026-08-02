@@ -17,7 +17,9 @@ export interface PageScaffoldProps extends HTMLAttributes<HTMLElement> {
  * Canonical route anatomy: header, primary task, supporting evidence, actions.
  *
  * Slots are deliberately generic. Pages own data fetching and business rules;
- * this organism owns only document structure, width, density, and spacing.
+ * this organism owns document order, width, density, region placement, and
+ * responsive spacing. The header slot is wrapped only for grid placement so a
+ * semantic PageHeader (or a compatibility header) remains the landmark owner.
  */
 export function PageScaffold({
   header,
@@ -34,7 +36,9 @@ export function PageScaffold({
       {...props}
       className={`ops-page ops-page--${width} ops-page--${density} ui-page-scaffold ui-page-scaffold--${width} ui-page-scaffold--${density}${className ? ` ${className}` : ''}`}
     >
-      {header}
+      {header != null && (
+        <div className="ui-page-scaffold__header">{header}</div>
+      )}
       <div className="ops-page__body ui-page-scaffold__body">{children}</div>
       {detail != null && (
         <aside className="ops-page__detail ui-page-scaffold__detail">{detail}</aside>
