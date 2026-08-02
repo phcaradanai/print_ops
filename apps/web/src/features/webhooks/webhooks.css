@@ -115,6 +115,10 @@
   min-width: 0;
 }
 
+.webhook-endpoint-surface {
+  overflow: hidden;
+}
+
 .webhook-endpoint-table,
 .webhook-delivery-table {
   overflow-x: auto;
@@ -232,12 +236,29 @@
 
   .webhook-endpoint-table,
   .webhook-delivery-table {
-    display: none;
+    display: none !important;
   }
 
   .webhook-endpoint-cards,
   .webhook-delivery-cards {
     display: flex;
+    width: 100%;
+    min-width: 0;
+    flex-direction: column;
+  }
+
+  .webhook-endpoint-cards > *,
+  .webhook-delivery-cards > * {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .webhook-endpoint-surface {
+    width: 100%;
+    min-width: 0;
+    padding: var(--spacing-md);
+    overflow: hidden;
   }
 
   .webhook-pagination-row {
@@ -247,6 +268,19 @@
 
   .webhook-pagination-row > * {
     max-width: 100%;
+    min-width: 0;
+  }
+
+  .webhook-pagination-row > .ui-inline {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .webhook-pagination-row .ui-pagination,
+  .webhook-pagination-row .ui-select {
+    width: 100%;
+    min-width: 0;
   }
 
   .webhook-editor-actions {
@@ -272,9 +306,28 @@
     width: 100%;
   }
 
+  .webhook-page-actions,
+  .webhook-toolbar-actions {
+    width: 100%;
+    min-width: 0;
+    align-items: stretch;
+  }
+
   .webhook-page-actions > button,
   .webhook-toolbar-actions > button {
+    flex: 1 1 auto;
+    min-width: 0;
     min-height: 44px;
+    white-space: normal;
+  }
+
+  .webhook-record-actions {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .webhook-record-actions > * {
+    min-width: 0;
   }
 
   .webhook-technical-summary {
