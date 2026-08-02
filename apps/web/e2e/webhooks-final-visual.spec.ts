@@ -100,8 +100,7 @@ async function installApi(page: Page, locale: 'en' | 'th' = 'en', endpointRows =
   });
 
   await page.route('**/api/**', async (route) => {
-    const url = new URL(route.request().url());
-    const path = url.pathname;
+    const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
     if (path === '/api/health') return json(route, { ok: true });
     if (path === '/api/auth/bootstrap') return json(route, { state: 'READY', ownerEmailHints: [] });
@@ -149,6 +148,10 @@ async function installApi(page: Page, locale: 'en' | 'th' = 'en', endpointRows =
   });
 }
 
+function visibleEndpointSurface(page: Page) {
+  return page.locator('.webhook-endpoint-table:visible, .webhook-endpoint-cards:visible').first();
+}
+
 async function openWebhooks(
   page: Page,
   locale: 'en' | 'th' = 'en',
@@ -159,7 +162,13 @@ async function openWebhooks(
   await installApi(page, locale, endpointRows);
   await page.goto('/webhooks');
   await expect(page.locator('.webhook-list')).toBeVisible();
-  await expect(page.getByText(endpointRows[0]?.endpointCode ?? 'No matching endpoints found').first()).toBeVisible();
+  const surface = visibleEndpointSurface(page);
+  await expect(surface).toBeVisible();
+  if (endpointRows.length > 0) {
+    await expect(surface.getByText(endpointRows[0].endpointCode, { exact: true }).first()).toBeVisible();
+  } else {
+    await expect(surface.getByText('No matching endpoints found', { exact: true })).toBeVisible();
+  }
 }
 
 async function settleResponsiveNav(page: Page) {
@@ -182,8 +191,13 @@ async function screenshot(page: Page, name: string) {
   await page.screenshot({ path: `${artifactRoot}/${name}.png` });
 }
 
-async function visibleEndpointSurface(page: Page) {
-  return page.locator('.webhook-endpoint-table:visible, .webhook-endpoint-cards:visible').first();
+async function openDesktopRowMenu(page: Page, endpointCode: string) {
+  const trigger = visibleEndpointSurface(page).getByRole('button', {
+    name: `Actions for ${endpointCode}`,
+    exact: true,
+  });
+  await trigger.click();
+  await expect(page.getByRole('menu', { name: `Actions for ${endpointCode}`, exact: true })).toBeVisible();
 }
 
 test('captures complete desktop operating evidence', async ({ page }) => {
@@ -226,32 +240,31 @@ test('captures complete desktop operating evidence', async ({ page }) => {
   await screenshot(page, 'import-preview');
   await page.getByRole('button', { name: 'Cancel' }).click();
 
-  const surface = await visibleEndpointSurface(page);
-  await surface.getByLabel('Actions for labels-v1').click();
-  await page.getByRole('menuitem', { name: 'Delete endpoint labels-v1' }).click();
+  await openDesktopRowMenu(page, 'labels-v1');
+  await page.getByRole('menuitem', { name: 'Delete endpoint labels-v1', exact: true }).click();
   await expect(page.getByText(/may stop working immediately/i)).toBeVisible();
   await screenshot(page, 'delete-confirmation');
   await page.getByRole('button', { name: 'Cancel' }).click();
 
   await page.locator('.webhook-endpoint-table tbody input[type="checkbox"]').first().check();
   await screenshot(page, 'batch-selection');
-  await page.getByRole('button', { name: 'Delete selected' }).click();
+  await page.getByRole('button', { name: 'Delete selected', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Delete selected endpoints' })).toBeVisible();
   await screenshot(page, 'batch-delete-confirmation');
   await page.getByRole('button', { name: 'Cancel' }).click();
-  await page.getByRole('button', { name: 'Clear selection' }).click();
+  await page.getByRole('button', { name: 'Clear selection', exact: true }).click();
 
-  await surface.getByLabel('Actions for labels-v1').click();
-  await page.getByRole('menuitem', { name: 'Test sending a callback labels-v1' }).click();
+  await openDesktopRowMenu(page, 'labels-v1');
+  await page.getByRole('menuitem', { name: 'Test sending a callback labels-v1', exact: true }).click();
   await expect(page.getByText(/HTTP: delivered/)).toBeVisible();
   await expect(page.getByText(/NATS: Failed.*no responder/i)).toBeVisible();
   await screenshot(page, 'callback-test-partial');
 
-  await page.getByRole('button', { name: 'Open delivery history' }).click();
+  await page.getByRole('button', { name: 'Open delivery history', exact: true }).click();
   await expect(page.locator('.webhook-delivery-history')).toBeVisible();
   await screenshot(page, 'delivery-history');
   await page.locator('.webhook-delivery-table:visible')
-    .getByRole('button', { name: 'View details' })
+    .getByRole('button', { name: 'View details', exact: true })
     .first()
     .click();
   await expect(page.getByRole('heading', { name: 'Callback delivery evidence' })).toBeVisible();
@@ -269,19 +282,18 @@ test('captures empty, tablet, mobile, Thai, and 200 percent reflow with records'
     { width: 768, height: 1024, name: 'tablet-768' },
     { width: 390, height: 844, name: 'mobile-endpoint-list' },
   ]) {
-    const page = await browser.newPage({ viewport });
-    await openWebhooks(page, 'en', viewport);
-    await settleResponsiveNav(page);
-    await expect(page.locator('.webhook-endpoint-cards')).toBeVisible();
-    await expect(page.getByText('labels-v1').first()).toBeVisible();
-    await screenshot(page, viewport.name);
+    const responsivePage = await browser.newPage({ viewport });
+    await openWebhooks(responsivePage, 'en', viewport);
+    await settleResponsiveNav(responsivePage);
+    await expect(responsivePage.locator('.webhook-endpoint-cards')).toBeVisible();
+    await screenshot(responsivePage, viewport.name);
     if (viewport.width === 390) {
-      await page.locator('.ui-page-header__actions')
+      await responsivePage.locator('.ui-page-header__actions')
         .getByRole('button', { name: 'Create endpoint', exact: true })
         .click();
-      await screenshot(page, 'mobile-editor');
+      await screenshot(responsivePage, 'mobile-editor');
     }
-    await page.close();
+    await responsivePage.close();
   }
 
   const zoomPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
