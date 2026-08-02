@@ -66,13 +66,15 @@ export interface DialogProps {
   onClose: () => void;
   title: ReactNode;
   children: ReactNode;
+  /** Accessible label for an explicit close control in the header. */
+  closeLabel?: string;
   /** Action row, typically Cancel + the confirming Button. */
   footer?: ReactNode;
   /** Prominent warning shown under the title (e.g. duplicate-copy risk). */
   warning?: ReactNode;
 }
 
-export function Dialog({ open, onClose, title, children, footer, warning }: DialogProps) {
+export function Dialog({ open, onClose, title, children, closeLabel, footer, warning }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -90,6 +92,11 @@ export function Dialog({ open, onClose, title, children, footer, warning }: Dial
       ref={ref}
       className="ui-dialog"
       aria-labelledby={titleId}
+      onClick={(event) => {
+        // Native `<dialog>` reports a backdrop click on the dialog element
+        // itself. Content clicks target descendants and must not dismiss it.
+        if (event.target === event.currentTarget) onClose();
+      }}
       onCancel={(event) => {
         // Let React own the open state: without this the element would close
         // itself on Escape and immediately be reopened by the next render.
@@ -97,9 +104,22 @@ export function Dialog({ open, onClose, title, children, footer, warning }: Dial
         onClose();
       }}
     >
-      <h2 className="ui-dialog-title" id={titleId}>
-        {title}
-      </h2>
+      <div className="ui-dialog-header">
+        <h2 className="ui-dialog-title" id={titleId}>
+          {title}
+        </h2>
+        {closeLabel && (
+          <button
+            type="button"
+            className="ui-dialog-close"
+            aria-label={closeLabel}
+            title={closeLabel}
+            onClick={onClose}
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        )}
+      </div>
       {warning && (
         <p className="ui-dialog-warning" role="alert">
           {warning}
