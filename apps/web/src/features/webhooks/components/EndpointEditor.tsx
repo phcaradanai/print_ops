@@ -40,6 +40,7 @@ export function EndpointEditor({ controller }: { controller: WebhookWorkspaceCon
     testCallback,
   } = controller;
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const gutterRef = useRef<HTMLDivElement | null>(null);
 
   const selectedPolicy = useMemo(
     () => policies.find((policy) => policy.id === form.routePolicyId),
@@ -58,8 +59,8 @@ export function EndpointEditor({ controller }: { controller: WebhookWorkspaceCon
     [form.callbackPayloadTemplate],
   );
   const lineNumbers = useMemo(() => {
-    const count = Math.max(7, form.callbackPayloadTemplate.split('\n').length);
-    return Array.from({ length: count }, (_, index) => index + 1);
+    const count = form.callbackPayloadTemplate.split(/\r\n|\r|\n/).length;
+    return Array.from({ length: Math.max(1, count) }, (_, index) => index + 1);
   }, [form.callbackPayloadTemplate]);
 
   const insertVariable = (variable: string) => {
@@ -323,17 +324,21 @@ export function EndpointEditor({ controller }: { controller: WebhookWorkspaceCon
             >
               {(control) => (
                 <div className="webhook-json-editor" data-invalid={Boolean(templateError) || undefined}>
-                  <div className="webhook-json-editor__gutter" aria-hidden="true">
+                  <div ref={gutterRef} className="webhook-json-editor__gutter" aria-hidden="true">
                     {lineNumbers.map((line) => <span key={line}>{line}</span>)}
                   </div>
                   <Textarea
                     {...control}
                     ref={textareaRef}
                     rows={12}
+                    wrap="off"
                     mono
                     resize="vertical"
                     invalid={Boolean(templateError)}
                     value={form.callbackPayloadTemplate}
+                    onScroll={(event) => {
+                      if (gutterRef.current) gutterRef.current.scrollTop = event.currentTarget.scrollTop;
+                    }}
                     onChange={(event) => updateForm({ callbackPayloadTemplate: event.target.value })}
                   />
                 </div>
