@@ -1,7 +1,6 @@
 .ui-page-header {
   display: flex;
   min-width: 0;
-  grid-area: header;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--spacing-xl);
