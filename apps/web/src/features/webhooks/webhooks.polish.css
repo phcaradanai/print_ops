@@ -1,0 +1,100 @@
+/* Final visual pass after rendered viewport review. This file contains only
+   high-specificity corrections that must win over shared responsive component
+   rules; generic component styling remains in the shared UI layer. */
+
+.webhook-list .webhook-endpoint-table .ui-data-table {
+  min-width: 67rem;
+}
+
+.webhook-delivery-history .webhook-delivery-table .ui-data-table {
+  min-width: 64rem;
+}
+
+.webhook-list .webhook-endpoint-table .ui-data-head,
+.webhook-delivery-history .webhook-delivery-table .ui-data-head {
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+
+.webhook-list .webhook-endpoint-table th:nth-child(2),
+.webhook-list .webhook-endpoint-table td:nth-child(2) {
+  width: 10rem;
+}
+
+.webhook-list .webhook-endpoint-table th:nth-child(3),
+.webhook-list .webhook-endpoint-table td:nth-child(3) {
+  width: 7.5rem;
+}
+
+.webhook-list .webhook-endpoint-table th:nth-child(4),
+.webhook-list .webhook-endpoint-table td:nth-child(4) {
+  width: 5rem;
+}
+
+.webhook-list .webhook-endpoint-table th:nth-child(5),
+.webhook-list .webhook-endpoint-table td:nth-child(5) {
+  width: 11.5rem;
+}
+
+.webhook-list .webhook-endpoint-table th:nth-child(6),
+.webhook-list .webhook-endpoint-table td:nth-child(6) {
+  width: 6rem;
+}
+
+.webhook-list .webhook-endpoint-table th:nth-child(7),
+.webhook-list .webhook-endpoint-table td:nth-child(7) {
+  width: 9rem;
+}
+
+.webhook-list .webhook-endpoint-table th:nth-child(8),
+.webhook-list .webhook-endpoint-table td:nth-child(8) {
+  width: 8.5rem;
+}
+
+.webhook-list .webhook-endpoint-table th:nth-child(9),
+.webhook-list .webhook-endpoint-table td:nth-child(9) {
+  width: 7rem;
+}
+
+@media (min-width: 861px) and (max-width: 1180px) {
+  .webhook-list .ui-resource-toolbar__controls {
+    grid-template-columns: minmax(0, 1.4fr) minmax(12rem, 0.7fr);
+    flex-direction: initial;
+  }
+
+  .webhook-list .ui-resource-toolbar__actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 860px) {
+  .webhook-list .webhook-endpoint-surface.ui-card,
+  .webhook-delivery-history > .ui-card {
+    overflow: visible;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .webhook-endpoint-cards .webhook-empty-record,
+  .webhook-delivery-cards .webhook-empty-record {
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+  }
+}
+
+@media (max-width: 520px) {
+  .webhook-list .webhook-toolbar-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .webhook-list .webhook-toolbar-actions .ui-button,
+  .webhook-list .webhook-toolbar-actions .ui-button:last-child {
+    grid-column: auto;
+    min-width: 0;
+    padding-inline: var(--spacing-xs);
+    font-size: var(--font-label-size);
+  }
+}
