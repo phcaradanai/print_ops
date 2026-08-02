@@ -47,3 +47,8 @@ export { StatusDot, StatusIndicator, statusTone, type StatusTone } from './statu
 export { MetricGrid, MetricTile, type MetricTone } from './metrics.js';
 export { IconButton, type IconButtonProps } from './IconButton.js';
 export { Drawer, type DrawerProps } from './Drawer.js';
+export {
+  RowActionMenu,
+  computeRowActionMenuPosition,
+  type RowActionMenuItem,
+} from './RowActionMenu.js';
