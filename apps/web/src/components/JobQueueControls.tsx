@@ -1,6 +1,7 @@
 import { JOB_STATUSES, type JobStatus } from '@printerops/domain';
 import type { JobQueueStatusFilter } from '../lib/jobQueueView.js';
 import { ResourceToolbar, SearchField, SelectFilter } from './ui/index.js';
+import './JobQueueControls.css';
 
 export interface JobQueueControlsProps {
   status: JobQueueStatusFilter;
@@ -28,8 +29,12 @@ export function JobQueueControls({
   onSearchChange,
 }: JobQueueControlsProps) {
   return (
-    <ResourceToolbar ariaLabel={`${labels.status}; ${labels.search}`}>
+    <ResourceToolbar
+      ariaLabel={`${labels.status}; ${labels.search}`}
+      className="job-queue-toolbar"
+    >
       <SelectFilter
+        className="job-queue-toolbar__status"
         label={labels.status}
         value={status}
         onValueChange={(value) => onStatusChange(value as JobQueueStatusFilter)}
@@ -43,6 +48,7 @@ export function JobQueueControls({
       </SelectFilter>
 
       <SearchField
+        className="job-queue-toolbar__search"
         label={labels.search}
         value={search}
         placeholder={labels.searchPlaceholder}
