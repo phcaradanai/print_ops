@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { PaperProfilePersistence } from '../hooks/usePaperProfilePersistence.js';
 import type { PaperProfile } from '../model/types.js';
 import type { Translate } from './types.js';
@@ -22,9 +22,35 @@ import {
   Mono,
   SectionHeading,
   Select,
-  Stack,
   Text,
 } from '../../../components/ui/index.js';
+
+function marginPercent(value: number, total: number): string {
+  if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return '0%';
+  return `${Math.max(0, Math.min(42, (value / total) * 100))}%`;
+}
+
+function PaperProfileThumbnail({ profile }: { profile: PaperProfile }) {
+  const width = Math.max(1, profile.widthMm);
+  const height = Math.max(1, profile.heightMm);
+  const style = {
+    aspectRatio: `${width} / ${height}`,
+    '--pp-margin-top': marginPercent(profile.marginTopMm, height),
+    '--pp-margin-right': marginPercent(profile.marginRightMm, width),
+    '--pp-margin-bottom': marginPercent(profile.marginBottomMm, height),
+    '--pp-margin-left': marginPercent(profile.marginLeftMm, width),
+  } as CSSProperties;
+
+  return (
+    <span
+      className={`pp-profile-thumbnail pp-profile-thumbnail--${profile.orientation}`}
+      style={style}
+      aria-hidden="true"
+    >
+      <span className="pp-profile-thumbnail__printable" />
+    </span>
+  );
+}
 
 export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
   onEdit: (profile: PaperProfile) => void;
@@ -67,6 +93,7 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
         id="paper-profile-library-title"
         title={t('page.paperProfiles.profileLibrary')}
         description={t('page.paperProfiles.libraryHint')}
+        className="pp-library-heading"
         actions={
           <>
             {/* Native file picker stays native — the browser behavior is the feature. */}
@@ -155,7 +182,7 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
                existed twice in the accessibility tree — including the destructive
                one, whose two copies passed different trigger elements to
                `requestDelete` and so restored focus to different places. */
-            <DataTable label={t('page.paperProfiles.profileLibrary')} responsive>
+            <DataTable className="pp-profile-library-table" label={t('page.paperProfiles.profileLibrary')} responsive>
               <thead>
                 <tr>
                   <DataHead>{columns.code}</DataHead>
@@ -170,9 +197,17 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
               </thead>
               <tbody>
                 {filteredProfiles.map((profile) => (
-                  <tr key={profile.id}>
-                    <DataCell label={columns.code}>
-                      <Mono weight="semibold">{profile.code}</Mono>
+                  <tr key={profile.id} className="pp-profile-row">
+                    <DataCell label={columns.code} className="pp-profile-cell--identity">
+                      <div className="pp-profile-identity">
+                        <PaperProfileThumbnail profile={profile} />
+                        <div className="pp-profile-identity__copy">
+                          <Mono weight="semibold">{profile.code}</Mono>
+                          <Text size="label" tone="muted" className="pp-profile-identity__size">
+                            {profile.widthMm}×{profile.heightMm} mm
+                          </Text>
+                        </div>
+                      </div>
                     </DataCell>
                     <DataCell label={columns.name}>
                       <Text weight="semibold" tone="strong">{profile.name}</Text>
@@ -180,7 +215,7 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
                     {/* Dimensions are the substance of this surface, so they keep
                         their unit rather than relying on a header two rows away —
                         the card view has no header to rely on at all. */}
-                    <DataCell label={columns.size}>
+                    <DataCell label={columns.size} className="pp-profile-cell--size">
                       <Mono nowrap>{profile.widthMm}×{profile.heightMm} mm</Mono>
                     </DataCell>
                     <DataCell label={columns.margins}>
