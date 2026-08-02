@@ -141,7 +141,6 @@ export function RowActionMenu({
   return (
     <span className="ui-row-action-menu">
       <IconButton
-        ref={triggerRef}
         size="sm"
         label={label}
         title={label}
