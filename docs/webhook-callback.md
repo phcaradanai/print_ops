@@ -14,10 +14,47 @@ caller** after the job is accepted — over **HTTP, NATS, or both**.
   - literal: `medisync.reply`
   - dynamic: `$.reply_subject`
   - templated: `medisync.reply.$.branch`
-- `callbackPayloadTemplate` (JSON, optional): the exact body sent back. Any
-  `$.field` value is resolved from the **original intake payload** (so the caller
-  gets back what they sent). When empty, a default envelope is sent:
-  `{ request_id, print_job_id, status, trace_id, duplicate }`.
+- `callbackPayloadTemplate` (JSON, optional): the exact body sent back by the
+  **acceptance** callback. Terminal result callbacks ignore it and always use
+  the fixed versioned envelope (see
+  [`docs/architecture/result-callbacks.md`](./architecture/result-callbacks.md) §5).
+  A value resolves from one of two sources, by prefix:
+
+  | Written as | Resolves from | Example |
+  |---|---|---|
+  | `$.field` | the **original intake payload** — what the caller sent | `"hn": "$.hn"` |
+  | `$$.field` | the **intake response** PrintOps produced — system fields | `"job": "$$.print_job_id"` |
+
+  The seven system fields are `print_job_id`, `request_id`, `trace_id`,
+  `resolved_printer_code`, `resolved_template_code`, `status`, `duplicate`
+  (`ACCEPTANCE_CALLBACK_SYSTEM_FIELDS` in `packages/domain`). Anything else is
+  sent as a literal; a token naming a field that was not supplied is omitted
+  from the body, the same as any `undefined` JSON value.
+
+  ```json
+  {
+    "event_type": "print.job.accepted",
+    "request_id": "$$.request_id",
+    "print_job_id": "$$.print_job_id",
+    "status": "$$.status",
+    "hn": "$.hn"
+  }
+  ```
+
+  When the template is empty, a default envelope is sent:
+  `{ event_type, request_id, print_job_id, status, trace_id, duplicate }`.
+
+  `$$.` is a separate sigil rather than a `$.result.` namespace because
+  `$.result.*` and `$.payload.*` already name reachable caller data — the NATS
+  intake envelope carries a top-level `payload` object — so reserving them
+  would silently change what saved endpoints send. A stored `$.field` means
+  today exactly what it meant before `$$.` existed.
+
+  The Webhooks page lists both groups beside the editor: system fields with a
+  one-line description each, and "your intake fields" read from the
+  `payloadMapping` of the route policy bound to the endpoint. It also previews
+  the resolved body, so what is shown as an example is derived from the
+  template rather than written by hand.
 - `callbackOnPrintResult`: if checked, the callback is deferred until the print
   result is known (success/failure) instead of firing right after job creation.
   > Note: the MVP fires on job-acceptance (`BOTH`/`HTTP`/`NATS` after

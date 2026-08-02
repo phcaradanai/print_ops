@@ -61,12 +61,14 @@ function createExportPayload(endpoints: Endpoint[], selectedIds: string[] = []) 
   };
 }
 
+/** Mirrors insertVariableIntoTemplate in Webhooks.tsx: the token goes in as
+ *  written. It used to be rewritten to `${.field}`, which the callback resolver
+ *  matches as neither a field path nor an embedded token. */
 function insertVariablePattern(currentText: string, variable: string, startPos?: number, endPos?: number): string {
-  const varPattern = `\${.${variable.replace('$.', '')}}`;
   if (startPos === undefined || endPos === undefined) {
-    return currentText + ' ' + varPattern;
+    return currentText + ' ' + variable;
   }
-  return currentText.substring(0, startPos) + varPattern + currentText.substring(endPos);
+  return currentText.substring(0, startPos) + variable + currentText.substring(endPos);
 }
 
 function calculateTabCounts(endpoints: Endpoint[]) {
@@ -200,22 +202,28 @@ describe('Webhooks Export JSON logic', () => {
 });
 
 describe('Webhooks Template Variable Insertion', () => {
-  it('converts $.event to ${.event} and inserts at cursor position', () => {
-    const original = '{"event": ""}';
-    const result = insertVariablePattern(original, '$.event', 11, 11);
-    expect(result).toBe('{"event": "${.event}"}');
+  it('inserts an intake token verbatim at the cursor position', () => {
+    const original = '{"hn": ""}';
+    const result = insertVariablePattern(original, '$.hn', 8, 8);
+    expect(result).toBe('{"hn": "$.hn"}');
   });
 
-  it('converts $.printerId to ${.printerId} and replaces selection range', () => {
+  it('inserts a system token verbatim, replacing the selection range', () => {
     const original = '{"id": "REPLACE_ME"}';
-    const result = insertVariablePattern(original, '$.printerId', 8, 18);
-    expect(result).toBe('{"id": "${.printerId}"}');
+    const result = insertVariablePattern(original, '$$.print_job_id', 8, 18);
+    expect(result).toBe('{"id": "$$.print_job_id"}');
   });
 
-  it('appends pattern with space when no selection positions are provided', () => {
+  it('appends with a space when no selection positions are provided', () => {
     const original = '{"key":';
-    const result = insertVariablePattern(original, '$.status');
-    expect(result).toBe('{"key": ${.status}');
+    const result = insertVariablePattern(original, '$$.status');
+    expect(result).toBe('{"key": $$.status');
+  });
+
+  it('never produces the ${.field} form the resolver cannot read', () => {
+    for (const token of ['$.hn', '$$.request_id', '$$.duplicate']) {
+      expect(insertVariablePattern('{}', token, 1, 1)).not.toContain('${.');
+    }
   });
 });
 
