@@ -86,8 +86,25 @@ subscriber reads the job back to resolve its intent.
 "could not confirm ≠ did not print": a page may physically exist, and telling an
 integrator it failed invites a duplicate reprint of a patient or specimen label.
 
+`TIMEOUT` belongs to the same may-have-printed family as `UNVERIFIED`, and the
+two are distinguished by *what came back*, not by how long it took:
+
+| Status | Meaning |
+|---|---|
+| `UNVERIFIED` | The device answered, but no evidence could be tied to **this** job. |
+| `TIMEOUT` | The document reached the spooler and **nothing came back at all** before the execution watchdog expired (`PRINTOPS_EXECUTE_TIMEOUT_MS`, default 180 s). |
+
+A receiver must treat both identically: a page may exist, so an automatic
+reprint is unsafe. PrintOps enforces the same rule internally — both statuses
+are non-executable, so re-running the job is refused and a reprint has to be a
+deliberate new job.
+
 `DUPLICATE_RETURNED` is not in this list — it is an acceptance outcome, not a
 print outcome.
+
+`CANCELLED` only ever means the job was stopped **before dispatch**. A cancel
+requested after dispatch is best-effort and does not produce this status by
+itself; see §5.1.
 
 ## 3. Callback intent (why it is persisted)
 
@@ -177,12 +194,22 @@ rather than retrying a poison envelope.
   "source_system": "medisync",
 
   "print_status": "SUCCESS",
+  "data_quality": "OK",
+  "missing_fields": [],
+  "render_warnings": [],
 
   "printer_code": "OFFICE_LASER_01",
   "runner_id": "desktop-local-worker",
 
   "error": null,
   "trace_id": "trace_1c3bb5c3-…",
+
+  "timeline": {
+    "accepted_at": "2026-07-27T06:42:45.100Z",
+    "queued_at":   "2026-07-27T06:42:45.110Z",
+    "started_at":  "2026-07-27T06:42:45.180Z",
+    "terminal_at": "2026-07-27T06:42:45.347Z"
+  },
 
   "delivery": { "transports": ["HTTP"], "nats_mode": null }
 }
@@ -202,6 +229,45 @@ Failure:
 - **HTTP headers**: `X-PrintOps-Event-Id`, `X-PrintOps-Delivery-Id`,
   `X-PrintOps-Event-Type`.
 - **`event_id` is stable across retries** — dedupe on it.
+
+### 5.1 Data completeness — `data_quality`
+
+A print can succeed physically while the data on it was incomplete. Reporting
+that as a bare `SUCCESS` tells the caller their data was fine, which is a lie
+the caller then builds on. Three fields carry the truth alongside the status:
+
+| Field | Values |
+|---|---|
+| `data_quality` | `"OK"` — every template field resolved. `"WITH_WARNINGS"` — the document rendered, but the renderer reported at least one problem. |
+| `missing_fields` | Field keys the payload did not supply, e.g. `["hn", "barcode"]`. They printed as blanks. |
+| `render_warnings` | Every raw render warning, including non-missing-field ones such as an unrenderable barcode value. |
+
+```json
+{
+  "print_status": "SUCCESS",
+  "data_quality": "WITH_WARNINGS",
+  "missing_fields": ["hn"],
+  "render_warnings": ["Missing field: hn"]
+}
+```
+
+This is deliberately **two orthogonal fields, not a `SUCCESS_WITH_WARNING`
+status** (decision 2026-08-03). `print_status` is the canonical vocabulary that
+the database, the queue filter, the dashboard badges and every integrator
+already switch on; adding members to it to express a second dimension would
+break all of them. `SUCCESS` + `WITH_WARNINGS` and `UNVERIFIED` + `WITH_WARNINGS`
+compose naturally.
+
+**A caller that treats `data_quality: "WITH_WARNINGS"` as a plain success is
+choosing to ignore it.** Both fields are always present, so the check is
+`print_status === 'SUCCESS' && data_quality === 'OK'`.
+
+What does *not* reach a callback at all: a template that cannot render **at
+all**. A renderer exception or a template whose paper profile is missing is
+rejected at intake (`422 RENDER_FAILED` / `422 TEMPLATE_PROFILE_MISSING`), no
+job is created, and nothing prints — printing the raw payload and calling it a
+success is exactly the failure this prevents. Missing *fields* print; a missing
+*document* does not.
 
 ### `callbackPayloadTemplate` does not apply here
 
@@ -235,8 +301,9 @@ SKIPPED
 Indexed on `(print_job_id, transport, target)` (UNIQUE), `print_job_id`,
 `request_id`, `event_id`, `delivery_status`, `next_attempt_at`.
 
-Terminal deliveries are pruned alongside the jobs they belong to by the existing
-retention sweep.
+Terminal deliveries are pruned alongside the jobs they belong to by the
+retention sweep (default 14-day hot window), which archives every row it prunes
+to `<db dir>/archive` as timestamped JSON before deleting it.
 
 ### Print status vs delivery status
 
@@ -351,6 +418,7 @@ because it is re-sent verbatim on every retry.
 | process crash mid-attempt | `recoverInFlight()` at boot re-arms `DELIVERING` / `PENDING` rows |
 | process restart with a scheduled retry | SQLite mode: row survives, sweep picks it up. Memory mode: lost with the process (see limits) |
 | NATS not connected | delivery retried; error `NATS_NOT_CONNECTED` |
+| adapter wedged, no verdict | the execution watchdog ends the job as `TIMEOUT` (or `FAILED` if the spooler never accepted it) and emits the terminal event, so the caller is never left waiting forever |
 
 ## 12. Query API
 
@@ -389,7 +457,12 @@ retried on purpose. Check the URL and the receiver's expectations.
 and documented: `BEST_EFFORT` means published, not received. Check the
 subscriber and the subject.
 
-**Nothing at all, and the job is `UNVERIFIED`** — the job IS terminal and a
-callback WAS sent, carrying `print_status: "UNVERIFIED"`. A receiver that only
+**Nothing at all, and the job is `UNVERIFIED` or `TIMEOUT`** — the job IS
+terminal and a callback WAS sent, carrying that status. A receiver that only
 switches on `SUCCESS`/`FAILED` will drop it. That is a receiver-side bug; the
-status is deliberate.
+status is deliberate. Both mean a page may exist: do not auto-reprint.
+
+**The receiver says the data was fine, but the label came out with blanks** —
+check `data_quality` and `missing_fields` on the delivered payload (§5.1). If
+they say `WITH_WARNINGS`, PrintOps reported the gap and the receiver ignored it;
+the missing values were absent from the intake payload, upstream of PrintOps.
