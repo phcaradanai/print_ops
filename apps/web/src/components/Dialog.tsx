@@ -111,13 +111,13 @@ export function Dialog({
     </h2>
   );
 
-  const closeButton = closeLabel ? (
+  const renderCloseButton = (handleClick?: () => void) => closeLabel ? (
     <button
       type="button"
       className="ui-dialog-close"
       aria-label={closeLabel}
       title={closeLabel}
-      onClick={onClose}
+      onClick={handleClick}
     >
       <span aria-hidden="true">×</span>
     </button>
@@ -133,10 +133,12 @@ export function Dialog({
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        {renderChrome(titleElement, closeButton)}
+        {renderChrome(titleElement, renderCloseButton(onClose))}
       </div>
     );
   }
+
+  const closeButton = renderCloseButton();
 
   return (
     <DialogPrimitive.Root
