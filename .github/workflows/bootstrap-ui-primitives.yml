@@ -1,9 +1,9 @@
 name: Bootstrap UI primitives dependency
 
 on:
-  push:
+  pull_request:
     branches:
-      - refactor/ui-primitives-radix
+      - mvp_nippon
     paths:
       - .github/workflows/bootstrap-ui-primitives.yml
 
@@ -17,7 +17,7 @@ jobs:
       - name: Check out branch
         uses: actions/checkout@v4
         with:
-          ref: refactor/ui-primitives-radix
+          ref: ${{ github.head_ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -38,4 +38,4 @@ jobs:
             exit 0
           fi
           git commit -m "build(web): add Radix dialog primitive"
-          git push origin HEAD:refactor/ui-primitives-radix
+          git push origin HEAD:${{ github.head_ref }}
