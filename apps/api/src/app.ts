@@ -458,9 +458,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     jobs: jobRepo,
     deliveries: callbackDeliveryRepo,
     http: resultCallbackHttpSender,
-    nats: (subject, body) => {
+    nats: (subject, body, opts) => {
       if (!resultCallbackNats) throw new Error('NATS transport is not connected');
-      return resultCallbackNats(subject, body);
+      return resultCallbackNats(subject, body, opts);
     },
     attemptLog: webhookCallbackAttemptRepo,
     logger: app.log,
@@ -905,12 +905,24 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
   if (printIntakeCfg) {
+    // Acceptance notifications stay on Core publish: they are explicitly
+    // best-effort, single-shot, and have no delivery record or retry worker
+    // behind them, so a PubAck would have nothing to change.
     const natsPublisherLocal: NatsPublisher = (subject, payload) => natsManager.publish(subject, payload);
     dynamicIntake.setCallbackService(new WebhookCallbackService(app.log, httpCallbackSender, natsPublisherLocal, webhookCallbackAttemptRepo));
     // The NATS print-intake consumer submits through dynamicPrint, so its
     // acceptance callbacks need the same NATS-capable sender.
     dynamicPrint.setCallbackService(new WebhookCallbackService(app.log, httpCallbackSender, natsPublisherLocal, webhookCallbackAttemptRepo));
-    resultCallbackNats = natsPublisherLocal;
+    // Terminal RESULT callbacks are the ones with a durable delivery record and
+    // a retry worker, so they use JetStream and report the guarantee they
+    // actually obtained.
+    resultCallbackNats = async (subject, payload, opts) => {
+      if (opts.mode === 'CORE') {
+        natsManager.publish(subject, payload);
+        return { acknowledged: false };
+      }
+      return natsManager.publishJetStream(subject, payload, { msgId: opts.msgId });
+    };
   }
   natsManager.start();
   app.addHook('onClose', async () => { await natsManager.stop(); });

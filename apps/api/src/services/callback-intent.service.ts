@@ -6,6 +6,7 @@ import type {
 } from '@printerops/domain';
 import { AppError } from '@printerops/shared';
 import { resolveCallbackDestination } from './webhook-callback.service.js';
+import { callbackNatsModeFromEnv } from './result-callback-dispatcher.js';
 import { assertCallbackUrlAllowed, CallbackUrlRejected } from '../infra/http/callback-url-guard.js';
 
 /**
@@ -63,10 +64,13 @@ export function buildCallbackIntent(
     const subject = resolveCallbackDestination(endpoint.callbackNatsSubject, intakePayload);
     if (subject) {
       intent.natsSubject = subject;
-      // Core only. The print-intake connection deliberately does not own a
-      // stream, so PrintOps cannot promise JetStream durability on a
-      // caller-supplied reply subject. Labelled honestly rather than implied.
-      intent.natsMode = 'CORE';
+      // Snapshotted at accept time, like every other destination here: changing
+      // the deployment setting must not silently alter the delivery contract of
+      // a print already on the wire. JETSTREAM (at-least-once, deduped on
+      // Nats-Msg-Id) is the default; PrintOps still never creates the stream —
+      // if the receiving environment owns none, the delivery fails visibly with
+      // NATS_NO_STREAM rather than pretending to a guarantee it did not get.
+      intent.natsMode = callbackNatsModeFromEnv();
       transports.push('NATS');
     }
   }

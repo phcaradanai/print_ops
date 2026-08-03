@@ -52,7 +52,9 @@ interface Harness {
   cancelJob: CancelJobService;
   endpoints: InMemoryWebhookEndpointRepository;
   httpCalls: Array<{ url: string; body: Record<string, unknown>; headers: Record<string, string> }>;
-  natsCalls: Array<{ subject: string; body: Record<string, unknown> }>;
+  natsCalls: Array<{ subject: string; body: Record<string, unknown>; msgId?: string; mode?: string }>;
+  /** When false the fake transport behaves like a Core publish (no PubAck). */
+  natsAcknowledges: boolean;
   /** Status the fake receiver answers with, per attempt (last value repeats). */
   httpStatuses: number[];
   /** When true the HTTP sender throws (connection failure) instead of replying. */
@@ -134,6 +136,7 @@ async function buildHarness(): Promise<Harness> {
     dynamicPrint, dynamicIntake, executeJob, cancelJob,
     httpCalls: [] as Harness['httpCalls'],
     natsCalls: [] as Harness['natsCalls'],
+    natsAcknowledges: true,
     httpStatuses: [200],
     httpThrows: undefined as Harness['httpThrows'],
     natsThrows: false,
@@ -157,9 +160,12 @@ async function buildHarness(): Promise<Harness> {
     jobs: jobRepo,
     deliveries,
     http,
-    nats: (subject, body) => {
+    nats: async (subject, body, opts) => {
       if (harness.natsThrows) throw new Error('nats publish failed');
-      harness.natsCalls.push({ subject, body });
+      harness.natsCalls.push({ subject, body, msgId: opts.msgId, mode: opts.mode });
+      return harness.natsAcknowledges
+        ? { acknowledged: true, stream: 'RESULTS', sequence: harness.natsCalls.length }
+        : { acknowledged: false };
     },
     logger: silentLogger,
     policy: DEFAULT_RETRY_POLICY,
@@ -402,7 +408,7 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
     expect(delivery?.attemptCount).toBe(1);
   });
 
-  it('API intake -> print -> NATS publishes a TERMINAL result, labelled BEST_EFFORT', async () => {
+  it('API intake -> print -> NATS publishes a TERMINAL result, ACKNOWLEDGED on a JetStream ack', async () => {
     await makeEndpoint(h, { endpointCode: 'api-nats', callbackTransport: 'NATS', callbackNatsSubject: 'results.medisync' });
     const accepted = await h.dynamicPrint.submit(
       { request_id: 'M2', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE, payload: { label: 'M2' }, endpoint_code: 'api-nats' },
@@ -413,9 +419,27 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
     expect(h.natsCalls).toHaveLength(1);
     expect(h.natsCalls[0]!.subject).toBe('results.medisync');
     expect(h.natsCalls[0]!.body['print_status']).toBe('SUCCESS');
+    expect(h.natsCalls[0]!.mode).toBe('JETSTREAM');
+    // Nats-Msg-Id is the event id, so broker-side dedupe and the receiver's own
+    // idempotency check agree on what "the same notification" means.
+    expect(h.natsCalls[0]!.msgId).toBe(h.natsCalls[0]!.body['event_id']);
 
     const [delivery] = await h.deliveries.findAll({ printJobId: accepted.print_job_id });
-    // A Core publish that did not throw proves the bytes left this process and
+    expect(delivery?.guarantee).toBe('ACKNOWLEDGED');
+    expect(delivery?.deliveryStatus).toBe('DELIVERED');
+  });
+
+  it('reports BEST_EFFORT when the transport returns no ack (Core publish)', async () => {
+    h.natsAcknowledges = false;
+    await makeEndpoint(h, { endpointCode: 'api-nats-core', callbackTransport: 'NATS', callbackNatsSubject: 'results.core' });
+    const accepted = await h.dynamicPrint.submit(
+      { request_id: 'M2-core', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE, payload: { label: 'M2c' }, endpoint_code: 'api-nats-core' },
+      'actor',
+    );
+    await printAndSettle(h, accepted.print_job_id);
+
+    const [delivery] = await h.deliveries.findAll({ printJobId: accepted.print_job_id });
+    // A publish that did not throw proves the bytes left this process and
     // nothing more. Reporting ACKNOWLEDGED here would be a lie.
     expect(delivery?.guarantee).toBe('BEST_EFFORT');
     expect(delivery?.deliveryStatus).toBe('DELIVERED');
@@ -921,9 +945,12 @@ describe('NATS callback delivery mode', () => {
     await h.dispatcher.sweep();
     [delivery] = await h.deliveries.findAll({ printJobId: accepted.print_job_id });
     expect(delivery?.deliveryStatus).toBe('DELIVERED');
-    // Even on success the guarantee stays BEST_EFFORT — Core NATS cannot prove
-    // a subscriber received anything.
-    expect(delivery?.guarantee).toBe('BEST_EFFORT');
+    // The recovered attempt got a real JetStream ack, so the guarantee reflects
+    // that rather than the failure that preceded it.
+    expect(delivery?.guarantee).toBe('ACKNOWLEDGED');
+    // Same event id on the retry: the broker collapses the duplicate instead of
+    // storing a second copy of one logical result.
+    expect(h.natsCalls[0]!.msgId).toBe(delivery?.eventId);
   });
 });
 

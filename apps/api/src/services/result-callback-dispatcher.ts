@@ -7,6 +7,7 @@ import type {
   Job,
   JobCallbackIntent,
   JobRepositoryPort,
+  NatsDeliveryMode,
   PrintJobTerminal,
   WebhookCallbackAttemptRepositoryPort,
 } from '@printerops/domain';
@@ -42,7 +43,35 @@ export type CallbackHttpSender = (
   opts: { timeoutMs: number; headers: Record<string, string> },
 ) => Promise<CallbackHttpResponse>;
 
-export type CallbackNatsSender = (subject: string, body: Record<string, unknown>) => void | Promise<void>;
+/** What a NATS publish achieved. `acknowledged` is true only for a JetStream
+ *  PubAck; a Core publish resolves with `acknowledged: false`, which the
+ *  dispatcher records as `BEST_EFFORT`. */
+export interface CallbackNatsAck {
+  acknowledged: boolean;
+  stream?: string;
+  sequence?: number;
+  duplicate?: boolean;
+}
+
+export type CallbackNatsSender = (
+  subject: string,
+  body: Record<string, unknown>,
+  opts: { msgId: string; mode: NatsDeliveryMode },
+) => Promise<CallbackNatsAck>;
+
+/**
+ * Transport mode for NATS result callbacks.
+ *
+ * Defaults to JETSTREAM: at-least-once with broker-side dedupe on
+ * `Nats-Msg-Id` is the agreed delivery contract (decision 2026-08-03). It
+ * requires the receiving environment to own a stream capturing the callback
+ * subject — PrintOps never creates one, for the same reason it does not create
+ * the intake stream. Set `PRINTOPS_CALLBACK_NATS_MODE=CORE` to deliberately
+ * accept best-effort delivery where no stream can be provisioned.
+ */
+export function callbackNatsModeFromEnv(env = process.env): NatsDeliveryMode {
+  return env['PRINTOPS_CALLBACK_NATS_MODE']?.trim().toUpperCase() === 'CORE' ? 'CORE' : 'JETSTREAM';
+}
 
 export interface DispatcherLogger {
   info(obj: unknown, msg?: string): void;
@@ -59,6 +88,9 @@ export interface ResultCallbackDispatcherDeps {
   logger: DispatcherLogger;
   policy?: RetryPolicy;
   urlPolicy?: CallbackUrlPolicy;
+  /** Transport mode for deliveries whose stored intent predates `natsMode`.
+   *  Defaults to `callbackNatsModeFromEnv()`. */
+  natsMode?: NatsDeliveryMode;
   /** Injectable clock — the retry sweep must be drivable from a test without
    *  waiting 12 real minutes. */
   now?: () => Date;
@@ -82,6 +114,7 @@ export interface ResultCallbackDispatcherDeps {
 export class ResultCallbackDispatcher {
   private readonly policy: RetryPolicy;
   private readonly urlPolicy: CallbackUrlPolicy;
+  private readonly natsMode: NatsDeliveryMode;
   private readonly now: () => Date;
   private readonly random: () => number;
   private sweepTimer?: ReturnType<typeof setInterval>;
@@ -89,6 +122,7 @@ export class ResultCallbackDispatcher {
   constructor(private readonly deps: ResultCallbackDispatcherDeps) {
     this.policy = deps.policy ?? DEFAULT_RETRY_POLICY;
     this.urlPolicy = deps.urlPolicy ?? callbackUrlPolicyFromEnv();
+    this.natsMode = deps.natsMode ?? callbackNatsModeFromEnv();
     this.now = deps.now ?? (() => new Date());
     this.random = deps.random ?? Math.random;
   }
@@ -350,13 +384,29 @@ export class ResultCallbackDispatcher {
         errorMessage: 'NATS transport is not connected',
       };
     }
+    // The mode is taken from the intent snapshotted onto the job, so flipping
+    // the deployment setting cannot change the contract of a callback already
+    // in flight. Falls back to the current setting for pre-existing deliveries
+    // whose intent predates the field.
+    const intent = readCallbackIntent((await this.deps.jobs.findById(delivery.printJobId))?.metadata);
+    const mode: NatsDeliveryMode = intent?.natsMode ?? this.natsMode;
     try {
-      await this.deps.nats(delivery.target, delivery.payload);
-      // BEST_EFFORT, and the word is chosen carefully. A Core NATS publish that
-      // does not throw proves the bytes left this process — it does NOT prove a
-      // subscriber received them. Reporting this as ACKNOWLEDGED would be a lie
-      // an integrator would build on.
-      return { success: true, kind: 'PERMANENT', guarantee: 'BEST_EFFORT' };
+      // `event_id` as the dedupe key: it is re-sent verbatim on every retry, so
+      // the broker's duplicate window and the receiver's own idempotency check
+      // agree on what "the same result notification" means.
+      const ack = await this.deps.nats(delivery.target, delivery.payload, {
+        msgId: delivery.eventId,
+        mode,
+      });
+      // ACKNOWLEDGED only on a real JetStream PubAck. A Core publish that does
+      // not throw proves the bytes left this process — it does NOT prove any
+      // subscriber or broker stored them, and reporting that as ACKNOWLEDGED
+      // would be a lie an integrator would build on.
+      return {
+        success: true,
+        kind: 'PERMANENT',
+        guarantee: ack.acknowledged ? 'ACKNOWLEDGED' : 'BEST_EFFORT',
+      };
     } catch (err) {
       return {
         success: false,

@@ -345,25 +345,48 @@ Nothing sleeps. The policy computes a `next_attempt_at` and a 5-second sweep
 picks deliveries up when they come due, which is what makes retry exhaustion and
 restart recovery testable in milliseconds.
 
-## 8. NATS delivery guarantee — `BEST_EFFORT`
+## 8. NATS delivery guarantee — JetStream at-least-once
 
-Result callbacks over NATS use **Core NATS publish**, and the delivery record
-says so: `guarantee: "BEST_EFFORT"`, never `ACKNOWLEDGED`.
+Result callbacks over NATS are published to **JetStream and wait for a PubAck**
+(decision 2026-08-03). The delivery record reports what was actually obtained:
 
-This is a deliberate compatibility-mode decision, not an omission. The
-print-intake connection explicitly does **not** own its JetStream stream (the
-publisher's environment does — in this deployment, medisync-core ensures
-`MEDISYNC`). PrintOps therefore cannot guarantee that a stream exists for an
-arbitrary caller-supplied reply subject, and creating one on the caller's behalf
-would silently take over retention policy for someone else's namespace.
+| `guarantee` | Meaning |
+|---|---|
+| `ACKNOWLEDGED` | A JetStream PubAck came back — the broker persisted the message. |
+| `BEST_EFFORT` | A Core publish left this process. Nothing more is proven. |
 
-**A successful Core NATS publish proves the bytes left this process. It does not
-prove any subscriber received them.** Publish failures are persisted and retried
-on the same schedule as HTTP; subscriber receipt is not, and never claimed to
-be, confirmed.
+Every publish carries `Nats-Msg-Id: <event_id>`. Retries re-send the identical
+id, so the broker's duplicate window collapses them into one stored message and
+agrees with the receiver's own `event_id` dedupe. **At-least-once with dedupe,
+not exactly-once**: a receiver must still be idempotent.
 
-An integrator who needs confirmed delivery should use the HTTP transport, whose
-2xx is a real acknowledgement (`guarantee: "ACKNOWLEDGED"`).
+### PrintOps does not create the stream
+
+The receiving environment owns the stream that captures the callback subject,
+exactly as it owns the intake stream (`MEDISYNC`, ensured by medisync-core).
+Creating one on a caller's behalf would silently take over retention policy for
+someone else's namespace.
+
+If no stream captures the subject, the delivery fails with **`NATS_NO_STREAM`**
+and is **retried** — that failure mode is usually "the receiver has not
+provisioned its stream yet", which an operator fixes without restarting
+PrintOps. It is deliberately *not* downgraded to a Core publish: at-least-once
+that quietly becomes best-effort is the kind of false guarantee this codebase
+refuses to report.
+
+### Choosing the mode
+
+`PRINTOPS_CALLBACK_NATS_MODE` — `JETSTREAM` (default) or `CORE`. Set `CORE`
+where a stream genuinely cannot be provisioned and best-effort is accepted with
+open eyes.
+
+The mode is **snapshotted onto the job's callback intent at accept time**, like
+every other destination detail, so changing the deployment setting never alters
+the contract of a print already on the wire.
+
+Acceptance notifications (§1) remain Core publish regardless: they are
+single-shot and best-effort by design, with no delivery record or retry worker
+that a PubAck could inform.
 
 ## 9. Outbound safety (SSRF)
 
@@ -453,9 +476,18 @@ retried on purpose. Check the URL and the receiver's expectations.
 **`FAILED` with `CALLBACK_URL_*`** — the SSRF guard refused the destination. See
 §9; the code names the exact rule.
 
-**`DELIVERED` but the other system claims nothing arrived, over NATS** — expected
-and documented: `BEST_EFFORT` means published, not received. Check the
-subscriber and the subject.
+**`DELIVERED` but the other system claims nothing arrived, over NATS** — read
+the `guarantee`. `ACKNOWLEDGED` means the broker stored the message, so the gap
+is downstream: check the receiver's consumer, its filter subject, and whether it
+acked and discarded. `BEST_EFFORT` means published, not received — check the
+subscriber and the subject, and consider whether this endpoint should be on
+JetStream (§8).
+
+**`RETRY_SCHEDULED` with `NATS_NO_STREAM`** — no JetStream stream captures the
+callback subject. PrintOps will not create it; the receiving environment must,
+after which the pending retries deliver on their own. To accept best-effort
+delivery instead, set `PRINTOPS_CALLBACK_NATS_MODE=CORE` (this applies to newly
+accepted jobs — in-flight ones keep the mode they were accepted with).
 
 **Nothing at all, and the job is `UNVERIFIED` or `TIMEOUT`** — the job IS
 terminal and a callback WAS sent, carrying that status. A receiver that only
