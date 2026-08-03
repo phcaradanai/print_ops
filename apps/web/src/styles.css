@@ -44,6 +44,31 @@
   --device-busy: #c2410c;
   --device-down: #9f1239;
   --device-unknown: #6b7280;
+
+  /* Job status — the second axis, kept strictly separate from device condition
+     above. DESIGN.md has declared these eleven values all along, but nothing
+     defined them in CSS, so every surface that needed one invented a literal:
+     the job-row dots drew SUCCESS as #2f732a and FAILED as #ba3253 while the
+     badge for the same job drew #166534 and #9f1239. One status, two colors,
+     depending on where you looked.
+
+     Contrast against a white surface is audited per status in statusColors.ts;
+     these values are that audit's result, so a swap here must be re-verified
+     there rather than assumed safe. UNVERIFIED stays in the amber family on
+     purpose — it must never read as a sibling of FAILED, because an operator
+     must not blind-retry a job that may already be on paper. */
+  --status-accepted: #0e7490;
+  --status-validated: #0891b2;
+  --status-queued: #1d4ed8;
+  --status-dispatched: #6d28d9;
+  --status-printing: #c2410c;
+  --status-success: #166534;
+  --status-unverified: #92400e;
+  --status-failed: #9f1239;
+  --status-timeout: #78350f;
+  --status-cancelled: #374151;
+  --status-duplicate: #4b5563;
+
   --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.05);
   --shadow-floating: 0 8px 24px rgba(0, 0, 0, 0.08);
 
@@ -3675,11 +3700,11 @@ body {
 
 /* Map job status → dot color */
 .job-row.queued    .status-dot { background: var(--primary); }
-.job-row.success   .status-dot { background: #2f732a; }
-.job-row.failed    .status-dot { background: #ba3253; }
+.job-row.success   .status-dot { background: var(--status-success); }
+.job-row.failed    .status-dot { background: var(--status-failed); }
 .job-row.running   .status-dot { background: var(--primary); animation: trace-pulse-ring 1.6s infinite; }
-.job-row.printing  .status-dot { background: #ffb4a7; }
-.job-row.unverified .status-dot { background: #f5a623; }
+.job-row.printing  .status-dot { background: var(--status-printing); }
+.job-row.unverified .status-dot { background: var(--status-unverified); }
 .job-row.cancelled .status-dot { background: var(--semantic-neutral); }
 
 .status-dot {
@@ -3737,10 +3762,13 @@ body {
 }
 
 /* Per-state border + text color (dot color is set inline in TSX via STATUS_DOT) */
+/* Device condition, so --device-ok — not the job-status green. This carried
+   #166534 (which is --status-success) and put a job-status color on a device
+   surface, the one axis crossing DESIGN.md names outright. */
 .status-indicator--online,
 .status-indicator--idle {
-  border-color: #166534;
-  color: #166534;
+  border-color: var(--device-ok);
+  color: var(--device-ok);
 }
 
 .status-indicator--busy {
@@ -4158,10 +4186,12 @@ body {
   color: #854d0e;
 }
 
+/* Feedback state, the third axis: an alert reports what the app just did, not
+   a job's status and not a device's condition. */
 .ui-alert--success {
-  background: #ecfdf5;
-  border-color: #4ca771;
-  color: #166534;
+  background: var(--state-success-surface);
+  border-color: color-mix(in srgb, var(--state-success-text) 45%, var(--neutral-surface));
+  color: var(--state-success-text);
 }
 
 .ui-alert--info {
@@ -4670,36 +4700,36 @@ body {
    surface shift and a substantial rail. This is the documented flat-layout
    exception: hierarchy comes from state, not a decorative container. */
 .job-verdict--caution {
-  --job-verdict-ink: #92400e;
+  --job-verdict-ink: var(--status-unverified);
   --job-verdict-mark-surface: var(--semantic-warning);
   border-color: color-mix(in srgb, var(--state-warning-text) 40%, transparent);
   background-color: #fff8e7;
 }
 
 .job-verdict--negative {
-  --job-verdict-ink: #9f1239;
+  --job-verdict-ink: var(--status-failed);
   --job-verdict-mark-surface: var(--semantic-error);
   border-color: color-mix(in srgb, var(--danger-action) 40%, transparent);
   background-color: #fff5f7;
 }
 
 .job-verdict--confirmed {
-  --job-verdict-ink: #166534;
+  --job-verdict-ink: var(--status-success);
   --job-verdict-mark-surface: var(--semantic-success);
 }
 
 .job-verdict--pending {
-  --job-verdict-ink: #1d4ed8;
+  --job-verdict-ink: var(--status-queued);
   --job-verdict-mark-surface: var(--semantic-info);
 }
 
 .job-verdict--progress {
-  --job-verdict-ink: #c2410c;
+  --job-verdict-ink: var(--status-printing);
   --job-verdict-mark-surface: var(--semantic-progress);
 }
 
 .job-verdict--neutral {
-  --job-verdict-ink: #374151;
+  --job-verdict-ink: var(--status-cancelled);
   --job-verdict-mark-surface: var(--semantic-neutral);
 }
 
@@ -4913,12 +4943,12 @@ body {
 }
 
 .job-trace__step--success .job-trace__marker {
-  background: #2f732a;
+  background: var(--status-success);
   box-shadow: 0 0 0 2px var(--semantic-success);
 }
 
 .job-trace__step--failed .job-trace__marker {
-  background: #ba3253;
+  background: var(--status-failed);
   box-shadow: 0 0 0 2px var(--semantic-error);
 }
 
@@ -4999,7 +5029,7 @@ body {
   background: #fef5f7;
   border: 1px solid #fbdfe6;
   border-radius: 4px;
-  color: #ba3253;
+  color: var(--status-failed);
   font-weight: 500;
 }
 
