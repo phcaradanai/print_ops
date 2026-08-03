@@ -1,4 +1,4 @@
-import { act } from 'react';
+import { act, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Dialog } from './Dialog.js';
@@ -7,7 +7,7 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -19,7 +19,7 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-function renderDialog(element: React.ReactElement) {
+function renderDialog(element: ReactElement) {
   act(() => root.render(element));
 }
 
