@@ -59,7 +59,7 @@
 
 .templates-page .tpl-list .data-table th,
 .templates-page .tpl-list .ui-data-table th {
-  background: #f8fafc;
+  background: var(--neutral-paper);
   color: #475569;
   font-size: 0.72rem;
   letter-spacing: 0.025em;
@@ -71,7 +71,7 @@
 }
 
 .templates-page .tpl-list tbody tr.is-selected td {
-  background: #eff6ff;
+  background: var(--state-info-surface);
 }
 
 .templates-page .tpl-list tbody tr.is-selected td:first-child {

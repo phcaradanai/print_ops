@@ -103,7 +103,7 @@
   min-width: 0;
   min-height: 36px;
   color-scheme: light;
-  background-color: #fff !important;
+  background-color: var(--neutral-surface) !important;
   color: var(--neutral-text, #374151) !important;
   caret-color: var(--neutral-deep, #1e1e2e);
   border-color: var(--neutral-border-strong, #d1d5db) !important;
@@ -116,8 +116,8 @@
   -webkit-appearance: none;
   padding-right: 2.25rem !important;
   background-image:
-    linear-gradient(45deg, transparent 50%, #6b7280 50%),
-    linear-gradient(135deg, #6b7280 50%, transparent 50%);
+    linear-gradient(45deg, transparent 50%, var(--neutral-text-muted) 50%),
+    linear-gradient(135deg, var(--neutral-text-muted) 50%, transparent 50%);
   background-position:
     calc(100% - 15px) 50%,
     calc(100% - 10px) 50%;
@@ -128,13 +128,13 @@
 .paper-profiles-page select option,
 .paper-profiles-page select optgroup {
   color-scheme: light;
-  background-color: #fff !important;
-  color: #111827 !important;
+  background-color: var(--neutral-surface) !important;
+  color: var(--neutral-inverse) !important;
 }
 
 .paper-profiles-page .paper-preview-modal__field-grid input:hover:not(:disabled),
 .paper-profiles-page .paper-preview-modal__field-grid select:hover:not(:disabled) {
-  border-color: #9399b2 !important;
+  border-color: var(--semantic-neutral) !important;
 }
 
 .paper-profiles-page .paper-preview-modal__field-grid input:focus-visible,
@@ -142,7 +142,7 @@
   border-color: var(--primary, #1e66f5) !important;
   outline: 2px solid rgba(30, 102, 245, 0.28) !important;
   outline-offset: 1px !important;
-  box-shadow: 0 0 0 1px #fff;
+  box-shadow: 0 0 0 1px var(--neutral-surface);
 }
 
 .paper-profiles-page [aria-invalid='true'],
@@ -189,7 +189,7 @@
 }
 
 .paper-profiles-page .pp-field-row:hover:not(.is-selected) {
-  border-color: #9399b2 !important;
+  border-color: var(--semantic-neutral) !important;
   background: #fbfdff !important;
 }
 
@@ -235,7 +235,7 @@
 }
 
 .paper-profiles-page table tbody tr:hover {
-  background: #f8fafc;
+  background: var(--neutral-paper);
 }
 
 .paper-profiles-page table tbody tr:focus-within {
@@ -252,8 +252,8 @@
 
 .paper-profiles-page table td:last-child .ds-btn--danger:hover:not(:disabled) {
   border-color: var(--state-danger-text, #9f1239);
-  color: #991b1b;
-  background: #fee2e2;
+  color: var(--state-danger-text);
+  background: var(--state-danger-surface);
 }
 
 /* Avoid sticky mouse hover styling on touch-first devices. */

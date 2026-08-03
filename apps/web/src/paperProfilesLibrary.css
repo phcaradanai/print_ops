@@ -31,14 +31,14 @@
   padding-inline: var(--spacing-lg);
   border-color: var(--primary-strong);
   background: var(--primary-strong);
-  color: #fff;
+  color: var(--neutral-surface);
   box-shadow: 0 5px 14px rgba(37, 99, 235, 0.2);
 }
 
 .paper-profiles-page .pp-page-header--library > .ds-btn:hover:not(:disabled) {
   border-color: var(--primary-hover);
   background: var(--primary-hover);
-  color: #fff;
+  color: var(--neutral-surface);
   transform: translateY(-1px);
 }
 
@@ -52,7 +52,7 @@
 .paper-profiles-page .pp-library-heading {
   padding: var(--spacing-lg) var(--spacing-xl);
   border-bottom: 1px solid var(--neutral-border);
-  background: linear-gradient(180deg, #fff 0%, #fbfdff 100%);
+  background: linear-gradient(180deg, var(--neutral-surface) 0%, #fbfdff 100%);
 }
 
 .paper-profiles-page .pp-library-heading .ui-section-heading__copy {
@@ -83,13 +83,13 @@
   border-bottom: 1px solid var(--neutral-border);
   background:
     linear-gradient(135deg, rgba(37, 99, 235, 0.04), transparent 45%),
-    #f8fafc;
+    var(--neutral-paper);
 }
 
 .paper-profiles-page .pp-library-controls .ui-input {
   min-height: 40px;
   border-color: var(--neutral-border-strong);
-  background: #fff;
+  background: var(--neutral-surface);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
@@ -117,7 +117,7 @@
 
 .paper-profiles-page .pp-library-filter .ui-select {
   min-height: 40px;
-  background: #fff;
+  background: var(--neutral-surface);
 }
 
 .paper-profiles-page .pp-library-count {
@@ -126,7 +126,7 @@
   padding: 0.35rem 0.65rem;
   border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-pill);
-  background: #fff;
+  background: var(--neutral-surface);
   color: var(--neutral-text);
   font-weight: 650;
   white-space: nowrap;

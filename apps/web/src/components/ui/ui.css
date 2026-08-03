@@ -89,12 +89,12 @@
 .ui-icon-button--sm { width: 32px; height: 32px; font-size: 0.85rem; }
 .ui-icon-button--md { width: 38px; height: 38px; font-size: 0.95rem; }
 .ui-icon-button--lg { width: 44px; height: 44px; font-size: 1.1rem; }
-.ui-icon-button--primary { border-color: #1d4ed8; background: linear-gradient(180deg, #2563eb 0%, #1e66f5 100%); color: #ffffff; box-shadow: 0 1px 2px rgba(30, 102, 245, 0.25); }
-.ui-icon-button--danger { border-color: #9f1239; background: linear-gradient(180deg, #be123c 0%, #9f1239 100%); color: #ffffff; box-shadow: 0 1px 2px rgba(159, 18, 57, 0.25); }
+.ui-icon-button--primary { border-color: var(--primary-pressed); background: linear-gradient(180deg, var(--primary-strong) 0%, var(--primary) 100%); color: var(--neutral-surface); box-shadow: 0 1px 2px rgba(30, 102, 245, 0.25); }
+.ui-icon-button--danger { border-color: var(--danger-action); background: linear-gradient(180deg, #be123c 0%, var(--danger-action) 100%); color: var(--neutral-surface); box-shadow: 0 1px 2px rgba(159, 18, 57, 0.25); }
 .ui-icon-button--ghost { border-color: transparent; background: transparent; color: var(--neutral-text-muted); box-shadow: none; }
 .ui-icon-button:hover:not(:disabled) { border-color: var(--primary, #1e66f5); color: var(--primary, #1e66f5); transform: translateY(-1px); box-shadow: 0 3px 8px rgba(30, 102, 245, 0.15); }
-.ui-icon-button--primary:hover:not(:disabled) { color: #ffffff; background: linear-gradient(180deg, #1d4ed8 0%, #1553d1 100%); box-shadow: 0 4px 12px rgba(30, 102, 245, 0.32); }
-.ui-icon-button--danger:hover:not(:disabled) { color: #ffffff; background: linear-gradient(180deg, #9f1239 0%, #830e2e 100%); box-shadow: 0 4px 12px rgba(159, 18, 57, 0.32); }
+.ui-icon-button--primary:hover:not(:disabled) { color: var(--neutral-surface); background: linear-gradient(180deg, var(--primary-pressed) 0%, #1553d1 100%); box-shadow: 0 4px 12px rgba(30, 102, 245, 0.32); }
+.ui-icon-button--danger:hover:not(:disabled) { color: var(--neutral-surface); background: linear-gradient(180deg, var(--danger-action) 0%, var(--danger-action-hover) 100%); box-shadow: 0 4px 12px rgba(159, 18, 57, 0.32); }
 .ui-icon-button--ghost:hover:not(:disabled) { background: rgba(30, 102, 245, 0.08); color: var(--primary, #1e66f5); }
 .ui-icon-button:active:not(:disabled) { transform: translateY(0.5px) scale(0.97); }
 .ui-icon-button:focus-visible { outline: 2px solid var(--primary, #1e66f5); outline-offset: 2px; box-shadow: 0 0 0 4px rgba(30, 102, 245, 0.18); }
@@ -198,7 +198,7 @@
 .ui-code-block--scroll { max-height: 22rem; overflow-y: auto; }
 .ui-code-block:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
-/* Router links inside data surfaces. Pages were setting `color: '#1e66f5'`
+/* Router links inside data surfaces. Pages were setting `color: 'var(--primary)'`
    inline, which skipped the hover and focus treatment entirely. */
 .ui-link { border-radius: var(--rounded-sm); color: var(--primary); text-decoration: none; overflow-wrap: anywhere; }
 .ui-link:hover { color: var(--primary-hover); text-decoration: underline; }

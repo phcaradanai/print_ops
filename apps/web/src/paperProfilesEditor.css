@@ -193,7 +193,7 @@
     linear-gradient(-45deg, var(--neutral-subtle) 25%, transparent 25%),
     linear-gradient(45deg, transparent 75%, var(--neutral-subtle) 75%),
     linear-gradient(-45deg, transparent 75%, var(--neutral-subtle) 75%),
-    #f8fafc;
+    var(--neutral-paper);
   background-position: 0 0, 0 10px, 10px -10px, -10px 0;
   background-size: 20px 20px;
 }
@@ -229,7 +229,7 @@
 .paper-profiles-page .pp-preview-quick-info > span {
   min-width: 0;
   padding: 0.45rem 0.6rem;
-  background: #fff;
+  background: var(--neutral-surface);
   color: var(--neutral-text);
   font-size: 0.7rem;
   line-height: 1.35;
@@ -338,7 +338,7 @@
 .paper-profiles-page .pp-section__toggle {
   min-height: 3rem;
   padding: var(--spacing-sm) var(--spacing-md);
-  background: linear-gradient(180deg, #fff 0%, var(--neutral-paper) 100%);
+  background: linear-gradient(180deg, var(--neutral-surface) 0%, var(--neutral-paper) 100%);
   color: var(--neutral-deep);
   font-weight: 700;
 }
@@ -354,7 +354,7 @@
 
 .paper-profiles-page .pp-field-row {
   border-radius: var(--rounded-md);
-  background: #fff;
+  background: var(--neutral-surface);
 }
 
 .paper-profiles-page .pp-field-row.is-selected {
@@ -377,7 +377,7 @@
   min-height: 4rem;
   padding: var(--spacing-md) var(--spacing-lg);
   border-bottom: 1px solid var(--neutral-border);
-  background: #fff;
+  background: var(--neutral-surface);
 }
 
 .paper-profiles-page .ui-drawer__title {
@@ -394,7 +394,7 @@
 .paper-profiles-page .ui-drawer__body > .pp-add-field {
   border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-lg);
-  background: #fff;
+  background: var(--neutral-surface);
 }
 
 .paper-profiles-page .pp-appearance-form {

@@ -67,7 +67,7 @@
 
 .templates-page .tpl-engine-card.is-selected {
   border-color: var(--primary);
-  background: #eff6ff;
+  background: var(--state-info-surface);
   box-shadow: inset 0 0 0 1px var(--primary), 0 6px 18px rgba(30, 102, 245, 0.12);
 }
 
@@ -111,7 +111,7 @@
 
 .templates-page .tpl-vars code {
   overflow: hidden;
-  color: #1d4ed8;
+  color: var(--primary-pressed);
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -141,7 +141,7 @@
     linear-gradient(-45deg, var(--neutral-subtle) 25%, transparent 25%),
     linear-gradient(45deg, transparent 75%, var(--neutral-subtle) 75%),
     linear-gradient(-45deg, transparent 75%, var(--neutral-subtle) 75%),
-    #f8fafc;
+    var(--neutral-paper);
   background-position: 0 0, 0 8px, 8px -8px, -8px 0;
   background-size: 16px 16px;
 }
@@ -149,7 +149,7 @@
 .templates-page .tpl-preview-paper {
   margin-inline: auto;
   border: 1px solid #d8dee8;
-  background: #fff;
+  background: var(--neutral-surface);
   box-shadow: 0 16px 35px rgba(15, 23, 42, 0.16);
 }
 
@@ -163,8 +163,8 @@
 
 .templates-page .tpl-preview-note {
   border: 1px solid #bfdbfe;
-  background: #eff6ff;
-  color: #1e40af;
+  background: var(--state-info-surface);
+  color: var(--state-info-text);
 }
 
 .templates-page .tpl-preview-warnings {
