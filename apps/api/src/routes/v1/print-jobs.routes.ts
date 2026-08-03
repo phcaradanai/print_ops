@@ -160,8 +160,13 @@ export async function v1PrintJobRoutes(
   app.post('/print-jobs/:id/cancel', guard, async (req, reply) => {
     const { id } = req.params as { id: string };
     const sa = (req as unknown as ReqWithServiceAccount).serviceAccount;
-    const job = await deps.cancelJob.execute(id, sa.id);
-    return reply.send(redactJob(job));
+    const { job, outcome } = await deps.cancelJob.execute(id, sa.id);
+    // 200 = the job IS cancelled. 202 = cancellation was only REQUESTED: the
+    // document is already with the executor and its real verdict wins, so the
+    // caller must keep waiting for the terminal result callback.
+    return reply
+      .status(outcome === 'CANCELLED' ? 200 : 202)
+      .send({ ...redactJob(job), cancel_outcome: outcome });
   });
 
   // GET /api/v1/print-jobs/:id/trace

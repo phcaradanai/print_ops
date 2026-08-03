@@ -13,6 +13,7 @@ export type AuditAction =
   | 'job.succeeded'
   | 'job.failed'
   | 'job.cancelled'
+  | 'job.cancel_requested'
   | 'job.retried'
   | 'job.reprint_confirmed'
   | 'runner.registered'
