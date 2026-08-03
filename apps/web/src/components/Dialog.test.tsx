@@ -1,10 +1,12 @@
+// @vitest-environment jsdom
+
 import { act, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Dialog } from './Dialog.js';
 
-let container: HTMLDivElement;
-let root: Root;
+let container: HTMLDivElement | undefined;
+let root: Root | undefined;
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -14,13 +16,16 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  act(() => root.unmount());
-  container.remove();
+  if (root) act(() => root?.unmount());
+  container?.remove();
   document.body.innerHTML = '';
+  root = undefined;
+  container = undefined;
 });
 
 function renderDialog(element: ReactElement) {
-  act(() => root.render(element));
+  if (!root) throw new Error('Dialog test root is not initialized');
+  act(() => root?.render(element));
 }
 
 describe('Dialog adapter', () => {
