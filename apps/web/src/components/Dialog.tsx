@@ -151,6 +151,7 @@ export function Dialog({
         <DialogPrimitive.Overlay className="ui-dialog-overlay" />
         <DialogPrimitive.Content
           className="ui-dialog"
+          aria-modal="true"
           aria-labelledby={titleId}
           aria-describedby={undefined}
           onEscapeKeyDown={(event) => {
