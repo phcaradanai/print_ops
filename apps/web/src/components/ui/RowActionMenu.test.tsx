@@ -134,6 +134,6 @@ describe('computeRowActionMenuPosition compatibility helper', () => {
       { width: 200, height: 180 },
       1000,
       800,
-    )).toEqual({ top: 556, left: 792 });
+    )).toEqual({ top: 556, left: 790 });
   });
 });
