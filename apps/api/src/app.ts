@@ -94,7 +94,7 @@ import { v1PrintFlowRoutes } from './routes/v1/print-flow.routes.js';
 import { join, dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { initDatabase, getDb } from './infra/db/sqlite.js';
-import { pruneOldRecords, retentionDaysFromEnv, retentionMaxRowsFromEnv } from './infra/db/retention.js';
+import { pruneOldRecords, retentionArchiveDirFromEnv, retentionDaysFromEnv, retentionMaxRowsFromEnv } from './infra/db/retention.js';
 import { ReprintJobService } from './services/reprint-job.service.js';
 import { IntakeOutcomeCallbackService } from './services/intake-outcome-callback.service.js';
 import { runtimeArchitectureFromEnv } from './infra/runtime-architecture.js';
@@ -269,38 +269,6 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const useSqlite = dbMode === 'sqlite';
   if (useSqlite) await initDatabase();
 
-  // Bound the growth of jobs/traces/audit_logs on long-running installs (see
-  // infra/db/retention.ts) — this gateway is not the system of record for
-  // print/job history, so a short window (default 7 days / 1000 rows,
-  // whichever is smaller) is enough. Runs once at boot and then daily;
-  // disable with PRINTOPS_RETENTION_DAYS=0 and PRINTOPS_RETENTION_MAX_ROWS=0.
-  let retentionTimer: ReturnType<typeof setInterval> | undefined;
-  if (useSqlite) {
-    const retentionDays = retentionDaysFromEnv();
-    const retentionMaxRows = retentionMaxRowsFromEnv();
-    const runRetentionSweep = () => {
-      try {
-        const result = pruneOldRecords(getDb(), { retentionDays, maxRows: retentionMaxRows });
-        if (result.jobsDeleted > 0 || result.auditLogsDeleted > 0) {
-          app.log.info(
-            { retentionDays, retentionMaxRows, ...result },
-            'retention sweep: pruned rows past the retention window/row cap',
-          );
-        }
-      } catch (err) {
-        app.log.error({ err }, 'retention sweep failed');
-      }
-    };
-    runRetentionSweep();
-    if (retentionDays > 0 || retentionMaxRows > 0) {
-      retentionTimer = setInterval(runRetentionSweep, 24 * 60 * 60 * 1000);
-      retentionTimer.unref?.();
-      app.addHook('onClose', async () => {
-        if (retentionTimer) clearInterval(retentionTimer);
-      });
-    }
-  }
-
   const printerRepo = useSqlite ? new SqlitePrinterRepository() : new InMemoryPrinterRepository();
   const jobRepo = useSqlite ? new SqliteJobRepository() : new InMemoryJobRepository();
   const traceRepo = useSqlite ? new SqliteTraceRepository() : new InMemoryTraceRepository();
@@ -334,6 +302,57 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     onHandlerError: (event, err) => app.log.error({ err, eventType: event.eventType }, 'event subscriber failed'),
   });
   const queue = new InMemoryJobQueue();
+
+  // Bound the growth of jobs/traces/audit_logs on long-running installs (see
+  // infra/db/retention.ts) — this gateway is not the system of record for
+  // print/job history, so a hot window (default 14 days, age-based only) is
+  // enough; pruned rows are archived to <db dir>/archive first. Runs once at
+  // boot (queue is empty here — rehydration happens later) and then daily,
+  // deferring while the queue is busy. Disable with PRINTOPS_RETENTION_DAYS=0
+  // and PRINTOPS_RETENTION_MAX_ROWS=0.
+  let retentionTimer: ReturnType<typeof setInterval> | undefined;
+  let retentionRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  if (useSqlite) {
+    const retentionDays = retentionDaysFromEnv();
+    const retentionMaxRows = retentionMaxRowsFromEnv();
+    const retentionArchiveDir = retentionArchiveDirFromEnv();
+    const runRetentionSweep = async () => {
+      // Idle-only: the sweep rewrites the whole sql.js file, so it must not
+      // compete with active printing. A busy queue defers to a short retry
+      // instead of skipping a whole day (product decision, 2026-08-03).
+      try {
+        if ((await queue.size()) > 0) {
+          app.log.info('retention sweep deferred: print queue is not idle; retrying in 10 minutes');
+          retentionRetryTimer = setTimeout(() => { void runRetentionSweep(); }, 10 * 60 * 1000);
+          retentionRetryTimer.unref?.();
+          return;
+        }
+        const result = pruneOldRecords(getDb(), {
+          retentionDays,
+          maxRows: retentionMaxRows,
+          archiveDir: retentionArchiveDir,
+        });
+        if (result.jobsDeleted > 0 || result.auditLogsDeleted > 0) {
+          app.log.info(
+            { retentionDays, retentionMaxRows, retentionArchiveDir, ...result },
+            'retention sweep: archived and pruned rows past the retention window',
+          );
+        }
+      } catch (err) {
+        app.log.error({ err }, 'retention sweep failed (nothing was pruned if archiving failed)');
+      }
+    };
+    void runRetentionSweep();
+    if (retentionDays > 0 || retentionMaxRows > 0) {
+      retentionTimer = setInterval(() => { void runRetentionSweep(); }, 24 * 60 * 60 * 1000);
+      retentionTimer.unref?.();
+      app.addHook('onClose', async () => {
+        if (retentionTimer) clearInterval(retentionTimer);
+        if (retentionRetryTimer) clearTimeout(retentionRetryTimer);
+      });
+    }
+  }
+
   const exporter = new InMemoryExportAdapter();
   const permissionPolicy = new RbacPermissionPolicy();
   const templateRenderer = new SimpleTemplateRenderer();

@@ -152,26 +152,67 @@ describe('pruneOldRecords — row-count cap', () => {
 });
 
 describe('retentionDaysFromEnv / retentionMaxRowsFromEnv', () => {
-  it('defaults to 7 days and 1000 rows when unset', () => {
+  it('defaults to 14 days and NO row cap when unset (2026-08-03 decision)', () => {
     delete process.env['PRINTOPS_RETENTION_DAYS'];
     delete process.env['PRINTOPS_RETENTION_MAX_ROWS'];
-    expect(retentionDaysFromEnv()).toBe(7);
-    expect(retentionMaxRowsFromEnv()).toBe(1000);
+    expect(retentionDaysFromEnv()).toBe(14);
+    expect(retentionMaxRowsFromEnv()).toBe(0);
   });
 
   it('reads configured values, and falls back to defaults for invalid input', () => {
     process.env['PRINTOPS_RETENTION_DAYS'] = '30';
     expect(retentionDaysFromEnv()).toBe(30);
     process.env['PRINTOPS_RETENTION_DAYS'] = 'not-a-number';
-    expect(retentionDaysFromEnv()).toBe(7);
+    expect(retentionDaysFromEnv()).toBe(14);
     process.env['PRINTOPS_RETENTION_DAYS'] = '0';
     expect(retentionDaysFromEnv()).toBe(0);
 
     process.env['PRINTOPS_RETENTION_MAX_ROWS'] = '500';
     expect(retentionMaxRowsFromEnv()).toBe(500);
     process.env['PRINTOPS_RETENTION_MAX_ROWS'] = 'nope';
-    expect(retentionMaxRowsFromEnv()).toBe(1000);
+    expect(retentionMaxRowsFromEnv()).toBe(0);
     process.env['PRINTOPS_RETENTION_MAX_ROWS'] = '0';
     expect(retentionMaxRowsFromEnv()).toBe(0);
+  });
+});
+
+describe('archive-before-prune', () => {
+  it('writes pruned rows to the archive directory before deleting them', async () => {
+    const { mkdtemp, readdir, readFile, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const archiveDir = await mkdtemp(join(tmpdir(), 'printops-retention-archive-'));
+    try {
+      insertJob('job-archived', 'SUCCESS', new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
+      insertJob('job-kept', 'SUCCESS', new Date().toISOString());
+
+      const result = pruneOldRecords(getDb(), { retentionDays: 14, maxRows: 0, archiveDir });
+      expect(result.jobsDeleted).toBe(1);
+
+      const files = (await readdir(archiveDir)).filter((f) => f.startsWith('retention-'));
+      expect(files).toHaveLength(1);
+      const payload = JSON.parse(await readFile(join(archiveDir, files[0]!), 'utf8')) as {
+        type: string;
+        jobs: Array<{ id: string }>;
+      };
+      expect(payload.type).toBe('printops_retention_archive');
+      expect(payload.jobs.map((j) => j.id)).toEqual(['job-archived']);
+    } finally {
+      await rm(archiveDir, { recursive: true, force: true });
+    }
+  });
+
+  it('deletes nothing when the archive write fails', () => {
+    insertJob('job-safe', 'SUCCESS', new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
+
+    // A path that cannot be created as a directory (parent is a file).
+    const badDir = '/dev/null/impossible-archive';
+    expect(() => pruneOldRecords(getDb(), { retentionDays: 14, maxRows: 0, archiveDir: badDir })).toThrow();
+
+    const db = getDb();
+    const stmt = db.prepare("SELECT COUNT(*) as c FROM jobs WHERE id = 'job-safe'");
+    stmt.step();
+    expect(stmt.getAsObject()['c']).toBe(1);
+    stmt.free();
   });
 });
