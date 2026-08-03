@@ -35,7 +35,7 @@ than on component ownership.
 | Stylesheets per feature | paper-profiles **6** (two named `*Hotfix`), templates **3**, webhooks **2** (one named `*.polish`) |
 | `!important` declarations | 138, of which 102 sit in the paper-profiles override stack |
 | Largest single file | `styles.css`, 5,072 lines |
-| Colors bypassing the token system | **465** before slice 1, **215** after (143 of those are deliberate `var()` fallbacks) |
+| Colors bypassing the token system | **465** at audit → **196** after slices 1 and 3, of which 143 are deliberate `var()` fallbacks — so ~53 real ones remain |
 
 `DESIGN.md` already forbids exactly this: *"Don't add another global override
 stylesheet to correct a page. Fix the shared component, or scope the fix to the
@@ -76,6 +76,43 @@ in `var()` fallback position was preserved.
 
 Result: 465 → 215 bypasses. Verified as a visual no-op by construction, plus
 635 web tests, typecheck, and a production build.
+
+### Slice 3 — Localized typography + duplicate tints ✅ done (`d9d1b0f`, `d44a827`)
+
+Taken before slice 2 because it is low-risk and directly visible.
+
+**Typography.** Ten selectors carrying dictionary copy — table headers, field
+labels, status/type badges, section and panel headings — were uppercased and
+letter-spaced. Thai has no letter case, so uppercase only transformed the
+English half and the two locales stopped reading as the same layout; tracking
+pushed Thai combining marks off their base consonant. Both are named in
+`DESIGN.md`'s don't-list. Brand wordmarks and the explicit `.ui-text--caps`
+opt-in keep theirs.
+
+Removing the tracking also retired real override debt: `.status-badge` held two
+different values in two files (0.025em / 0.04em, import order deciding), and
+`experienceSystem.css` already corrected `.ui-data-head` back to `0`, making the
+`ui.css` declaration dead.
+
+**Tints.** 23 literals converged onto shared tokens — most visibly the
+selected-row state, which used three different pale blues across three feature
+stylesheets for one meaning, now all `--state-info-surface`.
+
+A guard (`__tests__/localizedTypography.test.ts`) walks every stylesheet and
+fails on either violation outside the allowlist; it was verified against an
+injected regression, not just a green run.
+
+Deliberately untouched: job-status and device colors, which `DESIGN.md` keeps on
+separate axes and which need their own decision (see slice 3c).
+
+### Slice 3c — Status and device colors (open)
+
+Success is drawn as `#2f732a` on job rows while `--device-ok` is `#2d6a2d` and
+`--job-verdict-ink` carries `#166534`; failure is `#ba3253` against
+`--danger-action` `#9f1239`; warning text spans `#9a3412`, `#854d0e` and
+`--state-warning-text` `#92400e`. These are three axes bleeding into each other.
+Resolving it means deciding which axis owns each surface first — a design
+decision, not a mechanical replace.
 
 ### Slice 2 — Retire the override stack (next, highest impact)
 
