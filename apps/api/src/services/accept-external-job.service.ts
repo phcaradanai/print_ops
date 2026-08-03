@@ -164,7 +164,18 @@ export class AcceptExternalJobService {
           `application/${template.engine.toLowerCase()}`;
         const paperId = template.paperProfileId;
         const paper = paperId ? await this.papers.findById(paperId) : undefined;
-        if (paper) {
+        // On the rendered-document flow (renderer + papers wired), a template
+        // whose paper profile is missing cannot produce the document the
+        // caller asked for. Falling through would print the RAW payload —
+        // giving the caller a different document and calling it success.
+        if (!paper) {
+          throw new AppError(
+            'TEMPLATE_PROFILE_MISSING',
+            `Template '${req.template_code}' has no usable paper profile; the document cannot be rendered.`,
+            422,
+          );
+        }
+        {
           paperProfileMetadata = {
             widthMm: paper.widthMm,
             heightMm: paper.heightMm,
@@ -175,12 +186,23 @@ export class AcceptExternalJobService {
             orientation: paper.orientation,
             dpi: paper.dpi,
           };
+          // Two very different failure classes meet here and must not be
+          // conflated (product decision, 2026-08-03):
+          //  - MISSING FIELDS render fine with warnings — the job proceeds and
+          //    the warnings travel with it into the result callback.
+          //  - A renderer EXCEPTION means no document exists at all. Printing
+          //    the raw payload instead would send JSON to a label printer, so
+          //    this is a rejection the caller hears about, not a warning.
           try {
             const rendered = await this.renderer.renderPrintPayload(template, req.payload, paper);
             renderedPrintPayload = rendered.renderedPrintPayload;
             renderWarnings = rendered.warnings ?? [];
           } catch (err) {
-            renderWarnings.push(`render error: ${err instanceof Error ? err.message : String(err)}`);
+            throw new AppError(
+              'RENDER_FAILED',
+              `Rendering template '${req.template_code}' failed: ${err instanceof Error ? err.message : String(err)}`,
+              422,
+            );
           }
         }
       }
