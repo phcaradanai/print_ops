@@ -245,7 +245,6 @@ body {
   font-size: var(--font-label-size);
   font-weight: var(--font-label-weight);
   line-height: var(--font-label-line-height);
-  letter-spacing: 0;
   text-transform: none;
 }
 
@@ -410,7 +409,6 @@ body {
     align-items: start;
     color: var(--neutral-text-muted);
     line-height: 1.35;
-    letter-spacing: 0;
     text-transform: none;
   }
 }

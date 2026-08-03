@@ -29,8 +29,8 @@ function cssFiles(dir: string): string[] {
   });
 }
 
-/** Every selector that applies `text-transform: uppercase`, with its file. */
-function uppercasingSelectors(): Array<{ selector: string; file: string }> {
+/** Selectors matching `pattern`, paired with the file that declared them. */
+function selectorsDeclaring(pattern: RegExp): Array<{ selector: string; file: string }> {
   const found: Array<{ selector: string; file: string }> = [];
   for (const file of cssFiles(SRC)) {
     let selector = '';
@@ -39,17 +39,29 @@ function uppercasingSelectors(): Array<{ selector: string; file: string }> {
       if (open) selector = open[1].trim();
       // A custom-property declaration is a token definition, not an applied rule.
       if (/^\s*--/.test(line)) continue;
-      if (/text-transform:\s*uppercase/.test(line)) {
-        found.push({ selector, file: file.replace(SRC, '') });
-      }
+      if (pattern.test(line)) found.push({ selector, file: file.replace(SRC, '') });
     }
   }
   return found;
 }
 
+/** Selectors whose text comes from the EN/TH dictionary. */
+const LOCALIZED_COPY = [
+  '.settings-section h2',
+  '.pp-field-type-badge',
+  '.data-table th',
+  '.status-indicator',
+  '.ui-field-label',
+  '.status-badge',
+  '.job-panel__heading',
+  '.job-technical__summary',
+  '.ui-data-head',
+  '.ui-data-table[data-responsive] .ui-data-cell::before',
+];
+
 describe('localized typography', () => {
   it('never uppercases a selector that carries translated copy', () => {
-    const offenders = uppercasingSelectors().filter(
+    const offenders = selectorsDeclaring(/text-transform:\s*uppercase/).filter(
       ({ selector }) => !ALLOWED_TO_UPPERCASE.has(selector),
     );
     expect(
@@ -57,6 +69,22 @@ describe('localized typography', () => {
       'Uppercase belongs to brand wordmarks and the explicit .ui-text--caps opt-in. ' +
         'Table headers, field labels and badge text are translated and must render ' +
         'identically in English and Thai.',
+    ).toEqual([]);
+  });
+
+  it('never letter-spaces a selector that carries translated copy', () => {
+    // Thai marks combine onto their base consonant; tracking pushes them apart
+    // and buys nothing, since the tracking was only ever there to loosen
+    // Latin caps that these selectors no longer use.
+    const localized = new Set(LOCALIZED_COPY);
+    const offenders = selectorsDeclaring(/letter-spacing:/).filter(({ selector }) =>
+      localized.has(selector),
+    );
+    expect(
+      offenders.map((o) => `${o.selector}  (${o.file})`),
+      'Remove the declaration rather than correcting it to 0 in a later stylesheet — ' +
+        'a correction layer is how these selectors ended up with two different ' +
+        'values in two files.',
     ).toEqual([]);
   });
 

@@ -113,7 +113,7 @@
 .ui-data-table-frame:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .ui-data-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; background: var(--neutral-surface); }
 .ui-data-table thead { position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 6px -1px rgba(0,0,0,0.07); }
-.ui-data-head { padding: 1.4rem 1.25rem; background: color-mix(in srgb, var(--primary) 4%, var(--neutral-surface)); color: color-mix(in srgb, var(--primary) 70%, var(--neutral-inverse)); font-size: var(--font-body-size); font-weight: 600; line-height: 1.2; letter-spacing: 0.05em; text-align: start; white-space: nowrap; vertical-align: middle; border-bottom: 1px solid color-mix(in srgb, var(--primary) 15%, var(--neutral-border-strong)); }
+.ui-data-head { padding: 1.4rem 1.25rem; background: color-mix(in srgb, var(--primary) 4%, var(--neutral-surface)); color: color-mix(in srgb, var(--primary) 70%, var(--neutral-inverse)); font-size: var(--font-body-size); font-weight: 600; line-height: 1.2; text-align: start; white-space: nowrap; vertical-align: middle; border-bottom: 1px solid color-mix(in srgb, var(--primary) 15%, var(--neutral-border-strong)); }
 .ui-data-head[align="right"], .ui-data-cell[align="right"] { text-align: right; }
 .ui-data-head[align="center"], .ui-data-cell[align="center"] { text-align: center; }
 .ui-data-table thead tr { height: 3.5rem; }
@@ -303,7 +303,7 @@
   .ui-data-table[data-responsive] tbody tr { overflow: hidden; border: 1px solid var(--neutral-border); border-radius: var(--rounded-lg); background: var(--neutral-surface); }
   .ui-data-table[data-responsive] .ui-data-cell { display: grid; grid-template-columns: minmax(6.5rem, 35%) minmax(0, 1fr); gap: var(--spacing-md); padding: var(--spacing-md) var(--spacing-lg); border-top: 1px solid var(--neutral-border); overflow-wrap: anywhere; }
   .ui-data-table[data-responsive] .ui-data-cell:first-child { border-top: 0; }
-  .ui-data-table[data-responsive] .ui-data-cell::before { content: attr(data-label); color: color-mix(in srgb, var(--primary) 70%, var(--neutral-inverse)); font-size: var(--font-label-size); font-weight: 600; line-height: 1; letter-spacing: 0.05em; display: flex; align-items: center; }
+  .ui-data-table[data-responsive] .ui-data-cell::before { content: attr(data-label); color: color-mix(in srgb, var(--primary) 70%, var(--neutral-inverse)); font-size: var(--font-label-size); font-weight: 600; line-height: 1; display: flex; align-items: center; }
   .ui-data-table[data-responsive] .ui-data-cell[data-actions] { display: block; }
   .ui-data-table[data-responsive] .ui-data-cell[data-actions]::before { display: block; margin-bottom: var(--spacing-sm); }
   .ui-data-table[data-responsive] .ui-data-cell[colspan] { display: block; text-align: center; }
