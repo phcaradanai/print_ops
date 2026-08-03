@@ -59,7 +59,7 @@
 }
 
 .templates-page .tpl-engine-card:hover {
-  border-color: #93b4fb;
+  border-color: color-mix(in srgb, var(--primary) 48%, #ffffff);
   background: var(--state-info-surface);
   transform: translateY(-1px);
   box-shadow: 0 6px 16px rgba(30, 102, 245, 0.09);

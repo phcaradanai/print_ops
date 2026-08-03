@@ -200,7 +200,7 @@
 
 .paper-profiles-page .pp-field-row.is-selected {
   border-color: var(--primary, #1e66f5) !important;
-  background: #eef4ff !important;
+  background: var(--state-info-surface) !important;
   box-shadow: inset 3px 0 0 var(--primary, #1e66f5);
 }
 
@@ -239,7 +239,7 @@
 }
 
 .paper-profiles-page table tbody tr:focus-within {
-  background: #eef4ff;
+  background: var(--state-info-surface);
   outline: 2px solid rgba(30, 102, 245, 0.24);
   outline-offset: -2px;
 }

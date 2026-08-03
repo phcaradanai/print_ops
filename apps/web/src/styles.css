@@ -86,7 +86,11 @@
   --font-label-weight: 600;
   --font-label-line-height: 1.4;
   --font-label-letter-spacing: 0.05em;
-  --font-label-text-transform: uppercase;
+  /* Labels are not uppercased. Thai has no case, so uppercasing only ever
+     changed the English half of the product and made the two locales read as
+     different layouts. Caps remain available as the explicit .ui-text--caps
+     opt-in for Latin-only strings. */
+  --font-label-text-transform: none;
 
   /* -- rounded -- */
   --rounded-sm: 4px;
@@ -700,7 +704,6 @@ body {
   font-size: 0.85rem;
   font-weight: 600;
   letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--neutral-text-muted);
 }
 
@@ -767,7 +770,7 @@ body {
 
 .settings-hint--mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  background: #f3f4f6;
+  background: var(--neutral-subtle);
   border-radius: 6px;
   padding: 0.5rem 0.65rem;
   color: #1f2937;
@@ -946,7 +949,7 @@ body {
 }
 
 .login-panel button:hover:not(:disabled) {
-  background: linear-gradient(180deg, var(--primary-pressed) 0%, #1553d1 100%);
+  background: linear-gradient(180deg, var(--primary-pressed) 0%, var(--primary-hover) 100%);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(30, 102, 245, 0.35);
 }
@@ -1068,7 +1071,7 @@ body {
 }
 
 .error-reload-btn:hover:not(:disabled) {
-  background: linear-gradient(180deg, var(--primary-pressed) 0%, #1553d1 100%);
+  background: linear-gradient(180deg, var(--primary-pressed) 0%, var(--primary-hover) 100%);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(30, 102, 245, 0.35);
 }
@@ -1373,7 +1376,7 @@ body {
 
 .paper-preview-modal__field.is-selected {
   border-color: var(--primary);
-  background: #f5f8ff;
+  background: var(--state-info-surface);
 }
 
 .paper-preview-modal__field-heading,
@@ -1632,7 +1635,7 @@ body {
 }
 
 .pp-tool-btn--active:hover {
-  background: linear-gradient(180deg, var(--primary-pressed) 0%, #1553d1 100%);
+  background: linear-gradient(180deg, var(--primary-pressed) 0%, var(--primary-hover) 100%);
 }
 
 /* ---- paper profiles: sticky section index ---- */
@@ -2508,7 +2511,7 @@ body {
 
 .pp-field-row.is-selected {
   border-color: var(--primary, #1e66f5) !important;
-  background: #f5f8ff !important;
+  background: var(--state-info-surface) !important;
 }
 
 .pp-field-type-badge {
@@ -2521,7 +2524,6 @@ body {
   color: var(--neutral-surface);
   font-size: 0.65rem;
   font-weight: 700;
-  text-transform: uppercase;
 }
 
 .pp-field-row__group-label {
@@ -2885,12 +2887,12 @@ body {
 .pp-import-dropzone:hover,
 .pp-import-dropzone:focus-within {
   border-color: var(--primary);
-  background: #f5f8ff;
+  background: var(--state-info-surface);
 }
 
 .pp-import-dropzone--dragover {
   border-color: var(--primary);
-  background: #eef3ff;
+  background: var(--state-info-surface);
   border-style: solid;
 }
 
@@ -3069,7 +3071,7 @@ body {
 
 .tpl-engine-card.is-selected {
   border-color: var(--primary);
-  background: #eef3ff;
+  background: var(--state-info-surface);
 }
 
 .tpl-engine-card__icon {
@@ -3274,7 +3276,7 @@ body {
   padding: 0.75rem;
   border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-md);
-  background: #f5f8ff;
+  background: var(--state-info-surface);
 }
 
 .tpl-info h3 {
@@ -3523,7 +3525,6 @@ body {
   /* Match stat-card-label exactly: uppercase, tracked, 700 */
   font-size: 0.68rem;
   font-weight: 700;
-  text-transform: uppercase;
   letter-spacing: 0.05em;
   white-space: nowrap;
   user-select: none;
@@ -3732,7 +3733,6 @@ body {
   font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
   border: 1.5px solid var(--neutral-border, #e5e7eb);
   color: var(--neutral-text-muted, #6c7086);
   background: transparent;
@@ -4068,7 +4068,7 @@ body {
 }
 
 .ui-button--primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, var(--primary-pressed) 0%, #1553d1 100%);
+  background: linear-gradient(180deg, var(--primary-pressed) 0%, var(--primary-hover) 100%);
   border-color: var(--state-info-text);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(30, 102, 245, 0.32), 0 1px 2px rgba(30, 102, 245, 0.18), inset 0 1px 0.5px rgba(255, 255, 255, 0.25);
@@ -4343,7 +4343,6 @@ body {
   /* Match stat-card-label and data-table th exactly: uppercase, tracked 700 */
   font-size: 0.68rem;
   font-weight: 700;
-  text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--neutral-text-muted, #6c7086);
 }
@@ -4399,7 +4398,6 @@ body {
   border-radius: 9999px;           /* full pill */
   font-weight: 700;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
   white-space: nowrap;
   line-height: 1;
   vertical-align: middle;
@@ -4810,7 +4808,6 @@ body {
   font-weight: var(--font-label-weight);
   line-height: var(--font-label-line-height);
   letter-spacing: var(--font-label-letter-spacing);
-  text-transform: uppercase;
   color: var(--neutral-text-muted);
 }
 
@@ -4832,7 +4829,6 @@ body {
   font-size: var(--font-label-size);
   font-weight: var(--font-label-weight);
   letter-spacing: var(--font-label-letter-spacing);
-  text-transform: uppercase;
   color: var(--neutral-text-muted);
   cursor: pointer;
   list-style: none;

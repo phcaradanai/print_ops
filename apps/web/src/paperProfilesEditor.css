@@ -40,7 +40,7 @@
 }
 
 .paper-profiles-page .pp-back-button:hover {
-  border-color: #93b4fb;
+  border-color: color-mix(in srgb, var(--primary) 48%, #ffffff);
   background: var(--state-info-surface);
   color: var(--primary-strong);
 }
@@ -358,7 +358,7 @@
 }
 
 .paper-profiles-page .pp-field-row.is-selected {
-  background: #eef4ff !important;
+  background: var(--state-info-surface) !important;
   box-shadow: inset 3px 0 0 var(--primary-strong), 0 0 0 2px rgba(37, 99, 235, 0.12);
 }
 

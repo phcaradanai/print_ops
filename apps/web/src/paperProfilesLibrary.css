@@ -157,11 +157,11 @@
 
 .paper-profiles-page .pp-profile-library-table tbody tr:hover {
   background: var(--state-info-surface);
-  box-shadow: inset 3px 0 0 #93b4fb;
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--primary) 48%, #ffffff);
 }
 
 .paper-profiles-page .pp-profile-library-table tbody tr:focus-within {
-  background: #eef4ff;
+  background: var(--state-info-surface);
   box-shadow: inset 3px 0 0 var(--primary-strong);
   outline: 0;
 }
@@ -335,7 +335,7 @@
 
   .paper-profiles-page .pp-profile-library-table tbody tr:hover,
   .paper-profiles-page .pp-profile-library-table tbody tr:focus-within {
-    border-color: #93b4fb;
+    border-color: color-mix(in srgb, var(--primary) 48%, #ffffff);
     box-shadow: 0 8px 20px rgba(37, 99, 235, 0.1), inset 3px 0 0 var(--primary-strong);
   }
 
