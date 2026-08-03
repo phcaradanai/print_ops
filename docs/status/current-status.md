@@ -72,14 +72,17 @@ incomplete data never reads as a clean success.
 
 | Suite | Result |
 |---|---|
-| `apps/api` (vitest) | 54 files, 432 tests — pass |
+| `apps/api` (vitest) | 55 files, 438 tests — pass |
+| `apps/web` (vitest) | 54 files, 635 tests — pass |
 | `apps/runner-go` (`go test ./...`) | all packages pass |
 | `packages/adapters` | 71 tests pass |
 | `packages/shared` | 16 tests pass |
 | release verifier negatives | 4/4 pass |
+| `apps/web` production build | passes |
 
-`apps/web` unit tests require a complete `npm install` (they fail with a
-missing `unocss` if dev dependencies were pruned).
+Run each workspace's tests from its own directory: `apps/api`'s packaged-SPA
+test resolves `../web/dist` relative to the working directory and fails if
+vitest is invoked from the repo root with `--root`.
 
 Automated loopback E2E covers the transport × callback matrix
 (`docs/testing/print-e2e-results.md`). It is **not** a substitute for the
