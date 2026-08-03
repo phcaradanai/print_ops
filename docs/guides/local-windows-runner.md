@@ -19,8 +19,9 @@
 # Install dependencies (first time only, from repo root)
 npm install
 
-# Start the runner
-npm run dev -w apps/runner
+# Start the runner (Go; the TypeScript runner no longer exists)
+cd apps\runner-go
+go run ./cmd/printops-runner run
 ```
 
 The runner will:

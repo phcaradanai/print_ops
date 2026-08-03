@@ -1,48 +1,92 @@
 # Desktop App Architecture (Tauri v2)
 
-**Status:** Implemented (shell scaffold)  
-**Phase:** MVP Nippon
+**Status:** Implemented — a process supervisor, not a scaffold
+**Last updated:** 2026-08-03
 
 ---
 
 ## Overview
 
 ```
-┌─────────────────────────────────────────────────┐
-│  PrinterOps Desktop  (Tauri v2 native window)   │
-│                                                 │
-│  ┌─────────────────────────────────────────┐   │
-│  │  React Frontend  (apps/web/src)         │   │
-│  │  loaded from http://localhost:3000 (dev)│   │
-│  │  or  apps/web/dist  (prod build)        │   │
-│  └─────────────────────────────────────────┘   │
-│                                                 │
-│  Rust shell  (apps/desktop/src-tauri/)          │
-│  tauri::Builder::default() — no custom commands │
-└─────────────────────────────────────────────────┘
-        ↕ HTTP (same as browser dashboard)
-┌───────────────────────────┐
-│  PrinterOps API  :3001    │
-└───────────────────────────┘
-        ↕ Poll/Heartbeat
-┌───────────────────────────┐
-│  Local Runner  (Node.js)  │
-└───────────────────────────┘
-        ↕ OS APIs
-┌───────────────────────────┐
-│  Local Printers           │
-└─────────────────────���─────┘
++----------------------------------------------------------+
+|  PrintOps Desktop  (Tauri v2 native window, Rust)         |
+|  apps/desktop/src-tauri/src/lib.rs                        |
+|                                                           |
+|  +-----------------------------------------------+        |
+|  |  React frontend (apps/web)                    |        |
+|  |  served BY server.exe at 127.0.0.1:31415      |        |
+|  |  (same origin as the API, not a file:// load) |        |
+|  +-----------------------------------------------+        |
+|                                                           |
+|  Responsibilities:                                        |
+|   - single instance (a second launch focuses the first)   |
+|   - spawn + supervise + restart both sidecars             |
+|   - Windows job object: sidecars die with the app         |
+|   - per-installation JWT + runner bootstrap secrets       |
+|   - NATS settings storage, with in-process API restart    |
+|   - health-gated navigation (splash until :31415 answers) |
++-----------+---------------------------------+-------------+
+            | spawns                          | spawns
+            v                                 v
++---------------------------+   +------------------------------+
+| server.exe  (TypeScript)  |   | printops-runner.exe  (Go)    |
+| 127.0.0.1:31415, loopback |<--| discovery + heartbeat ONLY   |
+| DB_MODE=sqlite            |   | PRINTOPS_JOBS_ENABLED=false  |
+| PRINTOPS_LOCAL_WORKER=true|   +------------------------------+
+|  -> the sole print executor|
++-----------+---------------+
+            | Windows spooler adapter (+ WebView2 helper for HTML)
+            v
++---------------------------+
+|  Local Printers           |
++---------------------------+
 ```
+
+Exactly one component executes print jobs: the API's in-process local worker.
+The Go runner advertises no executable protocols and does not poll the queue,
+because two claimants on one queue would double-print.
 
 ---
 
 ## Key design choices
 
-**No React source in apps/desktop.** The Tauri shell is a thin OS wrapper. All UI is in `apps/web`. This means one source of truth for all pages, including the Local Diagnostics page.
+**No React source in apps/desktop.** The Tauri shell is a thin OS wrapper. All
+UI lives in `apps/web`, so the browser dashboard and the desktop app are the
+same pages from one source of truth.
 
-**No custom Tauri commands yet.** The Rust side does nothing besides launching the window and loading the web app. Future phases can add Tauri commands for native printer access (CUPS, Windows Spooler) if needed — but for now, everything flows through the HTTP API.
+**The shell is a supervisor, not just a window.** A background thread polls both
+children every 2 seconds and restarts one that exited, using the exact packaged
+command. A `ShutdownGuard` prevents that thread from resurrecting them during a
+normal exit. On Windows the children are assigned to a job object with
+`KILL_ON_JOB_CLOSE`, so an app crash cannot leave `server.exe` holding the
+database file or block an NSIS upgrade on a locked binary.
 
-**CSP null in dev.** The web app makes fetch calls to `http://localhost:3001` (API). Setting `csp: null` in `tauri.conf.json` lets this work without a custom content security policy.
+**Three custom Tauri commands, all narrow:** `get_nats_settings`,
+`save_nats_settings`, and `write_export_file` — the last writes only to a path
+the user already chose in the native save dialog, which is itself the consent
+step. Printing is deliberately *not* a Tauri command; it flows through the HTTP
+API like everything else.
+
+**Saving NATS settings restarts the child, not the app.** `app.restart()` races
+`tauri_plugin_single_instance`: the relaunched process can be detected as a
+second instance of the still-dying original, forward its argv and exit before
+`setup()` ever reads the new settings — leaving the old, unconfigured
+`server.exe` alive forever. Restarting only the child inside the running app
+avoids that race entirely, then waits for `/health` before reporting success.
+
+**Secrets are per installation.** `jwt-secret.txt` and
+`runner-bootstrap-secret.txt` are generated from the OS CSPRNG on first run and
+persisted in the app data directory, so a packaged build never signs tokens with
+the dev fallback secret that is public in source control, and sessions survive
+restarts.
+
+**The database lives in the per-user app data directory**, not the install
+folder, so the app works when installed to a read-only location and survives
+upgrades.
+
+**CSP null.** The frontend calls the API on the same loopback origin; `csp: null`
+in `tauri.conf.json` keeps that working without a bespoke policy. Packaged CORS
+on the API side is restricted to loopback and `tauri://` origins.
 
 ---
 
@@ -50,61 +94,61 @@
 
 ```
 apps/desktop/
-├── package.json              # no test script; scripts: tauri:dev, tauri:build
-└── src-tauri/
-    ├── Cargo.toml
-    ├── build.rs
-    ├── tauri.conf.json        # devUrl=localhost:3000, frontendDist=../../apps/web/dist
-    ├── capabilities/
-    │   └── default.json       # core:default permission
-    └── src/
-        ├── main.rs            # entry point
-        └── lib.rs             # tauri::Builder setup
+|-- package.json               # scripts: tauri:dev, tauri:build
+`-- src-tauri/
+    |-- Cargo.toml
+    |-- build.rs
+    |-- tauri.conf.json        # productName PrintOps, window -> 127.0.0.1:31415
+    |-- nsis-hooks.nsh         # closes a running PrintOps before upgrade
+    |-- capabilities/
+    |   `-- default.json
+    |-- permissions/           # autogenerated ACLs for the three commands
+    |-- scripts/
+    |   |-- build-all.js       # builds web + api bundle + Go runner
+    |   |-- bundle-resources.js
+    |   `-- nsis-shutdown.ps1
+    `-- src/
+        |-- main.rs
+        `-- lib.rs             # supervisor, secrets, NATS settings, commands
 ```
+
+## Bundled resources
+
+`server.exe`, `printops-runner.exe`, `sql-wasm.wasm`, the built SPA (`static/`),
+and `print-helper/printops-html-print.exe`. `npm run release:verify` checks that
+every one of them is present, non-empty, and newer than the installer that
+claims to contain it.
 
 ---
 
-## Pages available in desktop app
+## Pages available in the desktop app
 
-All pages from `apps/web` are available:
-
-| Page | Route |
-|---|---|
-| Dashboard | `/` |
-| Printers | `/printers` |
-| Printer Detail | `/printers/:id` |
-| Discovered Printers | `/discovered-printers` |
-| **Local Diagnostics** | `/diagnostics` |
-| Job Queue | `/jobs` |
-| Job Detail | `/jobs/:id` |
-| Runners | `/runners` |
-| Audit Logs | `/audit-logs` |
-| Users & Roles | `/users` |
-| Export | `/export` |
-| Settings | `/settings` |
+Every page from `apps/web` — Dashboard, Printers, Printer Detail, Discovered
+Printers, Local Diagnostics, Templates, Template Sandbox, Paper Profiles,
+Webhooks, Route Policies, Printer Bindings, Print Flow, Job Queue, Job Detail,
+Runners, Audit Logs, Export Center, Users & Roles, Settings.
 
 ---
 
 ## Dev commands
 
 ```bash
-# macOS dev run (requires Rust, Tauri CLI, Node.js)
-npm run dev -w apps/web          # start web on port 3000
-npm run tauri:dev -w apps/desktop # open Tauri window → loads localhost:3000
-
-# Windows dev run
+# Run the web app and the shell separately during UI work
 npm run dev -w apps/web
 npm run tauri:dev -w apps/desktop
 
-# Check Rust code without building
+# Check the Rust side without a full build
 cd apps/desktop/src-tauri && cargo check
+
+# Produce verified installers (MSI + NSIS)
+npm run desktop:bundle
 ```
 
 ---
 
-## Future native extensions (not MVP)
+## Not planned
 
-- Tauri tray icon (show runner status in system tray)
-- Tauri commands for direct native print (bypass HTTP for ultra-low-latency local print)
-- Windows Service installation helper via Tauri sidecar
-- macOS CUPS socket access via Tauri command (instead of via runner HTTP)
+Tray icon, native print commands that bypass the HTTP API, and macOS/Linux
+packaged builds. The first two would create a second execution path to keep
+honest; the third has no requirement behind it (see
+[../status/next-steps.md](../status/next-steps.md)).

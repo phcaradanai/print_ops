@@ -35,11 +35,12 @@ npm run dev -w apps/api
 # Terminal 2 — Web dashboard on :3000
 npm run dev -w apps/web
 
-# Terminal 3 — Local runner
-npm run dev -w apps/runner
+# Terminal 3 — Local runner (Go; the TypeScript runner no longer exists)
+cd apps/runner-go && go run ./cmd/printops-runner run
 ```
 
-Default credentials: `admin@printerops.local` / any password  
+Dev credentials (only seeded when `PRINTOPS_DEV_SEED=true`):
+`admin@printerops.local` / `Dev-password1!`
 Dev API key: `printops-dev-apikey-2026`
 
 ---
@@ -52,7 +53,7 @@ On macOS with no printers installed, discovery returns an empty list. This is ex
 
 To test with fake printers, set:
 ```bash
-DISCOVERY_ADAPTER=fake npm run dev -w apps/runner
+cd apps/runner-go && PRINTOPS_DISCOVERY_MODE=fake go run ./cmd/printops-runner run
 ```
 
 This uses `discoverFake()` which returns two hardcoded printers:
@@ -93,8 +94,8 @@ All web pages are available, including the Local Diagnostics page.
 # All tests
 npm test
 
-# Runner parser tests only (includes CUPS parser tests — runnable on macOS)
-npm run test -w apps/runner
+# Runner tests only (includes the CUPS/lpstat parser tests — runnable on macOS)
+npm run test:runner-go
 
 # API service tests only
 npm run test -w apps/api

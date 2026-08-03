@@ -61,7 +61,7 @@ What a neighboring product could not truthfully copy:
 
 **Technical constraints**
 
-- Persistence is SQLite via `sql.js` (pure WASM, zero native dependencies) — chosen so the gateway installs on a hospital machine without a database server. `infra/migrations` holds SQL for future database-backed storage; `infra/docker/docker-compose.yml` references Dockerfiles that are not in the repo and is unverified.
+- Persistence is SQLite via `sql.js` (pure WASM, zero native dependencies) — chosen so the gateway installs on a hospital machine without a database server. `infra/migrations` holds an unapplied SQL schema for future database-backed storage; `infra/docker/docker-compose.yml` exists alongside `infra/docker/Dockerfile.{api,web,runner-go}`, but its Postgres/Redis services are scaffolding the application does not talk to today (the compose file says so inline) and the whole path is unverified.
 - The Go runner (`apps/runner-go`) is the only runner. The TypeScript runner has been removed; anything describing a Node.js runner is stale.
 - The desktop app is **Tauri** (`@tauri-apps/api` v2, `src-tauri/`), not Electron.
 - NATS is a dependency of the API for messaging; the UI surfaces the case where a message leaves PrintOps but no subscriber acknowledges it.
@@ -85,7 +85,9 @@ What a neighboring product could not truthfully copy:
 - **Prior design work:** `DESIGN.md` + `.impeccable/design.json` (visual world of record), `docs/UI_QUALITY_GATE.md`, `docs/frontend/`, `docs/audits/`, `.impeccable/critique/`.
 - **Real content:** the English/Thai translation dictionary is the authoritative source of product copy.
 
-**Absences future work must not fabricate:** there are no customers, testimonials, case studies, press mentions, benchmarks, uptime figures, pricing, or licensing terms. No `.env.example` is committed. Some status docs are stale — `docs/status/current-status.md` calls the desktop app Electron and `docs/architecture/overview.md` still describes in-memory persistence; the code is the authority over both.
+**Absences future work must not fabricate:** there are no customers, testimonials, case studies, press mentions, benchmarks, uptime figures, pricing, or licensing terms. There is also no evidence from a physical Zebra or Postek printer, a clean Windows install, or a cross-machine deployment — those gates are open and tracked in `docs/production/PROD-01-gap-table.md`.
+
+A `.env.example` **is** committed at the repo root. `docs/status/current-status.md`, `docs/status/next-steps.md`, `docs/architecture/overview.md`, `docs/architecture/job-lifecycle.md` and `docs/architecture/desktop-tauri-architecture.md` were resynced with the code on 2026-08-03; where any document and the code still disagree, the code wins.
 
 ## Product Principles
 

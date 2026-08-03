@@ -353,11 +353,7 @@ Both `npm test` and `npm run typecheck` include the Go runner checks:
 - `npm test` runs all Node workspace tests, then `npm run test:runner-go` (Go tests via `go test ./...`).
 - `npm run typecheck` runs all TypeScript workspace type checks, then `npm run typecheck:runner-go`. The Go runner typecheck reuses `go test ./...` because Go compilation is validated through tests; there is no separate `go build` typecheck command in the default pipeline.
 
-The legacy TypeScript runner tests are kept for reference and still run as part of `npm test` (through `--workspaces --if-present`). The runner itself is not started by `npm run dev` or built by `npm run build`:
-
-```bash
-npm test -w apps/runner
-```
+There is no TypeScript runner: `apps/runner-go` is the only runner, and it is started by `npm run dev` and built by `npm run build`.
 
 Stand-alone Go runner commands:
 
@@ -853,11 +849,7 @@ npm run build
 - `npm test` รัน Node workspace test ทั้งหมด แล้วรัน `npm run test:runner-go` (Go test ผ่าน `go test ./...`)
 - `npm run typecheck` รัน TypeScript workspace typecheck ทั้งหมด แล้วรัน `npm run typecheck:runner-go` Go runner ใช้ `go test ./...` เพราะ Go compilation ถูก validate ผ่าน tests อยู่แล้ว ไม่มีคำสั่ง `go build` แยกใน default pipeline
 
-test ของ TypeScript runner ยังเก็บไว้เป็น reference และยังรันเป็นส่วนหนึ่งของ `npm test` (ผ่าน `--workspaces --if-present`) แต่ตัว runner เองไม่ได้ถูก start โดย `npm run dev` หรือ build โดย `npm run build`:
-
-```bash
-npm test -w apps/runner
-```
+ไม่มี TypeScript runner แล้ว — `apps/runner-go` เป็น runner ตัวเดียวของระบบ และถูก start โดย `npm run dev` รวมถึง build โดย `npm run build`
 
 คำสั่ง Go runner แบบแยก:
 
