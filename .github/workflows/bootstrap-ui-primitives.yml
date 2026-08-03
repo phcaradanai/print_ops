@@ -1,0 +1,41 @@
+name: Bootstrap UI primitives dependency
+
+on:
+  push:
+    branches:
+      - refactor/ui-primitives-radix
+    paths:
+      - .github/workflows/bootstrap-ui-primitives.yml
+
+permissions:
+  contents: write
+
+jobs:
+  install-dialog-primitive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: refactor/ui-primitives-radix
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Radix Dialog
+        run: npm install --workspace @printerops/web --save-exact @radix-ui/react-dialog@1.1.23
+
+      - name: Commit dependency metadata
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/package.json package-lock.json
+          if git diff --cached --quiet; then
+            echo "Dependency metadata already current"
+            exit 0
+          fi
+          git commit -m "build(web): add Radix dialog primitive"
+          git push origin HEAD:refactor/ui-primitives-radix
