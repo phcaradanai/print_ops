@@ -254,6 +254,7 @@ export default function UsersRoles() {
       title={t('page.usersRoles.title')}
       description={t('page.usersRoles.description')}
       density="compact"
+      width="full"
       actions={<Freshness
             lastSuccessAt={directory.lastSuccessAt}
             stale={directory.stale}

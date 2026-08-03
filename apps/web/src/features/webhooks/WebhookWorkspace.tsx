@@ -66,7 +66,7 @@ export default function WebhookWorkspace() {
   return (
     <PageLayout
       className="webhook-workspace-page"
-      width="wide"
+      width="full"
       title={t('page.webhooks.title')}
       description={t('page.webhooks.subtitle')}
       actions={headerActions}

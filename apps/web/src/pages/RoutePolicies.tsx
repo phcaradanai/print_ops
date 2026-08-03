@@ -66,7 +66,7 @@ export default function RoutePolicies() {
 
   return (
     <PageLayout
-      width="standard"
+      width="full"
       title={t('page.routePolicies.title')}
       actions={<Freshness
           lastSuccessAt={policiesResource.lastSuccessAt}

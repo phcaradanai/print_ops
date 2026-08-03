@@ -41,6 +41,7 @@ export default function AuditLogs() {
     <PageLayout
       title={t('page.auditLogs.title')}
       density="compact"
+      width="full"
       actions={<Freshness
           lastSuccessAt={logsResource.lastSuccessAt}
           stale={logsResource.stale}

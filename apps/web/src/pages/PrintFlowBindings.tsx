@@ -240,7 +240,7 @@ export default function PrintFlowBindings() {
 
   return (
     <PageLayout
-      width="standard"
+      width="full"
       title={t('page.printFlow.title')}
       description={t('page.printFlow.description')}
       actions={<Freshness

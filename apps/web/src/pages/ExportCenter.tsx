@@ -34,7 +34,7 @@ export default function ExportCenter() {
 
   return (
     <PageLayout
-      width="standard"
+      width="full"
       title={t('page.export.title')}
       description={t('page.export.description')}
     >

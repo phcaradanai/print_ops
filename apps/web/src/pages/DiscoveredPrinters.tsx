@@ -101,6 +101,7 @@ export default function DiscoveredPrinters() {
     <PageLayout
       title={t('page.discovery.title')}
       description={t('page.discovery.description')}
+      width="full"
       density="compact"
       actions={<Freshness
           lastSuccessAt={printersResource.lastSuccessAt}

@@ -87,6 +87,7 @@ export default function Dashboard() {
   return (
     <PageLayout
       title={t('page.dashboard.title')}
+       width="full"
       actions={<Freshness
           lastSuccessAt={lastSuccessAt}
           stale={failed.length > 0}

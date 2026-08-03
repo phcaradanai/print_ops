@@ -95,6 +95,7 @@ export default function PrinterBindings() {
     <PageLayout
       title={t('page.bindings.title')}
       density="compact"
+      width="full"
       actions={<Freshness
           lastSuccessAt={bindingsResource.lastSuccessAt}
           stale={bindingsResource.stale}

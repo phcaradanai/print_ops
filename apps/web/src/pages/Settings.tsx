@@ -319,7 +319,7 @@ export default function Settings() {
   const localhostNats = /^(nats:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|$)/i.test(natsDraft.url.trim());
 
   return (
-    <PageLayout width="standard" title={t('settings.title')}>
+    <PageLayout width="full" title={t('settings.title')}>
 
       {message && (
         <Alert

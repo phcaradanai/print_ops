@@ -87,7 +87,7 @@ export function TemplateLibrary() {
   }, [currentPage, pageCount]);
 
   return (
-    <Card ref={libraryRef}>
+    <Card ref={libraryRef} > 
       <Inline style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--spacing-md)' }}>
         <Heading level={2}>{t('page.templates.listTitle')}</Heading>
         <Inline gap="xs">

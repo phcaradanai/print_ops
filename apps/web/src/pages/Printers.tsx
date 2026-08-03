@@ -44,6 +44,7 @@ export default function Printers() {
   return (
     <PageLayout
       title={t('page.printers.title')}
+      width="full"
       density="compact"
       actions={<Freshness
           lastSuccessAt={printersResource.lastSuccessAt}

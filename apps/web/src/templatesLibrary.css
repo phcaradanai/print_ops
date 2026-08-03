@@ -18,7 +18,7 @@
   justify-content: flex-end;
   padding: var(--spacing-sm);
   border: 1px solid var(--tpl-library-border);
-  border-radius: 12px;
+  border-radius: var(--rounded-lg);
   background: var(--tpl-library-surface);
   box-shadow: var(--shadow-subtle);
 }

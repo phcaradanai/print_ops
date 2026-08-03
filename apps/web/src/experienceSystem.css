@@ -222,7 +222,6 @@ body {
    on the second or final column. */
 .ui-data-table-frame {
   overflow: auto;
-  scrollbar-gutter: stable both-edges;
   overscroll-behavior-inline: contain;
 }
 

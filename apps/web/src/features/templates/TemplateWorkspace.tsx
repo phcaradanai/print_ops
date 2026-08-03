@@ -24,14 +24,8 @@ export function TemplateWorkspaceInner() {
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const actions = (
-    <Inline gap="sm" className="tpl-page-tools">
-      <Freshness
-        lastSuccessAt={templatesResource.lastSuccessAt}
-        stale={templatesResource.stale}
-        refreshing={templatesResource.refreshing}
-        onRefresh={templatesResource.refresh}
-      />
-      {!workspaceOpen && (
+    <Inline gap="sm" className="tpl-page-tools justify-start">
+      {!workspaceOpen ? (
         <>
           <Input
             type="search"
@@ -68,8 +62,14 @@ export function TemplateWorkspaceInner() {
             <TemplateIcon name="plus" /> {t('page.templates.newTemplate')}
           </Button>
         </>
-      )}
+      ) : (<Inline gap="sm">
+        <Button variant="ghost" onClick={requestCloseWorkspace}>
+          <TemplateIcon name="back" /> {t('page.templates.backToLibrary')}
+        </Button>
+        <Text weight="semibold">{editingId ? form.templateCode : t('page.templates.newTemplate')}</Text>
+      </Inline>)}
     </Inline>
+
   );
 
   return (
@@ -78,7 +78,12 @@ export function TemplateWorkspaceInner() {
       width="full"
       title={t('page.templates.title')}
       description={t('page.templates.subtitle')}
-      actions={actions}
+      actions={<Freshness
+        lastSuccessAt={templatesResource.lastSuccessAt}
+        stale={templatesResource.stale}
+        refreshing={templatesResource.refreshing}
+        onRefresh={templatesResource.refresh}
+      />}
     >
       {message && (
         <Alert
@@ -105,15 +110,10 @@ export function TemplateWorkspaceInner() {
           onRetry={profilesResource.refresh}
         />
       )}
-
+      {actions}
       {workspaceOpen ? (
         <Stack gap="md">
-          <Inline gap="sm">
-            <Button variant="ghost" onClick={requestCloseWorkspace}>
-              <TemplateIcon name="back" /> {t('page.templates.backToLibrary')}
-            </Button>
-            <Text weight="semibold">{editingId ? form.templateCode : t('page.templates.newTemplate')}</Text>
-          </Inline>
+
           <WorkspaceSplit ratio="aside-preview" aside={<TemplatePreview />}>
             <TemplateEditor />
           </WorkspaceSplit>
@@ -171,9 +171,9 @@ export function TemplateWorkspaceInner() {
         }
       >
         {previewHtml ? (
-          <div 
+          <div
             className="tpl-full-preview-container"
-            dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(previewHtml) }} 
+            dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(previewHtml) }}
           />
         ) : (
           <Text tone="muted">{t('page.templates.noPreviewAvailable')}</Text>

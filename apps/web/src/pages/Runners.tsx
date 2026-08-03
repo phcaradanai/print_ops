@@ -50,6 +50,7 @@ export default function Runners() {
     <PageLayout
       title={t('page.runners.title')}
       density="compact"
+      width="full"
       actions={<Freshness
           lastSuccessAt={runnersResource.lastSuccessAt}
           stale={runnersResource.stale}
