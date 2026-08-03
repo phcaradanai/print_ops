@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "PrinterOps",
+  "productName": "PrintOps",
   "version": "0.1.17",
   "identifier": "com.printerops.desktop",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "PrinterOps",
+        "title": "PrintOps",
         "url": "http://127.0.0.1:31415",
         "width": 1280,
         "height": 800,

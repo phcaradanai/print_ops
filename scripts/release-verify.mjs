@@ -218,8 +218,8 @@ function checkResources() {
 function installers(version, minimumMtime) {
   const bundle = join(root, 'apps/desktop/src-tauri/target/release/bundle');
   const expected = [
-    join(bundle, 'msi', `PrinterOps_${version}_x64_en-US.msi`),
-    join(bundle, 'nsis', `PrinterOps_${version}_x64-setup.exe`),
+    join(bundle, 'msi', `PrintOps_${version}_x64_en-US.msi`),
+    join(bundle, 'nsis', `PrintOps_${version}_x64-setup.exe`),
   ];
   return expected.flatMap((path) => {
     if (!requireFile(path, `installer/${basename(path)}`)) return [];
@@ -292,4 +292,4 @@ if (failures.length) {
   console.error(`\nRelease verification failed with ${failures.length} error(s).`);
   process.exit(1);
 }
-console.log(`\nRelease verification passed for PrinterOps ${version}.`);
+console.log(`\nRelease verification passed for PrintOps ${version}.`);

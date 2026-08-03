@@ -75,7 +75,7 @@ export class ConsumerConfigConflictError extends Error {
     super(
       `Consumer configuration conflicts for ${stream}/${durable}: ${detail}. `
       + 'Align the configured subject prefix with the existing durable, or use a new client ID. '
-      + 'PrinterOps will not delete or retarget an existing consumer automatically.',
+      + 'PrintOps will not delete or retarget an existing consumer automatically.',
     );
     this.name = 'ConsumerConfigConflictError';
   }
