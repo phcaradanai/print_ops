@@ -13,6 +13,7 @@
   "dependencies": {
     "@printerops/domain": "*",
     "@printerops/shared": "*",
+    "@radix-ui/react-dialog": "1.1.23",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2",
     "bwip-js": "^4.11.2",
