@@ -1,9 +1,9 @@
 import { useRef } from 'react';
 import { useLocale } from '../../i18n/index.js';
 import { useTemplateWorkspace, TemplateWorkspaceProvider } from './hooks/useTemplateWorkspace.js';
-import { 
-  Alert, Button, Dialog, ErrorBanner, Freshness, 
-  Input, PageLayout, Stack, Text, Mono, Inline
+import {
+  Alert, Button, Dialog, ErrorBanner, Freshness,
+  Input, PageLayout, Stack, Text, Mono, Inline, WorkspaceSplit
 } from '../../components/ui/index.js';
 import { TransferIcon } from '../../components/TransferIcon.js';
 import { TemplateIcon } from './components/TemplateIcon.js';
@@ -114,10 +114,9 @@ export function TemplateWorkspaceInner() {
             </Button>
             <Text weight="semibold">{editingId ? form.templateCode : t('page.templates.newTemplate')}</Text>
           </Inline>
-          <div className="tpl-layout">
+          <WorkspaceSplit ratio="aside-preview" aside={<TemplatePreview />}>
             <TemplateEditor />
-            <TemplatePreview />
-          </div>
+          </WorkspaceSplit>
         </Stack>
       ) : (
         <TemplateLibrary />

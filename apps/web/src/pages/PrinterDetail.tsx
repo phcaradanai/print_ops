@@ -92,7 +92,7 @@ export default function PrinterDetail() {
 
   if (printerResource.loading && !printer) {
     return (
-      <PageLayout title={t('page.printerDetail.title')}>
+      <PageLayout width="standard" title={t('page.printerDetail.title')}>
         <LoadingState />
       </PageLayout>
     );
@@ -100,7 +100,7 @@ export default function PrinterDetail() {
 
   if (!printer) {
     return (
-      <PageLayout title={t('page.printerDetail.title')}>
+      <PageLayout width="standard" title={t('page.printerDetail.title')}>
         <ErrorState
           error={printerResource.error ?? new Error(t('page.printerDetail.notFound'))}
           title={t('page.printerDetail.loadFailed')}
@@ -114,6 +114,7 @@ export default function PrinterDetail() {
 
   return (
     <PageLayout
+      width="standard"
       title={`${t('page.printerDetail.title')}: ${printer.name}`}
       actions={<Freshness
           lastSuccessAt={printerResource.lastSuccessAt}

@@ -155,6 +155,7 @@ export default function LocalDiagnostics() {
 
   return (
     <PageLayout
+      density="compact"
       title={t('page.diagnostics.title')}
       description={t('page.diagnostics.description')}
       actions={<Freshness

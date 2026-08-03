@@ -1,3 +1,4 @@
+import { Button } from '../../../components/ui/index.js';
 import { IconButton } from './editorPrimitives.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
@@ -26,18 +27,18 @@ export function PaperProfilePageHeader({ editor, popups, stage, onCreate, onBack
             <p className="pp-page-heading__description">{t('page.paperProfiles.libraryDescription')}</p>
           </div>
         </div>
-        <button type="button" className="ds-btn ds-btn--secondary" onClick={onCreate}>
+        <Button onClick={onCreate}>
           <PaperProfileIcon name="plus" /> {t('page.paperProfiles.createProfile')}
-        </button>
+        </Button>
       </div>
     );
   }
   return (
     <div className="pp-page-header pp-page-header--editor">
       <div className="pp-editor-heading">
-        <button type="button" className="pp-back-button" onClick={onBack}>
+        <Button variant="secondary" className="pp-back-button" onClick={onBack}>
           <PaperProfileIcon name="arrow-left" /> <span>{t('page.paperProfiles.backToLibrary')}</span>
-        </button>
+        </Button>
         <div className="pp-page-heading">
           <div>
             <h1>{editor.state.editingProfileId ? t('page.paperProfiles.editProfileTitle') : t('page.paperProfiles.createProfileTitle')}</h1>

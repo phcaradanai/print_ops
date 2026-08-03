@@ -15,10 +15,9 @@
   margin: calc(var(--spacing-sm) * -1) 0 var(--spacing-lg);
   padding: var(--spacing-sm) var(--spacing-md);
   border: 1px solid var(--neutral-border);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(12px);
+  border-radius: var(--rounded-lg);
+  background: var(--neutral-surface);
+  box-shadow: var(--shadow-subtle);
 }
 
 .paper-profiles-page .pp-editor-heading {
@@ -42,7 +41,7 @@
 
 .paper-profiles-page .pp-back-button:hover {
   border-color: #93b4fb;
-  background: #f8fbff;
+  background: var(--state-info-surface);
   color: var(--primary-strong);
 }
 
@@ -64,7 +63,7 @@
   padding: 0.22rem 0.5rem;
   overflow: hidden;
   border: 1px solid var(--neutral-border);
-  border-radius: 999px;
+  border-radius: var(--rounded-pill);
   background: var(--neutral-subtle);
   color: var(--neutral-text);
   font-family: var(--font-mono-family);
@@ -78,7 +77,7 @@
   padding: 0.25rem;
   border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-lg);
-  background: #f8fafc;
+  background: var(--neutral-paper);
 }
 
 .paper-profiles-page .pp-main-layout {
@@ -90,9 +89,9 @@
 .paper-profiles-page .pp-preview-panel,
 .paper-profiles-page .pp-form-panel {
   border: 1px solid var(--neutral-border);
-  border-radius: 12px;
+  border-radius: var(--rounded-lg);
   background: var(--neutral-surface);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.065);
+  box-shadow: none;
 }
 
 .paper-profiles-page .pp-preview-panel {
@@ -117,19 +116,7 @@
   min-height: 4.1rem;
   padding: var(--spacing-md) var(--spacing-lg);
   border-bottom: 1px solid var(--neutral-border);
-  background: linear-gradient(180deg, #fff 0%, #fbfdff 100%);
-}
-
-.paper-profiles-page .pp-preview-header::before,
-.paper-profiles-page .pp-form-panel::before {
-  content: '';
-  position: absolute;
-  top: -1px;
-  right: -1px;
-  left: -1px;
-  height: 3px;
-  border-radius: 12px 12px 0 0;
-  background: linear-gradient(90deg, var(--primary), #7c3aed 68%, #0f766e);
+  background: var(--neutral-surface);
 }
 
 .paper-profiles-page .pp-preview-header__title {
@@ -151,7 +138,7 @@
   flex: 0 0 auto;
   padding: 0.35rem 0.6rem;
   border: 1px solid var(--neutral-border);
-  border-radius: 999px;
+  border-radius: var(--rounded-pill);
   background: var(--neutral-subtle);
   color: var(--neutral-text);
   font-family: var(--font-mono-family);
@@ -169,14 +156,9 @@
   min-height: 3.25rem;
   padding: var(--spacing-sm) var(--spacing-lg);
   border-bottom: 1px solid var(--neutral-border);
-  background: #f8fafc;
+  background: var(--neutral-paper);
 }
 
-.paper-profiles-page .pp-canvas-toolbar .pp-icon-btn-wrapper {
-  flex: 0 0 auto;
-}
-
-.paper-profiles-page .pp-canvas-toolbar .pp-icon-btn[aria-pressed='true'],
 .paper-profiles-page .pp-canvas-toolbar .pp-icon-btn.is-active {
   border-color: var(--primary-strong);
   background: #eaf2ff;
@@ -198,7 +180,7 @@
 .paper-profiles-page .pp-canvas-fit:hover {
   border-color: var(--primary-strong);
   color: var(--primary-strong);
-  background: #f8fbff;
+  background: var(--state-info-surface);
 }
 
 .paper-profiles-page .pp-preview-stage {
@@ -207,10 +189,10 @@
   min-height: 0;
   padding: var(--spacing-xl);
   background:
-    linear-gradient(45deg, #edf1f6 25%, transparent 25%),
-    linear-gradient(-45deg, #edf1f6 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #edf1f6 75%),
-    linear-gradient(-45deg, transparent 75%, #edf1f6 75%),
+    linear-gradient(45deg, var(--neutral-subtle) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--neutral-subtle) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--neutral-subtle) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--neutral-subtle) 75%),
     #f8fafc;
   background-position: 0 0, 0 10px, 10px -10px, -10px 0;
   background-size: 20px 20px;
@@ -226,13 +208,12 @@
   gap: var(--spacing-xs);
   margin-bottom: var(--spacing-md);
   padding: 0.3rem 0.55rem;
-  border: 1px solid rgba(203, 213, 225, 0.9);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--neutral-border-strong);
+  border-radius: var(--rounded-pill);
+  background: var(--neutral-surface);
   color: var(--neutral-text-muted);
-  font-size: 0.7rem;
-  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.06);
-  backdrop-filter: blur(8px);
+  font-size: var(--font-label-size);
+  box-shadow: none;
 }
 
 .paper-profiles-page .pp-preview-quick-info {
@@ -259,7 +240,7 @@
   min-height: 3rem;
   padding: var(--spacing-sm) var(--spacing-lg);
   border-top: 1px solid var(--neutral-border);
-  background: #f8fafc;
+  background: var(--neutral-paper);
 }
 
 .paper-profiles-page .pp-form-panel {
@@ -282,10 +263,9 @@
   min-height: auto;
   padding: var(--spacing-md);
   border-bottom: 1px solid var(--neutral-border);
-  border-radius: 12px 12px 0 0;
-  background: rgba(255, 255, 255, 0.97);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.055);
-  backdrop-filter: blur(10px);
+  border-radius: var(--rounded-lg) var(--rounded-lg) 0 0;
+  background: var(--neutral-surface);
+  box-shadow: none;
 }
 
 .paper-profiles-page .pp-command-bar .pp-index {
@@ -300,7 +280,7 @@
   width: 100%;
   min-width: 0;
   border-color: var(--neutral-border);
-  background: #f8fafc;
+  background: var(--neutral-paper);
 }
 
 .paper-profiles-page .pp-command-actions {
@@ -316,7 +296,7 @@
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-md);
-  background: #f8fafc;
+  background: var(--neutral-paper);
 }
 
 .paper-profiles-page .pp-command-status__dot {
@@ -339,7 +319,7 @@
   flex: 1 1 auto;
   min-height: 0;
   padding: var(--spacing-md);
-  background: #f8fafc;
+  background: var(--neutral-paper);
   scrollbar-gutter: stable;
 }
 
@@ -358,7 +338,7 @@
 .paper-profiles-page .pp-section__toggle {
   min-height: 3rem;
   padding: var(--spacing-sm) var(--spacing-md);
-  background: linear-gradient(180deg, #fff 0%, #fbfdff 100%);
+  background: linear-gradient(180deg, #fff 0%, var(--neutral-paper) 100%);
   color: var(--neutral-deep);
   font-weight: 700;
 }
@@ -389,7 +369,7 @@
 .paper-profiles-page .ui-drawer {
   width: min(28rem, calc(100vw - 2rem));
   border-left: 1px solid var(--neutral-border);
-  background: #f8fafc;
+  background: var(--neutral-paper);
   box-shadow: -18px 0 40px rgba(15, 23, 42, 0.18);
 }
 
@@ -411,7 +391,6 @@
 }
 
 .paper-profiles-page .pp-appearance-form,
-.paper-profiles-page .ui-drawer__body > .pp-field-card,
 .paper-profiles-page .ui-drawer__body > .pp-add-field {
   border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-lg);
@@ -540,8 +519,7 @@
     grid-row: 2;
   }
 
-  .paper-profiles-page .pp-command-actions > .ds-btn--primary,
-  .paper-profiles-page .pp-command-actions > .pp-icon-btn:last-child {
+  .paper-profiles-page .pp-command-actions > .ds-btn--primary {
     grid-row: 1;
   }
 

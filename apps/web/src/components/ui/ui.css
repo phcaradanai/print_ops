@@ -99,6 +99,14 @@
 .ui-icon-button:active:not(:disabled) { transform: translateY(0.5px) scale(0.97); }
 .ui-icon-button:focus-visible { outline: 2px solid var(--primary, #1e66f5); outline-offset: 2px; box-shadow: 0 0 0 4px rgba(30, 102, 245, 0.18); }
 .ui-icon-button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+/* Toggled on. Border and weight carry the state alongside the tint, so it does
+   not rest on colour, and `aria-pressed` carries it to assistive technology. */
+.ui-icon-button[aria-pressed='true'] { border-color: var(--primary); background: var(--state-info-surface); color: var(--primary-hover); }
+.ui-icon-button[aria-pressed='true']:hover:not(:disabled) { border-color: var(--primary-hover); background: color-mix(in srgb, var(--primary) 12%, var(--neutral-surface)); }
+/* Unavailable but still focusable, so its reason can be read. Matches the
+   disabled treatment without leaving the tab order. */
+.ui-icon-button[aria-disabled='true'] { border-color: var(--neutral-border); background: var(--neutral-subtle); color: var(--neutral-text-muted); cursor: not-allowed; }
+.ui-icon-button[aria-disabled='true']:hover { transform: none; box-shadow: none; }
 
 
 .ui-data-table-frame { min-width: 0; overflow: auto; border: 1px solid var(--neutral-border); border-radius: var(--rounded-lg); background: var(--neutral-surface); }

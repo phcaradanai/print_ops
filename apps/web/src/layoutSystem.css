@@ -22,7 +22,6 @@
   max-width: none;
 }
 
-.ops-page.wh-container,
 .ops-page.templates-page,
 .ops-page.paper-profiles-page,
 .ops-page.template-sandbox-page {
@@ -37,7 +36,6 @@
   border-bottom: 1px solid var(--neutral-border);
 }
 
-.ops-page__header > .tpl-page-header,
 .ops-page__header > .pp-page-header {
   display: flex;
   flex-direction: row;
@@ -58,15 +56,10 @@
 }
 
 .ops-page .card,
-.ops-page .tpl-card,
-.ops-page .wh-card,
-.ops-page .wh-panel,
 .ops-page .settings-section,
 .ops-page .job-panel,
-.ops-page .pp-library,
 .ops-page .pp-form-panel,
-.ops-page .pp-preview-panel,
-.ops-page .pp-profile-card {
+.ops-page .pp-preview-panel {
   border-color: var(--neutral-border);
   border-radius: var(--rounded-lg);
   background: var(--neutral-surface);
@@ -79,7 +72,6 @@
 
 .ui-button,
 .ds-btn,
-.wh-action-btn,
 .settings-actions button,
 .btn-primary,
 .btn-secondary {
@@ -137,15 +129,12 @@
 }
 
 @media (max-width: 1100px) {
-  .template-sandbox-layout,
-  .wh-form-layout,
-  .tpl-workspace {
+  .template-sandbox-layout {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 1024px) {
-  .ops-page__header > .tpl-page-header,
   .ops-page__header > .pp-page-header {
     align-items: stretch;
     flex-direction: column;
@@ -153,11 +142,10 @@
   }
 
   .ops-page__header button,
-.ops-page__header a,
-.ops-page__footer button,
-.ops-page__footer a,
-.ops-page .ds-btn,
-.ops-page .wh-action-btn {
+  .ops-page__header a,
+  .ops-page__footer button,
+  .ops-page__footer a,
+  .ops-page .ds-btn {
     min-height: 44px;
   }
 }

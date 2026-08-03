@@ -125,7 +125,7 @@ describe('EndpointEditor', () => {
     const html = renderToStaticMarkup(
       <EndpointEditor controller={controllerFor({ callbackPayloadTemplate: '{\n  "long": "value"\n}' })} />,
     );
-    const gutter = html.match(/<div class="webhook-json-editor__gutter"[^>]*>(.*?)<\/div>/s)?.[1] ?? '';
+    const gutter = html.match(/<div class="ui-editor-canvas__gutter"[^>]*>(.*?)<\/div>/s)?.[1] ?? '';
 
     expect(gutter).toContain('<span>1</span><span>2</span><span>3</span>');
     expect(gutter).not.toContain('<span>4</span>');

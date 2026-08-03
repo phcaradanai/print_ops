@@ -91,7 +91,6 @@ body {
 
 .ops-page__title,
 .ops-page__header h1,
-.tpl-page-header h1,
 .pp-page-header h1 {
   letter-spacing: 0;
   text-wrap: pretty;
@@ -99,7 +98,6 @@ body {
 
 .ops-page__description,
 .ops-page__header p,
-.tpl-page-header p,
 .pp-page-header p {
   text-wrap: pretty;
 }
@@ -396,7 +394,6 @@ body {
 
   .ops-page__header,
   .page-header,
-  .tpl-page-header,
   .pp-page-header {
     align-items: stretch;
   }
@@ -430,7 +427,6 @@ body {
 
   .ops-page__header,
   .page-header,
-  .tpl-page-header,
   .pp-page-header {
     flex-direction: column;
     gap: var(--spacing-md);

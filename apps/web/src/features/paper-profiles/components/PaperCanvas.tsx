@@ -168,8 +168,8 @@ export function RulerSheet({
 export function FieldTypeControls({
   field,
   onUpdate,
-  selectClassName = 'pp-select',
-  numberClassName = 'pp-number',
+  selectClassName = 'ui-select ui-select--sm',
+  numberClassName = 'ui-input ui-input--sm',
 }: {
   field: DynamicField;
   onUpdate: (patch: Partial<DynamicField>) => void;
@@ -177,6 +177,9 @@ export function FieldTypeControls({
   selectClassName?: string;
   numberClassName?: string;
 }) {
+  // Defaulted, not optional-and-forgotten: the full-preview inspector rendered
+  // these with no class at all, so the same control looked unstyled there and
+  // styled in the field drawer.
   const { t } = useLocale();
   return (
     <>

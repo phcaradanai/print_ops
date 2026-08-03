@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 export type ActionIconName =
   | 'back'
   | 'check'
+  | 'chevron'
   | 'close'
   | 'copy'
   | 'delete'
@@ -20,6 +21,7 @@ export type ActionIconName =
 const paths: Record<ActionIconName, ReactNode> = {
   back: <><path d="m7 3-5 5 5 5" /><path d="M2 8h12" /></>,
   check: <path d="m3 8 3.25 3.25L13 4.5" />,
+  chevron: <path d="m6 3.5 5 4.5-5 4.5" />,
   close: <path d="m3.5 3.5 9 9m0-9-9 9" />,
   copy: <><rect x="5" y="5" width="8" height="8" rx="1" /><path d="M3 11H2.5A1.5 1.5 0 0 1 1 9.5v-7A1.5 1.5 0 0 1 2.5 1h7A1.5 1.5 0 0 1 11 2.5V3" /></>,
   delete: <path d="M3 4.5h10M6 4.5v-2h4v2m2 0-.65 9H4.65L4 4.5m3 2.25v4.5m2-4.5v4.5" />,

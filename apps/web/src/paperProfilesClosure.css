@@ -98,19 +98,8 @@
   }
 }
 
-/* --------------------------------------------------------------------------
-   Inputs and native selects, including WebView2 dark-system-theme defence.
-   -------------------------------------------------------------------------- */
-
-.paper-profiles-page .pp-input,
-.paper-profiles-page .pp-number,
-.paper-profiles-page .pp-select,
-.paper-profiles-page .pp-small-input,
 .paper-profiles-page .paper-preview-modal__field-grid input,
-.paper-profiles-page .paper-preview-modal__field-grid select,
-.paper-profiles-page .pp-drawer input:not([type='checkbox']):not([type='color']):not([type='file']),
-.paper-profiles-page .pp-drawer select,
-.paper-profiles-page .pp-drawer textarea {
+.paper-profiles-page .paper-preview-modal__field-grid select {
   min-width: 0;
   min-height: 36px;
   color-scheme: light;
@@ -122,9 +111,7 @@
     background-color 0.15s ease;
 }
 
-.paper-profiles-page .pp-select,
-.paper-profiles-page .paper-preview-modal__field-grid select,
-.paper-profiles-page .pp-drawer select {
+.paper-profiles-page .paper-preview-modal__field-grid select {
   appearance: none;
   -webkit-appearance: none;
   padding-right: 2.25rem !important;
@@ -145,27 +132,13 @@
   color: #111827 !important;
 }
 
-.paper-profiles-page .pp-input:hover:not(:disabled),
-.paper-profiles-page .pp-number:hover:not(:disabled),
-.paper-profiles-page .pp-select:hover:not(:disabled),
-.paper-profiles-page .pp-small-input:hover:not(:disabled),
 .paper-profiles-page .paper-preview-modal__field-grid input:hover:not(:disabled),
-.paper-profiles-page .paper-preview-modal__field-grid select:hover:not(:disabled),
-.paper-profiles-page .pp-drawer input:hover:not(:disabled),
-.paper-profiles-page .pp-drawer select:hover:not(:disabled),
-.paper-profiles-page .pp-drawer textarea:hover:not(:disabled) {
+.paper-profiles-page .paper-preview-modal__field-grid select:hover:not(:disabled) {
   border-color: #9399b2 !important;
 }
 
-.paper-profiles-page .pp-input:focus-visible,
-.paper-profiles-page .pp-number:focus-visible,
-.paper-profiles-page .pp-select:focus-visible,
-.paper-profiles-page .pp-small-input:focus-visible,
 .paper-profiles-page .paper-preview-modal__field-grid input:focus-visible,
-.paper-profiles-page .paper-preview-modal__field-grid select:focus-visible,
-.paper-profiles-page .pp-drawer input:focus-visible,
-.paper-profiles-page .pp-drawer select:focus-visible,
-.paper-profiles-page .pp-drawer textarea:focus-visible {
+.paper-profiles-page .paper-preview-modal__field-grid select:focus-visible {
   border-color: var(--primary, #1e66f5) !important;
   outline: 2px solid rgba(30, 102, 245, 0.28) !important;
   outline-offset: 1px !important;
@@ -294,50 +267,6 @@
   }
 }
 
-/* --------------------------------------------------------------------------
-   Viewport-safe tooltips and popups.
-   -------------------------------------------------------------------------- */
-
-.paper-profiles-page .pp-icon-btn-tooltip {
-  visibility: hidden;
-  width: max-content;
-  max-width: min(260px, calc(100vw - 1rem));
-  white-space: normal !important;
-  overflow-wrap: anywhere;
-  text-align: left;
-  opacity: 0;
-  transition: opacity 0.12s ease, visibility 0s linear 0.12s;
-  transition-delay: 0s;
-}
-
-.paper-profiles-page .pp-icon-btn-wrapper:hover .pp-icon-btn-tooltip {
-  visibility: visible;
-  opacity: 1;
-  transition-delay: 0.4s;
-}
-
-.paper-profiles-page .pp-icon-btn-wrapper:focus-within .pp-icon-btn-tooltip {
-  visibility: visible;
-  opacity: 1;
-  transition-delay: 0s;
-}
-
-.paper-profiles-page .pp-toolbar .pp-icon-btn-wrapper:first-child .pp-icon-btn-tooltip,
-.paper-profiles-page .pp-command-actions .pp-icon-btn-wrapper:first-child .pp-icon-btn-tooltip,
-.paper-profiles-page .pp-canvas-toolbar .pp-icon-btn-wrapper:first-child .pp-icon-btn-tooltip {
-  left: 0;
-  right: auto;
-  transform: none;
-}
-
-.paper-profiles-page .pp-toolbar .pp-icon-btn-wrapper:last-child .pp-icon-btn-tooltip,
-.paper-profiles-page .pp-command-actions .pp-icon-btn-wrapper:last-child .pp-icon-btn-tooltip,
-.paper-profiles-page .pp-canvas-toolbar .pp-icon-btn-wrapper:last-child .pp-icon-btn-tooltip {
-  right: 0;
-  left: auto;
-  transform: none;
-}
-
 .paper-profiles-page .pp-presets-menu {
   max-height: min(70vh, 520px);
   overflow: auto;
@@ -420,16 +349,10 @@
   max-width: 100%;
 }
 
-/* --------------------------------------------------------------------------
-   Drawer and full-preview scroll ownership.
-   -------------------------------------------------------------------------- */
-
-.paper-profiles-page .pp-drawer__header,
 .paper-profiles-page .paper-preview-modal__header {
   flex: 0 0 auto;
 }
 
-.paper-profiles-page .pp-drawer__body,
 .paper-profiles-page .paper-preview-modal__field-list,
 .paper-profiles-page .paper-preview-modal__sheet-stage {
   overscroll-behavior: contain;

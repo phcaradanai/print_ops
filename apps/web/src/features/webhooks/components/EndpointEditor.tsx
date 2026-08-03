@@ -3,6 +3,7 @@ import { ActionIcon } from '../../../components/ActionIcon.js';
 import {
   Button,
   Card,
+  EditorCanvas,
   FormField,
   Input,
   Inline,
@@ -40,7 +41,6 @@ export function EndpointEditor({ controller }: { controller: WebhookWorkspaceCon
     testCallback,
   } = controller;
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const gutterRef = useRef<HTMLDivElement | null>(null);
 
   const selectedPolicy = useMemo(
     () => policies.find((policy) => policy.id === form.routePolicyId),
@@ -58,11 +58,6 @@ export function EndpointEditor({ controller }: { controller: WebhookWorkspaceCon
     () => parsePayloadTemplate(form.callbackPayloadTemplate),
     [form.callbackPayloadTemplate],
   );
-  const lineNumbers = useMemo(() => {
-    const count = form.callbackPayloadTemplate.split(/\r\n|\r|\n/).length;
-    return Array.from({ length: Math.max(1, count) }, (_, index) => index + 1);
-  }, [form.callbackPayloadTemplate]);
-
   const insertVariable = (variable: string) => {
     const textarea = textareaRef.current;
     if (!textarea) {
@@ -323,25 +318,14 @@ export function EndpointEditor({ controller }: { controller: WebhookWorkspaceCon
               error={templateError}
             >
               {(control) => (
-                <div className="webhook-json-editor" data-invalid={Boolean(templateError) || undefined}>
-                  <div ref={gutterRef} className="webhook-json-editor__gutter" aria-hidden="true">
-                    {lineNumbers.map((line) => <span key={line}>{line}</span>)}
-                  </div>
-                  <Textarea
-                    {...control}
-                    ref={textareaRef}
-                    rows={12}
-                    wrap="off"
-                    mono
-                    resize="vertical"
-                    invalid={Boolean(templateError)}
-                    value={form.callbackPayloadTemplate}
-                    onScroll={(event) => {
-                      if (gutterRef.current) gutterRef.current.scrollTop = event.currentTarget.scrollTop;
-                    }}
-                    onChange={(event) => updateForm({ callbackPayloadTemplate: event.target.value })}
-                  />
-                </div>
+                <EditorCanvas
+                  {...control}
+                  ref={textareaRef}
+                  minHeight="18rem"
+                  invalid={Boolean(templateError)}
+                  value={form.callbackPayloadTemplate}
+                  onChange={(event) => updateForm({ callbackPayloadTemplate: event.target.value })}
+                />
               )}
             </FormField>
 

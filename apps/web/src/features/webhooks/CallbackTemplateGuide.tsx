@@ -1,5 +1,5 @@
 import { ACCEPTANCE_CALLBACK_SYSTEM_FIELDS } from '@printerops/domain';
-import { Chip, CodeBlock, Inline, Panel, SectionHeading, Stack, Text } from '../../components/ui/index.js';
+import { CodeBlock, Panel, SectionHeading, Stack, Text, TokenList } from '../../components/ui/index.js';
 import {
   SYSTEM_FIELD_TOKENS,
   systemFieldDescriptionKey,
@@ -67,19 +67,14 @@ export function CallbackTemplateGuide({
               title={t('page.webhooks.systemFieldsTitle')}
               description={t('page.webhooks.systemFieldsHint')}
             />
-            <Stack gap="xs">
-              {ACCEPTANCE_CALLBACK_SYSTEM_FIELDS.map((field, index) => {
-                const token = SYSTEM_FIELD_TOKENS[index] ?? '';
-                return (
-                  <Inline key={field} gap="xs">
-                    <Chip title={insertTitle(token)} onClick={() => onInsert(token)}>
-                      {token}
-                    </Chip>
-                    <Text size="label" tone="muted">{t(systemFieldDescriptionKey(field))}</Text>
-                  </Inline>
-                );
-              })}
-            </Stack>
+            <TokenList
+              insertTitle={insertTitle}
+              onInsert={onInsert}
+              items={ACCEPTANCE_CALLBACK_SYSTEM_FIELDS.map((field, index) => ({
+                token: SYSTEM_FIELD_TOKENS[index] ?? '',
+                description: t(systemFieldDescriptionKey(field)),
+              }))}
+            />
           </Stack>
 
           <Stack gap="xs">
@@ -92,26 +87,21 @@ export function CallbackTemplateGuide({
                 policy is bound yet or the bound one declares no fields. Those
                 need different actions from the operator, so they say different
                 things. */}
-            {intakeFields.length === 0 ? (
-              <Text size="label" tone="muted">
-                {hasPolicy
-                  ? t('page.webhooks.intakeFieldsEmptyPolicy')
-                  : t('page.webhooks.intakeFieldsNoPolicy')}
-              </Text>
-            ) : (
-              <Stack gap="xs">
-                {intakeFields.map((field) => (
-                  <Inline key={field.token} gap="xs">
-                    <Chip title={insertTitle(field.token)} onClick={() => onInsert(field.token)}>
-                      {field.token}
-                    </Chip>
-                    <Text size="label" tone="muted">
-                      {t('page.webhooks.intakeFieldMappedTo').replace('{key}', field.mappedTo)}
-                    </Text>
-                  </Inline>
-                ))}
-              </Stack>
-            )}
+            <TokenList
+              insertTitle={insertTitle}
+              onInsert={onInsert}
+              items={intakeFields.map((field) => ({
+                token: field.token,
+                description: t('page.webhooks.intakeFieldMappedTo').replace('{key}', field.mappedTo),
+              }))}
+              empty={
+                <Text size="label" tone="muted">
+                  {hasPolicy
+                    ? t('page.webhooks.intakeFieldsEmptyPolicy')
+                    : t('page.webhooks.intakeFieldsNoPolicy')}
+                </Text>
+              }
+            />
           </Stack>
         </Stack>
       </Panel>

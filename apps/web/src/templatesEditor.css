@@ -1,45 +1,15 @@
-/* UX-01 Templates editor workspace.
- *
- * This layer is intentionally page-scoped and loaded after the library polish.
- * It changes only composition and responsive behavior; template editing,
- * rendering, saving, publishing, and deletion semantics remain in Templates.tsx.
- */
 
-.templates-page .tpl-workspace-bar {
-  position: sticky;
-  top: calc(var(--spacing-sm) * -1);
-  z-index: 30;
-  min-height: 3.25rem;
-  margin: calc(var(--spacing-sm) * -1) 0 var(--spacing-lg);
-  padding: var(--spacing-sm) var(--spacing-md);
-  border: 1px solid var(--neutral-border);
-  border-radius: var(--rounded-lg);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(10px);
-}
 
-.templates-page .tpl-workspace-bar > span {
-  padding: 0.35rem 0.65rem;
-  border: 1px solid var(--neutral-border);
-  border-radius: 999px;
-  background: var(--neutral-subtle);
-  color: var(--neutral-text);
-  font-weight: 600;
-}
-
-.templates-page .tpl-layout {
-  grid-template-columns: minmax(0, 1.65fr) minmax(22rem, 0.85fr);
-  gap: var(--spacing-xl);
-  align-items: start;
-}
-
+/* Ordinary page surfaces: border-defined, flat, 8px. These carried a 12px
+   radius under a wide soft shadow — a card pretending to float on a plane it
+   never leaves — plus a 3px gradient rule across the top in violet and teal,
+   two hues the palette does not contain. */
 .templates-page .tpl-editor,
 .templates-page .tpl-preview {
   min-width: 0;
   border: 1px solid var(--neutral-border);
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  border-radius: var(--rounded-lg);
+  box-shadow: none;
 }
 
 .templates-page .tpl-editor {
@@ -48,43 +18,11 @@
   padding: var(--spacing-xl);
 }
 
-.templates-page .tpl-editor::before,
-.templates-page .tpl-preview::before {
-  content: '';
-  position: absolute;
-  top: -1px;
-  right: -1px;
-  left: -1px;
-  height: 3px;
-  border-radius: 12px 12px 0 0;
-  background: linear-gradient(90deg, var(--primary), #7c3aed 68%, #0f766e);
-}
-
-.templates-page .tpl-editor > h2,
-.templates-page .tpl-preview-header h2 {
+.templates-page .tpl-editor > h2 {
   margin: 0;
   color: var(--neutral-deep);
   font-size: 1.05rem;
   letter-spacing: -0.01em;
-}
-
-.templates-page .tpl-editor-top {
-  grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.8fr);
-  gap: var(--spacing-xl);
-  margin-top: var(--spacing-lg);
-  padding-bottom: var(--spacing-xl);
-  border-bottom: 1px solid var(--neutral-border);
-}
-
-.templates-page .tpl-field-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-content: start;
-  gap: var(--spacing-lg);
-}
-
-.templates-page .tpl-field-grid > :last-child {
-  grid-column: 1 / -1;
 }
 
 .templates-page .tpl-engine-picker {
@@ -93,7 +31,7 @@
   padding: var(--spacing-md);
   border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-lg);
-  background: linear-gradient(180deg, #fbfdff 0%, var(--neutral-page) 100%);
+  background: var(--neutral-paper);
 }
 
 .templates-page .tpl-engine-picker > legend,
@@ -122,7 +60,7 @@
 
 .templates-page .tpl-engine-card:hover {
   border-color: #93b4fb;
-  background: #f8fbff;
+  background: var(--state-info-surface);
   transform: translateY(-1px);
   box-shadow: 0 6px 16px rgba(30, 102, 245, 0.09);
 }
@@ -145,48 +83,6 @@
   margin-top: var(--spacing-xl);
 }
 
-.templates-page .tpl-content-row {
-  grid-template-columns: minmax(0, 1fr) minmax(14rem, 18rem);
-  gap: var(--spacing-lg);
-  margin-top: var(--spacing-sm);
-}
-
-.templates-page .tpl-code-editor {
-  min-height: 30rem;
-  overflow: hidden;
-  border: 1px solid var(--neutral-border-strong);
-  border-radius: var(--rounded-lg);
-  background: #111827;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.templates-page .tpl-code-editor:focus-within {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(30, 102, 245, 0.14);
-}
-
-.templates-page .tpl-code-gutter {
-  padding-top: var(--spacing-md);
-  background: #0b1220;
-  color: #7f8da3;
-  line-height: 1.65;
-}
-
-.templates-page .tpl-editor-content {
-  min-height: 30rem;
-  padding: var(--spacing-md);
-  border: 0;
-  border-radius: 0;
-  background: #111827;
-  color: #e5edf8;
-  caret-color: #93c5fd;
-  line-height: 1.65;
-}
-
-.templates-page .tpl-editor-content::placeholder {
-  color: #8290a6;
-}
-
 .templates-page .tpl-vars {
   position: sticky;
   top: 5.25rem;
@@ -196,7 +92,7 @@
   padding: var(--spacing-md);
   border-color: var(--neutral-border);
   border-radius: var(--rounded-lg);
-  background: #f8fafc;
+  background: var(--neutral-paper);
   scrollbar-width: thin;
 }
 
@@ -221,19 +117,6 @@
   white-space: nowrap;
 }
 
-.templates-page .tpl-editor-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 20;
-  margin: var(--spacing-xl) calc(var(--spacing-xl) * -1) calc(var(--spacing-xl) * -1);
-  padding: var(--spacing-md) var(--spacing-xl);
-  border-top: 1px solid var(--neutral-border);
-  border-radius: 0 0 12px 12px;
-  background: rgba(255, 255, 255, 0.97);
-  box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.07);
-  backdrop-filter: blur(10px);
-}
-
 .templates-page .tpl-editor-actions__right .ui-button--primary {
   min-width: 9rem;
   box-shadow: 0 5px 14px rgba(30, 102, 245, 0.2);
@@ -248,31 +131,16 @@
   scrollbar-width: thin;
 }
 
-.templates-page .tpl-preview-header {
-  position: sticky;
-  top: calc(var(--spacing-lg) * -1);
-  z-index: 5;
-  margin: calc(var(--spacing-lg) * -1) calc(var(--spacing-lg) * -1) var(--spacing-md);
-  padding: var(--spacing-lg);
-  border-bottom: 1px solid var(--neutral-border);
-  background: rgba(255, 255, 255, 0.97);
-  backdrop-filter: blur(10px);
-}
-
-.templates-page .tpl-preview-controls {
-  gap: var(--spacing-xs);
-}
-
 .templates-page .tpl-preview-stage {
   min-height: 30rem;
   padding: var(--spacing-xl);
   border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-lg);
   background:
-    linear-gradient(45deg, #eef2f7 25%, transparent 25%),
-    linear-gradient(-45deg, #eef2f7 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #eef2f7 75%),
-    linear-gradient(-45deg, transparent 75%, #eef2f7 75%),
+    linear-gradient(45deg, var(--neutral-subtle) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--neutral-subtle) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--neutral-subtle) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--neutral-subtle) 75%),
     #f8fafc;
   background-position: 0 0, 0 8px, 8px -8px, -8px 0;
   background-size: 16px 16px;
@@ -312,26 +180,15 @@
 }
 
 @media (max-width: 1280px) {
-  .templates-page .tpl-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
 
   .templates-page .tpl-preview {
     position: relative;
     top: auto;
     max-height: none;
   }
-
-  .templates-page .tpl-preview-header {
-    top: 0;
-  }
 }
 
 @media (max-width: 900px) {
-  .templates-page .tpl-editor-top,
-  .templates-page .tpl-content-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
 
   .templates-page .tpl-vars {
     position: relative;
@@ -339,22 +196,12 @@
     max-height: 20rem;
   }
 
-  .templates-page .tpl-code-editor,
-  .templates-page .tpl-editor-content,
   .templates-page .tpl-preview-stage {
     min-height: 24rem;
   }
 }
 
 @media (max-width: 640px) {
-  .templates-page .tpl-workspace-bar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .templates-page .tpl-workspace-bar > span {
-    width: 100%;
-  }
 
   .templates-page .tpl-editor,
   .templates-page .tpl-preview {
@@ -362,42 +209,12 @@
     border-radius: var(--rounded-lg);
   }
 
-  .templates-page .tpl-field-grid,
   .templates-page .tpl-engine-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .templates-page .tpl-field-grid > :last-child {
-    grid-column: auto;
-  }
-
-  .templates-page .tpl-editor-actions {
-    position: relative;
-    align-items: stretch;
-    margin: var(--spacing-lg) calc(var(--spacing-md) * -1) calc(var(--spacing-md) * -1);
-    padding: var(--spacing-md);
-  }
-
   .templates-page .tpl-editor-actions > .ui-button,
-  .templates-page .tpl-editor-actions__right,
   .templates-page .tpl-editor-actions__right .ui-button {
-    width: 100%;
-  }
-
-  .templates-page .tpl-editor-actions__right {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .templates-page .tpl-preview-header {
-    align-items: stretch;
-    flex-direction: column;
-    margin: calc(var(--spacing-md) * -1) calc(var(--spacing-md) * -1) var(--spacing-md);
-    padding: var(--spacing-md);
-  }
-
-  .templates-page .tpl-preview-controls,
-  .templates-page .tpl-preview-controls > * {
     width: 100%;
   }
 

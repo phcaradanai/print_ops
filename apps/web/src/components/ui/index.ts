@@ -48,6 +48,22 @@ export { MetricGrid, MetricTile, type MetricTone } from './metrics.js';
 export { IconButton, type IconButtonProps } from './IconButton.js';
 export { Drawer, type DrawerProps } from './Drawer.js';
 export {
+  EditorCanvas,
+  WorkspaceSplit,
+  WorkspaceBar,
+  CollapsibleSection,
+  ColorField,
+  TokenList,
+  type TokenListItem,
+  type TokenListProps,
+  type EditorCanvasProps,
+  type WorkspaceSplitProps,
+  type WorkspaceSplitRatio,
+  type WorkspaceBarProps,
+  type CollapsibleSectionProps,
+  type ColorFieldProps,
+} from './workspace.js';
+export {
   RowActionMenu,
   computeRowActionMenuPosition,
   type RowActionMenuItem,

@@ -4,8 +4,7 @@
 .webhook-selection-actions__buttons,
 .webhook-pagination-row,
 .webhook-pagination-controls,
-.webhook-row-actions,
-.webhook-record-actions {
+.webhook-row-actions {
   flex-wrap: wrap;
 }
 
@@ -261,7 +260,6 @@
   max-width: 100%;
 }
 
-.webhook-record-actions,
 .webhook-row-actions {
   justify-content: flex-start;
 }
@@ -404,51 +402,6 @@
 .webhook-template-guide .ui-inline {
   align-items: flex-start;
   flex-wrap: wrap;
-}
-
-.webhook-json-editor {
-  display: grid;
-  grid-template-columns: 2.75rem minmax(0, 1fr);
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--neutral-border-strong);
-  border-radius: var(--rounded-md);
-  background: var(--neutral-surface);
-}
-
-.webhook-json-editor:focus-within {
-  border-color: var(--primary);
-  outline: 2px solid color-mix(in srgb, var(--primary) 24%, transparent);
-  outline-offset: 1px;
-}
-
-.webhook-json-editor[data-invalid] {
-  border-color: var(--state-danger-text);
-}
-
-.webhook-json-editor__gutter {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  min-width: 0;
-  padding: var(--spacing-sm);
-  overflow: hidden;
-  border-right: 1px solid var(--neutral-border);
-  background: var(--neutral-subtle);
-  color: var(--neutral-text-muted);
-  font-family: var(--font-mono-family);
-  font-size: var(--font-mono-size);
-  line-height: var(--font-mono-line-height);
-  user-select: none;
-}
-
-.webhook-json-editor textarea {
-  min-width: 0;
-  min-height: 18rem;
-  border: 0;
-  border-radius: 0;
-  outline: 0;
-  line-height: var(--font-mono-line-height);
 }
 
 .webhook-editor-actions {

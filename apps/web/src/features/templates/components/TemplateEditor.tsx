@@ -1,7 +1,10 @@
 import { useRef, useCallback } from 'react';
 import { useLocale } from '../../../i18n/index.js';
 import { useTemplateWorkspace } from '../hooks/useTemplateWorkspace.js';
-import { Button, Card, FormField, Grid, Heading, Inline, Input, Select, Textarea, Stack, Toolbar } from '../../../components/ui/index.js';
+import {
+  Button, Card, EditorCanvas, FormField, Grid, Heading, Inline, Input, Panel, Select,
+  Stack, Text, Textarea, TokenList, Toolbar, WorkspaceSplit,
+} from '../../../components/ui/index.js';
 import { TemplateIcon } from './TemplateIcon.js';
 import { ENGINE_ICON, ENGINES } from '../hooks/helpers.js';
 import type { BarcodeKind } from '../../../lib/barcode.js';
@@ -23,11 +26,9 @@ export function TemplateEditor() {
 
   const formRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
-  const gutterRef = useRef<HTMLDivElement | null>(null);
 
   const formProfile = profiles.find((p) => p.id === form.paperProfileId);
   const profileKeys = (formProfile?.fields ?? []).map((f) => f.key).filter(Boolean);
-  const contentLines = form.content.split('\n');
 
   const insertSnippet = useCallback((snippet: string) => {
     const el = contentRef.current;
@@ -129,56 +130,63 @@ export function TemplateEditor() {
 
         <div className="tpl-content-block">
           <span className="tpl-field-label">{t('page.templates.content')}</span>
-          <div className="tpl-content-row">
-            <div className="tpl-code-editor">
-              <div className="tpl-code-gutter" aria-hidden="true" ref={gutterRef}>
-                {contentLines.map((_, i) => <span key={i}>{i + 1}</span>)}
-              </div>
-              <Textarea
-                id="template-content"
-                className="tpl-editor-content"
-                mono={form.engine === 'JSON_LAYOUT' || form.engine === 'ZPL' || form.engine === 'RAW_TEXT' || form.engine === 'TSPL' || form.engine === 'EPL'}
-                value={form.content}
-                onChange={(e) => updateEditorForm({ ...form, content: e.target.value })}
-                ref={contentRef}
-                placeholder={t('page.templates.contentPlaceholder')}
-                onScroll={(e) => {
-                  if (gutterRef.current) gutterRef.current.scrollTop = e.currentTarget.scrollTop;
-                }}
-                aria-label={t('page.templates.content')}
-              />
-            </div>
-            <div className="tpl-vars">
-              <h3>{t('page.templates.availableKeys')}</h3>
-              <div className="tpl-vars__barcode-actions">
-                <button type="button" onClick={() => insertBarcodeToken('barcode')} title={t('page.templates.insertBarcodeHint')}>
-                  <TemplateIcon name="barcode" /> {t('page.templates.insertBarcode')}
-                </button>
-                <button type="button" onClick={() => insertBarcodeToken('qrcode')} title={t('page.templates.insertQrcodeHint')}>
-                  <TemplateIcon name="qrcode" /> {t('page.templates.insertQrcode')}
-                </button>
-              </div>
-              <ul>
-                {VARIABLES.map((v) => (
-                  <li key={v.token}>
-                    <button type="button" onClick={() => insertVariable(v.token)}>
-                      <code>{`{{${v.token}}}`}</code>
-                      <span>{t(v.labelKey)}</span>
-                    </button>
-                  </li>
-                ))}
-                {profileKeys.filter((k) => !VARIABLES.some((v) => v.token === k)).map((key) => (
-                  <li key={key}>
-                    <button type="button" onClick={() => insertVariable(key)}>
-                      <code>{`{{${key}}}`}</code>
-                      <span>{formProfile?.fields.find((f) => f.key === key)?.label ?? key}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <p className="tpl-vars__hint">{t('page.templates.insertHint')}</p>
-            </div>
-          </div>
+          <WorkspaceSplit
+            ratio="aside-narrow"
+            aside={
+              <Panel title={t('page.templates.availableKeys')} padding="lg" className="tpl-vars">
+                <Stack gap="lg">
+                  <Inline gap="sm">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => insertBarcodeToken('barcode')}
+                      title={t('page.templates.insertBarcodeHint')}
+                    >
+                      <TemplateIcon name="barcode" /> {t('page.templates.insertBarcode')}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => insertBarcodeToken('qrcode')}
+                      title={t('page.templates.insertQrcodeHint')}
+                    >
+                      <TemplateIcon name="qrcode" /> {t('page.templates.insertQrcode')}
+                    </Button>
+                  </Inline>
+
+                  <TokenList
+                    insertTitle={(token) => t('page.templates.insertHint').replace('{v}', token)}
+                    onInsert={insertSnippet}
+                    items={[
+                      ...VARIABLES.map((v) => ({
+                        token: `{{${v.token}}}`,
+                        description: t(v.labelKey),
+                      })),
+                      ...profileKeys
+                        .filter((k) => !VARIABLES.some((v) => v.token === k))
+                        .map((key) => ({
+                          token: `{{${key}}}`,
+                          description:
+                            formProfile?.fields.find((f) => f.key === key)?.label ?? key,
+                        })),
+                    ]}
+                  />
+
+                  <Text size="label" tone="muted">{t('page.templates.insertHint')}</Text>
+                </Stack>
+              </Panel>
+            }
+          >
+            <EditorCanvas
+              id="template-content"
+              minHeight="30rem"
+              value={form.content}
+              onChange={(e) => updateEditorForm({ ...form, content: e.target.value })}
+              ref={contentRef}
+              placeholder={t('page.templates.contentPlaceholder')}
+              aria-label={t('page.templates.content')}
+            />
+          </WorkspaceSplit>
         </div>
 
         <Toolbar label={t('page.templates.editorActions')} align="between">
