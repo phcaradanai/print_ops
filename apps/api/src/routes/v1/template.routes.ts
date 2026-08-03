@@ -9,6 +9,11 @@ import type {
   PrinterRepositoryPort,
 } from '@printerops/domain';
 import { actor, requirePermission } from './permission-guard.js';
+import {
+  coerceImportNumber,
+  validatePaperProfileCreate,
+  validatePaperProfileUpdate,
+} from './paper-profile-validation.js';
 
 /**
  * CSS anchor transform for a field's text alignment — kept in lockstep with
@@ -182,6 +187,10 @@ export async function templateRoutes(
 
   app.get('/paper-profiles', { onRequest: [requirePermission('paper-profile:read')] }, async () => deps.papers.findAll());
   app.post('/paper-profiles', { onRequest: [requirePermission('paper-profile:create')] }, async (req, reply) => {
+    const issues = validatePaperProfileCreate((req.body ?? {}) as Record<string, unknown>);
+    if (issues.length > 0) {
+      return reply.status(400).send({ error: 'VALIDATION_ERROR', message: issues[0]!.message, issues });
+    }
     const profile = await deps.papers.create(req.body as Parameters<typeof deps.papers.create>[0]);
     await deps.audit.create({ traceId: 'paper', action: 'paper_profile.created', actorId: actor(req), resourceType: 'paper_profile', resourceId: profile.id, after: profile as unknown as Record<string, unknown>, metadata: {} });
     await ensureFieldsTemplate(profile, actor(req));
@@ -258,23 +267,54 @@ export async function templateRoutes(
         ? item.code.trim()
         : item.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
-      const widthMm = Number(item.widthMm) || 100;
-      const heightMm = Number(item.heightMm) || 150;
+      // A missing numeric field keeps its legacy default, but a PRESENT value
+      // that is not a usable number is a client error — silently replacing it
+      // with a default prints on the wrong physical size without anyone asking.
+      const numericFields: Array<[string, number]> = [
+        ['widthMm', 100],
+        ['heightMm', 150],
+        ['marginTopMm', 0],
+        ['marginRightMm', 0],
+        ['marginBottomMm', 0],
+        ['marginLeftMm', 0],
+        ['dpi', 203],
+      ];
+      const numbers: Record<string, number> = {};
+      for (const [field, fallback] of numericFields) {
+        const coerced = coerceImportNumber(item[field], fallback);
+        if ('invalid' in coerced) {
+          return reply.status(400).send({
+            error: 'VALIDATION_ERROR',
+            message: `Invalid profile '${baseCode}': ${field} is not a valid number`,
+            issues: [{ field, message: `${field} is not a valid number` }],
+          });
+        }
+        numbers[field] = coerced.value;
+      }
 
       const profileInput = {
         code: baseCode,
         name: item.name.trim(),
-        widthMm,
-        heightMm,
-        marginTopMm: Number(item.marginTopMm) || 0,
-        marginRightMm: Number(item.marginRightMm) || 0,
-        marginBottomMm: Number(item.marginBottomMm) || 0,
-        marginLeftMm: Number(item.marginLeftMm) || 0,
-        dpi: Number(item.dpi) || 203,
+        widthMm: numbers['widthMm']!,
+        heightMm: numbers['heightMm']!,
+        marginTopMm: numbers['marginTopMm']!,
+        marginRightMm: numbers['marginRightMm']!,
+        marginBottomMm: numbers['marginBottomMm']!,
+        marginLeftMm: numbers['marginLeftMm']!,
+        dpi: numbers['dpi']!,
         orientation: (item.orientation === 'landscape' ? 'landscape' : 'portrait') as 'portrait' | 'landscape',
         unit: (item.unit === 'inch' ? 'inch' : 'mm') as 'mm' | 'inch',
         fields: Array.isArray(item.fields) ? item.fields : [],
       };
+
+      const geometryIssues = validatePaperProfileCreate(profileInput as unknown as Record<string, unknown>);
+      if (geometryIssues.length > 0) {
+        return reply.status(400).send({
+          error: 'VALIDATION_ERROR',
+          message: `Invalid profile '${baseCode}': ${geometryIssues[0]!.message}`,
+          issues: geometryIssues,
+        });
+      }
 
       const existing = await deps.papers.findByCode(profileInput.code);
       let finalProfile: PaperProfile;
@@ -359,8 +399,14 @@ export async function templateRoutes(
       .send(exportData);
   });
 
-  app.put('/paper-profiles/:id', { onRequest: [requirePermission('paper-profile:update')] }, async (req) => {
+  app.put('/paper-profiles/:id', { onRequest: [requirePermission('paper-profile:update')] }, async (req, reply) => {
     const { id } = req.params as { id: string };
+    const existing = await deps.papers.findById(id);
+    if (!existing) return reply.status(404).send({ error: 'Paper profile not found' });
+    const issues = validatePaperProfileUpdate(existing, (req.body ?? {}) as Record<string, unknown>);
+    if (issues.length > 0) {
+      return reply.status(400).send({ error: 'VALIDATION_ERROR', message: issues[0]!.message, issues });
+    }
     const profile = await deps.papers.update(id, req.body as Record<string, unknown>);
     await deps.audit.create({ traceId: 'paper', action: 'paper_profile.updated', actorId: actor(req), resourceType: 'paper_profile', resourceId: id, after: profile as unknown as Record<string, unknown>, metadata: {} });
     await ensureFieldsTemplate(profile, actor(req));

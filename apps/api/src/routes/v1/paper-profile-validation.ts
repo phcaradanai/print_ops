@@ -1,0 +1,136 @@
+import type { PaperProfile } from '@printerops/domain';
+
+export interface PaperProfileIssue {
+  field: string;
+  message: string;
+}
+
+/** The numeric/geometry subset every stored profile must satisfy. Mirrors the
+ * dashboard editor's client-side rules (apps/web/src/features/paper-profiles/
+ * model/validation.ts) so a direct API caller cannot store a profile the
+ * editor itself would refuse — the print chain (template rendering, physical
+ * previews, the WebView2 helper's page geometry) consumes these values as
+ * trusted physical dimensions. */
+type PaperProfileGeometry = Pick<
+  PaperProfile,
+  | 'widthMm'
+  | 'heightMm'
+  | 'dpi'
+  | 'marginTopMm'
+  | 'marginRightMm'
+  | 'marginBottomMm'
+  | 'marginLeftMm'
+>;
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function checkGeometry(profile: PaperProfileGeometry): PaperProfileIssue[] {
+  const issues: PaperProfileIssue[] = [];
+  const positive: Array<[keyof PaperProfileGeometry, string]> = [
+    ['widthMm', 'widthMm must be a finite number greater than zero'],
+    ['heightMm', 'heightMm must be a finite number greater than zero'],
+    ['dpi', 'dpi must be a finite number greater than zero'],
+  ];
+  for (const [field, message] of positive) {
+    if (!isFiniteNumber(profile[field]) || profile[field] <= 0) {
+      issues.push({ field, message });
+    }
+  }
+  const nonNegative: Array<keyof PaperProfileGeometry> = [
+    'marginTopMm',
+    'marginRightMm',
+    'marginBottomMm',
+    'marginLeftMm',
+  ];
+  for (const field of nonNegative) {
+    if (!isFiniteNumber(profile[field]) || profile[field] < 0) {
+      issues.push({ field, message: `${field} must be a finite number of at least zero` });
+    }
+  }
+  if (issues.length > 0) return issues;
+
+  if (profile.marginLeftMm + profile.marginRightMm >= profile.widthMm) {
+    issues.push({
+      field: 'margins',
+      message: 'Left and right margins must leave a printable width greater than zero',
+    });
+  }
+  if (profile.marginTopMm + profile.marginBottomMm >= profile.heightMm) {
+    issues.push({
+      field: 'margins',
+      message: 'Top and bottom margins must leave a printable height greater than zero',
+    });
+  }
+  return issues;
+}
+
+/** Validates a complete profile body for creation. */
+export function validatePaperProfileCreate(body: Record<string, unknown>): PaperProfileIssue[] {
+  const issues: PaperProfileIssue[] = [];
+  if (typeof body['code'] !== 'string' || !body['code'].trim()) {
+    issues.push({ field: 'code', message: 'code is required' });
+  }
+  if (typeof body['name'] !== 'string' || !body['name'].trim()) {
+    issues.push({ field: 'name', message: 'name is required' });
+  }
+  if (body['orientation'] !== undefined && body['orientation'] !== 'portrait' && body['orientation'] !== 'landscape') {
+    issues.push({ field: 'orientation', message: "orientation must be 'portrait' or 'landscape'" });
+  }
+  if (body['unit'] !== undefined && body['unit'] !== 'mm' && body['unit'] !== 'inch') {
+    issues.push({ field: 'unit', message: "unit must be 'mm' or 'inch'" });
+  }
+  issues.push(...checkGeometry(body as unknown as PaperProfileGeometry));
+  return issues;
+}
+
+/** Validates a partial update by checking the merged result — a patch that
+ * only touches margins can still make an existing profile unprintable. */
+export function validatePaperProfileUpdate(
+  current: PaperProfile,
+  patch: Record<string, unknown>,
+): PaperProfileIssue[] {
+  const issues: PaperProfileIssue[] = [];
+  if ('code' in patch && (typeof patch['code'] !== 'string' || !patch['code'].trim())) {
+    issues.push({ field: 'code', message: 'code cannot be empty' });
+  }
+  if ('name' in patch && (typeof patch['name'] !== 'string' || !patch['name'].trim())) {
+    issues.push({ field: 'name', message: 'name cannot be empty' });
+  }
+  if ('orientation' in patch && patch['orientation'] !== 'portrait' && patch['orientation'] !== 'landscape') {
+    issues.push({ field: 'orientation', message: "orientation must be 'portrait' or 'landscape'" });
+  }
+  if ('unit' in patch && patch['unit'] !== 'mm' && patch['unit'] !== 'inch') {
+    issues.push({ field: 'unit', message: "unit must be 'mm' or 'inch'" });
+  }
+  const merged: PaperProfileGeometry = {
+    widthMm: current.widthMm,
+    heightMm: current.heightMm,
+    dpi: current.dpi,
+    marginTopMm: current.marginTopMm,
+    marginRightMm: current.marginRightMm,
+    marginBottomMm: current.marginBottomMm,
+    marginLeftMm: current.marginLeftMm,
+    ...(Object.fromEntries(
+      Object.entries(patch).filter(([key]) =>
+        ['widthMm', 'heightMm', 'dpi', 'marginTopMm', 'marginRightMm', 'marginBottomMm', 'marginLeftMm'].includes(key),
+      ),
+    ) as Partial<PaperProfileGeometry>),
+  };
+  issues.push(...checkGeometry(merged));
+  return issues;
+}
+
+/** Coerces an import row's numeric field: absent/empty keeps the legacy
+ * default, but a present value that is not a valid number is an error rather
+ * than being silently replaced. */
+export function coerceImportNumber(
+  value: unknown,
+  fallback: number,
+): { value: number } | { invalid: true } {
+  if (value === undefined || value === null || value === '') return { value: fallback };
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) return { invalid: true };
+  return { value: parsed };
+}
