@@ -567,3 +567,28 @@
     transition: none;
   }
 }
+
+/* Canvas field affordance.
+ *
+ * The field element's box is the printed field, so nothing here may take part
+ * in layout: padding or a border would offset the text from the left/top the
+ * printer uses, and being fixed px they would represent more millimetres the
+ * smaller the canvas is drawn. The hit area is a positioned pseudo-element and
+ * the selection ring is an outline, both layout-free.
+ * See features/paper-profiles/__tests__/fieldPreviewFidelity.test.tsx.
+ */
+.paper-profiles-page .pp-canvas-field {
+  position: absolute;
+}
+
+.paper-profiles-page .pp-canvas-field::before {
+  content: '';
+  position: absolute;
+  /* Comfortable grab target without growing the measured field. */
+  inset: -6px;
+}
+
+.paper-profiles-page .pp-canvas-field:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}

@@ -485,6 +485,7 @@ export function PaperCanvas({
               event.preventDefault();
               onFieldNudge(f.id, delta[0], delta[1]);
             } : undefined}
+            className="pp-canvas-field"
             style={{
               position: 'absolute', left: point.xMm * scale, top: point.yMm * scale,
               fontSize: fontPointSizeToPreviewPixels(f.fontSize, scale), fontWeight: f.bold ? 700 : 400,
@@ -492,9 +493,17 @@ export function PaperCanvas({
               color: f.color, whiteSpace: 'nowrap',
               fontFamily: ux.fontFamily, pointerEvents: interactive ? 'auto' : 'none',
               cursor: interactive ? 'grab' : 'default',
-              padding: interactive ? '0.15rem 0.25rem' : 0,
-              border: selectedFieldId === f.id ? '1px solid var(--primary)' : '1px solid transparent',
-              borderRadius: 3,
+              // No padding and no border: this element's box IS the printed
+              // field. Both are layout-affecting, so either one offsets the text
+              // from `left`/`top` — the exact anchor the printer uses — and
+              // because they are fixed px they represent more millimetres the
+              // smaller the canvas gets. The affordance moved to `outline` and a
+              // `::before` hit area in paperProfilesEditor.css, neither of which
+              // takes part in layout. See __tests__/fieldPreviewFidelity.
+              padding: 0,
+              border: 'none',
+              outline: selectedFieldId === f.id ? '1px solid var(--primary)' : 'none',
+              outlineOffset: 2,
               background: selectedFieldId === f.id ? 'var(--state-info-surface)' : 'transparent',
               transform: anchorTransform(f.align, geometry.rotated),
               transformOrigin: anchorTransformOrigin(f.align),
