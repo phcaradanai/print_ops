@@ -412,11 +412,41 @@ interface SendOutcome {
  * reprint of a patient label. No print payload is included; a callback is a
  * notification, not a copy of the document.
  */
+const MISSING_FIELD_WARNING_PREFIX = 'Missing field: ';
+
+/** Render-time warnings recorded at accept time (metadata.renderWarnings).
+ *  Missing-field warnings are additionally parsed out into a structured list
+ *  so a caller can programmatically see WHICH data was absent. */
+export function extractRenderQuality(job: Job): {
+  dataQuality: 'OK' | 'WITH_WARNINGS';
+  warnings: string[];
+  missingFields: string[];
+} {
+  const raw = job.metadata?.['renderWarnings'];
+  const warnings = Array.isArray(raw)
+    ? raw.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+  const missingFields = warnings
+    .filter((warning) => warning.startsWith(MISSING_FIELD_WARNING_PREFIX))
+    .map((warning) => warning.slice(MISSING_FIELD_WARNING_PREFIX.length));
+  return {
+    dataQuality: warnings.length > 0 ? 'WITH_WARNINGS' : 'OK',
+    warnings,
+    missingFields,
+  };
+}
+
 export function buildResultCallbackPayload(
   event: PrintJobTerminal,
   job: Job,
   intent: JobCallbackIntent,
 ): Record<string, unknown> {
+  // Product decision (2026-08-03): a print that succeeded with missing data
+  // must never read as a plain SUCCESS to the caller. The canonical
+  // print_status vocabulary stays untouched; completeness travels alongside
+  // it, so SUCCESS + WITH_WARNINGS carries the same meaning as a
+  // "SUCCESS_WITH_WARNING" status without breaking every status consumer.
+  const quality = extractRenderQuality(job);
   return {
     version: RESULT_CALLBACK_VERSION,
     event_id: event.eventId,
@@ -428,6 +458,9 @@ export function buildResultCallbackPayload(
     source_system: event.sourceSystem ?? job.sourceSystem ?? null,
 
     print_status: event.status,
+    data_quality: quality.dataQuality,
+    missing_fields: quality.missingFields,
+    render_warnings: quality.warnings,
 
     printer_code: event.printerCode ?? job.printerCode ?? null,
     runner_id: event.runnerId ?? job.runnerId ?? null,

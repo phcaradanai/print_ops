@@ -193,6 +193,9 @@ interface Job {
     reprintOfRequestId?: string;
     reprintReason?: string;
     callbackIntent?: CallbackIntent;
+    /** Render-time warnings captured at accept time. A job can be SUCCESS and
+     *  still have printed with blank fields — the operator must see that. */
+    renderWarnings?: string[];
   };
   templateTiming?: {
     routeResolveMs?: number;
@@ -683,6 +686,13 @@ export default function JobDetail() {
       )}
 
       <Stack gap="xl">
+        {(job.metadata?.renderWarnings?.length ?? 0) > 0 && (
+          <Alert tone="warning">
+            {t('page.jobDetail.renderWarnings')}{' '}
+            {job.metadata!.renderWarnings!.join(' · ')}
+          </Alert>
+        )}
+
         {/* ── Tier 0: the verdict, and the decision that follows from it ── */}
         <JobVerdictBand
           verdict={verdict}
