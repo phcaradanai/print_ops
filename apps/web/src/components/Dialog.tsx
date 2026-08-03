@@ -1,16 +1,20 @@
 /**
- * Modal wrapper over the native `<dialog>` element (FE-01.1).
+ * Shared PrintOps dialog adapter.
  *
- * `showModal()` gives us focus trapping, inert background and Escape handling
- * from the platform. React remains the source of truth for open state so focus
- * restoration and cancellation stay consistent across pages.
+ * The public API and visual class names remain owned by PrintOps while Radix
+ * owns modal semantics, focus containment, Escape handling, outside dismissal,
+ * scroll locking, portal rendering, and focus restoration.
  */
 
-import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
-/** Shared keyboard, scroll-lock and focus-return behaviour for div-based modals. */
+/**
+ * Compatibility hook for non-Dialog overlays that have not migrated to a
+ * headless primitive yet. New dialogs must use the shared Dialog adapter.
+ */
 export function useModalFocusTrap(open: boolean, panelRef: RefObject<HTMLElement>, onClose: () => void) {
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
@@ -81,54 +85,56 @@ export function Dialog({
   dismissOnBackdrop = true,
   dismissOnEscape = true,
 }: DialogProps) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
-
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
-
   if (!open) return null;
 
   return (
-    <dialog
-      ref={ref}
-      className="ui-dialog"
-      aria-labelledby={titleId}
-      onClick={(event) => {
-        if (dismissOnBackdrop && event.target === event.currentTarget) onClose();
-      }}
-      onCancel={(event) => {
-        event.preventDefault();
-        if (dismissOnEscape) onClose();
+    <DialogPrimitive.Root
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose();
       }}
     >
-      <div className="ui-dialog-header">
-        <h2 className="ui-dialog-title" id={titleId}>
-          {title}
-        </h2>
-        {closeLabel && (
-          <button
-            type="button"
-            className="ui-dialog-close"
-            aria-label={closeLabel}
-            title={closeLabel}
-            onClick={onClose}
-          >
-            <span aria-hidden="true">×</span>
-          </button>
-        )}
-      </div>
-      {warning && (
-        <p className="ui-dialog-warning" role="alert">
-          {warning}
-        </p>
-      )}
-      <div className="ui-dialog-body">{children}</div>
-      {footer && <div className="ui-dialog-footer">{footer}</div>}
-    </dialog>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="ui-dialog-overlay" />
+        <DialogPrimitive.Content
+          className="ui-dialog"
+          aria-describedby={undefined}
+          onEscapeKeyDown={(event) => {
+            if (!dismissOnEscape) event.preventDefault();
+          }}
+          onPointerDownOutside={(event) => {
+            if (!dismissOnBackdrop) event.preventDefault();
+          }}
+          onInteractOutside={(event) => {
+            if (!dismissOnBackdrop) event.preventDefault();
+          }}
+        >
+          <div className="ui-dialog-header">
+            <DialogPrimitive.Title asChild>
+              <h2 className="ui-dialog-title">{title}</h2>
+            </DialogPrimitive.Title>
+            {closeLabel && (
+              <DialogPrimitive.Close asChild>
+                <button
+                  type="button"
+                  className="ui-dialog-close"
+                  aria-label={closeLabel}
+                  title={closeLabel}
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </DialogPrimitive.Close>
+            )}
+          </div>
+          {warning && (
+            <p className="ui-dialog-warning" role="alert">
+              {warning}
+            </p>
+          )}
+          <div className="ui-dialog-body">{children}</div>
+          {footer && <div className="ui-dialog-footer">{footer}</div>}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }
