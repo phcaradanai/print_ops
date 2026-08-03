@@ -3,11 +3,11 @@
  *
  * The public API and visual class names remain owned by PrintOps while Radix
  * owns modal semantics, focus containment, Escape handling, outside dismissal,
- * scroll locking, portal rendering, and focus restoration.
+ * scroll locking, portal rendering, and focus restoration in the browser.
  */
 
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
@@ -85,7 +85,58 @@ export function Dialog({
   dismissOnBackdrop = true,
   dismissOnEscape = true,
 }: DialogProps) {
+  const titleId = useId();
+
   if (!open) return null;
+
+  const renderChrome = (titleNode: ReactNode, closeNode?: ReactNode) => (
+    <>
+      <div className="ui-dialog-header">
+        {titleNode}
+        {closeNode}
+      </div>
+      {warning && (
+        <p className="ui-dialog-warning" role="alert">
+          {warning}
+        </p>
+      )}
+      <div className="ui-dialog-body">{children}</div>
+      {footer && <div className="ui-dialog-footer">{footer}</div>}
+    </>
+  );
+
+  const titleElement = (
+    <h2 className="ui-dialog-title" id={titleId}>
+      {title}
+    </h2>
+  );
+
+  const closeButton = closeLabel ? (
+    <button
+      type="button"
+      className="ui-dialog-close"
+      aria-label={closeLabel}
+      title={closeLabel}
+      onClick={onClose}
+    >
+      <span aria-hidden="true">×</span>
+    </button>
+  ) : undefined;
+
+  // Radix portals intentionally do not emit server markup. Keep the existing
+  // static-render contract used by isolated component and architecture tests.
+  if (typeof document === 'undefined') {
+    return (
+      <div
+        className="ui-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
+        {renderChrome(titleElement, closeButton)}
+      </div>
+    );
+  }
 
   return (
     <DialogPrimitive.Root
@@ -98,6 +149,7 @@ export function Dialog({
         <DialogPrimitive.Overlay className="ui-dialog-overlay" />
         <DialogPrimitive.Content
           className="ui-dialog"
+          aria-labelledby={titleId}
           aria-describedby={undefined}
           onEscapeKeyDown={(event) => {
             if (!dismissOnEscape) event.preventDefault();
@@ -109,30 +161,12 @@ export function Dialog({
             if (!dismissOnBackdrop) event.preventDefault();
           }}
         >
-          <div className="ui-dialog-header">
-            <DialogPrimitive.Title asChild>
-              <h2 className="ui-dialog-title">{title}</h2>
-            </DialogPrimitive.Title>
-            {closeLabel && (
-              <DialogPrimitive.Close asChild>
-                <button
-                  type="button"
-                  className="ui-dialog-close"
-                  aria-label={closeLabel}
-                  title={closeLabel}
-                >
-                  <span aria-hidden="true">×</span>
-                </button>
-              </DialogPrimitive.Close>
-            )}
-          </div>
-          {warning && (
-            <p className="ui-dialog-warning" role="alert">
-              {warning}
-            </p>
+          {renderChrome(
+            <DialogPrimitive.Title asChild>{titleElement}</DialogPrimitive.Title>,
+            closeButton ? (
+              <DialogPrimitive.Close asChild>{closeButton}</DialogPrimitive.Close>
+            ) : undefined,
           )}
-          <div className="ui-dialog-body">{children}</div>
-          {footer && <div className="ui-dialog-footer">{footer}</div>}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
