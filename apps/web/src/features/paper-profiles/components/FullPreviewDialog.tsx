@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { useCanvasInteraction } from '../hooks/useCanvasInteraction.js';
-import { clampGridSpacing, getVisualPaperGeometry, stepPreviewZoom } from '../model/geometry.js';
+import { actualSizePercent, clampGridSpacing, CSS_PX_PER_MM, getVisualPaperGeometry, stepPreviewZoom } from '../model/geometry.js';
 import { getFieldInspectorState } from '../state/selectors.js';
 import { type CanvasOptions } from './CanvasToolbar.js';
 import { FieldBarcodePreview, FieldTypeControls, PaperCanvas, RulerSheet } from './PaperCanvas.js';
@@ -35,8 +35,11 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
     observer.observe(stage);
     return () => observer.disconnect();
   }, []);
+  // Auto-fit to the stage, but never past true physical size on its own —
+  // see CSS_PX_PER_MM. Manual zoom (below) is still free to go beyond 100%
+  // for close inspection.
   const fitScale = useMemo(() => Math.max(0.5, Math.min(
-    20,
+    CSS_PX_PER_MM,
     Math.max(1, stageSize.width - 48) / geometry.widthMm,
     Math.max(1, stageSize.height - 48) / geometry.heightMm,
   )), [geometry.heightMm, geometry.widthMm, stageSize]);
@@ -54,7 +57,7 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
               <IconButton icon={<PaperProfileIcon name="minus" />} label={t('page.paperProfiles.zoomOut')} onClick={() => setZoom((value) => stepPreviewZoom(value, -1))} />
               <Button variant="ghost" size="sm" className="paper-preview-modal__zoom-readout"
                 onClick={() => setZoom(1)} title={t('page.paperProfiles.resetZoom')}
-                aria-label={t('page.paperProfiles.resetZoom')}>{Math.round(zoom * 100)}%</Button>
+                aria-label={t('page.paperProfiles.resetZoom')}>{actualSizePercent(scale)}%</Button>
               <IconButton icon={<PaperProfileIcon name="plus" />} label={t('page.paperProfiles.zoomIn')} onClick={() => setZoom((value) => stepPreviewZoom(value, 1))} />
             </div>
             <IconButton icon={<PaperProfileIcon name="vertical-grid" />} label={t('page.paperProfiles.toggleVerticalGrid')}

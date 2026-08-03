@@ -82,6 +82,27 @@ export function clampFontSize(value: number): number {
   return Math.max(6, Math.min(72, Math.round(value)));
 }
 
+/**
+ * Physical pixel density used as the browser/CSS reference for "1mm on
+ * screen = 1mm on the printed sheet" (96 CSS px per inch ÷ 25.4mm per inch).
+ * This is the same assumption `FieldBarcodePreview` already relies on when it
+ * sizes barcodes/QR codes with raw CSS `mm` units.
+ *
+ * Both the compact preview and the full-screen preview auto-scale to fit
+ * whatever box they're drawn in, which — left uncapped — let a small label
+ * profile render *larger on screen* than a full A4 sheet. That makes the
+ * canvas useless as a real print-size reference. Capping the auto-fit scale
+ * at this value means paper is never inflated past real life: it can only
+ * shrink to fit its container, never grow beyond true size on its own.
+ */
+export const CSS_PX_PER_MM = 96 / 25.4;
+
+/** How close a preview's px-per-mm scale is to true physical size, as a whole-number percentage. */
+export function actualSizePercent(scale: number): number {
+  if (!Number.isFinite(scale) || scale <= 0) return 0;
+  return Math.round((scale / CSS_PX_PER_MM) * 100);
+}
+
 export const CANVAS_SCALE_MIN = 0.5;
 export const CANVAS_SCALE_MAX = 4;
 export const CANVAS_SCALE_STEP = 0.25;

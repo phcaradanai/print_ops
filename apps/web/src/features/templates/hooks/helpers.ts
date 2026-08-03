@@ -103,22 +103,40 @@ export function localPreview(
     return { html: value == null ? '' : String(value), raw: false };
   }
 
-  if (engine === 'HTML') {
-    return content.replace(COMBINED_PREVIEW_PATTERN, (_raw, kind: BarcodeKind | undefined, explicitKey: string | undefined, plainKey: string | undefined) =>
+  const isHtml = engine === 'HTML';
+  let body: string;
+
+  if (isHtml) {
+    body = content.replace(COMBINED_PREVIEW_PATTERN, (_raw, kind: BarcodeKind | undefined, explicitKey: string | undefined, plainKey: string | undefined) =>
       resolveToken(kind, (explicitKey ?? plainKey)!).html,
     );
+  } else {
+    let out = '';
+    let lastIndex = 0;
+    for (const m of content.matchAll(COMBINED_PREVIEW_PATTERN)) {
+      const idx = m.index ?? 0;
+      out += escapeHtml(content.slice(lastIndex, idx));
+      const key = (m[2] ?? m[3])!;
+      const { html, raw } = resolveToken(m[1] as BarcodeKind | undefined, key);
+      out += raw ? html : escapeHtml(html);
+      lastIndex = idx + m[0].length;
+    }
+    out += escapeHtml(content.slice(lastIndex));
+    body = `<pre class="tpl-preview-raw">${out}</pre>`;
   }
 
-  let out = '';
-  let lastIndex = 0;
-  for (const m of content.matchAll(COMBINED_PREVIEW_PATTERN)) {
-    const idx = m.index ?? 0;
-    out += escapeHtml(content.slice(lastIndex, idx));
-    const key = (m[2] ?? m[3])!;
-    const { html, raw } = resolveToken(m[1] as BarcodeKind | undefined, key);
-    out += raw ? html : escapeHtml(html);
-    lastIndex = idx + m[0].length;
+  // Same real-physical-size frame as the server-rendered preview (see
+  // previewMarkup() in simple-template-renderer.ts) — without this, the
+  // LOCAL (unsaved-draft) preview never had any page-size reference at all,
+  // for either engine. That matters here specifically: this is what renders
+  // while actively editing a template, before there's anything saved to
+  // fetch a server preview for. No paper profile selected yet means no real
+  // size to frame against, so fall back to the unframed body as before.
+  if (profile?.widthMm && profile?.heightMm) {
+    const frameStyle = isHtml
+      ? `width:${profile.widthMm}mm;height:${profile.heightMm}mm;background:#fff;overflow:hidden;box-sizing:border-box`
+      : `width:${profile.widthMm}mm;height:${profile.heightMm}mm;border:1px solid #111;background:#fff;padding:4mm;overflow:hidden;box-sizing:border-box`;
+    return `<div style="${frameStyle}">${body}</div>`;
   }
-  out += escapeHtml(content.slice(lastIndex));
-  return `<pre class="tpl-preview-raw">${out}</pre>`;
+  return body;
 }

@@ -29,6 +29,11 @@ export interface PaperProfileOption {
   id: string;
   code: string;
   name: string;
+  /** Already present on every `/v1/paper-profiles` response; kept optional
+   *  here since this DTO predates needing them, so older callers that build
+   *  one by hand don't have to supply them. */
+  widthMm?: number;
+  heightMm?: number;
   fields: PaperProfileField[];
 }
 

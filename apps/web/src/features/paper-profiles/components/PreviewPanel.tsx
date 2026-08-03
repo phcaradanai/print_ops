@@ -2,7 +2,7 @@ import type { RefObject } from 'react';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { useCanvasInteraction } from '../hooks/useCanvasInteraction.js';
-import { getVisualPaperGeometry } from '../model/geometry.js';
+import { actualSizePercent, CSS_PX_PER_MM, getVisualPaperGeometry } from '../model/geometry.js';
 import { displayValue, toPixels } from '../model/units.js';
 import { CanvasToolbar, type CanvasOptions } from './CanvasToolbar.js';
 import { PaperCanvas, RulerSheet } from './PaperCanvas.js';
@@ -21,7 +21,10 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
 }) {
   const { form, ux } = editor;
   const geometry = getVisualPaperGeometry(form);
-  const scale = Math.min(560 / geometry.widthMm, 560 / geometry.heightMm, 5);
+  // Fit within the panel's ~560px box, but never scale past true physical
+  // size — see CSS_PX_PER_MM for why an uncapped auto-fit isn't safe to use
+  // as a print-size reference.
+  const scale = Math.min(560 / geometry.widthMm, 560 / geometry.heightMm, CSS_PX_PER_MM);
   // Not a PageLayout `detail` region: this canvas is the surface the operator
   // edits against (drag, nudge, select a field), so it is half of the primary
   // task rather than supporting evidence. Kept as a plain div — a page's only
@@ -64,7 +67,7 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
           <span>{t('page.paperProfiles.quickDpi')}: {form.dpi}</span>
           <span>{t('page.paperProfiles.quickPrintable')}: {geometry.printableWidthMm.toFixed(1)} × {geometry.printableHeightMm.toFixed(1)} mm</span>
           <span>{t('page.paperProfiles.quickPixels')}: {Math.round(toPixels(geometry.widthMm, form.dpi))} × {Math.round(toPixels(geometry.heightMm, form.dpi))} px</span>
-          <span>{t('page.paperProfiles.quickScale')}: {scale.toFixed(2)}x</span>
+          <span>{t('page.paperProfiles.quickScale')}: {scale.toFixed(2)}x ({actualSizePercent(scale)}% {t('page.paperProfiles.actualSize')})</span>
           <span>{t('page.paperProfiles.quickFields')}: {ux.dynamicFields.length}</span>
         </div>
         <SelectionStatus field={editor.selectedField} t={t} />

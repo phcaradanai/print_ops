@@ -327,20 +327,21 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
       ? await resolveBarcodeImages(tokens, payload)
       : new Map<string, { dataUri?: string; quietZoneMm?: number; warning?: string }>();
 
-    if (template.engine === 'HTML') {
-      if (tokens.size === 0) return renderContent(template.content, payload).rendered;
-      return this.substituteRaw(template.content, payload, tokens, (tok) => {
-        const img = images.get(tok.raw);
-        return img?.dataUri ? imgTag(img.dataUri, tok.kind, {
-          heightMm: tok.heightMm,
-          sizeMm: tok.sizeMm,
-          quietZoneMm: img.quietZoneMm,
-        }) : '';
-      });
-    }
-
+    const isHtml = template.engine === 'HTML';
     let body: string;
-    if (tokens.size === 0) {
+
+    if (isHtml) {
+      body = tokens.size === 0
+        ? renderContent(template.content, payload).rendered
+        : this.substituteRaw(template.content, payload, tokens, (tok) => {
+          const img = images.get(tok.raw);
+          return img?.dataUri ? imgTag(img.dataUri, tok.kind, {
+            heightMm: tok.heightMm,
+            sizeMm: tok.sizeMm,
+            quietZoneMm: img.quietZoneMm,
+          }) : '';
+        });
+    } else if (tokens.size === 0) {
       body = escapeHtml(renderContent(template.content, payload).rendered);
     } else {
       body = '';
@@ -366,6 +367,22 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
       body += escapeHtml(template.content.slice(lastIndex));
     }
 
-    return `<div style="width:${paperProfile.widthMm}mm;height:${paperProfile.heightMm}mm;border:1px solid #111;background:#fff;padding:4mm;font-family:monospace;white-space:pre-wrap;overflow:hidden">${body}</div>`;
+    // Frame every engine's preview at the paper profile's true physical size
+    // (real CSS mm units, box-sizing:border-box, clipped with
+    // overflow:hidden) so what's on screen can be trusted as a print-size
+    // reference. Previously only the non-HTML engines got this frame, so an
+    // HTML template — the very engine the paper-profile "companion
+    // template" generator itself produces (see template.routes.ts) —
+    // previewed with no page boundary at all.
+    //
+    // HTML gets a bare same-size box with no padding/border of its own:
+    // hand-authored markup, and the companion generator's own
+    // `position:relative` box at this exact width/height, both already
+    // manage their own spacing — adding padding here would just clip their
+    // content instead of framing it.
+    const frameStyle = isHtml
+      ? `width:${paperProfile.widthMm}mm;height:${paperProfile.heightMm}mm;background:#fff;overflow:hidden;box-sizing:border-box`
+      : `width:${paperProfile.widthMm}mm;height:${paperProfile.heightMm}mm;border:1px solid #111;background:#fff;padding:4mm;font-family:monospace;white-space:pre-wrap;overflow:hidden;box-sizing:border-box`;
+    return `<div style="${frameStyle}">${body}</div>`;
   }
 }
