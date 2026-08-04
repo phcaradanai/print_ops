@@ -946,14 +946,11 @@ body {
   margin-bottom: 0.35rem;
 }
 
-.login-password-field {
-  position: relative;
-  margin-bottom: 0.85rem;
+.login-panel .ui-input-group .ui-input {
+  margin-top: 0;
 }
 
-.login-password-field input {
-  min-height: 44px;
-  margin-top: 0;
+.login-panel .ui-input-group:has(.ui-input-group__affix--end) .ui-input {
   padding-inline-end: 3.25rem;
 }
 
@@ -1000,7 +997,6 @@ body {
   inset-block: 0;
   inset-inline-end: 0;
   width: 44px;
-  min-height: 44px;
   margin: 0;
   padding: 0;
   border: 0;
