@@ -937,7 +937,12 @@ body {
   font: inherit;
 }
 
-.login-panel input:focus-visible {
+.login-panel input:focus-visible:not(.ui-input-group .ui-input) {
+  outline: 2px solid var(--primary);
+  outline-offset: 0;
+}
+
+.login-panel .ui-input-group:focus-within {
   outline: 2px solid var(--primary);
   outline-offset: 0;
 }
