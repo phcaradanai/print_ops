@@ -61,7 +61,15 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({
   );
   if (leading == null && trailing == null) return input;
   return (
-    <span className={`ui-input-group${invalid ? ' ui-input-group--invalid' : ''}`}>
+    <span
+      className={`ui-input-group${invalid ? ' ui-input-group--invalid' : ''}`}
+      onClick={(event) => {
+        // Clicking anywhere in the framed group (padding, affix zones) must
+        // focus the input so the field behaves like a single control.
+        const inputEl = event.currentTarget.querySelector('input');
+        if (event.target !== inputEl) inputEl?.focus();
+      }}
+    >
       {leading != null && <span className="ui-input-group__affix" aria-hidden="true">{leading}</span>}
       {input}
       {trailing != null && <span className="ui-input-group__affix ui-input-group__affix--end">{trailing}</span>}

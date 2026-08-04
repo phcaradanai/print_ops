@@ -955,10 +955,6 @@ body {
   margin-top: 0;
 }
 
-.login-panel .ui-input-group:has(.ui-input-group__affix--end) .ui-input {
-  padding-inline-end: 3.25rem;
-}
-
 .login-panel button {
   width: 100%;
   min-height: 44px;
@@ -998,10 +994,9 @@ body {
 }
 
 .login-panel .login-password-toggle {
-  position: absolute;
-  inset-block: 0;
-  inset-inline-end: 0;
   width: 44px;
+  height: 100%;
+  min-height: 0;
   margin: 0;
   padding: 0;
   border: 0;

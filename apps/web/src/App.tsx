@@ -284,7 +284,6 @@ function LoginView({
                 <button
                   type="button"
                   className="login-password-toggle"
-                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                   aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
                   aria-pressed={showPassword}
                   title={showPassword ? t('login.hidePassword') : t('login.showPassword')}
