@@ -930,6 +930,7 @@ body {
 .login-panel input {
   display: block;
   width: 100%;
+  min-height: 44px;
   margin-top: 0.35rem;
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--neutral-border-strong);
@@ -1006,12 +1007,25 @@ body {
   color: var(--neutral-text);
   display: grid;
   place-items: center;
+  transition: background-color 0.15s ease;
   box-shadow: none !important;
   transform: none !important;
 }
 
 .login-panel .login-password-toggle:hover {
   background: var(--neutral-subtle);
+}
+
+.login-panel .login-password-toggle:active {
+  background: var(--neutral-border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-panel button,
+  .login-panel .login-password-toggle {
+    transition: none;
+    transform: none !important;
+  }
 }
 
 .login-error {
