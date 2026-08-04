@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { JOB_STATUSES } from '@printerops/domain';
 import { STATUS_BADGE, getStatusBadgeColors } from '../statusColors.js';
@@ -16,7 +17,7 @@ import { STATUS_BADGE, getStatusBadgeColors } from '../statusColors.js';
  * #166534 — one status, two colors on one screen.
  */
 
-const SRC = new URL('..', import.meta.url).pathname;
+const SRC = fileURLToPath(new URL('..', import.meta.url));
 const styles = readFileSync(join(SRC, 'styles.css'), 'utf8');
 
 function tokenValue(name: string): string | undefined {

@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -15,7 +16,7 @@ import { describe, expect, it } from 'vitest';
  * uiVocabulary.test.tsx cannot see a selector that styles the element directly.
  */
 
-const SRC = new URL('..', import.meta.url).pathname;
+const SRC = fileURLToPath(new URL('..', import.meta.url));
 
 /** Brand wordmarks are not translated, and .ui-text--caps is the deliberate
  *  opt-in a caller asks for by name. Everything else is product copy. */
