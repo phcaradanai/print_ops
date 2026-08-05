@@ -1,5 +1,6 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 import { PageHeader } from './molecules/PageHeader/index.js';
+import { BackButton } from './molecules/BackButton/index.js';
 import {
   PageScaffold,
   type PageDensity,
@@ -19,6 +20,13 @@ export interface PageLayoutProps extends Omit<HTMLAttributes<HTMLElement>, 'titl
   footer?: ReactNode;
   width?: PageWidth;
   density?: PageDensity;
+  /**
+   * Detail pages pass the parent list route here (e.g. '/jobs'). The layout
+   * renders a Back button that pops in-app history when available and falls
+   * back to this route on a deep link.
+   */
+  backTo?: string;
+  backLabel?: string;
   children: ReactNode;
 }
 
@@ -39,6 +47,8 @@ export function PageLayout({
   width = 'wide',
   density = 'comfortable',
   className = '',
+  backTo,
+  backLabel,
   children,
   ...rest
 }: PageLayoutProps) {
@@ -49,10 +59,19 @@ export function PageLayout({
       ? <header className="ops-page__header ui-page-header">{header}</header>
       : <PageHeader title={title} description={description} actions={actions} />;
 
+  const headerWithBack = headerRegion == null
+    ? undefined
+    : (
+      <>
+        {backTo != null && <BackButton to={backTo} label={backLabel} />}
+        {headerRegion}
+      </>
+    );
+
   return (
     <PageScaffold
       {...rest}
-      header={headerRegion}
+      header={headerWithBack}
       detail={detail}
       footer={footer}
       width={width}

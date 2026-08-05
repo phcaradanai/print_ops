@@ -616,7 +616,7 @@ export default function JobDetail() {
   // First load still running: a spinner is honest here.
   if (!job && jobResource.loading) {
     return (
-      <PageLayout title={t('page.jobDetail.title')}>
+      <PageLayout title={t('page.jobDetail.title')} backTo="/jobs">
         <LoadingState />
       </PageLayout>
     );
@@ -626,7 +626,7 @@ export default function JobDetail() {
   // page span forever, with the reason discarded by `catch(() => {})`.
   if (!job) {
     return (
-      <PageLayout title={t('page.jobDetail.title')}>
+      <PageLayout title={t('page.jobDetail.title')} backTo="/jobs">
         <ErrorState
           error={jobResource.error ?? new Error(t('page.jobDetail.notFound'))}
           title={t('page.jobDetail.loadFailed')}
@@ -651,6 +651,7 @@ export default function JobDetail() {
       className="job-detail"
       title={t('page.jobDetail.title')}
       density="compact"
+      backTo="/jobs"
       actions={<>
         <Mono tone="muted" truncate title={job.id}>{job.id}</Mono>
         <Freshness

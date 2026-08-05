@@ -35,6 +35,7 @@ const en: TranslationDict = {
   'nav.admin.collapse': 'Collapse admin section',
 
   // Common
+  'common.back': 'Back',
   'common.save': 'Save',
   'common.saving': 'Saving…',
   'common.cancel': 'Cancel',
@@ -1352,6 +1353,7 @@ const th: TranslationDict = {
   'nav.admin.collapse': 'ย่อส่วนจัดการ',
 
   // Common
+  'common.back': 'ย้อนกลับ',
   'common.save': 'บันทึก',
   'common.saving': 'กำลังบันทึก…',
   'common.cancel': 'ยกเลิก',
