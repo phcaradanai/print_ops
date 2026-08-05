@@ -14,12 +14,18 @@ export async function authRoutes(
     return `${local.slice(0, 1)}${'*'.repeat(Math.max(3, local.length - 1))}@${domain}`;
   };
 
+  // Pre-hardening builds stored a placeholder hash ("123456") that
+  // verifyPassword can never accept; for ownership purposes such an account
+  // is as unusable as a passwordless one and must go through migration.
+  const hasUsableOwnerPassword = (user: { passwordHash?: string | null }) =>
+    !!user.passwordHash?.startsWith('scrypt$');
+
   const bootstrapState = async () => {
     const users = await deps.users.findAll();
-    const owner = users.find((user) => user.role === 'OWNER' && user.isActive && user.passwordHash?.startsWith('scrypt$'));
+    const owner = users.find((user) => user.role === 'OWNER' && user.isActive && hasUsableOwnerPassword(user));
     const state = owner ? 'READY' as const : users.length > 0 ? 'MIGRATION_REQUIRED' as const : 'REQUIRED_NEW' as const;
     const ownerEmailHints = state === 'MIGRATION_REQUIRED'
-      ? users.filter((user) => user.role === 'OWNER' && user.isActive && !user.passwordHash).map((user) => maskEmail(user.email))
+      ? users.filter((user) => user.role === 'OWNER' && user.isActive && !hasUsableOwnerPassword(user)).map((user) => maskEmail(user.email))
       : [];
     return { state, ownerEmailHints };
   };
@@ -43,7 +49,7 @@ export async function authRoutes(
     const operation = (async () => {
       if ((await bootstrapState()).state === 'READY') throw Object.assign(new Error('Owner setup has already completed'), { statusCode: 409 });
       const users = await deps.users.findAll();
-      const existingLegacyOwners = users.filter((user) => user.role === 'OWNER' && !user.passwordHash);
+      const existingLegacyOwners = users.filter((user) => user.role === 'OWNER' && !hasUsableOwnerPassword(user));
       if (existingLegacyOwners.length > 0 && !existingLegacyOwners.some((owner) => owner.email.toLowerCase() === email)) {
         const hints = existingLegacyOwners.map((owner) => maskEmail(owner.email)).join(', ');
         throw Object.assign(new Error(`Use the email address of an existing owner to migrate this installation (${hints})`), { statusCode: 409 });

@@ -133,6 +133,81 @@ describe('owner bootstrap', () => {
   });
 });
 
+describe('legacy owner with an unusable placeholder hash', () => {
+  it('treats a non-scrypt owner hash as passwordless for migration and hints its email', async () => {
+    const users = new InMemoryUserRepository();
+    users.seed({
+      id: 'legacy-hashed-owner',
+      email: 'sysadmin@printerops.local',
+      name: 'Sysadmin',
+      // Pre-hardening builds stored this placeholder; verifyPassword rejects it.
+      passwordHash: '123456',
+      role: 'OWNER',
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const { app } = await authApp(users);
+    expect((await app.inject({ method: 'GET', url: '/auth/bootstrap' })).json()).toEqual({
+      state: 'MIGRATION_REQUIRED',
+      ownerEmailHints: ['s*******@printerops.local'],
+    });
+  });
+
+  it('blocks creating a new owner while a dead-hash owner exists, then migrates it', async () => {
+    const users = new InMemoryUserRepository();
+    users.seed({
+      id: 'legacy-hashed-owner',
+      email: 'sysadmin@printerops.local',
+      name: 'Sysadmin',
+      passwordHash: '123456',
+      role: 'OWNER',
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const { app } = await authApp(users);
+
+    const wrong = await app.inject({
+      method: 'POST',
+      url: '/auth/bootstrap',
+      payload: {
+        name: 'Intruder',
+        email: 'other@example.test',
+        password: 'Strong-password1!',
+        passwordConfirmation: 'Strong-password1!',
+      },
+    });
+    expect(wrong.statusCode).toBe(409);
+    expect(await users.findByEmail('other@example.test')).toBeUndefined();
+
+    const migrate = await app.inject({
+      method: 'POST',
+      url: '/auth/bootstrap',
+      payload: {
+        name: 'Sysadmin',
+        email: 'sysadmin@printerops.local',
+        password: 'New-Owner-password1!',
+        passwordConfirmation: 'New-Owner-password1!',
+      },
+    });
+    expect(migrate.statusCode).toBe(200);
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'sysadmin@printerops.local', password: 'New-Owner-password1!' },
+    });
+    expect(login.statusCode).toBe(200);
+    const legacy = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'sysadmin@printerops.local', password: '123456' },
+    });
+    expect(legacy.statusCode).toBe(401);
+  });
+});
+
 describe('packaged runner bootstrap credential', () => {
   it('issues a JWT only for the exact per-installation secret', async () => {
     const { app } = await authApp(undefined, 'runner-secret-123');
