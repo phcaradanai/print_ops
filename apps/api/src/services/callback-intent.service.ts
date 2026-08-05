@@ -15,11 +15,12 @@ import { assertCallbackUrlAllowed, CallbackUrlRejected } from '../infra/http/cal
  *
  * Three things are settled here and never re-derived later:
  *
- *  1. Whether result callbacks are on. `callbackOnPrintResult` was a UI toggle
- *     that no dispatch code read — this is the only place it now decides
- *     anything, and a disabled endpoint still gets an intent (with
- *     `enabled: false` and a reason) so the Job Detail page can say WHY nothing
- *     was delivered instead of showing a blank.
+ *  1. Whether result callbacks are on. Every job with a resolvable callback
+ *     destination gets a terminal-result callback — the toggle only silences
+ *     the ACCEPTANCE callback (see wantsAcceptanceCallback). A disabled
+ *     endpoint (no transport / no resolvable destination) still gets an
+ *     intent (with `enabled: false` and a reason) so the Job Detail page can
+ *     say WHY nothing was delivered instead of showing a blank.
  *  2. The literal destinations. `$.field` destinations resolve against the
  *     intake payload, which does not survive to terminal time.
  *  3. That the HTTP destination passed the SSRF guard. Doing it at accept time
@@ -78,21 +79,6 @@ export function buildCallbackIntent(
   intent.enabled = transports.length > 0;
   if (!intent.enabled) {
     intent.disabledReason = `callbackTransport ${transport} is configured but no destination could be resolved from the payload`;
-  } else if (!wantsTerminalCallback(endpoint)) {
-    // The toggle decided here rather than in ResultCallbackDispatcher, for the
-    // same reason destinations are: the intent is an accept-time snapshot, and
-    // an operator flipping this switch must not retarget prints already on the
-    // wire. The dispatcher only ever sees the intent, never the endpoint — its
-    // existing `!intent.enabled` guard already carries the comment "an endpoint
-    // with callbackOnPrintResult off is a deliberate operator choice", which is
-    // the behaviour this line finally supplies.
-    //
-    // Destinations above are still resolved and SSRF-checked before this point,
-    // so a bad callback URL is still refused while a caller exists to be told,
-    // and Job Detail can still show where the result would have gone.
-    intent.enabled = false;
-    intent.disabledReason =
-      'endpoint callbackOnPrintResult is off: it is notified at acceptance, not on the print result';
   }
   return intent;
 }
@@ -101,10 +87,14 @@ export function buildCallbackIntent(
  * Which of the two callbacks an endpoint has asked for.
  *
  * `callbackOnPrintResult` was persisted and shown in the Webhooks UI but read
- * by no dispatch code: the terminal callback fired unconditionally and the
- * acceptance callback fired only for duplicate request_ids. These two helpers
- * are the single place the toggle is interpreted, so no entry point can
- * special-case it (see docs/architecture/result-callbacks.md §1).
+ * by no dispatch code. Today the terminal-result callback fires for EVERY job
+ * that has a resolvable callback destination — the toggle is read only here,
+ * and only to decide whether the ACCEPTANCE callback also fires (an
+ * "acceptance mode" endpoint hears about the print twice: once when it is
+ * queued, once when it terminates; a "result mode" endpoint hears only the
+ * terminal result). Every intake path goes through these two helpers, so no
+ * entry point can special-case the flag (see
+ * docs/architecture/result-callbacks.md §1).
  */
 export function wantsTerminalCallback(endpoint: WebhookEndpoint): boolean {
   return endpoint.callbackOnPrintResult === true;

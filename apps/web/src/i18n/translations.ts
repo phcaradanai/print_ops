@@ -880,7 +880,7 @@ const en: TranslationDict = {
   'page.webhooks.onPrintResultOnHelp':
     'ON: one callback per job, sent after the print reaches a terminal outcome (SUCCESS, FAILED, UNVERIFIED, TIMEOUT or CANCELLED), as event print.job.completed. No acceptance notification is sent.',
   'page.webhooks.onPrintResultOffHelp':
-    'OFF: one callback at acceptance only, as event print.job.accepted with status QUEUED. The print outcome is never reported.',
+    'OFF: an acceptance callback (print.job.accepted, status QUEUED) AND the terminal result (print.job.completed) are both sent for every job. The print outcome is always reported.',
   'page.webhooks.natsBestEffortWarning':
     'NATS result callbacks are best-effort (Core NATS): a successful publish does not prove a subscriber received it.',
   'page.webhooks.callbackTestIsNotReal':
@@ -2191,7 +2191,7 @@ const th: TranslationDict = {
   'page.webhooks.onPrintResultOnHelp':
     'เปิด: ส่ง callback หนึ่งครั้งต่องาน หลังการพิมพ์ถึงสถานะสุดท้าย (SUCCESS, FAILED, UNVERIFIED, TIMEOUT หรือ CANCELLED) เป็นอีเวนต์ print.job.completed และจะไม่ส่งแจ้งตอนรับงาน',
   'page.webhooks.onPrintResultOffHelp':
-    'ปิด: ส่ง callback เฉพาะตอนรับงาน เป็นอีเวนต์ print.job.accepted สถานะ QUEUED เท่านั้น จะไม่มีการแจ้งผลการพิมพ์',
+    'ปิด: ส่งทั้ง callback ตอนรับงาน (print.job.accepted สถานะ QUEUED) และผลการพิมพ์สุดท้าย (print.job.completed) ทุกงาน จะมีการแจ้งผลการพิมพ์เสมอ',
   'page.webhooks.natsBestEffortWarning':
     'Callback ผลลัพธ์ผ่าน NATS เป็นแบบ best-effort (Core NATS): การ publish สำเร็จไม่ได้พิสูจน์ว่าผู้รับได้รับข้อความ',
   'page.webhooks.callbackTestIsNotReal':

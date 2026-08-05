@@ -198,8 +198,11 @@ export class ResultCallbackDispatcher {
       }
       const intent = readCallbackIntent(job.metadata);
       if (!intent || !intent.enabled) {
-        // Not an error: most jobs have no callback configured, and an endpoint
-        // with callbackOnPrintResult off is a deliberate operator choice.
+        // Not an error: most jobs have no callback configured at all. The
+        // intent is enabled for every job whose endpoint resolved a
+        // destination — `callbackOnPrintResult` only decides whether the
+        // ACCEPTANCE callback also fires, never whether the terminal result
+        // is delivered.
         return;
       }
 

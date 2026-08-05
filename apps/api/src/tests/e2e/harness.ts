@@ -464,7 +464,7 @@ async function main(): Promise<void> {
     });
   }
 
-  /* --- callbackOnPrintResult=false: acceptance only, no result --------- */
+  /* --- callbackOnPrintResult=false: acceptance AND terminal result ------ */
   {
     const requestId = `e2e-acceptonly-${stamp}`;
     const before = webhookCaptures.length;
@@ -475,15 +475,23 @@ async function main(): Promise<void> {
     await waitFor('accept-only webhook', () => webhookCaptures.length > before, 6000);
     const acceptancePayload = webhookCaptures[webhookCaptures.length - 1]?.body as Record<string, unknown> | undefined;
     const job = await waitTerminal(requestId, 'e2e-e2e-accept-only');
+    // The terminal callback is delivered shortly after the job reaches its
+    // final status (result-callback retry sweep).
     await sleep(2000);
+    const callsAfterTerminal = webhookCaptures.length - before;
+    const completed = webhookCaptures
+      .slice(before)
+      .map((c) => c?.body as Record<string, unknown> | undefined)
+      .find((b) => b?.['event_type'] === 'print.job.completed');
     record({
-      cell: 'CALLBACK-DISABLED (acceptance only)', requestId,
-      callbacksSeen: webhookCaptures.length - before,
+      cell: 'CALLBACK-ACCEPTANCE-MODE (acceptance + terminal)', requestId,
+      callbacksSeen: callsAfterTerminal,
       acceptanceEventType: acceptancePayload?.['event_type'],
       acceptanceStatus: acceptancePayload?.['status'],
       finalJobStatus: job?.['status'],
-      // Exactly one callback, and it is explicitly labelled as acceptance.
-      resultCallbackSuppressed: webhookCaptures.length - before === 1,
+      // Acceptance mode still receives the real final status — the toggle
+      // only adds the QUEUED acceptance notification.
+      terminalCallbackDelivered: completed?.['print_status'] === job?.['status'],
       deliveries: job?.['id'] ? await deliveriesFor(String(job['id'])) : [],
     });
   }

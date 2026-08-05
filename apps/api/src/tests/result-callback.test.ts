@@ -282,11 +282,12 @@ describe('callback intent persistence', () => {
     expect(intent?.transports).toEqual(['HTTP']);
   });
 
-  it('suppresses the terminal result when callbackOnPrintResult is off, and says why', async () => {
-    // Previously titled "still sends the final result when the legacy
-    // callbackOnPrintResult flag is off" — it asserted the undocumented
-    // behaviour where the terminal callback fired regardless of the toggle.
-    // result-callbacks.md §1 says off means acceptance-only.
+  it('delivers the terminal result even when callbackOnPrintResult is off (acceptance mode)', async () => {
+    // The toggle no longer silences the terminal result: every job with a
+    // resolvable destination must report its REAL final status (SUCCESS,
+    // FAILED, UNVERIFIED, TIMEOUT, CANCELLED). Acceptance mode only means the
+    // QUEUED acceptance callback also fires — the terminal one is never
+    // optional once a destination was configured.
     await makeEndpoint(h, {
       endpointCode: 'off', callbackTransport: 'HTTP',
       callbackUrl: 'https://receiver.example/r', callbackOnPrintResult: false,
@@ -297,15 +298,14 @@ describe('callback intent persistence', () => {
     );
     const job = await h.jobRepo.findById(accepted.print_job_id);
     const intent = readCallbackIntent(job?.metadata);
-    expect(intent?.enabled).toBe(false);
-    // A disabled intent still records the destination and the reason, so Job
-    // Detail can say why nothing was delivered instead of showing a blank.
+    expect(intent?.enabled).toBe(true);
     expect(intent?.httpUrl).toBe('https://receiver.example/r');
-    expect(intent?.disabledReason).toContain('callbackOnPrintResult is off');
+    expect(intent?.disabledReason).toBeUndefined();
 
     await printAndSettle(h, accepted.print_job_id);
-    expect(h.httpCalls).toHaveLength(0);
-    expect(await h.deliveries.findAll({ printJobId: accepted.print_job_id })).toHaveLength(0);
+    expect(h.httpCalls).toHaveLength(1);
+    expect(h.httpCalls[0]?.body).toMatchObject({ event_type: 'print.job.completed' });
+    expect(await h.deliveries.findAll({ printJobId: accepted.print_job_id })).toHaveLength(1);
   });
 
   it('rejects an endpoint_code belonging to another source system, before printing', async () => {
@@ -1100,12 +1100,10 @@ describe('webhook intake path', () => {
     expect(h.httpCalls[0]!.body['print_status']).toBe('SUCCESS');
   });
 
-  it('sends the acceptance notification, and only that, when callbackOnPrintResult is off', async () => {
-    // Previously titled "sends one final result when the legacy
-    // callbackOnPrintResult flag is off" and asserted `sent` was EMPTY at
-    // acceptance — i.e. it locked in the bug this fix closes: a normal
-    // first-time accept fired nothing, because fireCallback returned early
-    // unless the request was a duplicate.
+  it('sends the acceptance notification AND the terminal result when callbackOnPrintResult is off', async () => {
+    // Acceptance mode is not "no result": the toggle only adds the QUEUED
+    // acceptance notification; the terminal result is delivered for every
+    // job with a configured destination.
     const sent: Array<Record<string, unknown>> = [];
     h.dynamicIntake.setCallbackService({
       send: async (ctx: { result: Record<string, unknown> }) => { sent.push(ctx.result); return { transport: 'HTTP' }; },
@@ -1123,8 +1121,11 @@ describe('webhook intake path', () => {
     expect(sent[0]).toMatchObject({ print_job_id: res.print_job_id, request_id: 'WI-2' });
     expect(sent[0]!['duplicate']).toBeFalsy();
 
+    // The terminal result must also arrive — with the REAL final status.
     await printAndSettle(h, res.print_job_id);
-    expect(h.httpCalls).toHaveLength(0);
+    expect(h.httpCalls).toHaveLength(1);
+    expect(h.httpCalls[0]!.body['event_type']).toBe('print.job.completed');
+    expect(h.httpCalls[0]!.body['print_status']).toBe('SUCCESS');
   });
 
   it('notifies a duplicate at acceptance even when the endpoint is in result mode', async () => {

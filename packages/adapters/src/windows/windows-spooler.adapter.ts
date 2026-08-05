@@ -1,4 +1,4 @@
-import { spawn, execFile } from 'node:child_process';
+import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
@@ -58,6 +58,9 @@ export interface WindowsSpoolerDeps {
   now(): number;
   /** Packaged WebView2 helper used for driver-rendered HTML printing. */
   htmlPrintHelperPath?: string;
+  /** Spawn the HTML print helper process (`--serve <dir>` mode). Injectable
+   *  so tests can substitute a fake helper without a WebView2 executable. */
+  spawnHelper?: (helperPath: string, args: string[]) => ChildProcess;
 }
 
 const defaultDeps: WindowsSpoolerDeps = {
@@ -91,6 +94,8 @@ const defaultDeps: WindowsSpoolerDeps = {
   sleep,
   now: Date.now,
   htmlPrintHelperPath: process.env['PRINTOPS_HTML_PRINT_HELPER'],
+  spawnHelper: (helperPath, args) =>
+    spawn(helperPath, args, { stdio: 'ignore', windowsHide: true }),
 };
 
 /**
@@ -129,6 +134,9 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
    * documented in the invariant note above sendAndVerify.
    */
   private readonly printerLocks = new Map<string, Promise<unknown>>();
+
+  /** Process-wide guard: install the helper-cleanup handlers at most once. */
+  private static installCleanupRegistered = false;
 
   constructor(deps: Partial<WindowsSpoolerDeps> = {}) {
     this.deps = { ...defaultDeps, ...deps };
@@ -1482,21 +1490,28 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     html: string,
     command: PrintCommand,
   ): Promise<PrintSubmission> {
-    const dir = await mkdtemp(join(tmpdir(), 'printops-html-'));
-    const file = join(dir, 'document.html');
-    const requestFile = join(dir, 'request.json');
-    const resultFile = join(dir, 'result.json');
-    const userDataFolder = join(dir, 'webview2-data');
+    // A persistent serve-mode helper keeps ONE WebView2 environment alive per
+    // printer instead of cold-starting a fresh WebView2 for every job
+    // (DEFECT-05: ~1-2s per job of process + runtime initialisation, which is
+    // why batches of labels printed one at a time). The adapter serialises
+    // submissions per printer (printerLocks) and the helper processes
+    // requests strictly one at a time, so per-printer FIFO order and the
+    // send+verify counter attribution are preserved exactly as before.
+    const session = await this.htmlHelperSession(printerName);
+    const jobId = (command.jobId ?? `job-${Date.now()}`).replace(/[^A-Za-z0-9_-]/g, '_');
+    const file = join(session.dir, `doc-${jobId}.html`);
+    const requestFile = join(session.dir, `request-${jobId}.json`);
+    const resultFile = join(session.dir, `result-${jobId}.json`);
     try {
       await writeFile(file, html, 'utf-8');
-      const helperPath = this.resolveHtmlPrintHelperPath();
       const page = resolveHtmlPageSettings(html, command.metadata);
-      const jobName = `PrintOps:${command.jobId}`;
+      const jobName = `PrintOps:${command.jobId ?? jobId}`;
+      // Serve-mode requests omit resultPath/userDataFolder: the result goes
+      // to result-<jobId>.json and the WebView2 data folder is shared and
+      // long-lived (created once by the helper at startup).
       await writeFile(requestFile, JSON.stringify({
         filePath: file,
         printerName,
-        resultPath: resultFile,
-        userDataFolder,
         jobName,
         copies: 1,
         paperWidthMm: page.widthMm,
@@ -1513,11 +1528,17 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
       let stdout: string;
       try {
         stdout = await this.deps.runPowerShell(
-          buildHtmlPrintScript(helperPath, requestFile, resultFile, printerName, jobName),
+          buildHtmlPrintServeScript(session.dir, resultFile, printerName, jobName),
           60_000,
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        if (message.includes('WEBVIEW2_PRINT_TIMEOUT')) {
+          // The helper produced no result — it is likely wedged or dead.
+          // Recycle it so the next job spawns a fresh process instead of
+          // queueing behind a corpse.
+          await this.recycleHtmlHelperSession(printerName, session);
+        }
         if (
           message.includes('HTML_PRINT_HELPER_NOT_FOUND') ||
           message.includes('PRINTER_NOT_FOUND') ||
@@ -1553,8 +1574,78 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
         jobs,
       };
     } finally {
-      await rm(dir, { recursive: true, force: true }).catch(() => {});
+      // Clean per-request artifacts; the session dir and the WebView2 data
+      // folder inside it live for the life of the helper process.
+      await rm(file, { force: true }).catch(() => {});
+      await rm(requestFile, { force: true }).catch(() => {});
+      await rm(resultFile, { force: true }).catch(() => {});
     }
+  }
+
+  // ---- persistent HTML helper sessions (serve mode) ----
+
+  /** How long a serve-mode helper stays alive without work before exiting. */
+  private static readonly HTML_HELPER_IDLE_MS = 180_000;
+
+  private htmlHelperSessions = new Map<string, { dir: string; child: ChildProcess }>();
+
+  /** Get (or spawn) the persistent helper for a printer. */
+  private async htmlHelperSession(printerName: string): Promise<{ dir: string; child: ChildProcess }> {
+    const existing = this.htmlHelperSessions.get(printerName);
+    if (existing && existing.child.exitCode === null) return existing;
+    if (existing) {
+      // Dead session — reclaim its directory before spawning a replacement.
+      this.htmlHelperSessions.delete(printerName);
+      await rm(existing.dir, { recursive: true, force: true }).catch(() => {});
+    }
+
+    const helperPath = this.resolveHtmlPrintHelperPath();
+    const dir = await mkdtemp(join(tmpdir(), 'printops-html-serve-'));
+    // `--serve` keeps the process alive and reuses one WebView2 environment;
+    // the idle timeout bounds the orphan a crashed parent could leave behind.
+    const spawnHelper = this.deps.spawnHelper ??
+      ((path: string, args: string[]) => spawn(path, args, { stdio: 'ignore', windowsHide: true }));
+    const child = spawnHelper(
+      helperPath,
+      ['--serve', dir, '--idle-ms', String(WindowsSpoolerAdapter.HTML_HELPER_IDLE_MS)],
+    );
+    child.once('exit', () => {
+      if (this.htmlHelperSessions.get(printerName)?.child === child) {
+        this.htmlHelperSessions.delete(printerName);
+      }
+    });
+    // One process-wide cleanup for every session this adapter spawned.
+    if (!WindowsSpoolerAdapter.installCleanupRegistered) {
+      WindowsSpoolerAdapter.installCleanupRegistered = true;
+      const killAll = (): void => {
+        for (const session of this.htmlHelperSessions.values()) {
+          session.child.kill();
+        }
+      };
+      process.once('exit', killAll);
+      // SIGINT/SIGTERM: pkg builds get a hard 'exit'; dev (tsx) may only get
+      // the signal, so kill helpers there too.
+      process.once('SIGINT', () => { killAll(); });
+      process.once('SIGTERM', () => { killAll(); });
+    }
+    this.htmlHelperSessions.set(printerName, { dir, child });
+    return { dir, child };
+  }
+
+  /** Drop a wedged/dead session so the next job starts a fresh helper. */
+  private async recycleHtmlHelperSession(
+    printerName: string,
+    session: { dir: string; child: ChildProcess },
+  ): Promise<void> {
+    if (this.htmlHelperSessions.get(printerName)?.child === session.child) {
+      this.htmlHelperSessions.delete(printerName);
+    }
+    try {
+      session.child.kill();
+    } catch {
+      // already dead
+    }
+    await rm(session.dir, { recursive: true, force: true }).catch(() => {});
   }
 
   private resolveHtmlPrintHelperPath(): string {
@@ -1650,6 +1741,56 @@ export function buildHtmlPrintScript(
     if ($process.ExitCode -ne 0 -or $null -eq $helper -or -not $helper.success) {
       $reason = if ($null -ne $helper) { "phase=$($helper.phase); status=$($helper.status); $($helper.message)" } else { "helper exit code $($process.ExitCode) without result" };
       throw "WEBVIEW2_PRINT_FAILED: $reason";
+    }
+    [ordered]@{ helperStatus=[string]$helper.status; helperPhase=[string]$helper.phase; observedAt=$observed.at; expectedDocumentName='${safeDocumentName}'; jobObserved=($seen.Count -gt 0); jobs=@($seen.Values) } | ConvertTo-Json -Depth 5 -Compress;`;
+}
+
+/**
+ * Serve-mode variant of buildHtmlPrintScript for the PERSISTENT helper.
+ *
+ * The adapter keeps one `printops-html-print.exe --serve <dir>` process alive
+ * per printer, so WebView2 initialises once instead of once per job
+ * (DEFECT-05). This script no longer starts the helper: the adapter writes
+ * `request-<jobId>.json` into the serve dir before invoking this script, the
+ * helper writes `result-<jobId>.json` when the print finishes, and this
+ * script observes the Windows queue while waiting for that result file.
+ */
+export function buildHtmlPrintServeScript(
+  serveDir: string,
+  resultFile: string,
+  printerName: string,
+  expectedDocumentName: string,
+): string {
+  const safeResult = resultFile.replace(/'/g, "''");
+  const safePrinterName = printerName.replace(/'/g, "''");
+  const safeDocumentName = expectedDocumentName.replace(/'/g, "''");
+  return `$ErrorActionPreference='Stop';
+    if ($null -eq (Get-Printer -Name '${safePrinterName}' -ErrorAction SilentlyContinue)) { throw 'PRINTER_NOT_FOUND: ${safePrinterName}' }
+    $before = @{};
+    @(Get-PrintJob -PrinterName '${safePrinterName}' -ErrorAction SilentlyContinue) | ForEach-Object { $before[[string]$_.Id] = $true };
+    $seen = @{};
+    $observed = @{ at = $null };
+    function Capture-PrintOpsJobs {
+      @(Get-PrintJob -PrinterName '${safePrinterName}' -ErrorAction SilentlyContinue) | ForEach-Object {
+        $id = [string]$_.Id;
+        $documentName = [string]$_.DocumentName;
+        if (-not $before.ContainsKey($id)) {
+          if ($null -eq $observed.at) { $observed.at = [DateTime]::UtcNow.ToString('o') }
+          $seen[$id] = [ordered]@{ id=[int]$_.Id; status=[string]$_.JobStatus; documentName=$documentName; expectedDocumentName=($documentName -eq '${safeDocumentName}'); submittedTime=$_.SubmittedTime };
+        }
+      }
+    }
+    $deadline = [DateTime]::UtcNow.AddSeconds(45);
+    while (-not (Test-Path -LiteralPath '${safeResult}') -and [DateTime]::UtcNow -lt $deadline) {
+      Capture-PrintOpsJobs;
+      Start-Sleep -Milliseconds 50;
+    }
+    if (-not (Test-Path -LiteralPath '${safeResult}')) {
+      throw 'WEBVIEW2_PRINT_TIMEOUT: serve helper did not produce a result within 45 seconds';
+    }
+    $helper = Get-Content -Raw -LiteralPath '${safeResult}' | ConvertFrom-Json;
+    if (-not $helper.success) {
+      throw "WEBVIEW2_PRINT_FAILED: phase=$($helper.phase); status=$($helper.status); $($helper.message)";
     }
     [ordered]@{ helperStatus=[string]$helper.status; helperPhase=[string]$helper.phase; observedAt=$observed.at; expectedDocumentName='${safeDocumentName}'; jobObserved=($seen.Count -gt 0); jobs=@($seen.Values) } | ConvertTo-Json -Depth 5 -Compress;`;
 }

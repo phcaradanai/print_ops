@@ -6,6 +6,12 @@
  * acceptance callback fired only when a caller resent a request_id it had
  * already used. Neither half of docs/architecture/result-callbacks.md §1 was
  * what the code did.
+ *
+ * Current contract: the terminal-result callback fires for EVERY job that has
+ * a resolvable callback destination. `callbackOnPrintResult` only decides
+ * whether the ACCEPTANCE callback also fires:
+ *   - off (default): acceptance + terminal both fire
+ *   - on: terminal only (except duplicates, which always get acceptance)
  */
 
 import { describe, it, expect } from 'vitest';
@@ -26,17 +32,20 @@ function endpoint(over: Partial<WebhookEndpoint>): WebhookEndpoint {
 }
 
 describe('callbackOnPrintResult decides which callback fires', () => {
-  it('off: acceptance fires, terminal does not', () => {
+  it('off: the terminal result still fires (and the acceptance callback too)', () => {
     const ep = endpoint({ callbackOnPrintResult: false });
     expect(wantsAcceptanceCallback(ep, false)).toBe(true);
     expect(wantsTerminalCallback(ep)).toBe(false);
-    expect(buildCallbackIntent(ep, {}).enabled).toBe(false);
+    // The job has a resolvable destination, so its terminal result MUST be
+    // delivered even though the endpoint is in acceptance mode.
+    expect(buildCallbackIntent(ep, {}).enabled).toBe(true);
   });
 
   it('unset behaves as off — the backward-compatible default', () => {
     const ep = endpoint({ callbackOnPrintResult: undefined });
     expect(wantsAcceptanceCallback(ep, false)).toBe(true);
     expect(wantsTerminalCallback(ep)).toBe(false);
+    expect(buildCallbackIntent(ep, {}).enabled).toBe(true);
   });
 
   it('on: terminal fires, acceptance does not', () => {
@@ -60,16 +69,14 @@ describe('callbackOnPrintResult decides which callback fires', () => {
     expect(buildCallbackIntent(ep, {}).enabled).toBe(false);
   });
 
-  it('records the destination and the reason on an acceptance-mode intent', () => {
-    // Job Detail must be able to say WHY no result was delivered, and where it
-    // would have gone — a blank is indistinguishable from a bug.
+  it('records the destination on an acceptance-mode intent so Job Detail can show it', () => {
     const intent = buildCallbackIntent(endpoint({ callbackOnPrintResult: false }), {});
-    expect(intent.enabled).toBe(false);
+    expect(intent.enabled).toBe(true);
     expect(intent.httpUrl).toBe('https://receiver.example/cb');
-    expect(intent.disabledReason).toContain('callbackOnPrintResult is off');
+    expect(intent.disabledReason).toBeUndefined();
   });
 
-  it('reports an unresolvable destination separately from the toggle', () => {
+  it('reports an unresolvable destination as the only reason for a disabled intent', () => {
     const intent = buildCallbackIntent(
       endpoint({ callbackOnPrintResult: true, callbackUrl: '$.reply_url' }),
       {},

@@ -16,11 +16,14 @@ There are **two** different callbacks, and conflating them was the original defe
 | Retries | no (best-effort, single shot) | yes (bounded, persisted) |
 | Delivery record | attempt log only | durable `CallbackDelivery` |
 
-A single endpoint sends **one or the other**, never both, selected by
-`callbackOnPrintResult`:
+**Every job with a resolvable callback destination receives `print.job.completed`**
+with its real final status — the terminal result is never optional once a
+destination was configured. `callbackOnPrintResult` only decides whether the
+`print.job.accepted` notification *also* fires:
 
-- `callbackOnPrintResult = false` → acceptance notification only. The print
-  outcome is never reported.
+- `callbackOnPrintResult = false` (default) → acceptance notification AND the
+  terminal result. The caller hears about the print twice: once when it is
+  queued, once when it terminates.
 - `callbackOnPrintResult = true` → terminal result only. No acceptance
   notification.
 
@@ -31,10 +34,9 @@ result that cannot arrive.
 
 The toggle is read in exactly one place — `wantsAcceptanceCallback()` /
 `wantsTerminalCallback()` in `callback-intent.service.ts` — so no intake path
-can develop its own interpretation of it. For a long time none of them read it
-at all: the terminal callback fired unconditionally, and the acceptance
-callback fired only for duplicates, which is why this section did not describe
-the code.
+can develop its own interpretation of it. The terminal-result intent is enabled
+whenever a destination resolved, regardless of the toggle; `callbackOnPrintResult`
+only ever silences the acceptance callback.
 
 Acceptance callbacks fire for `POST /api/v1/intake/:endpointCode`, for
 `POST /api/v1/printer/:code_template/:code_profile`, and for the NATS
