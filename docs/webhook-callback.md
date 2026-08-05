@@ -61,7 +61,7 @@ caller** after the job is accepted — over **HTTP, NATS, or both**.
   | Setting | Fires | Carries |
   |---|---|---|
   | off (default) | acceptance, right after the job is queued | `status: "QUEUED"`, shaped by `callbackPayloadTemplate` |
-  | on | terminal, once the print reaches a final state | the fixed versioned envelope, with `print_status` |
+  | on | terminal, once the print reaches a final state | the fixed versioned envelope, with `status` (same key vocabulary as the acceptance) |
 
   **Duplicates are the one exception**: a resent `request_id` creates no new
   print and so can never reach a terminal state, so it always gets the

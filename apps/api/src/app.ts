@@ -885,7 +885,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
 
   // Routes — external API v1
   await app.register(async (v1) => {
-    await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, acceptExternalJob, cancelJob, executeJob, apiKeyHook, intakeLog: intakeAttemptRepo, intakeCallbacks: intakeOutcomeCallbacks });
+    await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, dynamicPrint, cancelJob, executeJob, apiKeyHook, intakeLog: intakeAttemptRepo, intakeCallbacks: intakeOutcomeCallbacks });
     await v1PrinterPrintRoutes(v1, { dynamicPrint, apiKeyHook, intakeLog: intakeAttemptRepo, intakeCallbacks: intakeOutcomeCallbacks });
     await v1PrintFlowRoutes(v1, { printIntake: printIntakeCfg, natsStatus: () => natsManager.getStatus(), natsTest: () => natsManager.testConnection(), intakeLog: intakeAttemptRepo, runtimeArchitecture });
     await v1PrinterRoutes(v1, { printers: printerRepo, getPrinterStatus, apiKeyHook });

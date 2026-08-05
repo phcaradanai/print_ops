@@ -396,11 +396,11 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
     const body = h.httpCalls[0]!.body;
     // The defect this replaces: the old callback said QUEUED regardless of the
     // eventual outcome.
-    expect(body['print_status']).toBe('SUCCESS');
+    expect(body['status']).toBe('SUCCESS');
     expect(body['event_type']).toBe(RESULT_EVENT_TYPE);
     expect(body['request_id']).toBe('M1');
     expect(body['job_id']).toBe(accepted.print_job_id);
-    expect(body['version']).toBe(1);
+    expect(body['version']).toBe(2);
 
     const [delivery] = await h.deliveries.findAll({ printJobId: accepted.print_job_id });
     expect(delivery?.deliveryStatus).toBe('DELIVERED');
@@ -418,7 +418,7 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
 
     expect(h.natsCalls).toHaveLength(1);
     expect(h.natsCalls[0]!.subject).toBe('results.medisync');
-    expect(h.natsCalls[0]!.body['print_status']).toBe('SUCCESS');
+    expect(h.natsCalls[0]!.body['status']).toBe('SUCCESS');
     expect(h.natsCalls[0]!.mode).toBe('JETSTREAM');
     // Nats-Msg-Id is the event id, so broker-side dedupe and the receiver's own
     // idempotency check agree on what "the same notification" means.
@@ -457,7 +457,7 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
     );
     await printAndSettle(h, accepted.print_job_id);
     expect(h.httpCalls).toHaveLength(1);
-    expect(h.httpCalls[0]!.body['print_status']).toBe('SUCCESS');
+    expect(h.httpCalls[0]!.body['status']).toBe('SUCCESS');
   });
 
   it('NATS intake -> print -> NATS callback', async () => {
@@ -472,7 +472,7 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
     );
     await printAndSettle(h, accepted.print_job_id);
     expect(h.natsCalls.map((c) => c.subject)).toEqual(['medisync.results.c1']);
-    expect(h.natsCalls[0]!.body['print_status']).toBe('SUCCESS');
+    expect(h.natsCalls[0]!.body['status']).toBe('SUCCESS');
   });
 
   it('fans out to BOTH transports from one endpoint', async () => {
@@ -509,7 +509,7 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
 
     expect(h.httpCalls).toHaveLength(1);
     const body = h.httpCalls[0]!.body;
-    expect(body['print_status']).toBe('FAILED');
+    expect(body['status']).toBe('FAILED');
     expect(body['error']).toMatchObject({ code: 'EXECUTION_ERROR' });
 
     const [delivery] = await h.deliveries.findAll({ printJobId: accepted.print_job_id });
@@ -528,7 +528,7 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
     await h.eventBus.settled();
 
     expect(h.httpCalls).toHaveLength(1);
-    expect(h.httpCalls[0]!.body['print_status']).toBe('CANCELLED');
+    expect(h.httpCalls[0]!.body['status']).toBe('CANCELLED');
     expect(h.httpCalls[0]!.body['error']).toMatchObject({ code: 'JOB_CANCELLED' });
   });
 
@@ -811,7 +811,7 @@ describe('result callback payload', () => {
         { id: 'job-status', metadata: {} } as never,
         { enabled: true, trigger: 'PRINT_RESULT', transports: ['HTTP'] },
       );
-      expect(payload['print_status']).toBe(status);
+      expect(payload['status']).toBe(status);
     },
   );
 
@@ -827,7 +827,7 @@ describe('result callback payload', () => {
       { id: 'job-1', requestId: 'R', sourceSystem: SOURCE, printerCode: PRINTER, metadata: {} } as never,
       { enabled: true, trigger: 'PRINT_RESULT', transports: ['HTTP'] },
     );
-    expect(payload['print_status']).toBe('UNVERIFIED');
+    expect(payload['status']).toBe('UNVERIFIED');
     expect(payload['error']).toEqual({ code: 'PRINT_NOT_VERIFIABLE', message: 'no device confirmation' });
   });
 
@@ -840,7 +840,7 @@ describe('result callback payload', () => {
       { id: 'job-2', requestId: 'R2', sourceSystem: SOURCE, printerCode: PRINTER, metadata: {} } as never,
       { enabled: true, trigger: 'PRINT_RESULT', transports: ['NATS'], natsMode: 'CORE' },
     );
-    expect(payload['version']).toBe(1);
+    expect(payload['version']).toBe(2);
     expect(payload['event_type']).toBe('print.job.completed');
     expect(payload['error']).toBeNull();
     expect(payload['trace_id']).toBe('trace-1');
@@ -1097,7 +1097,7 @@ describe('webhook intake path', () => {
 
     await printAndSettle(h, res.print_job_id);
     expect(h.httpCalls).toHaveLength(1);
-    expect(h.httpCalls[0]!.body['print_status']).toBe('SUCCESS');
+    expect(h.httpCalls[0]!.body['status']).toBe('SUCCESS');
   });
 
   it('sends the acceptance notification AND the terminal result when callbackOnPrintResult is off', async () => {
@@ -1125,7 +1125,7 @@ describe('webhook intake path', () => {
     await printAndSettle(h, res.print_job_id);
     expect(h.httpCalls).toHaveLength(1);
     expect(h.httpCalls[0]!.body['event_type']).toBe('print.job.completed');
-    expect(h.httpCalls[0]!.body['print_status']).toBe('SUCCESS');
+    expect(h.httpCalls[0]!.body['status']).toBe('SUCCESS');
   });
 
   it('notifies a duplicate at acceptance even when the endpoint is in result mode', async () => {

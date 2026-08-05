@@ -18,6 +18,40 @@ export interface CallbackTemplateGuideProps {
   t: (key: string) => string;
 }
 
+/** The unified v2 envelope — every status (QUEUED, SUCCESS, FAILED, …) uses
+ *  exactly these keys; only the values differ. Keep in step with
+ *  buildCallbackEnvelope in apps/api/src/services/callback-payload.ts. */
+export const UNIFIED_PAYLOAD_KEYS = `{
+  "version": 2,
+  "event_id": "...",
+  "event_type": "print.job.accepted | print.job.completed | print.job.rejected",
+  "occurred_at": "2026-08-05T09:00:00.000Z",
+
+  "request_id": "REQ-10482",
+  "job_id": "9f1c2b7e-...",
+  "source_system": "medisync",
+
+  "status": "QUEUED | SUCCESS | FAILED | UNVERIFIED | ...",
+  "data_quality": "OK | WITH_WARNINGS | null",
+  "missing_fields": [],
+  "render_warnings": [],
+
+  "printer_code": "OFFICE_LASER_01",
+  "runner_id": "desktop-local-worker | null",
+  "trace_id": "trace_1c3bb5c3-...",
+  "duplicate": false,
+  "error": null,
+
+  "timeline": {
+    "accepted_at": "2026-08-05T09:00:00.000Z | null",
+    "queued_at":   "2026-08-05T09:00:00.100Z | null",
+    "started_at":  null,
+    "terminal_at": null
+  },
+
+  "delivery": { "transports": ["HTTP"], "nats_mode": null }
+}`;
+
 /**
  * The reference column beside the callback payload editor: what the receiver
  * will actually get, and which tokens are legitimately available to put there.
@@ -53,6 +87,19 @@ export function CallbackTemplateGuide({
                 : t('page.webhooks.resolvedPreviewEmpty')}
             </Text>
           )}
+        </Stack>
+      </Panel>
+
+      {/* One key vocabulary across every status. The QUEUED acceptance and the
+          terminal result carry the same keys — only the values differ
+          (status, timeline entries, event_type). */}
+      <Panel title={t('page.webhooks.unifiedPayloadTitle')} padding="lg">
+        <Stack gap="sm">
+          <Text size="label" tone="muted">{t('page.webhooks.unifiedPayloadHint')}</Text>
+          <CodeBlock label={t('page.webhooks.unifiedPayloadTitle')} scroll={false}>
+{UNIFIED_PAYLOAD_KEYS}
+          </CodeBlock>
+          <Text size="label" tone="muted">{t('page.webhooks.unifiedPayloadEventTypes')}</Text>
         </Stack>
       </Panel>
 

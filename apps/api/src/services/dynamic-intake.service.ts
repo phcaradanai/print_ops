@@ -30,8 +30,14 @@ export interface IntakeRequest {
 export interface IntakeResponse {
   accepted: true;
   print_job_id: string;
+  job_id: string;
   request_id: string;
   trace_id: string;
+  source_system: string;
+  /** ISO-8601 — when the job was created (≈ when the print was ordered). */
+  created_at: string;
+  /** ISO-8601 — when the job entered the queue, when known. */
+  queued_at?: string;
   resolved_printer_code: string;
   resolved_template_code: string;
   status: string;
@@ -110,8 +116,12 @@ export class DynamicIntakeService {
       const result: IntakeResponse = {
         accepted: true,
         print_job_id: existing.id,
+        job_id: existing.id,
         request_id: requestId,
         trace_id: existing.traceId,
+        source_system: endpoint.sourceSystem,
+        created_at: existing.createdAt?.toISOString() ?? new Date().toISOString(),
+        queued_at: existing.queuedAt?.toISOString(),
         resolved_printer_code: existing.printerCode ?? '',
         resolved_template_code: existing.resolvedTemplateCode ?? existing.templateCode ?? '',
         status: 'DUPLICATE_RETURNED',
@@ -201,8 +211,12 @@ export class DynamicIntakeService {
     const result: IntakeResponse = {
       accepted: true,
       print_job_id: job.id,
+      job_id: job.id,
       request_id: requestId,
       trace_id: job.traceId,
+      source_system: endpoint.sourceSystem,
+      created_at: job.createdAt?.toISOString() ?? new Date().toISOString(),
+      queued_at: job.queuedAt?.toISOString(),
       resolved_printer_code: route.printerCode,
       resolved_template_code: route.templateCode,
       status: job.status,

@@ -146,7 +146,7 @@ describe('Go runner result route emits PrintJobTerminal', () => {
     expect(res.statusCode).toBe(200);
     expect(f.terminalEvents.map((e) => e.status)).toEqual(['SUCCESS']);
     expect(f.httpCalls).toHaveLength(1);
-    expect(f.httpCalls[0]!.body['print_status']).toBe('SUCCESS');
+    expect(f.httpCalls[0]!.body['status']).toBe('SUCCESS');
     expect(f.httpCalls[0]!.body['runner_id']).toBe('runner-01');
   });
 
@@ -160,7 +160,7 @@ describe('Go runner result route emits PrintJobTerminal', () => {
     });
 
     expect(f.terminalEvents.map((e) => e.status)).toEqual(['FAILED']);
-    expect(f.httpCalls[0]!.body['print_status']).toBe('FAILED');
+    expect(f.httpCalls[0]!.body['status']).toBe('FAILED');
     expect(f.httpCalls[0]!.body['error']).toEqual({
       code: 'PRINTER_OFFLINE',
       message: 'The selected printer was offline.',
@@ -181,7 +181,7 @@ describe('Go runner result route emits PrintJobTerminal', () => {
 
     expect((await f.jobRepo.findById(job.id))?.status).toBe('UNVERIFIED');
     expect(f.terminalEvents.map((e) => e.status)).toEqual(['UNVERIFIED']);
-    expect(f.httpCalls[0]!.body['print_status']).toBe('UNVERIFIED');
+    expect(f.httpCalls[0]!.body['status']).toBe('UNVERIFIED');
     expect(f.httpCalls[0]!.body['error']).toMatchObject({ code: 'PRINT_NOT_VERIFIABLE' });
 
     const [delivery] = await f.deliveries.findAll({ printJobId: job.id });

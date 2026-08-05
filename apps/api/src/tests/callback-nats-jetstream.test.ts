@@ -56,7 +56,7 @@ async function seedDelivery(
     deliveryStatus: 'PENDING',
     maxAttempts: 5,
     printStatus: 'SUCCESS',
-    payload: { event_id: 'evt-dedupe-1', print_status: 'SUCCESS' },
+    payload: { event_id: 'evt-dedupe-1', status: 'SUCCESS' },
   });
   return delivery.id;
 }

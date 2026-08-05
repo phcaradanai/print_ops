@@ -21,10 +21,17 @@ import {
 } from './callback-retry-policy.js';
 import { assertCallbackUrlAllowed, CallbackUrlRejected, callbackUrlPolicyFromEnv, type CallbackUrlPolicy } from '../infra/http/callback-url-guard.js';
 import { callbackSigningSecret, CALLBACK_SIGNATURE_VERSION, signCallback } from './callback-signing.js';
+import { buildCallbackEnvelope, CALLBACK_ENVELOPE_VERSION } from './callback-payload.js';
 
-/** Wire-format version of the result-callback contract. Bump on a breaking
- *  change to the payload shape; receivers should switch on it. */
-export const RESULT_CALLBACK_VERSION = 1;
+/**
+ * Wire-format version of the result-callback contract. Bump on a breaking
+ *  change to the payload shape; receivers should switch on it.
+ *
+ * v2 (2026-08-05): unified envelope — `print_status` is now `status`, the
+ * same key the acceptance event uses, and `occurred_at` / `timeline` are
+ * present on every phase. See buildCallbackEnvelope in callback-payload.ts.
+ */
+export const RESULT_CALLBACK_VERSION = CALLBACK_ENVELOPE_VERSION;
 
 export const RESULT_EVENT_TYPE = 'print.job.completed';
 
@@ -496,46 +503,44 @@ export function buildResultCallbackPayload(
 ): Record<string, unknown> {
   // Product decision (2026-08-03): a print that succeeded with missing data
   // must never read as a plain SUCCESS to the caller. The canonical
-  // print_status vocabulary stays untouched; completeness travels alongside
+  // status vocabulary stays untouched; completeness travels alongside
   // it, so SUCCESS + WITH_WARNINGS carries the same meaning as a
   // "SUCCESS_WITH_WARNING" status without breaking every status consumer.
   const quality = extractRenderQuality(job);
-  return {
-    version: RESULT_CALLBACK_VERSION,
-    event_id: event.eventId,
-    event_type: RESULT_EVENT_TYPE,
-    occurred_at: (event.finishedAt ?? event.occurredAt).toISOString(),
+  return buildCallbackEnvelope({
+    eventId: event.eventId,
+    eventType: RESULT_EVENT_TYPE,
+    occurredAt: (event.finishedAt ?? event.occurredAt).toISOString(),
 
-    request_id: event.requestId ?? job.requestId ?? null,
-    job_id: event.jobId,
-    source_system: event.sourceSystem ?? job.sourceSystem ?? null,
+    requestId: event.requestId ?? job.requestId ?? null,
+    jobId: event.jobId,
+    sourceSystem: event.sourceSystem ?? job.sourceSystem ?? null,
 
-    print_status: event.status,
-    data_quality: quality.dataQuality,
-    missing_fields: quality.missingFields,
-    render_warnings: quality.warnings,
+    status: event.status,
+    dataQuality: quality.dataQuality,
+    missingFields: quality.missingFields,
+    renderWarnings: quality.warnings,
 
-    printer_code: event.printerCode ?? job.printerCode ?? null,
-    runner_id: event.runnerId ?? job.runnerId ?? null,
+    printerCode: event.printerCode ?? job.printerCode ?? null,
+    runnerId: event.runnerId ?? job.runnerId ?? null,
 
     error: event.errorCode
       ? { code: event.errorCode, message: event.errorMessage ?? null }
       : null,
 
-    trace_id: event.traceId,
+    traceId: event.traceId,
     timeline: {
-      accepted_at: job.receivedAt?.toISOString() ?? job.createdAt?.toISOString() ?? null,
-      queued_at: job.queuedAt?.toISOString() ?? null,
-      started_at: job.startedAt?.toISOString() ?? job.runnerReceivedAt?.toISOString() ?? null,
-      terminal_at: (event.finishedAt ?? event.occurredAt).toISOString(),
+      acceptedAt: job.receivedAt?.toISOString() ?? job.createdAt?.toISOString() ?? null,
+      queuedAt: job.queuedAt?.toISOString() ?? null,
+      startedAt: job.startedAt?.toISOString() ?? job.runnerReceivedAt?.toISOString() ?? null,
+      terminalAt: (event.finishedAt ?? event.occurredAt).toISOString(),
     },
+
     // Lets a receiver tell a BEST_EFFORT NATS notification from an HTTP one it
     // actually acknowledged.
-    delivery: {
-      transports: intent.transports,
-      nats_mode: intent.natsMode ?? null,
-    },
-  };
+    transports: intent.transports,
+    natsMode: intent.natsMode ?? null,
+  });
 }
 
 function errCode(err: unknown): string | undefined {

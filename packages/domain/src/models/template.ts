@@ -138,8 +138,12 @@ export type CreateWebhookRoutePolicyInput = Omit<WebhookRoutePolicy, 'id' | 'cre
  */
 export const ACCEPTANCE_CALLBACK_SYSTEM_FIELDS = [
   'print_job_id',
+  'job_id',
   'request_id',
   'trace_id',
+  'source_system',
+  'created_at',
+  'queued_at',
   'resolved_printer_code',
   'resolved_template_code',
   'status',

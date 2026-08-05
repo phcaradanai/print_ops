@@ -217,8 +217,12 @@ export class DynamicPrintService {
     const result: Record<string, unknown> = {
       accepted: true,
       print_job_id: response.print_job_id,
+      job_id: response.print_job_id,
       request_id: response.request_id,
       trace_id: response.trace_id,
+      source_system: req.source_system,
+      created_at: response.accepted_at?.toISOString() ?? null,
+      queued_at: undefined,
       resolved_printer_code: printerCode,
       resolved_template_code: req.code_template,
       status: response.status,

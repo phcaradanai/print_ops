@@ -53,7 +53,7 @@ describe('callback data quality (I-3)', () => {
       renderWarnings: ['Missing field: hn', 'Missing field: barcode', "Could not render qrcode for 'x': boom"],
     });
     const payload = buildResultCallbackPayload(terminalEvent, job, intent);
-    expect(payload['print_status']).toBe('SUCCESS');
+    expect(payload['status']).toBe('SUCCESS');
     expect(payload['data_quality']).toBe('WITH_WARNINGS');
     expect(payload['missing_fields']).toEqual(['hn', 'barcode']);
     expect(payload['render_warnings']).toHaveLength(3);

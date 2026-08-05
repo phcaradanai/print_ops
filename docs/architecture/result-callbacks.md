@@ -11,10 +11,13 @@ There are **two** different callbacks, and conflating them was the original defe
 | | `print.job.accepted` | `print.job.completed` |
 |---|---|---|
 | Fired when | the job is queued | the print reaches a terminal state |
-| Carries | `status: "QUEUED"` | `print_status: SUCCESS \| FAILED \| UNVERIFIED \| TIMEOUT \| CANCELLED` |
+| Carries | `status: "QUEUED"` (+ `occurred_at` / `timeline` so the receiver knows when the print was ordered) | `status: SUCCESS \| FAILED \| UNVERIFIED \| TIMEOUT \| CANCELLED` |
 | Sent by | `DynamicIntakeService` / `DynamicPrintService` via `WebhookCallbackService` | `ResultCallbackDispatcher` |
 | Retries | no (best-effort, single shot) | yes (bounded, persisted) |
 | Delivery record | attempt log only | durable `CallbackDelivery` |
+
+Both events share the **same key vocabulary** (v2 envelope — see §5): only
+`status`, `timeline` entries and `event_type` differ.
 
 **Every job with a resolvable callback destination receives `print.job.completed`**
 with its real final status — the terminal result is never optional once a
@@ -184,9 +187,20 @@ rather than retrying a poison envelope.
 
 ## 5. Payload contract
 
+**One key vocabulary across every status (v2, 2026-08-05).** The QUEUED
+acceptance (`print.job.accepted`), the terminal result
+(`print.job.completed`) and the reject notice (`print.job.rejected`) all use
+the same keys — only the values differ. Fields that do not apply to a phase
+are explicit `null` / `[]`, never absent. v2 breaking changes from v1:
+`status` → `status`; the acceptance now carries `occurred_at` +
+`timeline` (so a receiver knows when the print was ordered); the envelope
+always uses `job_id` (the acceptance previously sent `print_job_id`).
+
+Terminal result (`print.job.completed`):
+
 ```json
 {
-  "version": 1,
+  "version": 2,
   "event_id": "4a64b91e-…",
   "event_type": "print.job.completed",
   "occurred_at": "2026-07-27T06:42:45.347Z",
@@ -195,7 +209,7 @@ rather than retrying a poison envelope.
   "job_id": "131a33aa-…",
   "source_system": "medisync",
 
-  "print_status": "SUCCESS",
+  "status": "SUCCESS",
   "data_quality": "OK",
   "missing_fields": [],
   "render_warnings": [],
@@ -203,8 +217,9 @@ rather than retrying a poison envelope.
   "printer_code": "OFFICE_LASER_01",
   "runner_id": "desktop-local-worker",
 
-  "error": null,
   "trace_id": "trace_1c3bb5c3-…",
+  "duplicate": false,
+  "error": null,
 
   "timeline": {
     "accepted_at": "2026-07-27T06:42:45.100Z",
@@ -217,11 +232,47 @@ rather than retrying a poison envelope.
 }
 ```
 
+Acceptance (`print.job.accepted`, status QUEUED) — same keys; the timestamps
+are already filled because this is when the print was ordered:
+
+```json
+{
+  "version": 2,
+  "event_id": "d81f2a3c-…",
+  "event_type": "print.job.accepted",
+  "occurred_at": "2026-07-27T06:42:45.110Z",
+
+  "request_id": "req-001",
+  "job_id": "131a33aa-…",
+  "source_system": "medisync",
+
+  "status": "QUEUED",
+  "data_quality": null,
+  "missing_fields": [],
+  "render_warnings": [],
+
+  "printer_code": "OFFICE_LASER_01",
+  "runner_id": null,
+  "trace_id": "trace_1c3bb5c3-…",
+  "duplicate": false,
+  "error": null,
+
+  "timeline": {
+    "accepted_at": "2026-07-27T06:42:45.100Z",
+    "queued_at":   "2026-07-27T06:42:45.110Z",
+    "started_at":  null,
+    "terminal_at": null
+  },
+
+  "delivery": { "transports": ["HTTP"], "nats_mode": null }
+}
+```
+
 Failure:
 
 ```json
 {
-  "print_status": "FAILED",
+  "status": "FAILED",
   "error": { "code": "PRINTER_OFFLINE", "message": "The selected printer was offline." }
 }
 ```
@@ -246,7 +297,7 @@ the caller then builds on. Three fields carry the truth alongside the status:
 
 ```json
 {
-  "print_status": "SUCCESS",
+  "status": "SUCCESS",
   "data_quality": "WITH_WARNINGS",
   "missing_fields": ["hn"],
   "render_warnings": ["Missing field: hn"]
@@ -254,7 +305,7 @@ the caller then builds on. Three fields carry the truth alongside the status:
 ```
 
 This is deliberately **two orthogonal fields, not a `SUCCESS_WITH_WARNING`
-status** (decision 2026-08-03). `print_status` is the canonical vocabulary that
+status** (decision 2026-08-03). `status` is the canonical vocabulary that
 the database, the queue filter, the dashboard badges and every integrator
 already switch on; adding members to it to express a second dimension would
 break all of them. `SUCCESS` + `WITH_WARNINGS` and `UNVERIFIED` + `WITH_WARNINGS`
@@ -262,7 +313,7 @@ compose naturally.
 
 **A caller that treats `data_quality: "WITH_WARNINGS"` as a plain success is
 choosing to ignore it.** Both fields are always present, so the check is
-`print_status === 'SUCCESS' && data_quality === 'OK'`.
+`status === 'SUCCESS' && data_quality === 'OK'`.
 
 What does *not* reach a callback at all: a template that cannot render **at
 all**. A renderer exception or a template whose paper profile is missing is
@@ -277,7 +328,7 @@ The endpoint's `callbackPayloadTemplate` shapes the **acceptance** callback only
 Terminal result callbacks always use the fixed envelope above.
 
 That is deliberate: a result callback is a contract every receiver parses the
-same way, and a per-endpoint template would make `print_status` optional in
+same way, and a per-endpoint template would make `status` optional in
 practice. The Webhooks page warns about it when result callbacks are enabled, so
 an operator does not configure a template that is then quietly ignored.
 

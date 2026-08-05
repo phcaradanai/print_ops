@@ -1,4 +1,6 @@
-import type { WebhookEndpoint, WebhookCallbackAttemptRepositoryPort, CallbackAttemptTrigger } from '@printerops/domain';
+import type { WebhookEndpoint, WebhookCallbackAttemptRepositoryPort, CallbackAttemptTrigger, CallbackTransport } from '@printerops/domain';
+import { generateId } from '@printerops/shared';
+import { buildCallbackEnvelope } from './callback-payload.js';
 
 /**
  * WebhookCallbackService notifies the original caller after a print job is
@@ -226,22 +228,33 @@ export class WebhookCallbackService {
     }
 
     const userTemplate = resolveTemplate(endpoint.callbackPayloadTemplate, intakePayload, result);
+    const transports: CallbackTransport[] = [];
+    if (isHttpTransport(transport)) transports.push('HTTP');
+    if (isNatsTransport(transport)) transports.push('NATS');
     const payload: Record<string, unknown> = ctx.payloadOverride ??
       (Object.keys(userTemplate).length > 0
         ? userTemplate
-        : {
-            // `event_type` names this for what it is: an ACCEPTANCE
-            // notification. It carries `status: "QUEUED"` because the job has
-            // only been queued — it is not, and must never be described as, a
-            // print result. The terminal result arrives separately as
-            // `print.job.completed` (see ResultCallbackDispatcher).
-            event_type: 'print.job.accepted',
-            request_id: result['request_id'],
-            print_job_id: result['print_job_id'],
-            status: result['status'],
-            trace_id: result['trace_id'],
-            duplicate: result['duplicate'] ?? false,
-          });
+        : buildCallbackEnvelope({
+            // One event_id per acceptance, so a receiver can dedupe exactly
+            // like it does for the terminal callback's stable event_id.
+            eventId: generateId(),
+            eventType: 'print.job.accepted',
+            // The acceptance is the moment the print was ordered — a receiver
+            // must see the real timestamp, not re-derive it from queue polling.
+            occurredAt: (result['queued_at'] ?? result['created_at'] ?? new Date().toISOString()) as string,
+            requestId: (result['request_id'] as string | undefined) ?? null,
+            jobId: (result['job_id'] as string | undefined) ?? (result['print_job_id'] as string | undefined) ?? null,
+            sourceSystem: (result['source_system'] as string | undefined) ?? null,
+            status: (result['status'] as string | undefined) ?? 'QUEUED',
+            printerCode: (result['resolved_printer_code'] as string | undefined) ?? null,
+            traceId: (result['trace_id'] as string | undefined) ?? null,
+            duplicate: result['duplicate'] === true,
+            timeline: {
+              acceptedAt: (result['created_at'] as string | undefined) ?? null,
+              queuedAt: (result['queued_at'] as string | undefined) ?? null,
+            },
+            transports,
+          }));
 
     return { target, payload };
   }
