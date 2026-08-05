@@ -11,7 +11,7 @@
 
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ACCEPTANCE_CALLBACK_SYSTEM_FIELDS } from '@printerops/domain';
+import { ACCEPTANCE_CALLBACK_SYSTEM_FIELDS, CALLBACK_ENVELOPE_SYSTEM_FIELDS } from '@printerops/domain';
 import {
   DEFAULT_CALLBACK_TEMPLATE,
   SAMPLE_INTAKE_PAYLOAD,
@@ -55,7 +55,11 @@ describe('default callback template', () => {
   it('names only fields the resolver can supply', () => {
     for (const [, raw] of Object.entries(JSON.parse(DEFAULT_CALLBACK_TEMPLATE) as Record<string, string>)) {
       if (!raw.startsWith('$$.')) continue;
-      expect(ACCEPTANCE_CALLBACK_SYSTEM_FIELDS).toContain(raw.slice(3));
+      const resolvable = new Set([
+        ...ACCEPTANCE_CALLBACK_SYSTEM_FIELDS,
+        ...CALLBACK_ENVELOPE_SYSTEM_FIELDS,
+      ]);
+      expect(resolvable).toContain(raw.slice(3));
     }
   });
 });
@@ -70,6 +74,29 @@ describe('resolveCallbackTemplate', () => {
     expect(resolveCallbackTemplate({ a: '$$.status', b: '$.hn' }, sources)).toEqual({
       a: 'QUEUED',
       b: 'HN123',
+    });
+  });
+
+  it('resolves derived v2 envelope fields (event_type, occurred_at, timeline.*, printer_code)', () => {
+    const result = resolveCallbackTemplate({
+      event_type: '$$.event_type',
+      version: '$$.version',
+      occurred_at: '$$.occurred_at',
+      printer_code: '$$.printer_code',
+      queued: '$$.timeline.queued_at',
+      started: '$$.timeline.started_at',
+      transports: '$$.delivery.transports',
+      error: '$$.error',
+    }, { payload: {}, result: { created_at: '2026-08-05T09:00:00.000Z', queued_at: '2026-08-05T09:00:00.100Z', resolved_printer_code: 'OFFICE_LASER_01' } });
+    expect(result).toEqual({
+      event_type: 'print.job.accepted',
+      version: 2,
+      occurred_at: '2026-08-05T09:00:00.100Z',
+      printer_code: 'OFFICE_LASER_01',
+      queued: '2026-08-05T09:00:00.100Z',
+      started: null,
+      transports: ['HTTP'],
+      error: null,
     });
   });
 

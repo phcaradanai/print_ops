@@ -1,6 +1,37 @@
 import type { WebhookEndpoint, WebhookCallbackAttemptRepositoryPort, CallbackAttemptTrigger, CallbackTransport } from '@printerops/domain';
 import { generateId } from '@printerops/shared';
-import { buildCallbackEnvelope } from './callback-payload.js';
+import { buildCallbackEnvelope, CALLBACK_ENVELOPE_VERSION } from './callback-payload.js';
+
+/**
+ * Acceptance-template system fields that are NOT raw intake-response keys.
+ * `$$.field` normally resolves against the intake response; these envelope
+ * fields are derived (event_type, version, occurred_at, timeline.*, …) so an
+ * operator can shape a custom template with every key the v2 payload can
+ * carry, not just the ones that happen to live on IntakeResponse.
+ */
+const ENVELOPE_TEMPLATE_FIELDS: Record<string, (result: Record<string, unknown>, endpoint: WebhookEndpoint) => unknown> = {
+  'version': () => CALLBACK_ENVELOPE_VERSION,
+  'event_type': () => 'print.job.accepted',
+  'occurred_at': (result) => result['queued_at'] ?? result['created_at'] ?? new Date().toISOString(),
+  'printer_code': (result) => result['resolved_printer_code'] ?? null,
+  'runner_id': () => null,
+  'data_quality': () => null,
+  'missing_fields': () => [],
+  'render_warnings': () => [],
+  'error': () => null,
+  'timeline.accepted_at': (result) => result['created_at'] ?? null,
+  'timeline.queued_at': (result) => result['queued_at'] ?? null,
+  'timeline.started_at': () => null,
+  'timeline.terminal_at': () => null,
+  'delivery.transports': (_result, endpoint) => {
+    const transport = endpoint.callbackTransport ?? 'NONE';
+    const transports: CallbackTransport[] = [];
+    if (transport === 'HTTP' || transport === 'BOTH') transports.push('HTTP');
+    if (transport === 'NATS' || transport === 'BOTH') transports.push('NATS');
+    return transports;
+  },
+  'delivery.nats_mode': () => null,
+};
 
 /**
  * WebhookCallbackService notifies the original caller after a print job is
@@ -141,6 +172,7 @@ function resolveTemplate(
   template: Record<string, unknown> | undefined,
   intakePayload: Record<string, unknown>,
   result: Record<string, unknown>,
+  endpoint: WebhookEndpoint,
 ): Record<string, unknown> {
   if (!template) return {};
   const out: Record<string, unknown> = {};
@@ -148,9 +180,14 @@ function resolveTemplate(
     if (typeof raw !== 'string') {
       out[key] = raw;
     } else if (SYSTEM_FIELD_PATH.test(raw)) {
-      // `$$.status` -> look up `status` on the intake response. Dropping one
-      // `$` leaves a path fieldValue already understands.
-      out[key] = fieldValue(result, raw.slice(1));
+      // `$$.status` -> look up `status` on the intake response. Envelope-derived
+      // fields (event_type, version, occurred_at, timeline.*, delivery.*) are
+      // resolved first so a custom template can carry every v2 key.
+      const field = raw.slice(3);
+      const envelopeField = ENVELOPE_TEMPLATE_FIELDS[field];
+      out[key] = envelopeField !== undefined
+        ? envelopeField(result, endpoint)
+        : fieldValue(result, raw.slice(1));
     } else if (FIELD_PATH.test(raw)) {
       out[key] = fieldValue(intakePayload, raw);
     } else {
@@ -227,7 +264,7 @@ export class WebhookCallbackService {
         : renderFieldTokens(endpoint.callbackNatsSubject, intakePayload);
     }
 
-    const userTemplate = resolveTemplate(endpoint.callbackPayloadTemplate, intakePayload, result);
+    const userTemplate = resolveTemplate(endpoint.callbackPayloadTemplate, intakePayload, result, endpoint);
     const transports: CallbackTransport[] = [];
     if (isHttpTransport(transport)) transports.push('HTTP');
     if (isNatsTransport(transport)) transports.push('NATS');

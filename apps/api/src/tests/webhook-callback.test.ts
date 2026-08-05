@@ -168,6 +168,45 @@ describe('WebhookCallbackService', () => {
     });
   });
 
+  it('resolves derived v2 envelope fields (event_type, version, occurred_at, timeline.*, delivery.*)', async () => {
+    let body: Record<string, unknown> = {};
+    const svc = new WebhookCallbackService(logger, async (_u, b) => { body = b as Record<string, unknown>; }, () => {});
+    await svc.send({
+      endpoint: endpoint({
+        callbackTransport: 'BOTH',
+        callbackUrl: 'https://h/cb',
+        callbackNatsSubject: 'cb.nats',
+        callbackPayloadTemplate: {
+          event_type: '$$.event_type',
+          version: '$$.version',
+          occurred_at: '$$.occurred_at',
+          printer_code: '$$.printer_code',
+          queued_at: '$$.timeline.queued_at',
+          started_at: '$$.timeline.started_at',
+          transports: '$$.delivery.transports',
+          error: '$$.error',
+        },
+      }),
+      intakePayload: {},
+      result: {
+        ...ACCEPTED,
+        created_at: '2026-08-05T09:00:00.000Z',
+        queued_at: '2026-08-05T09:00:00.100Z',
+        resolved_printer_code: 'OFFICE_LASER_01',
+      },
+    });
+    expect(body).toEqual({
+      event_type: 'print.job.accepted',
+      version: 2,
+      occurred_at: '2026-08-05T09:00:00.100Z',
+      printer_code: 'OFFICE_LASER_01',
+      queued_at: '2026-08-05T09:00:00.100Z',
+      started_at: null,
+      transports: ['HTTP', 'NATS'],
+      error: null,
+    });
+  });
+
   it('resolves an unknown $$.field to undefined rather than the literal token', async () => {
     let body: Record<string, unknown> = {};
     const svc = new WebhookCallbackService(logger, async (_u, b) => { body = b as Record<string, unknown>; }, () => {});

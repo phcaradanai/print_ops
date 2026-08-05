@@ -152,6 +152,42 @@ export const ACCEPTANCE_CALLBACK_SYSTEM_FIELDS = [
 
 export type AcceptanceCallbackSystemField = (typeof ACCEPTANCE_CALLBACK_SYSTEM_FIELDS)[number];
 
+/**
+ * Every key of the unified v2 callback envelope (see
+ * apps/api/src/services/callback-payload.ts). These are the keys a receiver
+ * sees in ANY status; the acceptance-template resolver can supply them all,
+ * including the ones that are not direct intake-response fields
+ * (`event_type`, `occurred_at`, `timeline.*`, `delivery.*`, …).
+ *
+ * Shared so the Webhooks page offers the complete v2 vocabulary as
+ * `$$.field` tokens instead of only the raw intake-response subset.
+ */
+export const CALLBACK_ENVELOPE_SYSTEM_FIELDS = [
+  'version',
+  'event_type',
+  'occurred_at',
+  'request_id',
+  'job_id',
+  'source_system',
+  'status',
+  'data_quality',
+  'missing_fields',
+  'render_warnings',
+  'printer_code',
+  'runner_id',
+  'trace_id',
+  'duplicate',
+  'error',
+  'timeline.accepted_at',
+  'timeline.queued_at',
+  'timeline.started_at',
+  'timeline.terminal_at',
+  'delivery.transports',
+  'delivery.nats_mode',
+] as const;
+
+export type CallbackEnvelopeSystemField = (typeof CALLBACK_ENVELOPE_SYSTEM_FIELDS)[number];
+
 export interface WebhookEndpoint {
   id: string;
   endpointCode: string;

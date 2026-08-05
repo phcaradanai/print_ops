@@ -1,4 +1,4 @@
-import { ACCEPTANCE_CALLBACK_SYSTEM_FIELDS, type AcceptanceCallbackSystemField } from '@printerops/domain';
+import { ACCEPTANCE_CALLBACK_SYSTEM_FIELDS, CALLBACK_ENVELOPE_SYSTEM_FIELDS, type AcceptanceCallbackSystemField } from '@printerops/domain';
 
 /**
  * Client-side mirror of the acceptance-callback template resolver in
@@ -11,20 +11,27 @@ import { ACCEPTANCE_CALLBACK_SYSTEM_FIELDS, type AcceptanceCallbackSystemField }
  *
  * The two rules that must stay in step with the server:
  *   `$.field`  -> the caller's intake payload
- *   `$$.field` -> the intake response PrintOps produced (system fields)
+ *   `$$.field` -> a system field of the v2 envelope (intake response, or a
+ *                 derived envelope field such as event_type / occurred_at /
+ *                 timeline.* / delivery.*)
  * Only a whole-value token resolves; embedded tokens inside a longer string are
  * left literal, exactly as resolveTemplate does.
  */
 
-const FIELD_PATH = /^\$\.[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/;
-const SYSTEM_FIELD_PATH = /^\$\$\.[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/;
+const FIELD_PATH = /^\$\.(?:[A-Za-z0-9_]+\.)*[A-Za-z0-9_]+$/;
+const SYSTEM_FIELD_PATH = /^\$\$\.(?:[A-Za-z0-9_]+\.)*[A-Za-z0-9_]+$/;
 
-export const SYSTEM_FIELD_TOKENS: readonly string[] = ACCEPTANCE_CALLBACK_SYSTEM_FIELDS.map(
-  (field) => `$$.${field}`,
-);
+/** `$$.field` tokens offered to the operator: intake-response fields first,
+ *  then the full v2 envelope vocabulary (deduplicated, insertion-ordered). */
+export const SYSTEM_FIELD_TOKENS: readonly string[] = [
+  ...new Set([
+    ...ACCEPTANCE_CALLBACK_SYSTEM_FIELDS.map((field) => `$$.${field}`),
+    ...CALLBACK_ENVELOPE_SYSTEM_FIELDS.map((field) => `$$.${field}`),
+  ]),
+];
 
 /** Translation key carrying the one-line description of a system field. */
-export function systemFieldDescriptionKey(field: AcceptanceCallbackSystemField): string {
+export function systemFieldDescriptionKey(field: string): string {
   return `page.webhooks.systemField.${field}`;
 }
 
@@ -34,11 +41,12 @@ export function systemFieldDescriptionKey(field: AcceptanceCallbackSystemField):
  * cost them the system fields.
  */
 export const DEFAULT_CALLBACK_TEMPLATE = `{
-  "event_type": "print.job.accepted",
+  "event_type": "$$.event_type",
   "request_id": "$$.request_id",
-  "print_job_id": "$$.print_job_id",
+  "job_id": "$$.job_id",
   "status": "$$.status",
-  "printer_code": "$$.resolved_printer_code",
+  "occurred_at": "$$.occurred_at",
+  "printer_code": "$$.printer_code",
   "your_field": "$.yourField"
 }`;
 
@@ -46,8 +54,12 @@ export const DEFAULT_CALLBACK_TEMPLATE = `{
 export const SAMPLE_SYSTEM_RESULT: Record<string, unknown> = {
   accepted: true,
   print_job_id: '9f1c2b7e-4a30-4d51-9f8e-2c7b1a4d0e63',
+  job_id: '9f1c2b7e-4a30-4d51-9f8e-2c7b1a4d0e63',
   request_id: 'REQ-10482',
   trace_id: 'trace_1c3bb5c3-7f21-4a90-b0d6-2f5a9c81e774',
+  source_system: 'medisync',
+  created_at: '2026-08-05T09:00:00.000Z',
+  queued_at: '2026-08-05T09:00:00.100Z',
   resolved_printer_code: 'OFFICE_LASER_01',
   resolved_template_code: 'TEST_LABEL',
   status: 'QUEUED',
@@ -74,6 +86,27 @@ export interface TemplateResolutionSources {
   result: Record<string, unknown>;
 }
 
+/** Client mirror of the server's ENVELOPE_TEMPLATE_FIELDS — derived v2
+ *  envelope keys that are not raw intake-response fields. Keep in step with
+ *  webhook-callback.service.ts. */
+const ENVELOPE_TEMPLATE_FIELDS: Record<string, (result: Record<string, unknown>) => unknown> = {
+  'version': () => 2,
+  'event_type': () => 'print.job.accepted',
+  'occurred_at': (result) => result['queued_at'] ?? result['created_at'] ?? new Date().toISOString(),
+  'printer_code': (result) => result['resolved_printer_code'] ?? null,
+  'runner_id': () => null,
+  'data_quality': () => null,
+  'missing_fields': () => [],
+  'render_warnings': () => [],
+  'error': () => null,
+  'timeline.accepted_at': (result) => result['created_at'] ?? null,
+  'timeline.queued_at': (result) => result['queued_at'] ?? null,
+  'timeline.started_at': () => null,
+  'timeline.terminal_at': () => null,
+  'delivery.transports': () => ['HTTP'],
+  'delivery.nats_mode': () => null,
+};
+
 /** Resolve one parsed template object the way the server would. */
 export function resolveCallbackTemplate(
   template: Record<string, unknown>,
@@ -84,7 +117,11 @@ export function resolveCallbackTemplate(
     if (typeof raw !== 'string') {
       out[key] = raw;
     } else if (SYSTEM_FIELD_PATH.test(raw)) {
-      out[key] = fieldValue(sources.result, raw.slice(1));
+      const field = raw.slice(3);
+      const envelopeField = ENVELOPE_TEMPLATE_FIELDS[field];
+      out[key] = envelopeField !== undefined
+        ? envelopeField(sources.result)
+        : fieldValue(sources.result, raw.slice(1));
     } else if (FIELD_PATH.test(raw)) {
       out[key] = fieldValue(sources.payload, raw);
     } else {

@@ -1,4 +1,3 @@
-import { ACCEPTANCE_CALLBACK_SYSTEM_FIELDS } from '@printerops/domain';
 import { CodeBlock, Panel, SectionHeading, Stack, Text, TokenList } from '../../components/ui/index.js';
 import {
   SYSTEM_FIELD_TOKENS,
@@ -117,9 +116,9 @@ export function CallbackTemplateGuide({
             <TokenList
               insertTitle={insertTitle}
               onInsert={onInsert}
-              items={ACCEPTANCE_CALLBACK_SYSTEM_FIELDS.map((field, index) => ({
-                token: SYSTEM_FIELD_TOKENS[index] ?? '',
-                description: t(systemFieldDescriptionKey(field)),
+              items={SYSTEM_FIELD_TOKENS.map((token) => ({
+                token,
+                description: t(systemFieldDescriptionKey(token.slice(3))),
               }))}
             />
           </Stack>
