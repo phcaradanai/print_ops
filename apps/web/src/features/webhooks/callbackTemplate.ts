@@ -58,6 +58,7 @@ export const SAMPLE_SYSTEM_RESULT: Record<string, unknown> = {
   request_id: 'REQ-10482',
   trace_id: 'trace_1c3bb5c3-7f21-4a90-b0d6-2f5a9c81e774',
   source_system: 'medisync',
+  client_id: 'pharmacy-counter-01',
   created_at: '2026-08-05T09:00:00.000Z',
   queued_at: '2026-08-05T09:00:00.100Z',
   resolved_printer_code: 'OFFICE_LASER_01',
@@ -92,6 +93,7 @@ export interface TemplateResolutionSources {
 const ENVELOPE_TEMPLATE_FIELDS: Record<string, (result: Record<string, unknown>) => unknown> = {
   'version': () => 2,
   'event_type': () => 'print.job.accepted',
+  'client_id': () => null,
   'occurred_at': (result) => result['queued_at'] ?? result['created_at'] ?? new Date().toISOString(),
   'printer_code': (result) => result['resolved_printer_code'] ?? null,
   'runner_id': () => null,

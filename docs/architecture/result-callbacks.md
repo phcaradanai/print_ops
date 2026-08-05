@@ -208,6 +208,7 @@ Terminal result (`print.job.completed`):
   "request_id": "req-001",
   "job_id": "131a33aa-…",
   "source_system": "medisync",
+  "client_id": "pharmacy-counter-01 | null",
 
   "status": "SUCCESS",
   "data_quality": "OK",
@@ -245,6 +246,7 @@ are already filled because this is when the print was ordered:
   "request_id": "req-001",
   "job_id": "131a33aa-…",
   "source_system": "medisync",
+  "client_id": "pharmacy-counter-01 | null",
 
   "status": "QUEUED",
   "data_quality": null,

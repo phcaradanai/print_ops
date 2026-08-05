@@ -17,6 +17,7 @@ import { buildCallbackEnvelope, CALLBACK_ENVELOPE_VERSION } from './callback-pay
 const ENVELOPE_TEMPLATE_FIELDS: Record<string, (result: Record<string, unknown>, endpoint: WebhookEndpoint) => unknown> = {
   'version': () => CALLBACK_ENVELOPE_VERSION,
   'event_type': () => 'print.job.accepted',
+  'client_id': () => process.env['PRINTOPS_NATS_CLIENT_ID'] ?? null,
   'occurred_at': (result) => result['queued_at'] ?? result['created_at'] ?? new Date().toISOString(),
   'printer_code': (result) => result['resolved_printer_code'] ?? null,
   'runner_id': () => null,

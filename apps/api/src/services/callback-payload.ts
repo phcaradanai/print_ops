@@ -68,6 +68,11 @@ export function buildCallbackEnvelope(input: CallbackEnvelopeInput): Record<stri
     request_id: input.requestId,
     job_id: input.jobId,
     source_system: input.sourceSystem,
+    // The NATS client id this installation is provisioned with (set in the
+    // desktop NATS settings -> PRINTOPS_NATS_CLIENT_ID). Lets a receiver know
+    // WHICH workstation/print gateway sent the callback. null when NATS is
+    // not configured on this machine.
+    client_id: process.env['PRINTOPS_NATS_CLIENT_ID'] ?? null,
 
     status: input.status,
     data_quality: input.dataQuality ?? null,

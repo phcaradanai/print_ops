@@ -169,6 +169,7 @@ export const CALLBACK_ENVELOPE_SYSTEM_FIELDS = [
   'request_id',
   'job_id',
   'source_system',
+  'client_id',
   'status',
   'data_quality',
   'missing_fields',

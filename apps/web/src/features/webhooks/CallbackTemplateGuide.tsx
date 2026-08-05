@@ -29,6 +29,7 @@ export const UNIFIED_PAYLOAD_KEYS = `{
   "request_id": "REQ-10482",
   "job_id": "9f1c2b7e-...",
   "source_system": "medisync",
+  "client_id": "pharmacy-counter-01 | null",
 
   "status": "QUEUED | SUCCESS | FAILED | UNVERIFIED | ...",
   "data_quality": "OK | WITH_WARNINGS | null",

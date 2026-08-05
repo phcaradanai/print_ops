@@ -207,6 +207,39 @@ describe('WebhookCallbackService', () => {
     });
   });
 
+  it('carries client_id from PRINTOPS_NATS_CLIENT_ID on the default envelope and the template', async () => {
+    const before = process.env['PRINTOPS_NATS_CLIENT_ID'];
+    process.env['PRINTOPS_NATS_CLIENT_ID'] = 'pharmacy-counter-01';
+    try {
+      // Default envelope (no template).
+      let body: Record<string, unknown> = {};
+      let svc = new WebhookCallbackService(logger, async (_u, b) => { body = b as Record<string, unknown>; }, () => {});
+      await svc.send({
+        endpoint: endpoint({ callbackTransport: 'HTTP', callbackUrl: 'https://h/cb' }),
+        intakePayload: {},
+        result: { ...ACCEPTED, created_at: '2026-08-05T09:00:00.000Z' },
+      });
+      expect(body['client_id']).toBe('pharmacy-counter-01');
+
+      // Custom template with $$.client_id.
+      body = {};
+      svc = new WebhookCallbackService(logger, async (_u, b) => { body = b as Record<string, unknown>; }, () => {});
+      await svc.send({
+        endpoint: endpoint({
+          callbackTransport: 'HTTP',
+          callbackUrl: 'https://h/cb',
+          callbackPayloadTemplate: { client_id: '$$.client_id', status: '$$.status' },
+        }),
+        intakePayload: {},
+        result: { ...ACCEPTED },
+      });
+      expect(body).toEqual({ client_id: 'pharmacy-counter-01', status: 'QUEUED' });
+    } finally {
+      if (before === undefined) delete process.env['PRINTOPS_NATS_CLIENT_ID'];
+      else process.env['PRINTOPS_NATS_CLIENT_ID'] = before;
+    }
+  });
+
   it('resolves an unknown $$.field to undefined rather than the literal token', async () => {
     let body: Record<string, unknown> = {};
     const svc = new WebhookCallbackService(logger, async (_u, b) => { body = b as Record<string, unknown>; }, () => {});
