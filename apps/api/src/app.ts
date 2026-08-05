@@ -616,7 +616,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       { email: 'user@printerops.local', name: 'User', role: 'OPERATOR' as const },
       { email: 'viewer@printerops.local', name: 'Viewer', role: 'VIEWER' as const },
     ]) {
-      if (!(await userRepo.findByEmail(user.email))) {
+      const existing = await userRepo.findByEmail(user.email);
+      if (!existing) {
         userRepo.seed({
           id: generateId(),
           email: user.email,
@@ -627,6 +628,15 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
           createdAt: new Date(),
           updatedAt: new Date(),
         });
+        continue;
+      }
+      // Legacy databases from before credential hardening stored a placeholder
+      // hash ("123456") that verifyPassword rejects, and owner bootstrap may
+      // have deactivated the non-owner dev accounts. Re-hash and reactivate so
+      // the documented dev credentials keep working after an upgrade instead of
+      // stranding the dev accounts in an unloggable state.
+      if (!existing.passwordHash?.startsWith('scrypt$') || !existing.isActive) {
+        await userRepo.update(existing.id, { passwordHash: devPasswordHash, isActive: true });
       }
     }
   }
