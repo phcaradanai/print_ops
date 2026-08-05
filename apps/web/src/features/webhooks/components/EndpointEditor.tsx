@@ -312,9 +312,7 @@ export function EndpointEditor({ controller }: { controller: WebhookWorkspaceCon
           <div className="webhook-template-layout">
             <FormField
               label={t('page.webhooks.payloadTemplate')}
-              hint={form.callbackOnPrintResult
-                ? t('page.webhooks.payloadTemplateIgnoredOnResult')
-                : t('page.webhooks.payloadTemplateHelp')}
+              hint={t('page.webhooks.payloadTemplateHint')}
               error={templateError}
             >
               {(control) => (

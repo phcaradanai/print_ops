@@ -183,6 +183,10 @@ export class DynamicIntakeService {
           routePolicyCode: policy.policyCode,
           warnings: rendered.warnings,
           mappedPayload: route.mappedPayload,
+          // The original intake payload, kept so the TERMINAL callback can
+          // resolve `$.field` template tokens (the intake payload itself is
+          // long gone by the time the print finishes).
+          intakePayload: req.body,
           paperProfile: {
             widthMm: paper.widthMm,
             heightMm: paper.heightMm,

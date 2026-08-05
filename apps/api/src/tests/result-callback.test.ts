@@ -855,6 +855,49 @@ describe('result callback payload', () => {
     expect(Object.keys(payload)).not.toContain('payload');
     expect(Object.keys(payload)).not.toContain('rendered_print_payload');
   });
+
+  it('shapes the terminal callback with the endpoint template (same keys as acceptance, real final values)', () => {
+    const payload = buildResultCallbackPayload(
+      {
+        eventId: 'evt-3', eventType: 'PrintJobTerminal', traceId: 'trace-3', correlationId: 'c',
+        occurredAt: new Date('2026-07-27T06:00:00Z'), jobId: 'job-3', status: 'FAILED',
+        printerCode: PRINTER, runnerId: 'runner-x', errorCode: 'PRINTER_OFFLINE',
+        errorMessage: 'The selected printer was offline.', requestId: 'R3', sourceSystem: SOURCE,
+      },
+      {
+        id: 'job-3', requestId: 'R3', sourceSystem: SOURCE, printerCode: PRINTER,
+        receivedAt: new Date('2026-07-27T05:59:59Z'), queuedAt: new Date('2026-07-27T06:00:00Z'),
+        startedAt: new Date('2026-07-27T06:00:01Z'),
+        metadata: {
+          payload: { label: 'M3', barcode: '123' },
+        },
+      } as never,
+      {
+        enabled: true, trigger: 'PRINT_RESULT', transports: ['HTTP'],
+        payloadTemplate: {
+          event_type: '$$.event_type',
+          request_id: '$$.request_id',
+          job_id: '$$.job_id',
+          status: '$$.status',
+          occurred_at: '$$.occurred_at',
+          label: '$.label',
+          error_code: '$$.error.code',
+          terminal_at: '$$.timeline.terminal_at',
+        },
+      },
+    );
+    expect(payload).toEqual({
+      event_type: 'print.job.completed',
+      request_id: 'R3',
+      job_id: 'job-3',
+      // The template's $$.status is the REAL final status, not QUEUED.
+      status: 'FAILED',
+      occurred_at: '2026-07-27T06:00:00.000Z',
+      label: 'M3',
+      error_code: 'PRINTER_OFFLINE',
+      terminal_at: '2026-07-27T06:00:00.000Z',
+    });
+  });
 });
 
 /* ------------------------------------------------------------------ */

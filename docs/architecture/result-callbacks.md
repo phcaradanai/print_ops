@@ -322,18 +322,18 @@ job is created, and nothing prints — printing the raw payload and calling it a
 success is exactly the failure this prevents. Missing *fields* print; a missing
 *document* does not.
 
-### `callbackPayloadTemplate` does not apply here
+### `callbackPayloadTemplate` shapes BOTH callbacks
 
-The endpoint's `callbackPayloadTemplate` shapes the **acceptance** callback only.
-Terminal result callbacks always use the fixed envelope above.
+The endpoint's `callbackPayloadTemplate` shapes the **acceptance** callback
+AND the **terminal** result callback — one template, same keys, resolved
+against real values at each phase:
 
-That is deliberate: a result callback is a contract every receiver parses the
-same way, and a per-endpoint template would make `status` optional in
-practice. The Webhooks page warns about it when result callbacks are enabled, so
-an operator does not configure a template that is then quietly ignored.
-
-If a receiver needs extra fields, add them to the versioned envelope and bump
-`version` — do not reintroduce per-endpoint shaping.
+- Acceptance: `$$.field` resolves against the intake response (`status:
+  "QUEUED"`), `$.field` against the caller's intake payload.
+- Terminal: `$$.field` resolves against the v2 envelope, so `$$.status` is
+  the real final status, `$$.timeline.*` the real timestamps, `$$.error` the
+  real failure, and `$.field` still reads the intake payload stored on the
+  job. Without a template the fixed v2 envelope is sent.
 
 ## 6. Delivery model
 

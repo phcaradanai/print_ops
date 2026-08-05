@@ -875,8 +875,8 @@ const en: TranslationDict = {
   'page.webhooks.callbackUrl': 'Callback URL (or $.field in payload)',
   'page.webhooks.callbackNats': 'NATS reply subject (or $.field)',
   'page.webhooks.payloadTemplate': 'Response payload template (JSON; use $.field to echo intake values)',
-  'page.webhooks.payloadTemplateIgnoredOnResult':
-    'This template applies to the acceptance callback only. Terminal result callbacks always use the fixed, versioned print.job.completed envelope.',
+  'page.webhooks.payloadTemplateHint':
+    'Applies to BOTH callbacks: the acceptance (QUEUED) and the terminal result. $$.status / $$.timeline.* / $$.error take the real values at each phase; $.field reads the intake payload.',
   'page.webhooks.onPrintResult': 'Send only after print result is known',
   'page.webhooks.onPrintResultOnHelp':
     'ON: one callback per job, sent after the print reaches a terminal outcome (SUCCESS, FAILED, UNVERIFIED, TIMEOUT or CANCELLED), as event print.job.completed. No acceptance notification is sent.',
@@ -2209,8 +2209,8 @@ const th: TranslationDict = {
   'page.webhooks.callbackUrl': 'Callback URL (หรือ $.field ใน payload)',
   'page.webhooks.callbackNats': 'NATS reply subject (หรือ $.field)',
   'page.webhooks.payloadTemplate': 'เทมเพลต payload ตอบกลับ (JSON; ใช้ $.field เพื่อส่งค่ากลับ)',
-  'page.webhooks.payloadTemplateIgnoredOnResult':
-    'เทมเพลตนี้ใช้กับ callback ตอนรับงานเท่านั้น callback ผลลัพธ์สุดท้ายจะใช้โครงสร้าง print.job.completed แบบตายตัวที่มีเวอร์ชันกำกับเสมอ',
+  'page.webhooks.payloadTemplateHint':
+    'ใช้กับ callback ทั้ง 2 รอบ: ตอนรับงาน (QUEUED) และตอนผลพิมพ์สุดท้าย โดย $$.status / $$.timeline.* / $$.error จะเป็นค่าจริงในแต่ละช่วง ส่วน $.field อ่านจาก payload ที่ส่งเข้า',
   'page.webhooks.onPrintResult': 'ส่งต่อเมื่อทราบผลการพิมพ์แล้ว',
   'page.webhooks.onPrintResultOnHelp':
     'เปิด: ส่ง callback หนึ่งครั้งต่องาน หลังการพิมพ์ถึงสถานะสุดท้าย (SUCCESS, FAILED, UNVERIFIED, TIMEOUT หรือ CANCELLED) เป็นอีเวนต์ print.job.completed และจะไม่ส่งแจ้งตอนรับงาน',

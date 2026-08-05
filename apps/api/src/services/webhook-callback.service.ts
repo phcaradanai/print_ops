@@ -8,6 +8,11 @@ import { buildCallbackEnvelope, CALLBACK_ENVELOPE_VERSION } from './callback-pay
  * fields are derived (event_type, version, occurred_at, timeline.*, …) so an
  * operator can shape a custom template with every key the v2 payload can
  * carry, not just the ones that happen to live on IntakeResponse.
+ *
+ * Resolution order is result-first: when `result` already carries the field
+ * (the v2 envelope passed to the TERMINAL resolver, or status/request_id on
+ * the intake response), the real value wins; the derived map only fills in
+ * what the acceptance intake response does not contain.
  */
 const ENVELOPE_TEMPLATE_FIELDS: Record<string, (result: Record<string, unknown>, endpoint: WebhookEndpoint) => unknown> = {
   'version': () => CALLBACK_ENVELOPE_VERSION,
@@ -32,6 +37,12 @@ const ENVELOPE_TEMPLATE_FIELDS: Record<string, (result: Record<string, unknown>,
   },
   'delivery.nats_mode': () => null,
 };
+
+/** Minimal endpoint shape the template resolver needs (also satisfied by the
+ *  terminal intent snapshot). */
+export interface TemplateEndpointLike {
+  callbackTransport?: WebhookEndpoint['callbackTransport'];
+}
 
 /**
  * WebhookCallbackService notifies the original caller after a print job is
@@ -168,11 +179,20 @@ function renderFieldTokens(template: string, payload: Record<string, unknown>): 
   });
 }
 
-function resolveTemplate(
+/**
+ * Resolve a payload template the way the acceptance callback does.
+ *
+ * Shared with the TERMINAL callback: there it is called with the v2 envelope
+ * as `result`, so `$$.field` resolves to the REAL final values (status,
+ * timeline, error, …) and the derived envelope map below only fills in the
+ * acceptance-time fields the intake response lacks. `$.field` always reads
+ * the caller's intake payload.
+ */
+export function resolveTemplate(
   template: Record<string, unknown> | undefined,
   intakePayload: Record<string, unknown>,
   result: Record<string, unknown>,
-  endpoint: WebhookEndpoint,
+  endpoint: TemplateEndpointLike,
 ): Record<string, unknown> {
   if (!template) return {};
   const out: Record<string, unknown> = {};
@@ -180,14 +200,18 @@ function resolveTemplate(
     if (typeof raw !== 'string') {
       out[key] = raw;
     } else if (SYSTEM_FIELD_PATH.test(raw)) {
-      // `$$.status` -> look up `status` on the intake response. Envelope-derived
-      // fields (event_type, version, occurred_at, timeline.*, delivery.*) are
-      // resolved first so a custom template can carry every v2 key.
+      // Result first: the v2 envelope (terminal) and the intake response
+      // (status, request_id, …) both carry real values. The derived map only
+      // fills in envelope keys the acceptance response does not contain
+      // (event_type, occurred_at, timeline.*, delivery.*, …).
       const field = raw.slice(3);
+      const fromResult = fieldValue(result, raw.slice(1));
       const envelopeField = ENVELOPE_TEMPLATE_FIELDS[field];
-      out[key] = envelopeField !== undefined
-        ? envelopeField(result, endpoint)
-        : fieldValue(result, raw.slice(1));
+      out[key] = fromResult !== undefined
+        ? fromResult
+        : envelopeField !== undefined
+          ? envelopeField(result, endpoint as WebhookEndpoint)
+          : fromResult;
     } else if (FIELD_PATH.test(raw)) {
       out[key] = fieldValue(intakePayload, raw);
     } else {

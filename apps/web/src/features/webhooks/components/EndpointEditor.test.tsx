@@ -52,7 +52,7 @@ const labels: Record<string, string> = {
   'page.webhooks.natsSubjectPlaceholder': 'printops.result',
   'page.webhooks.payloadTemplate': 'Acceptance payload template',
   'page.webhooks.payloadTemplateHelp': 'Acceptance template help',
-  'page.webhooks.payloadTemplateIgnoredOnResult': 'Fixed terminal envelope',
+  'page.webhooks.payloadTemplateHint': 'Used by both callbacks',
   'page.webhooks.saveDraft': 'Save draft',
   'page.webhooks.testSavedEndpoint': 'Test callback',
   'page.webhooks.unsavedTestHelp': 'Save the endpoint before testing callback delivery.',
@@ -144,6 +144,6 @@ describe('EndpointEditor', () => {
     );
     expect(html).toContain('Send terminal print-result callback');
     expect(html).toContain('SUCCESS and UNVERIFIED remain distinct.');
-    expect(html).toContain('Fixed terminal envelope');
+    expect(html).toContain('Used by both callbacks');
   });
 });

@@ -48,6 +48,15 @@ describe('callbackOnPrintResult decides which callback fires', () => {
     expect(buildCallbackIntent(ep, {}).enabled).toBe(true);
   });
 
+  it('snapshots the payload template into the intent so the terminal callback can shape itself', () => {
+    const template = { event_type: '$$.event_type', label: '$.label' };
+    const intent = buildCallbackIntent(endpoint({ callbackPayloadTemplate: template }), {});
+    expect(intent.payloadTemplate).toEqual(template);
+    // A disabled transport still keeps the template if one was configured? No:
+    // no destination -> disabled intent, and the template is irrelevant.
+    expect(buildCallbackIntent(endpoint({ callbackTransport: 'NONE', callbackPayloadTemplate: template }), {}).payloadTemplate).toBeUndefined();
+  });
+
   it('on: terminal fires, acceptance does not', () => {
     const ep = endpoint({ callbackOnPrintResult: true });
     expect(wantsAcceptanceCallback(ep, false)).toBe(false);

@@ -22,6 +22,7 @@ import {
 import { assertCallbackUrlAllowed, CallbackUrlRejected, callbackUrlPolicyFromEnv, type CallbackUrlPolicy } from '../infra/http/callback-url-guard.js';
 import { callbackSigningSecret, CALLBACK_SIGNATURE_VERSION, signCallback } from './callback-signing.js';
 import { buildCallbackEnvelope, CALLBACK_ENVELOPE_VERSION } from './callback-payload.js';
+import { resolveTemplate, type TemplateEndpointLike } from './webhook-callback.service.js';
 
 /**
  * Wire-format version of the result-callback contract. Bump on a breaking
@@ -507,7 +508,7 @@ export function buildResultCallbackPayload(
   // it, so SUCCESS + WITH_WARNINGS carries the same meaning as a
   // "SUCCESS_WITH_WARNING" status without breaking every status consumer.
   const quality = extractRenderQuality(job);
-  return buildCallbackEnvelope({
+  const envelope = buildCallbackEnvelope({
     eventId: event.eventId,
     eventType: RESULT_EVENT_TYPE,
     occurredAt: (event.finishedAt ?? event.occurredAt).toISOString(),
@@ -541,6 +542,41 @@ export function buildResultCallbackPayload(
     transports: intent.transports,
     natsMode: intent.natsMode ?? null,
   });
+
+  // When the endpoint defined a payload template, the TERMINAL callback is
+  // shaped by it too — same keys as the acceptance callback, resolved against
+  // the real final envelope. `$$.status` becomes the actual final status,
+  // `$$.timeline.*` the real timestamps. Without a template the fixed v2
+  // envelope is sent (previous behaviour).
+  const template = intent.payloadTemplate;
+  if (template && Object.keys(template).length > 0) {
+    return resolveTemplate(template, jobIntakePayload(job), envelope, {
+      callbackTransport: transportsToEndpointTransport(intent.transports),
+    });
+  }
+  return envelope;
+}
+
+/** The caller's original intake payload, kept on the job so `$.field` tokens
+ *  can resolve at terminal time (the intake payload itself is long gone). */
+function jobIntakePayload(job: Job): Record<string, unknown> {
+  const stored = job.metadata?.['payload'] ?? job.metadata?.['intakePayload'];
+  return stored && typeof stored === 'object' && !Array.isArray(stored)
+    ? stored as Record<string, unknown>
+    : {};
+}
+
+/** intent.transports -> the endpoint.callbackTransport shape the resolver
+ *  understands for the derived `$$.delivery.transports` fallback. */
+function transportsToEndpointTransport(
+  transports: JobCallbackIntent['transports'],
+): NonNullable<TemplateEndpointLike['callbackTransport']> {
+  const hasHttp = transports.includes('HTTP');
+  const hasNats = transports.includes('NATS');
+  if (hasHttp && hasNats) return 'BOTH';
+  if (hasHttp) return 'HTTP';
+  if (hasNats) return 'NATS';
+  return 'NONE';
 }
 
 function errCode(err: unknown): string | undefined {

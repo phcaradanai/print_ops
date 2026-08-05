@@ -129,8 +129,8 @@ export type CreateWebhookRoutePolicyInput = Omit<WebhookRoutePolicy, 'id' | 'cre
  * of the intake response, which is the only `result` ever handed to a
  * templatable callback. A `callbackPayloadTemplate` reaches these with the
  * `$$.field` namespace; `$.field` stays reserved for the caller's own intake
- * payload. Terminal result callbacks use a fixed envelope and ignore templates
- * entirely (docs/architecture/result-callbacks.md §5).
+ * payload. Terminal result callbacks resolve the same template against the v2
+ * envelope (so `$$.status` carries the real final status).
  *
  * Shared so the API resolves and the Webhooks page offers exactly the same
  * seven keys — a UI that advertises a field the resolver cannot supply is how

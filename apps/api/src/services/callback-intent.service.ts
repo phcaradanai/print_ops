@@ -80,6 +80,12 @@ export function buildCallbackIntent(
   if (!intent.enabled) {
     intent.disabledReason = `callbackTransport ${transport} is configured but no destination could be resolved from the payload`;
   }
+  // Snapshot the payload template with the intent so the TERMINAL callback can
+  // resolve it too (against the v2 envelope + the stored intake payload). The
+  // acceptance callback resolves it against the intake response.
+  if (endpoint.callbackPayloadTemplate && Object.keys(endpoint.callbackPayloadTemplate).length > 0) {
+    intent.payloadTemplate = endpoint.callbackPayloadTemplate;
+  }
   return intent;
 }
 
