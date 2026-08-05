@@ -289,7 +289,6 @@ namespace PrintOps.HtmlPrint
     /// </summary>
     internal sealed class WebView2PrintSession
     {
-        private readonly Form form;
         private readonly WebView2 webView;
         private string currentPhase = "Initializing";
 
@@ -298,19 +297,12 @@ namespace PrintOps.HtmlPrint
         public WebView2PrintSession()
         {
             webView = new WebView2 { Dock = DockStyle.Fill };
-            form = new Form
-            {
-                Text = "PrintOps HTML Print",
-                ShowInTaskbar = false,
-                FormBorderStyle = FormBorderStyle.FixedToolWindow,
-                StartPosition = FormStartPosition.Manual,
-                Location = new Point(-32000, -32000),
-                ClientSize = new Size(1200, 1200)
-            };
-            form.Controls.Add(webView);
         }
 
-        public Form Form { get { return form; } }
+        // The host form owns the top-level window; this is just the WebView2
+        // control so the host can Dock it directly. Hosting a nested Form
+        // throws "Top-level control cannot be added to a control".
+        public Control Control { get { return webView; } }
 
         public async Task InitializeAsync(string userDataFolder)
         {
@@ -510,7 +502,7 @@ namespace PrintOps.HtmlPrint
             StartPosition = FormStartPosition.Manual;
             Location = new Point(-32000, -32000);
             ClientSize = new Size(1200, 1200);
-            Controls.Add(session.Form);
+            Controls.Add(session.Control);
             Shown += OnShown;
         }
 
@@ -627,7 +619,7 @@ namespace PrintOps.HtmlPrint
             StartPosition = FormStartPosition.Manual;
             Location = new Point(-32000, -32000);
             ClientSize = new Size(1200, 1200);
-            Controls.Add(session.Form);
+            Controls.Add(session.Control);
 
             poll = new Timer { Interval = 100 };
             poll.Tick += OnPoll;
