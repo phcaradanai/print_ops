@@ -1,6 +1,6 @@
 import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
-import { existsSync } from 'node:fs';
+import { existsSync, createWriteStream } from 'node:fs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -95,7 +95,7 @@ const defaultDeps: WindowsSpoolerDeps = {
   now: Date.now,
   htmlPrintHelperPath: process.env['PRINTOPS_HTML_PRINT_HELPER'],
   spawnHelper: (helperPath, args) =>
-    spawn(helperPath, args, { stdio: 'ignore', windowsHide: true }),
+    spawn(helperPath, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true }),
 };
 
 /**
@@ -600,6 +600,32 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
       if (!correlationIssues.includes(ippIssue)) correlationIssues.push(ippIssue);
       evidence['ippJobConfirmed'] = false;
       evidence['correlationIssues'] = correlationIssues;
+
+      // WSD-only printers (e.g. Microsoft IPP Class Driver over WSD) expose no
+      // reachable printer-side IPP/SNMP endpoint, so no exact device-level proof
+      // can EVER arrive. When the local spooler nonetheless observed this exact
+      // job and reports it delivered (left-queue/finished), that is the strongest
+      // signal Windows itself reports for a successful local print. Accept it as
+      // SUCCESS instead of permanently reporting WSD deployments as UNVERIFIED.
+      const ippStructurallyUnavailable = ippConfirmation.outcome === 'unverifiable'
+        && !!ippObservation?.baselineError;
+      const spoolerDelivered = spooler.outcome === 'left-queue' || spooler.outcome === 'finished';
+      const exactJobObserved = observedJobIds.size === copies;
+      if (ippStructurallyUnavailable && spoolerDelivered && exactJobObserved
+        && spooler.competingJobIds.length === 0 && preexistingUnsafeJobs.length === 0) {
+        evidence['deviceConfirmed'] = true;
+        evidence['deviceConfirmation'] = 'local-spooler-delivery';
+        evidence['verificationBasis'] = 'spooler-delivery (printer-side IPP/SNMP unavailable)';
+        return {
+          success: true,
+          jobId,
+          message:
+            `WindowsSpoolerAdapter: ${subject} on "${printerName}" delivered to the local spooler ` +
+            `(${spooler.detail}); printer-side IPP/SNMP confirmation is unavailable on this connection`,
+          raw: evidence,
+        };
+      }
+
       // A later SNMP +1 cannot repair missing job-specific proof because that
       // increment may belong to another host. Take one non-blocking sample for
       // operator evidence, then stop; otherwise a 90s IPP wait followed by a
@@ -1603,13 +1629,37 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     const dir = await mkdtemp(join(tmpdir(), 'printops-html-serve-'));
     // `--serve` keeps the process alive and reuses one WebView2 environment;
     // the idle timeout bounds the orphan a crashed parent could leave behind.
+    const logError = (line: string): void => {
+      try {
+        const log = createWriteStream(join(dir, 'helper-stderr.log'), { flags: 'a' });
+        log.write(`${new Date().toISOString()} ${line}\n`);
+        log.end();
+      } catch {
+        // diagnostic only
+      }
+    };
+    logError(`HELPER_PATH: ${helperPath}`);
+    logError(`HELPER_ARGS: --serve ${dir} --idle-ms ${WindowsSpoolerAdapter.HTML_HELPER_IDLE_MS}`);
+    logError(`HELPER_CWD: ${process.cwd()}`);
     const spawnHelper = this.deps.spawnHelper ??
-      ((path: string, args: string[]) => spawn(path, args, { stdio: 'ignore', windowsHide: true }));
+      ((path: string, args: string[]) => spawn(path, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true }));
     const child = spawnHelper(
       helperPath,
       ['--serve', dir, '--idle-ms', String(WindowsSpoolerAdapter.HTML_HELPER_IDLE_MS)],
     );
-    child.once('exit', () => {
+    // DEBUG: capture helper stderr to a file next to the session dir so a
+    // silent startup death can be diagnosed on the field machine.
+    if (child.stderr && typeof child.stderr.pipe === 'function') {
+      try {
+        const log = createWriteStream(join(dir, 'helper-stderr.log'), { flags: 'a' });
+        child.stderr.pipe(log);
+      } catch {
+        // diagnostic only
+      }
+    }
+    child.once('error', (err) => logError(`SPAWN_ERROR: ${err.message}`));
+    child.once('exit', (code, signal) => {
+      logError(`HELPER_EXIT code=${code} signal=${signal ?? ''}`);
       if (this.htmlHelperSessions.get(printerName)?.child === child) {
         this.htmlHelperSessions.delete(printerName);
       }
@@ -1649,13 +1699,23 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
   }
 
   private resolveHtmlPrintHelperPath(): string {
+    // Tauri's resource_dir() returns extended-length paths (\\?\C:\...) and the
+    // desktop passes that straight into PRINTOPS_HTML_PRINT_HELPER. Node's
+    // existsSync/spawn tolerate the prefix, but the .NET Framework CLR cannot
+    // resolve a \\?\ app base and dies with "Could not load file or assembly
+    // ... The system cannot find the file specified". Normalise to a plain
+    // Win32 path before spawning.
+    const normaliseWinPath = (candidate: string): string =>
+      candidate.startsWith('\\\\?\\') ? candidate.slice(4) : candidate;
     const candidates = [
       this.deps.htmlPrintHelperPath,
       process.env['PRINTOPS_HTML_PRINT_HELPER'],
       join(process.cwd(), 'print-helper', 'printops-html-print.exe'),
       join(process.cwd(), 'apps', 'windows-print-helper', 'publish', 'printops-html-print.exe'),
       join(process.cwd(), '..', 'windows-print-helper', 'publish', 'printops-html-print.exe'),
-    ].filter((candidate): candidate is string => Boolean(candidate));
+    ]
+      .filter((candidate): candidate is string => Boolean(candidate))
+      .map(normaliseWinPath);
 
     const found = candidates.find((candidate) => existsSync(candidate));
     if (!found) {

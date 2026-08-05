@@ -242,12 +242,19 @@ export class ExecuteJobService {
         ...(acceptedProgress?.evidence ?? {}),
         ...adapterEvidence(result.raw),
       };
+      // windows_spooler SUCCESS normally requires BOTH the device counter and
+      // the exact printer-side IPP job. WSD-only printers expose no reachable
+      // IPP/SNMP endpoint, so the adapter may confirm delivery through the
+      // local spooler instead (evidence.deviceConfirmation =
+      // 'local-spooler-delivery'); that explicit flag stands in for IPP proof.
+      const spoolerDeliveryConfirmed =
+        evidence['deviceConfirmation'] === 'local-spooler-delivery';
       if (
         result.success &&
         adapter.protocol === 'windows_spooler' &&
         (
           evidence['deviceConfirmed'] !== true ||
-          evidence['ippJobConfirmed'] !== true
+          (evidence['ippJobConfirmed'] !== true && !spoolerDeliveryConfirmed)
         )
       ) {
         return await this.handleFailure(

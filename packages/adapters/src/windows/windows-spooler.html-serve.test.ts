@@ -73,6 +73,8 @@ function makeServeHarness(opts: {
   htmlSubmissionError?: string;
   htmlSubmission?: ReturnType<typeof exactHtmlSubmission>;
   confirmIpp?: boolean;
+  /** When set, htmlPrintHelperPath is prefixed with it (e.g. '\\\\?\\'). */
+  helperPathPrefix?: string;
 } = {}): ServeHarness {
   const spawns: ServeHarness['spawns'] = [];
   let pageBase = 100;
@@ -149,7 +151,7 @@ function makeServeHarness(opts: {
     })(),
     // An existing file — the fake spawnHelper never actually launches it, and
     // resolveHtmlPrintHelperPath must not depend on the workspace CWD.
-    htmlPrintHelperPath: process.execPath,
+    htmlPrintHelperPath: (opts.helperPathPrefix ?? '') + process.execPath,
     spawnHelper(helperPath, args) {
       spawns.push({ helperPath, args });
       return fakeChild() as unknown as ReturnType<NonNullable<WindowsSpoolerDeps['spawnHelper']>>;
@@ -311,5 +313,30 @@ describe('persistent serve-mode helper sessions', () => {
     expect(spawns).toHaveLength(1);
     // The serve dir is a fresh temp dir under the standard prefix.
     expect(servedDir.startsWith(join(tmpdir(), 'printops-html-serve-'))).toBe(true);
+  });
+
+  it('normalises an extended-length (\\\\?\\-) helper path before spawning', async () => {
+    // Tauri's resource_dir() yields \\?\C:\... and the desktop forwards it as
+    // PRINTOPS_HTML_PRINT_HELPER. Node tolerates the prefix but the .NET CLR
+    // cannot load its app base from it — the helper must be spawned with the
+    // plain Win32 path.
+    const h = makeServeHarness({ confirmIpp: true, helperPathPrefix: '\\\\?\\' });
+    const result = await h.adapter.executeCommand(htmlPrintCommand());
+    expect(result.success).toBe(true);
+    expect(h.spawns).toHaveLength(1);
+    expect(h.spawns[0]?.helperPath).not.toMatch(/^\\\\\?\\/);
+    expect(h.spawns[0]?.helperPath).toBe(process.execPath);
+  });
+
+  it('reports SUCCESS via spooler delivery when printer-side IPP is structurally unavailable', async () => {
+    // WSD printers (Microsoft IPP Class Driver) expose no reachable IPP/SNMP
+    // endpoint. When the local spooler observed our exact job and delivered it,
+    // the job must not come back PRINT_NOT_VERIFIABLE.
+    const h = makeServeHarness({ confirmIpp: false });
+    const result = await h.adapter.executeCommand(htmlPrintCommand());
+    expect(result.success).toBe(true);
+    const evidence = result.raw as Record<string, unknown>;
+    expect(evidence['deviceConfirmation']).toBe('local-spooler-delivery');
+    expect(evidence['verificationBasis']).toContain('spooler-delivery');
   });
 });
