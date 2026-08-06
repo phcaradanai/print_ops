@@ -337,6 +337,19 @@ against real values at each phase:
   real failure, and `$.field` still reads the intake payload stored on the
   job. Without a template the fixed v2 envelope is sent.
 
+**The two rounds resolve the same `$$.field` vocabulary — nothing drops.**
+The terminal envelope lacks the intake-response-only keys
+(`print_job_id`, `created_at`, `queued_at`, `resolved_printer_code`,
+`resolved_template_code`), so the terminal resolver merges a job-derived
+intake-shaped view under the envelope: `print_job_id` = the job id,
+`created_at` / `queued_at` = the job's real timestamps (the same instants the
+acceptance response carried), `resolved_printer_code` = the printer,
+`resolved_template_code` = the resolved template. The envelope is spread
+last, so where both define a key (`status`, `occurred_at`, `timeline.*`,
+`error`, …) the real final value wins. A template using `$$.print_job_id`
+therefore delivers the job id in BOTH callbacks; before this fix the key
+silently vanished from the terminal round.
+
 ## 6. Delivery model
 
 `CallbackDelivery` (SQLite table `callback_deliveries`, or the in-memory

@@ -41,6 +41,10 @@ export interface ExternalPrintJobResponse {
   status: string;
   trace_id: string;
   accepted_at: Date;
+  /** Instant the job entered the queue. Mirrors IntakeResponse.queued_at so
+   *  BOTH intake paths' acceptance callbacks report the same queued time the
+   *  terminal callback reports. */
+  queued_at: Date;
   duplicate: boolean;
   existing_job_id?: string;
 }
@@ -120,6 +124,7 @@ export class AcceptExternalJobService {
         status: 'DUPLICATE_RETURNED',
         trace_id: existing.traceId,
         accepted_at: existing.createdAt,
+        queued_at: existing.queuedAt ?? existing.createdAt,
         duplicate: true,
         existing_job_id: existing.id,
       };
@@ -252,6 +257,7 @@ export class AcceptExternalJobService {
       status: job.status,
       trace_id: job.traceId,
       accepted_at: job.createdAt,
+      queued_at: job.queuedAt ?? job.createdAt,
       duplicate: false,
     };
   }

@@ -550,7 +550,24 @@ export function buildResultCallbackPayload(
   // envelope is sent (previous behaviour).
   const template = intent.payloadTemplate;
   if (template && Object.keys(template).length > 0) {
-    return resolveTemplate(template, jobIntakePayload(job), envelope, {
+    // The acceptance callback resolves `$$.field` against the intake response,
+    // whose shape is ACCEPTANCE_CALLBACK_SYSTEM_FIELDS (print_job_id,
+    // created_at, queued_at, resolved_printer_code, resolved_template_code, …).
+    // The v2 envelope carries the real final values but NOT those intake-only
+    // keys — a template using them resolved at acceptance and then silently
+    // dropped the key at terminal time. Merge a job-derived intake-shaped view
+    // UNDER the envelope so every `$$.field` the acceptance callback can
+    // resolve resolves identically here; the envelope is spread last, so where
+    // both define a key (status, occurred_at, timeline.*, error, …) the real
+    // final value wins.
+    const intakeShaped: Record<string, unknown> = {
+      print_job_id: job.id,
+      created_at: job.receivedAt?.toISOString() ?? job.createdAt?.toISOString() ?? null,
+      queued_at: job.queuedAt?.toISOString() ?? null,
+      resolved_printer_code: job.printerCode ?? null,
+      resolved_template_code: job.resolvedTemplateCode ?? job.templateCode ?? null,
+    };
+    return resolveTemplate(template, jobIntakePayload(job), { ...intakeShaped, ...envelope }, {
       callbackTransport: transportsToEndpointTransport(intent.transports),
     });
   }

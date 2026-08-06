@@ -222,7 +222,10 @@ export class DynamicPrintService {
       trace_id: response.trace_id,
       source_system: req.source_system,
       created_at: response.accepted_at?.toISOString() ?? null,
-      queued_at: undefined,
+      // The job is queued the moment it is accepted — report the same instant
+      // the terminal callback reports (job.queuedAt), so a template resolving
+      // $$.queued_at / $$.occurred_at sees ONE consistent value across rounds.
+      queued_at: response.queued_at?.toISOString() ?? null,
       resolved_printer_code: printerCode,
       resolved_template_code: req.code_template,
       status: response.status,
