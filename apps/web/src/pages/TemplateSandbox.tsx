@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { evaluatePrinterReadiness } from '@printerops/domain';
 import { apiFetch } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
@@ -37,7 +38,14 @@ interface Printer {
   protocol: string;
   connectionUri: string;
   isActive: boolean;
-  status?: { code: string; checkedAt: string };
+  status?: {
+    code: string;
+    checkedAt: string;
+    detected?: boolean;
+    workOffline?: boolean | null;
+    rawStatus?: string;
+    rawState?: string;
+  };
   capabilities?: {
     colorSupported: boolean;
     duplexSupported: boolean;
@@ -210,7 +218,17 @@ export default function TemplateSandbox() {
   const colorAvailable = Boolean(selectedPrinter?.capabilities?.colorSupported);
   const copiesExceeded = printerMaxCopies != null && copies > printerMaxCopies;
   const templateAllowed = !selectedPrinter?.allowedTemplates || selectedPrinter.allowedTemplates.length === 0 || !selectedTemplate || selectedPrinter.allowedTemplates.includes(selectedTemplate.templateCode);
-  const printerReady = selectedPrinter?.status?.code === 'online' || selectedPrinter?.status?.code === 'idle';
+  const printerReadiness = evaluatePrinterReadiness({
+    detected: selectedPrinter?.status?.detected,
+    statusCode: selectedPrinter?.status?.code,
+    rawStatus: selectedPrinter?.status?.rawStatus,
+    rawState: selectedPrinter?.status?.rawState,
+    workOffline: selectedPrinter?.status?.workOffline,
+  });
+  const printerReady = Boolean(selectedPrinter) && printerReadiness.ready;
+  const printerReadinessWarning = printerReadiness.warning === 'unknown-status'
+    ? t('page.sandbox.printerUnknownWarning')
+    : '';
   const canPrint = !!printerId && !!templateId && !payloadError && !copiesExceeded && templateAllowed && printerReady;
   const testPrintBlockedReason = !printerId
     ? t('page.sandbox.testPrintNeedsPrinter')
@@ -222,8 +240,10 @@ export default function TemplateSandbox() {
           ? t('page.sandbox.testPrintReduceCopies')
           : !templateAllowed
             ? t('page.sandbox.testPrintChooseAllowedTemplate')
-            : !printerReady
-              ? 'The selected printer is not ready for physical output. Choose a printer reported as online or idle.'
+            : !printerReadiness.ready
+              ? printerReadiness.blockedBy === 'status-unavailable'
+                ? t('page.sandbox.testPrintNeedsStatus')
+                : t('page.sandbox.testPrintBlockedByPrinter')
             : '';
 
   useEffect(() => {
@@ -435,6 +455,11 @@ export default function TemplateSandbox() {
               {!templateAllowed && (
                 <Alert tone="warning">
                   {t('page.sandbox.templateNotAllowed').replace('{code}', selectedTemplate?.templateCode ?? '')}
+                </Alert>
+              )}
+              {printerReadinessWarning && (
+                <Alert tone="warning">
+                  {printerReadinessWarning}
                 </Alert>
               )}
             </div>

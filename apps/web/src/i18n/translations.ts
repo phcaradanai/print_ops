@@ -848,6 +848,9 @@ const en: TranslationDict = {
   'page.sandbox.testPrintFixPayload': 'correct the sample JSON',
   'page.sandbox.testPrintReduceCopies': 'reduce copies to the printer maximum',
   'page.sandbox.testPrintChooseAllowedTemplate': 'choose a template allowed by the selected printer',
+  'page.sandbox.printerUnknownWarning': 'Windows reported UNKNOWN without an explicit Offline, Error, or Paused state. Test print remains available, and physical output will still be verified.',
+  'page.sandbox.testPrintNeedsStatus': 'refresh the printer status before testing',
+  'page.sandbox.testPrintBlockedByPrinter': 'the printer reports Offline, Error, or Paused',
 
   // Webhooks
   'page.webhooks.title': 'Webhook Endpoints',
@@ -1271,6 +1274,8 @@ const en: TranslationDict = {
   'page.printerDetail.testPrintFailed': 'Could not send the test print.',
   'page.printerDetail.statusUpdated': 'Status updated.',
   'page.printerDetail.statusFailed': 'Could not refresh the status.',
+  'page.printerDetail.unknownStatusWarning': 'Windows reported UNKNOWN without an explicit Offline, Error, or Paused state. Test print remains available, and physical output will still be verified.',
+  'page.printerDetail.testPrintBlocked': 'Test print is disabled because the printer reports Offline, Error, or Paused.',
   'page.templates.loadFailed': 'Could not load the templates',
   'page.templates.profilesLoadFailed': 'Could not load the paper profiles',
   'page.sandbox.referenceLoadFailed': 'Could not load templates, paper profiles or printers',
@@ -2183,6 +2188,9 @@ const th: TranslationDict = {
   'page.sandbox.testPrintFixPayload': 'แก้ไข JSON ตัวอย่าง',
   'page.sandbox.testPrintReduceCopies': 'ลดจำนวนชุดให้ไม่เกินค่าสูงสุดของเครื่องพิมพ์',
   'page.sandbox.testPrintChooseAllowedTemplate': 'เลือกเทมเพลตที่เครื่องพิมพ์นี้อนุญาต',
+  'page.sandbox.printerUnknownWarning': 'Windows รายงานสถานะ UNKNOWN โดยไม่พบสถานะ Offline, Error หรือ Paused ที่ชัดเจน จึงยังทดสอบพิมพ์ได้ และระบบจะตรวจยืนยันการพิมพ์จริงต่อไป',
+  'page.sandbox.testPrintNeedsStatus': 'รีเฟรชสถานะเครื่องพิมพ์ก่อนทดสอบ',
+  'page.sandbox.testPrintBlockedByPrinter': 'เครื่องพิมพ์รายงานสถานะ Offline, Error หรือ Paused',
 
   // Webhooks
   'page.webhooks.title': 'เว็บฮุกเอนด์พอยต์',
@@ -2606,6 +2614,8 @@ const th: TranslationDict = {
   'page.printerDetail.testPrintFailed': 'ส่งงานทดสอบพิมพ์ไม่สำเร็จ',
   'page.printerDetail.statusUpdated': 'อัปเดตสถานะแล้ว',
   'page.printerDetail.statusFailed': 'อัปเดตสถานะไม่สำเร็จ',
+  'page.printerDetail.unknownStatusWarning': 'Windows รายงานสถานะ UNKNOWN โดยไม่พบสถานะ Offline, Error หรือ Paused ที่ชัดเจน จึงยังทดสอบพิมพ์ได้ และระบบจะตรวจยืนยันการพิมพ์จริงต่อไป',
+  'page.printerDetail.testPrintBlocked': 'ปิดการทดสอบพิมพ์เนื่องจากเครื่องพิมพ์รายงานสถานะ Offline, Error หรือ Paused',
   'page.templates.loadFailed': 'โหลดรายการเทมเพลตไม่สำเร็จ',
   'page.templates.profilesLoadFailed': 'โหลดโปรไฟล์กระดาษไม่สำเร็จ',
   'page.sandbox.referenceLoadFailed': 'โหลดเทมเพลต โปรไฟล์กระดาษ หรือเครื่องพิมพ์ไม่สำเร็จ',

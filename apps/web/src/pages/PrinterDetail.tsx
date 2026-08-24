@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
+import { evaluatePrinterReadiness } from '@printerops/domain';
 import { apiFetch, apiFetchVoid } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
@@ -28,6 +29,10 @@ interface PrinterStatus {
   code: string;
   text?: string;
   lastSeenAt?: string;
+  detected?: boolean;
+  workOffline?: boolean | null;
+  rawStatus?: string;
+  rawState?: string;
 }
 
 interface Printer {
@@ -111,6 +116,13 @@ export default function PrinterDetail() {
   }
 
   const statusCode = printer.status?.code ?? 'unknown';
+  const readiness = evaluatePrinterReadiness({
+    detected: printer.status?.detected,
+    statusCode: printer.status?.code,
+    rawStatus: printer.status?.rawStatus,
+    rawState: printer.status?.rawState,
+    workOffline: printer.status?.workOffline,
+  });
 
   return (
     <PageLayout
@@ -129,7 +141,13 @@ export default function PrinterDetail() {
           <Button variant="secondary" onClick={() => void runRefreshStatus()} busy={refreshStatus.pending}>
             {t('page.printerDetail.getStatus')}
           </Button>
-          <Button onClick={() => void runTestPrint()} busy={testPrint.pending} busyLabel={t('page.printerDetail.testPrintSending')}>
+          <Button
+            onClick={() => void runTestPrint()}
+            busy={testPrint.pending}
+            busyLabel={t('page.printerDetail.testPrintSending')}
+            disabled={!readiness.ready}
+            aria-describedby={!readiness.ready ? 'printer-test-print-status' : undefined}
+          >
             {t('page.printerDetail.testPrint')}
           </Button>
         </>
@@ -151,6 +169,19 @@ export default function PrinterDetail() {
           dismissLabel={t('error.dismiss')}
         >
           {message.text}
+        </Alert>
+      )}
+
+      {readiness.warning === 'unknown-status' && (
+        <Alert tone="warning">
+          {t('page.printerDetail.unknownStatusWarning')}
+        </Alert>
+      )}
+      {!readiness.ready && (
+        <Alert tone="warning">
+          <span id="printer-test-print-status">
+            {t('page.printerDetail.testPrintBlocked')}
+          </span>
         </Alert>
       )}
 

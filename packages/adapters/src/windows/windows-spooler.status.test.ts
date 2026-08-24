@@ -1,5 +1,66 @@
 import { describe, it, expect } from 'vitest';
-import { parseJobFlags, isBlockedStatus, isFinishedStatus } from './windows-spooler.adapter.js';
+import {
+  parseJobFlags,
+  isBlockedStatus,
+  isFinishedStatus,
+  parseWindowsPrinterStatus,
+  windowsPrinterStatusCode,
+} from './windows-spooler.adapter.js';
+import { evaluatePrinterReadiness } from '@printerops/domain';
+
+describe('Windows printer readiness status normalization', () => {
+  it('keeps a USB UNKNOWN observation usable when WorkOffline=false', () => {
+    const observation = parseWindowsPrinterStatus(JSON.stringify({
+      status: 'Unknown',
+      state: 'Unknown',
+      workOffline: false,
+    }));
+
+    expect(windowsPrinterStatusCode(observation)).toBe('unknown');
+    expect(evaluatePrinterReadiness({
+      detected: true,
+      statusCode: windowsPrinterStatusCode(observation),
+      rawStatus: observation.status,
+      rawState: observation.state,
+      workOffline: observation.workOffline,
+    })).toEqual({ ready: true, warning: 'unknown-status' });
+  });
+
+  it.each(['Offline', 'Error', 'Paused'])('blocks explicit %s from Windows', (status) => {
+    const observation = parseWindowsPrinterStatus(JSON.stringify({
+      status,
+      state: status,
+      workOffline: false,
+    }));
+
+    expect(evaluatePrinterReadiness({
+      detected: true,
+      statusCode: windowsPrinterStatusCode(observation),
+      rawStatus: observation.status,
+      rawState: observation.state,
+      workOffline: observation.workOffline,
+    }).ready).toBe(false);
+  });
+
+  it('returns UNKNOWN plus the WorkOffline signal through WindowsSpoolerAdapter', async () => {
+    const { WindowsSpoolerAdapter } = await import('./windows-spooler.adapter.js');
+    const adapter = new WindowsSpoolerAdapter({
+      isWindows: true,
+      runPowerShell: async () => JSON.stringify({
+        status: 'Unknown',
+        state: 'Unknown',
+        workOffline: false,
+      }),
+      resolveSnmpHost: async () => undefined,
+    });
+
+    const status = await adapter.getStatus('spooler://runner-1/POSTEK_USB');
+    expect(status.code).toBe('unknown');
+    expect(status.detected).toBe(true);
+    expect(status.workOffline).toBe(false);
+    expect(status.message).toContain('readiness allowed');
+  });
+});
 
 describe('parseJobFlags', () => {
   it('splits a flags enum into its individual names', () => {

@@ -1,5 +1,6 @@
 // Models
 export * from './models/printer.js';
+export * from './models/printer-readiness.js';
 export * from './models/job.js';
 export * from './models/runner.js';
 export * from './models/user.js';

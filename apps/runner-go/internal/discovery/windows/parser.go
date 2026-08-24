@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/discovery"
+	"github.com/phcaradanai/print_ops/apps/runner-go/internal/windowsstatus"
 )
 
 // printerStatus handles both string and integer PrinterStatus from PowerShell.
@@ -89,15 +90,17 @@ func intToPrinterType(n int) string {
 
 // psPrinter mirrors the fields we request from Get-Printer via ConvertTo-Json.
 type psPrinter struct {
-	Name         string        `json:"Name"`
-	DriverName   string        `json:"DriverName"`
-	PortName     string        `json:"PortName"`
-	Shared       bool          `json:"Shared"`
-	ShareName    string        `json:"ShareName"`
-	Location     string        `json:"Location"`
-	Comment      string        `json:"Comment"`
-	PrinterState printerStatus `json:"PrinterStatus"`
-	Type         printerType   `json:"Type"`
+	Name        string        `json:"Name"`
+	DriverName  string        `json:"DriverName"`
+	PortName    string        `json:"PortName"`
+	Shared      bool          `json:"Shared"`
+	ShareName   string        `json:"ShareName"`
+	Location    string        `json:"Location"`
+	Comment     string        `json:"Comment"`
+	Status      printerStatus `json:"PrinterStatus"`
+	State       printerStatus `json:"PrinterState"`
+	WorkOffline *bool         `json:"WorkOffline"`
+	Type        printerType   `json:"Type"`
 }
 
 // psPort mirrors the fields we request from Get-PrinterPort or
@@ -163,13 +166,17 @@ func ParsePrinters(printersJSON, portsJSON, defaultName string) ([]discovery.Dis
 
 	out := make([]discovery.DiscoveredPrinter, 0, len(printers))
 	for _, p := range printers {
+		rawStatus := p.Status.Raw
+		if strings.TrimSpace(rawStatus) == "" {
+			rawStatus = "Unknown"
+		}
 		dp := discovery.DiscoveredPrinter{
 			LocalPrinterID: p.Name,
 			Name:           p.Name,
 			DisplayName:    p.Name,
 			DriverName:     p.DriverName,
 			PortName:       p.PortName,
-			Status:         normalizeStatus(p.PrinterState.Raw),
+			Status:         normalizeStatus(rawStatus),
 			IsShared:       p.Shared,
 			ShareName:      p.ShareName,
 			Location:       p.Location,
@@ -177,6 +184,26 @@ func ParsePrinters(printersJSON, portsJSON, defaultName string) ([]discovery.Dis
 			IsDefault:      defaultName != "" && strings.EqualFold(p.Name, defaultName),
 			ConnectionType: discovery.ConnUnknown,
 			Raw:            map[string]any{"source": "windows-powershell"},
+		}
+		dp.Raw["detected"] = true
+		if p.WorkOffline != nil {
+			dp.Raw["work_offline"] = *p.WorkOffline
+		}
+		if p.State.Raw != "" {
+			dp.Raw["printer_state"] = p.State.Raw
+		}
+		readiness := windowsstatus.Evaluate(windowsstatus.Observation{
+			Detected:    true,
+			Status:      rawStatus,
+			State:       p.State.Raw,
+			WorkOffline: p.WorkOffline,
+		})
+		dp.Raw["readiness_ready"] = readiness.Ready
+		if readiness.BlockedBy != "" {
+			dp.Raw["readiness_blocked_by"] = readiness.BlockedBy
+		}
+		if readiness.Warning != "" {
+			dp.Raw["readiness_warning"] = readiness.Warning
 		}
 
 		// Surface printer type when available (useful for diagnostics).
@@ -201,18 +228,7 @@ func ParsePrinters(printersJSON, portsJSON, defaultName string) ([]discovery.Dis
 
 // normalizeStatus maps a Windows printer status token to our vocabulary.
 func normalizeStatus(s string) string {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "normal", "idle", "0", "3":
-		return "idle"
-	case "printing", "processing":
-		return "busy"
-	case "offline", "error", "paused":
-		return "offline"
-	case "":
-		return "unknown"
-	default:
-		return strings.ToLower(s)
-	}
+	return windowsstatus.NormalizeStatus(s)
 }
 
 // classifyPort derives a connection type from a port descriptor.

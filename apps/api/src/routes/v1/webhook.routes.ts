@@ -14,6 +14,7 @@ import type {
   CallbackTransport,
   JobPriority,
 } from '@printerops/domain';
+import { evaluatePrinterReadiness } from '@printerops/domain';
 import type { DynamicIntakeService } from '../../services/dynamic-intake.service.js';
 import type { CreatePrintJobService } from '../../services/create-print-job.service.js';
 import type { ExecuteJobService } from '../../services/execute-job.service.js';
@@ -249,6 +250,28 @@ export async function webhookRoutes(
         : undefined;
     if (!paper) return reply.status(404).send({ error: 'Paper profile not found' });
 
+    if (!body.printerId) return reply.status(400).send({ error: 'Printer is required' });
+
+    // Apply the same physical-output gate as the direct printer test endpoint
+    // before creating a queued job. Unknown is allowed when the detected
+    // Windows queue is not explicitly Offline, Error, or Paused; those three
+    // states are rejected without leaving a stranded QUEUED job behind.
+    const printerStatus = await deps.getPrinterStatus.execute(body.printerId);
+    const readiness = evaluatePrinterReadiness({
+      detected: printerStatus.detected,
+      statusCode: printerStatus.code,
+      rawStatus: printerStatus.rawStatus,
+      rawState: printerStatus.rawState,
+      workOffline: printerStatus.workOffline,
+    });
+    if (!readiness.ready) {
+      return reply.status(409).send({
+        error: 'PRINTER_NOT_READY',
+        message: `Printer is not ready: ${readiness.blockedBy ?? 'explicit printer fault'}`,
+        status: printerStatus,
+      });
+    }
+
     // Render the actual print payload
     const rendered = await deps.renderer.renderPrintPayload(template, body.samplePayload ?? {}, paper);
 
@@ -296,18 +319,6 @@ export async function webhookRoutes(
       actorId
     );
 
-    // ── Check printer is actually online before executing ──
-    let printerStatus: { code: string; message?: string } | undefined;
-    try {
-      printerStatus = await deps.getPrinterStatus.execute(job.printerId);
-    } catch {
-      // Can't query printer status — fall through and try anyway
-    }
-
-    // Do not return early on a fault after creating the job: that used to
-    // strand it in QUEUED forever. ExecuteJobService lets the adapter persist
-    // the concrete PaperOut/Offline error as a terminal FAILED status.
-
     // Execute in the background. Device confirmation can legitimately take
     // tens of seconds; the UI polls the persisted job instead of keeping one
     // HTTP request open and appearing frozen.
@@ -323,7 +334,7 @@ export async function webhookRoutes(
           templateCode: template.templateCode,
           copies: body.copies ?? 1,
           status: completed.status,
-          printerStatus: printerStatus?.code,
+          printerStatus: printerStatus.code,
           warnings: rendered.warnings,
         },
       });
@@ -338,7 +349,7 @@ export async function webhookRoutes(
       jobId: job.id,
       traceId: job.traceId,
       status: job.status,
-      printerStatus: printerStatus?.code,
+      printerStatus: printerStatus.code,
       warnings: rendered.warnings,
     });
   });

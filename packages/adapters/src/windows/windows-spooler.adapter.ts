@@ -12,6 +12,7 @@ import type {
   PrinterStatus,
   PrintCommand,
 } from '@printerops/domain';
+import { evaluatePrinterReadiness } from '@printerops/domain';
 import {
   readDeviceState,
   readPageCount,
@@ -1415,22 +1416,58 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     printerName: string,
     metadata?: Record<string, unknown>,
   ): Promise<PrinterStatus> {
-    let windowsStatus: PrinterStatus | undefined;
+    let windowsStatus: PrinterStatus;
     try {
       const safeName = printerName.replace(/'/g, "''");
       const stdout = await this.deps.runPowerShell(
-        `(Get-Printer -Name '${safeName}' -ErrorAction Stop).PrinterStatus`,
+        `$p = Get-Printer -Name '${safeName}' -ErrorAction Stop | Select-Object -First 1
+$win32 = $null
+try {
+  $win32 = Get-CimInstance -Class Win32_Printer -ErrorAction Stop |
+    Where-Object { $_.Name -eq '${safeName}' } | Select-Object -First 1
+} catch { }
+$workOffline = $p.WorkOffline
+if ($null -eq $workOffline -and $null -ne $win32) { $workOffline = $win32.WorkOffline }
+[ordered]@{
+  status = [string]$p.PrinterStatus
+  state = [string]$p.PrinterState
+  workOffline = $workOffline
+} | ConvertTo-Json -Compress`,
         5000,
       );
-      const raw = stdout.trim();
+      const observation = parseWindowsPrinterStatus(stdout);
+      const code = windowsPrinterStatusCode(observation);
+      const readiness = evaluatePrinterReadiness({
+        detected: true,
+        statusCode: code,
+        rawStatus: observation.status,
+        rawState: observation.state,
+        workOffline: observation.workOffline,
+      });
       windowsStatus = {
         printerId: printerName,
-        code: windowsPrinterStatusCode(raw),
-        message: raw || undefined,
+        code,
+        message: observation.status || undefined,
+        detected: true,
+        workOffline: observation.workOffline,
+        rawStatus: observation.status || undefined,
+        rawState: observation.state || undefined,
         checkedAt: new Date(),
       };
+      if (readiness.warning) {
+        windowsStatus.message = [
+          windowsStatus.message,
+          'Windows reported UNKNOWN; readiness allowed because no explicit offline, error, or paused state was reported',
+        ].filter(Boolean).join('; ');
+      }
     } catch {
-      windowsStatus = { printerId: printerName, code: 'unknown', message: 'Failed to query printer status', checkedAt: new Date() };
+      windowsStatus = {
+        printerId: printerName,
+        code: 'unknown',
+        detected: true,
+        message: 'Failed to query printer status',
+        checkedAt: new Date(),
+      };
     }
 
     const deviceStatus = await this.getDeviceStatus(printerName, metadata);
@@ -1442,11 +1479,15 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     // new job to another tray. Keep the Windows value in the message so the
     // conflict is visible without letting stale queue state mask device truth.
     const windowsContext =
-      windowsStatus.code === 'offline' || windowsStatus.code === 'error'
-        ? `Windows spooler reports ${windowsStatus.message ?? windowsStatus.code}`
+      windowsStatus.code === 'offline' || windowsStatus.code === 'error' || windowsStatus.rawStatus
+        ? `Windows spooler reports ${windowsStatus.rawStatus ?? windowsStatus.message ?? windowsStatus.code}`
         : undefined;
     return {
       ...deviceStatus,
+      detected: windowsStatus.detected,
+      workOffline: windowsStatus.workOffline,
+      rawStatus: windowsStatus.rawStatus,
+      rawState: windowsStatus.rawState,
       message: [deviceStatus.message, windowsContext].filter(Boolean).join('; ') || undefined,
     };
   }
@@ -2092,13 +2133,59 @@ function printerFaultFromStatus(raw: string): string | undefined {
   );
 }
 
-function windowsPrinterStatusCode(raw: string): PrinterStatus['code'] {
-  const fault = printerFaultFromStatus(raw);
-  if (fault) {
-    return ['Offline', 'NotAvailable'].includes(fault) ? 'offline' : 'error';
+export interface WindowsPrinterStatusObservation {
+  status: string;
+  state?: string;
+  workOffline?: boolean | null;
+}
+
+/**
+ * Parse the structured status emitted by the Windows query. The raw-token
+ * fallback keeps older runners/test seams compatible while the structured
+ * form carries WorkOffline for USB queues.
+ */
+export function parseWindowsPrinterStatus(stdout: string): WindowsPrinterStatusObservation {
+  const raw = stdout.trim();
+  if (!raw) return { status: '' };
+  try {
+    const parsed = JSON.parse(raw) as {
+      status?: unknown;
+      state?: unknown;
+      workOffline?: unknown;
+    };
+    if (parsed && typeof parsed === 'object' && ('status' in parsed || 'state' in parsed || 'workOffline' in parsed)) {
+      return {
+        status: typeof parsed.status === 'string' ? parsed.status : '',
+        state: typeof parsed.state === 'string' ? parsed.state : undefined,
+        workOffline: typeof parsed.workOffline === 'boolean' ? parsed.workOffline : null,
+      };
+    }
+  } catch {
+    // PowerShell 5.1/status test seams may return only the raw enum name.
   }
-  if (raw === 'Normal' || raw === 'Idle') return 'idle';
-  if (raw === 'Printing' || raw === 'Processing') return 'busy';
+  return { status: raw };
+}
+
+/** Normalize status for the public PrinterStatus contract. */
+export function windowsPrinterStatusCode(
+  observation: WindowsPrinterStatusObservation | string,
+): PrinterStatus['code'] {
+  const normalizedObservation = typeof observation === 'string'
+    ? parseWindowsPrinterStatus(observation)
+    : observation;
+  const status = normalizedObservation.status.trim().toLowerCase();
+  const state = (normalizedObservation.state ?? '').trim().toLowerCase();
+  const tokens = `${status},${state}`
+    .split(/[,|]/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (normalizedObservation.workOffline === true || tokens.includes('offline')) return 'offline';
+  if (tokens.includes('error') || tokens.includes('paused')) return 'error';
+  if (['normal', 'idle', 'ready', 'online'].includes(status)) return 'idle';
+  if (['printing', 'processing', 'busy'].includes(status)) return 'busy';
+  // Do not turn PaperOut/PaperJam/etc. into a synthetic ERROR here. Those
+  // values remain visible as raw evidence and are handled by the spooler and
+  // device verification safety checks at submission time.
   return 'unknown';
 }
 
