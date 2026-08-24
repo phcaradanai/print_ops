@@ -51,6 +51,7 @@ export default function PrinterDetail() {
   const { t } = useLocale();
   const { id } = useParams<{ id: string }>();
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  const [refreshedStatus, setRefreshedStatus] = useState<PrinterStatus | null>(null);
 
   const fetchPrinter = useCallback(() => apiFetch<Printer>(`/printers/${id}`), [id]);
   const printerResource = useApiResource(fetchPrinter, { enabled: Boolean(id) });
@@ -70,12 +71,17 @@ export default function PrinterDetail() {
   });
 
   const refreshStatus = useApiAction(async () => {
-    await apiFetch<PrinterStatus>(`/printers/${id}/status`);
+    const status = await apiFetch<PrinterStatus>(`/printers/${id}/status`);
+    setRefreshedStatus(status);
     // Re-read the printer instead of merging a partial status into local state:
     // the server is the source of truth for what it just observed.
     printerResource.refresh();
-    return true;
+    return status;
   });
+
+  useEffect(() => {
+    setRefreshedStatus(null);
+  }, [id]);
 
   const runTestPrint = async () => {
     const ok = await testPrint.run();
@@ -115,13 +121,14 @@ export default function PrinterDetail() {
     );
   }
 
-  const statusCode = printer.status?.code ?? 'unknown';
+  const currentStatus = refreshedStatus ?? printer.status;
+  const statusCode = currentStatus?.code ?? 'unknown';
   const readiness = evaluatePrinterReadiness({
-    detected: printer.status?.detected,
-    statusCode: printer.status?.code,
-    rawStatus: printer.status?.rawStatus,
-    rawState: printer.status?.rawState,
-    workOffline: printer.status?.workOffline,
+    detected: currentStatus?.detected,
+    statusCode: currentStatus?.code,
+    rawStatus: currentStatus?.rawStatus,
+    rawState: currentStatus?.rawState,
+    workOffline: currentStatus?.workOffline,
   });
 
   return (
@@ -175,6 +182,11 @@ export default function PrinterDetail() {
       {readiness.warning === 'unknown-status' && (
         <Alert tone="warning">
           {t('page.printerDetail.unknownStatusWarning')}
+        </Alert>
+      )}
+      {readiness.warning === 'status-unavailable' && (
+        <Alert tone="warning">
+          {t('page.printerDetail.statusUnavailableWarning')}
         </Alert>
       )}
       {!readiness.ready && (

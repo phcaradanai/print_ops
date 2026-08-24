@@ -29,10 +29,17 @@ describe('evaluatePrinterReadiness', () => {
     })).toEqual({ ready: true });
   });
 
-  it('still requires evidence for a printer with no detection/status signal', () => {
+  it('does not block when status evidence is unavailable without an explicit fault', () => {
     expect(evaluatePrinterReadiness({})).toEqual({
+      ready: true,
+      warning: 'status-unavailable',
+    });
+  });
+
+  it('still blocks an explicitly undetected printer', () => {
+    expect(evaluatePrinterReadiness({ detected: false })).toEqual({
       ready: false,
-      blockedBy: 'status-unavailable',
+      blockedBy: 'not-detected',
     });
   });
 });

@@ -4,18 +4,17 @@
  * Windows printer APIs are inconsistent across transports. In particular,
  * USB queues can be detected successfully while reporting PrinterStatus as
  * Unknown. Readiness therefore blocks only a state that Windows explicitly
- * reports as unsafe; an unknown state is usable when the queue was detected
- * and Windows does not say it is working offline.
+ * reports as unsafe; an unknown or unavailable state is usable unless the
+ * printer was explicitly reported as absent or working offline.
  */
 
 export type PrinterReadinessBlockedBy =
   | 'not-detected'
   | 'offline'
   | 'error'
-  | 'paused'
-  | 'status-unavailable';
+  | 'paused';
 
-export type PrinterReadinessWarning = 'unknown-status';
+export type PrinterReadinessWarning = 'unknown-status' | 'status-unavailable';
 
 export interface PrinterReadinessInput {
   /** Whether the operating system detected the named printer. */
@@ -73,12 +72,6 @@ export function evaluatePrinterReadiness(input: PrinterReadinessInput): PrinterR
 
   if (input.workOffline === true) return { ready: false, blockedBy: 'offline' };
 
-  const hasStatusEvidence = [input.statusCode, input.rawStatus, input.rawState]
-    .some((value) => statusText(value) !== '');
-  if (!hasStatusEvidence && input.workOffline !== false) {
-    return { ready: false, blockedBy: 'status-unavailable' };
-  }
-
   // Every explicitly reported value is evidence. Raw Windows fields are kept
   // alongside the normalized code so values such as PaperOut do not need to
   // be guessed as ERROR by a platform adapter.
@@ -89,7 +82,9 @@ export function evaluatePrinterReadiness(input: PrinterReadinessInput): PrinterR
     if (blockedBy) return { ready: false, blockedBy };
   }
 
-  const isUnknown = [input.statusCode, input.rawStatus, input.rawState]
+  const statusValues = [input.statusCode, input.rawStatus, input.rawState];
+  const hasStatusEvidence = statusValues.some((value) => statusText(value) !== '');
+  const isUnknown = statusValues
     .every((value) => {
       const status = statusText(value);
       return status === '' || status === 'unknown' || status === 'none';
@@ -98,7 +93,7 @@ export function evaluatePrinterReadiness(input: PrinterReadinessInput): PrinterR
   if (isUnknown) {
     // USB drivers commonly return Unknown while WorkOffline is explicitly
     // false. That is a warning, not a refusal to send a safety-confirmed test.
-    return { ready: true, warning: 'unknown-status' };
+    return { ready: true, warning: hasStatusEvidence ? 'unknown-status' : 'status-unavailable' };
   }
 
   return { ready: true };

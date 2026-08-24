@@ -849,6 +849,7 @@ const en: TranslationDict = {
   'page.sandbox.testPrintReduceCopies': 'reduce copies to the printer maximum',
   'page.sandbox.testPrintChooseAllowedTemplate': 'choose a template allowed by the selected printer',
   'page.sandbox.printerUnknownWarning': 'Windows reported UNKNOWN without an explicit Offline, Error, or Paused state. Test print remains available, and physical output will still be verified.',
+  'page.sandbox.printerStatusUnavailableWarning': 'Windows status is not available. No explicit Offline, Error, or Paused state was reported, so test print remains available and physical output will still be verified.',
   'page.sandbox.testPrintNeedsStatus': 'refresh the printer status before testing',
   'page.sandbox.testPrintBlockedByPrinter': 'the printer reports Offline, Error, or Paused',
 
@@ -1275,6 +1276,7 @@ const en: TranslationDict = {
   'page.printerDetail.statusUpdated': 'Status updated.',
   'page.printerDetail.statusFailed': 'Could not refresh the status.',
   'page.printerDetail.unknownStatusWarning': 'Windows reported UNKNOWN without an explicit Offline, Error, or Paused state. Test print remains available, and physical output will still be verified.',
+  'page.printerDetail.statusUnavailableWarning': 'Windows status is not available. No explicit Offline, Error, or Paused state was reported, so test print remains available and physical output will still be verified.',
   'page.printerDetail.testPrintBlocked': 'Test print is disabled because the printer reports Offline, Error, or Paused.',
   'page.templates.loadFailed': 'Could not load the templates',
   'page.templates.profilesLoadFailed': 'Could not load the paper profiles',
@@ -2189,6 +2191,7 @@ const th: TranslationDict = {
   'page.sandbox.testPrintReduceCopies': 'ลดจำนวนชุดให้ไม่เกินค่าสูงสุดของเครื่องพิมพ์',
   'page.sandbox.testPrintChooseAllowedTemplate': 'เลือกเทมเพลตที่เครื่องพิมพ์นี้อนุญาต',
   'page.sandbox.printerUnknownWarning': 'Windows รายงานสถานะ UNKNOWN โดยไม่พบสถานะ Offline, Error หรือ Paused ที่ชัดเจน จึงยังทดสอบพิมพ์ได้ และระบบจะตรวจยืนยันการพิมพ์จริงต่อไป',
+  'page.sandbox.printerStatusUnavailableWarning': 'ยังไม่พบสถานะจาก Windows แต่ไม่พบสถานะ Offline, Error หรือ Paused ที่ชัดเจน จึงยังทดสอบพิมพ์ได้ และระบบจะตรวจยืนยันการพิมพ์จริงต่อไป',
   'page.sandbox.testPrintNeedsStatus': 'รีเฟรชสถานะเครื่องพิมพ์ก่อนทดสอบ',
   'page.sandbox.testPrintBlockedByPrinter': 'เครื่องพิมพ์รายงานสถานะ Offline, Error หรือ Paused',
 
@@ -2615,6 +2618,7 @@ const th: TranslationDict = {
   'page.printerDetail.statusUpdated': 'อัปเดตสถานะแล้ว',
   'page.printerDetail.statusFailed': 'อัปเดตสถานะไม่สำเร็จ',
   'page.printerDetail.unknownStatusWarning': 'Windows รายงานสถานะ UNKNOWN โดยไม่พบสถานะ Offline, Error หรือ Paused ที่ชัดเจน จึงยังทดสอบพิมพ์ได้ และระบบจะตรวจยืนยันการพิมพ์จริงต่อไป',
+  'page.printerDetail.statusUnavailableWarning': 'ยังไม่พบสถานะจาก Windows แต่ไม่พบสถานะ Offline, Error หรือ Paused ที่ชัดเจน จึงยังทดสอบพิมพ์ได้ และระบบจะตรวจยืนยันการพิมพ์จริงต่อไป',
   'page.printerDetail.testPrintBlocked': 'ปิดการทดสอบพิมพ์เนื่องจากเครื่องพิมพ์รายงานสถานะ Offline, Error หรือ Paused',
   'page.templates.loadFailed': 'โหลดรายการเทมเพลตไม่สำเร็จ',
   'page.templates.profilesLoadFailed': 'โหลดโปรไฟล์กระดาษไม่สำเร็จ',

@@ -228,7 +228,9 @@ export default function TemplateSandbox() {
   const printerReady = Boolean(selectedPrinter) && printerReadiness.ready;
   const printerReadinessWarning = printerReadiness.warning === 'unknown-status'
     ? t('page.sandbox.printerUnknownWarning')
-    : '';
+    : printerReadiness.warning === 'status-unavailable'
+      ? t('page.sandbox.printerStatusUnavailableWarning')
+      : '';
   const canPrint = !!printerId && !!templateId && !payloadError && !copiesExceeded && templateAllowed && printerReady;
   const testPrintBlockedReason = !printerId
     ? t('page.sandbox.testPrintNeedsPrinter')
@@ -241,7 +243,7 @@ export default function TemplateSandbox() {
           : !templateAllowed
             ? t('page.sandbox.testPrintChooseAllowedTemplate')
             : !printerReadiness.ready
-              ? printerReadiness.blockedBy === 'status-unavailable'
+              ? printerReadiness.blockedBy === 'not-detected'
                 ? t('page.sandbox.testPrintNeedsStatus')
                 : t('page.sandbox.testPrintBlockedByPrinter')
             : '';
