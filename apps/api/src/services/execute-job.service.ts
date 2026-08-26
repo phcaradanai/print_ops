@@ -11,7 +11,7 @@ import type {
   JobLatency,
 } from '@printerops/domain';
 import type { AdapterRegistry } from '@printerops/adapters';
-import { generateId, ConflictError, NotFoundError } from '@printerops/shared';
+import { generateId, ConflictError, NotFoundError, readRenderTransformOverrides } from '@printerops/shared';
 import { emitPrintJobTerminal } from './emit-terminal-event.js';
 
 /**
@@ -173,6 +173,7 @@ export class ExecuteJobService {
 
     try {
       const adapter = this.registry.getAdapterForPrinter(printer);
+      const transformOverrides = readRenderTransformOverrides(job.metadata);
       adapterRun = adapter.executeCommand({
         jobId,
         printerId: printer.id,
@@ -187,6 +188,9 @@ export class ExecuteJobService {
         colorMode: job.colorMode,
         mediaType: job.mediaType,
         resolution: job.resolution,
+        rotate: transformOverrides.rotate ?? job.rotate,
+        flipHorizontal: transformOverrides.flipHorizontal ?? job.flipHorizontal,
+        flipVertical: transformOverrides.flipVertical ?? job.flipVertical,
         // Printer metadata first so job metadata can still override per job;
         // this is how snmpHost / snmpCommunity reach the adapter.
         metadata: {

@@ -59,6 +59,9 @@ export interface ImportRequest {
     dpi: number;
     orientation: string;
     unit: string;
+    rotation?: number;
+    flipHorizontal?: boolean;
+    flipVertical?: boolean;
   };
   fitMode: FitMode;
 }
@@ -163,6 +166,9 @@ export class ImportPaperProfileService {
         dpi: req.profile.dpi,
         orientation: req.profile.orientation as PaperProfile['orientation'],
         unit: req.profile.unit as PaperProfile['unit'],
+        rotation: req.profile.rotation ?? 0,
+        flipHorizontal: req.profile.flipHorizontal ?? false,
+        flipVertical: req.profile.flipVertical ?? false,
       };
       profile = await this.paperProfiles.create(createInput);
     } catch (err: unknown) {
@@ -409,6 +415,20 @@ function validateProfileInput(profile: ImportRequest['profile']): void {
 
   if (!['mm', 'inch'].includes(profile.unit)) {
     errors.push('profile.unit must be mm or inch');
+  }
+
+  if (
+    profile.rotation !== undefined &&
+    (typeof profile.rotation !== 'number' || !Number.isFinite(profile.rotation) ||
+      profile.rotation < 0 || profile.rotation >= 360)
+  ) {
+    errors.push('profile.rotation must be a finite number from 0 to less than 360');
+  }
+  if (profile.flipHorizontal !== undefined && typeof profile.flipHorizontal !== 'boolean') {
+    errors.push('profile.flipHorizontal must be a boolean');
+  }
+  if (profile.flipVertical !== undefined && typeof profile.flipVertical !== 'boolean') {
+    errors.push('profile.flipVertical must be a boolean');
   }
 
   if (errors.length > 0) {

@@ -18,6 +18,9 @@ function rowToPaperProfile(row: Record<string, unknown>): PaperProfile {
     dpi: row['dpi'] as number,
     orientation: row['orientation'] as PaperProfile['orientation'],
     unit: row['unit'] as PaperProfile['unit'],
+    rotation: typeof row['rotation'] === 'number' ? row['rotation'] as number : 0,
+    flipHorizontal: Boolean(row['flip_horizontal']),
+    flipVertical: Boolean(row['flip_vertical']),
     fields: fromJson(row['fields'], []),
     createdAt: toDate(row['created_at']),
     updatedAt: toDate(row['updated_at']),
@@ -71,8 +74,8 @@ export class SqlitePaperProfileRepository implements PaperProfileRepositoryPort 
     const now = dateStr(new Date());
 
     db.run(
-      `INSERT INTO paper_profiles (id, code, name, width_mm, height_mm, margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm, dpi, orientation, unit, fields, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO paper_profiles (id, code, name, width_mm, height_mm, margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm, dpi, orientation, unit, rotation, flip_horizontal, flip_vertical, fields, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.code,
@@ -86,6 +89,9 @@ export class SqlitePaperProfileRepository implements PaperProfileRepositoryPort 
         input.dpi,
         input.orientation,
         input.unit,
+        input.rotation ?? 0,
+        input.flipHorizontal ? 1 : 0,
+        input.flipVertical ? 1 : 0,
         toJson(input.fields ?? []),
         now,
         now,
@@ -124,6 +130,9 @@ export class SqlitePaperProfileRepository implements PaperProfileRepositoryPort 
     if ('dpi' in patch) add('dpi', patch.dpi);
     if ('orientation' in patch) add('orientation', patch.orientation);
     if ('unit' in patch) add('unit', patch.unit);
+    if ('rotation' in patch) add('rotation', patch.rotation);
+    if ('flipHorizontal' in patch) add('flip_horizontal', patch.flipHorizontal ? 1 : 0);
+    if ('flipVertical' in patch) add('flip_vertical', patch.flipVertical ? 1 : 0);
     if ('fields' in patch) add('fields', toJson(patch.fields ?? []));
 
     add('updated_at', dateStr(new Date()));

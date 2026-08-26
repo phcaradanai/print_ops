@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { qrQuietZoneMm, renderBarcodeSvg, type BarcodeKind, type BarcodeSymbology } from '../../../lib/barcode.js';
 import type { PaperProfileOption, SampleMode } from '../model/types.js';
+import { getOrientedPaperGeometry, resolveRenderTransform, wrapHtmlWithRenderTransform } from '@printerops/shared';
 
 export const ENGINES = ['RAW_TEXT', 'ZPL', 'HTML', 'JSON_LAYOUT', 'TSPL', 'EPL', 'PDF_LIKE_PREVIEW'] as const;
 
@@ -133,10 +134,22 @@ export function localPreview(
   // fetch a server preview for. No paper profile selected yet means no real
   // size to frame against, so fall back to the unframed body as before.
   if (profile?.widthMm && profile?.heightMm) {
+    const geometry = getOrientedPaperGeometry({
+      widthMm: profile.widthMm,
+      heightMm: profile.heightMm,
+      marginTopMm: profile.marginTopMm ?? 0,
+      marginRightMm: profile.marginRightMm ?? 0,
+      marginBottomMm: profile.marginBottomMm ?? 0,
+      marginLeftMm: profile.marginLeftMm ?? 0,
+      orientation: profile.orientation ?? (profile.widthMm > profile.heightMm ? 'landscape' : 'portrait'),
+    });
+    const previewBody = isHtml
+      ? wrapHtmlWithRenderTransform(body, geometry.widthMm, geometry.heightMm, resolveRenderTransform(profile))
+      : body;
     const frameStyle = isHtml
-      ? `width:${profile.widthMm}mm;height:${profile.heightMm}mm;background:#fff;overflow:hidden;box-sizing:border-box`
-      : `width:${profile.widthMm}mm;height:${profile.heightMm}mm;border:1px solid #111;background:#fff;padding:4mm;overflow:hidden;box-sizing:border-box`;
-    return `<div style="${frameStyle}">${body}</div>`;
+      ? `width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;background:#fff;overflow:hidden;box-sizing:border-box`
+      : `width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;border:1px solid #111;background:#fff;padding:4mm;overflow:hidden;box-sizing:border-box`;
+    return `<div style="${frameStyle}">${previewBody}</div>`;
   }
   return body;
 }

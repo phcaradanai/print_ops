@@ -4,7 +4,9 @@ import type {
   TemplatePreview,
   TemplateRendererPort,
   BarcodeSymbology,
+  RenderTransformOverrides,
 } from '@printerops/domain';
+import { getOrientedPaperGeometry, resolveRenderTransform, wrapHtmlWithRenderTransform } from '@printerops/shared';
 import { qrGeometry, renderBarcodeDataUri, renderZplQrGraphic } from './barcode-renderer.js';
 
 type CompiledTemplate = {
@@ -213,12 +215,13 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
   async renderPreview(
     template: PrintTemplate,
     payload: Record<string, unknown>,
-    paperProfile: PaperProfile
+    paperProfile: PaperProfile,
+    renderOptions?: RenderTransformOverrides,
   ): Promise<TemplatePreview> {
     const t0 = Date.now();
     await this.compileTemplate(template);
-    const print = await this.renderPrintPayload(template, payload, paperProfile);
-    const renderedPreview = await this.previewMarkup(template, payload, paperProfile);
+    const print = await this.renderPrintPayload(template, payload, paperProfile, renderOptions);
+    const renderedPreview = await this.previewMarkup(template, payload, paperProfile, renderOptions);
     return {
       templateCode: template.templateCode,
       paperProfile,
@@ -234,6 +237,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     template: PrintTemplate,
     payload: Record<string, unknown>,
     paperProfile: PaperProfile,
+    renderOptions?: RenderTransformOverrides,
   ): Promise<{ renderedPrintPayload: string; warnings: string[]; renderTimeMs: number }> {
     const t0 = Date.now();
     const validation = await this.validateTemplate(template);
@@ -288,6 +292,16 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
       });
     }
 
+    if (template.engine === 'HTML') {
+      const geometry = getOrientedPaperGeometry(paperProfile);
+      rendered = wrapHtmlWithRenderTransform(
+        rendered,
+        geometry.widthMm,
+        geometry.heightMm,
+        resolveRenderTransform(paperProfile, renderOptions),
+      );
+    }
+
     return { renderedPrintPayload: rendered, warnings, renderTimeMs: Date.now() - t0 };
   }
 
@@ -321,6 +335,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     template: PrintTemplate,
     payload: Record<string, unknown>,
     paperProfile: PaperProfile,
+    renderOptions?: RenderTransformOverrides,
   ): Promise<string> {
     const tokens = findBarcodeTokens(template.content, paperProfile);
     const images = tokens.size > 0
@@ -367,6 +382,16 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
       body += escapeHtml(template.content.slice(lastIndex));
     }
 
+    const geometry = getOrientedPaperGeometry(paperProfile);
+    if (isHtml) {
+      body = wrapHtmlWithRenderTransform(
+        body,
+        geometry.widthMm,
+        geometry.heightMm,
+        resolveRenderTransform(paperProfile, renderOptions),
+      );
+    }
+
     // Frame every engine's preview at the paper profile's true physical size
     // (real CSS mm units, box-sizing:border-box, clipped with
     // overflow:hidden) so what's on screen can be trusted as a print-size
@@ -381,8 +406,8 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     // manage their own spacing — adding padding here would just clip their
     // content instead of framing it.
     const frameStyle = isHtml
-      ? `width:${paperProfile.widthMm}mm;height:${paperProfile.heightMm}mm;background:#fff;overflow:hidden;box-sizing:border-box`
-      : `width:${paperProfile.widthMm}mm;height:${paperProfile.heightMm}mm;border:1px solid #111;background:#fff;padding:4mm;font-family:monospace;white-space:pre-wrap;overflow:hidden;box-sizing:border-box`;
+      ? `width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;background:#fff;overflow:hidden;box-sizing:border-box`
+      : `width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;border:1px solid #111;background:#fff;padding:4mm;font-family:monospace;white-space:pre-wrap;overflow:hidden;box-sizing:border-box`;
     return `<div style="${frameStyle}">${body}</div>`;
   }
 }

@@ -15,7 +15,7 @@ import type {
   AcceptanceCallbackSystemField,
 } from '@printerops/domain';
 import { CALLBACK_INTENT_METADATA_KEY } from '@printerops/domain';
-import { NotFoundError, ValidationError } from '@printerops/shared';
+import { isValidRotation, NotFoundError, ValidationError } from '@printerops/shared';
 import { buildCallbackIntentSafe, wantsAcceptanceCallback } from './callback-intent.service.js';
 import { CreatePrintJobService } from './create-print-job.service.js';
 import { RoutePolicyResolverService } from './route-policy-resolver.service.js';
@@ -64,6 +64,27 @@ function requestIdFrom(body: Record<string, unknown>): string {
   const value = body['request_id'] ?? body['requestId'] ?? body['id'];
   if (typeof value === 'string' && value.length > 0) return value;
   throw new ValidationError('request_id is required');
+}
+
+function renderTransformOverrides(body: Record<string, unknown>): {
+  rotate?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
+} {
+  if ('rotate' in body && !isValidRotation(body['rotate'])) {
+    throw new ValidationError('rotate must be a finite number from 0 to less than 360');
+  }
+  if ('flipHorizontal' in body && typeof body['flipHorizontal'] !== 'boolean') {
+    throw new ValidationError('flipHorizontal must be a boolean');
+  }
+  if ('flipVertical' in body && typeof body['flipVertical'] !== 'boolean') {
+    throw new ValidationError('flipVertical must be a boolean');
+  }
+  return {
+    ...(body['rotate'] !== undefined ? { rotate: body['rotate'] as number } : {}),
+    ...(body['flipHorizontal'] !== undefined ? { flipHorizontal: body['flipHorizontal'] as boolean } : {}),
+    ...(body['flipVertical'] !== undefined ? { flipVertical: body['flipVertical'] as boolean } : {}),
+  };
 }
 
 export class DynamicIntakeService {
@@ -141,7 +162,10 @@ export class DynamicIntakeService {
     if (!template || template.status !== 'PUBLISHED') throw new NotFoundError('PrintTemplate', route.templateCode);
     const templateResolvedAt = new Date();
     const paper = await this.resolvePaper(route.printerCode, route.templateCode, template.paperProfileId);
-    const rendered = await this.renderer.renderPrintPayload(template, route.mappedPayload, paper);
+    const renderOptions = renderTransformOverrides(req.body);
+    const rendered = Object.keys(renderOptions).length > 0
+      ? await this.renderer.renderPrintPayload(template, route.mappedPayload, paper, renderOptions)
+      : await this.renderer.renderPrintPayload(template, route.mappedPayload, paper);
     const renderedAt = new Date();
     const routeResolveMs = routeResolvedAt.getTime() - routeStart;
 
@@ -154,6 +178,9 @@ export class DynamicIntakeService {
         paperProfileId: paper.id,
         routePolicyId: policy.id,
         renderedPrintPayload: rendered.renderedPrintPayload,
+        rotate: renderOptions.rotate,
+        flipHorizontal: renderOptions.flipHorizontal,
+        flipVertical: renderOptions.flipVertical,
         sourceSystem: endpoint.sourceSystem,
         requestId,
         createdBy: endpoint.id,
@@ -196,6 +223,9 @@ export class DynamicIntakeService {
             marginLeftMm: paper.marginLeftMm,
             orientation: paper.orientation,
             dpi: paper.dpi,
+            rotation: paper.rotation ?? 0,
+            flipHorizontal: paper.flipHorizontal ?? false,
+            flipVertical: paper.flipVertical ?? false,
           },
         },
       },

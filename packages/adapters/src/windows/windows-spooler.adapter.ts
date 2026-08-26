@@ -13,6 +13,7 @@ import type {
   PrintCommand,
 } from '@printerops/domain';
 import { evaluatePrinterReadiness } from '@printerops/domain';
+import { readRenderTransformOverrides, resolveRenderTransform, wrapHtmlWithRenderTransform } from '@printerops/shared';
 import {
   readDeviceState,
   readPageCount,
@@ -1570,8 +1571,9 @@ if ($null -eq $workOffline -and $null -ne $win32) { $workOffline = $win32.WorkOf
     const requestFile = join(session.dir, `request-${jobId}.json`);
     const resultFile = join(session.dir, `result-${jobId}.json`);
     try {
-      await writeFile(file, html, 'utf-8');
       const page = resolveHtmlPageSettings(html, command.metadata);
+      const transformedHtml = applyHtmlRenderTransform(html, page, command);
+      await writeFile(file, transformedHtml, 'utf-8');
       const jobName = `PrintOps:${command.jobId ?? jobId}`;
       // Serve-mode requests omit resultPath/userDataFolder: the result goes
       // to result-<jobId>.json and the WebView2 data folder is shared and
@@ -2018,6 +2020,29 @@ function metadataString(metadata: Record<string, unknown>, key: string): string 
     if (typeof nested === 'string') return nested;
   }
   return undefined;
+}
+
+export function applyHtmlRenderTransform(
+  html: string,
+  page: HtmlPageSettings,
+  command: PrintCommand,
+): string {
+  // The API renderer already wraps HTML output. This guard keeps the adapter
+  // safe for direct HTML commands and prevents a queued job from being
+  // transformed twice.
+  if (html.includes('data-printops-transform-frame')) return html;
+  const profile = command.metadata?.['paperProfile'];
+  const profileValues = profile && typeof profile === 'object' && !Array.isArray(profile)
+    ? profile as Record<string, unknown>
+    : command.metadata ?? {};
+  const metadataOverrides = readRenderTransformOverrides(command.metadata);
+  const transform = resolveRenderTransform(profileValues, {
+    ...metadataOverrides,
+    ...(command.rotate !== undefined ? { rotate: command.rotate } : {}),
+    ...(command.flipHorizontal !== undefined ? { flipHorizontal: command.flipHorizontal } : {}),
+    ...(command.flipVertical !== undefined ? { flipVertical: command.flipVertical } : {}),
+  });
+  return wrapHtmlWithRenderTransform(html, page.widthMm, page.heightMm, transform);
 }
 
 /** Resolve actual driver page settings from the selected profile, with the

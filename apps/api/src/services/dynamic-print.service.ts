@@ -33,6 +33,9 @@ export interface DynamicPrintRequest {
   copies?: number;
   priority?: JobPriority;
   metadata?: Record<string, unknown>;
+  rotate?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
   /**
    * Optional reference to a WebhookEndpoint whose callback configuration should
    * receive this job's terminal print result.
@@ -172,6 +175,9 @@ export class DynamicPrintService {
         payload: req.payload ?? {},
         copies: req.copies,
         priority: req.priority,
+        rotate: req.rotate,
+        flipHorizontal: req.flipHorizontal,
+        flipVertical: req.flipVertical,
         endpoint_code: req.endpoint_code,
         metadata: {
           ...(req.metadata ?? {}),

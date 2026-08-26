@@ -80,6 +80,9 @@ export interface PaperProfile {
   dpi: number;
   orientation: Orientation;
   unit: PaperUnit;
+  rotation?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
   fields: PaperProfileField[];
   createdAt: Date;
   updatedAt: Date;

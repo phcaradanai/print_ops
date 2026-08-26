@@ -71,6 +71,9 @@ export interface PrintCommand {
   colorMode: 'color' | 'monochrome' | 'auto';
   mediaType?: string;
   resolution?: string;
+  rotate?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
   metadata: Record<string, unknown>;
   /** In-process adapters can report a correlated native spooler job before
    * terminal device verification finishes. */

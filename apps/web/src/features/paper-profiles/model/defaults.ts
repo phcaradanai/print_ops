@@ -39,6 +39,9 @@ export const DEFAULT_FORM: PaperForm = {
   dpi: 203,
   orientation: 'portrait',
   unit: 'mm',
+  rotation: 0,
+  flipHorizontal: false,
+  flipVertical: false,
 };
 
 export const DEFAULT_UX: PaperProfileUx = {

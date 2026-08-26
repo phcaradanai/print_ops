@@ -18,6 +18,9 @@ export interface PaperProfileExport {
       | 'dpi'
       | 'orientation'
       | 'unit'
+      | 'rotation'
+      | 'flipHorizontal'
+      | 'flipVertical'
       | 'fields'
     >
   >;
@@ -43,6 +46,9 @@ export function serializeProfiles(
       dpi: profile.dpi,
       orientation: profile.orientation,
       unit: profile.unit,
+      ...(profile.rotation !== undefined ? { rotation: profile.rotation } : {}),
+      ...(profile.flipHorizontal !== undefined ? { flipHorizontal: profile.flipHorizontal } : {}),
+      ...(profile.flipVertical !== undefined ? { flipVertical: profile.flipVertical } : {}),
       fields: profile.fields ?? [],
     })),
   };

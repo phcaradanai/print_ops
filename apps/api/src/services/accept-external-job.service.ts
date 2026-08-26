@@ -15,7 +15,7 @@ import type {
   WebhookEndpointRepositoryPort,
 } from '@printerops/domain';
 import { CALLBACK_INTENT_METADATA_KEY } from '@printerops/domain';
-import { AppError } from '@printerops/shared';
+import { AppError, isValidRotation, ValidationError } from '@printerops/shared';
 import { CreatePrintJobService } from './create-print-job.service.js';
 import { resolveEndpointCallbackIntent } from './callback-intent.service.js';
 
@@ -29,6 +29,9 @@ export interface ExternalPrintJobRequest {
   copies?: number;
   priority?: JobPriority;
   metadata?: Record<string, unknown>;
+  rotate?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
   /** Optional webhook endpoint whose callback configuration receives this
    *  job's terminal print result. Omitted = no result callback (previous
    *  behaviour, unchanged for every existing caller). */
@@ -130,6 +133,7 @@ export class AcceptExternalJobService {
       };
     }
 
+    const renderOptions = externalRenderTransformOverrides(req);
     // An explicitly provided template that does not exist is a client error.
     //
     // Without this, POST /api/v1/print-jobs with template_code=NO_SUCH_TEMPLATE
@@ -190,6 +194,9 @@ export class AcceptExternalJobService {
             marginLeftMm: paper.marginLeftMm,
             orientation: paper.orientation,
             dpi: paper.dpi,
+            rotation: paper.rotation ?? 0,
+            flipHorizontal: paper.flipHorizontal ?? false,
+            flipVertical: paper.flipVertical ?? false,
           };
           // Two very different failure classes meet here and must not be
           // conflated (product decision, 2026-08-03):
@@ -199,7 +206,9 @@ export class AcceptExternalJobService {
           //    the raw payload instead would send JSON to a label printer, so
           //    this is a rejection the caller hears about, not a warning.
           try {
-            const rendered = await this.renderer.renderPrintPayload(template, req.payload, paper);
+            const rendered = Object.keys(renderOptions).length > 0
+              ? await this.renderer.renderPrintPayload(template, req.payload, paper, renderOptions)
+              : await this.renderer.renderPrintPayload(template, req.payload, paper);
             renderedPrintPayload = rendered.renderedPrintPayload;
             renderWarnings = rendered.warnings ?? [];
           } catch (err) {
@@ -234,6 +243,9 @@ export class AcceptExternalJobService {
         requestId: req.request_id,
         createdBy: actorId,
         mimeType: resolvedMimeType,
+        rotate: req.rotate,
+        flipHorizontal: req.flipHorizontal,
+        flipVertical: req.flipVertical,
         copies: req.copies ?? 1,
         duplex: false,
         colorMode: 'auto',
@@ -265,4 +277,25 @@ export class AcceptExternalJobService {
   async getJobByRequestId(requestId: string, sourceSystem: string): Promise<Job | undefined> {
     return this.jobs.findByRequestId(requestId, sourceSystem);
   }
+}
+
+function externalRenderTransformOverrides(req: ExternalPrintJobRequest): {
+  rotate?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
+} {
+  if (req.rotate !== undefined && !isValidRotation(req.rotate)) {
+    throw new ValidationError('rotate must be a finite number from 0 to less than 360');
+  }
+  if (req.flipHorizontal !== undefined && typeof req.flipHorizontal !== 'boolean') {
+    throw new ValidationError('flipHorizontal must be a boolean');
+  }
+  if (req.flipVertical !== undefined && typeof req.flipVertical !== 'boolean') {
+    throw new ValidationError('flipVertical must be a boolean');
+  }
+  return {
+    ...(req.rotate !== undefined ? { rotate: req.rotate } : {}),
+    ...(req.flipHorizontal !== undefined ? { flipHorizontal: req.flipHorizontal } : {}),
+    ...(req.flipVertical !== undefined ? { flipVertical: req.flipVertical } : {}),
+  };
 }

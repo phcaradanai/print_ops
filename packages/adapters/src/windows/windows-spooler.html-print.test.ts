@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildHtmlPrintScript, resolveHtmlPageSettings } from './windows-spooler.adapter.js';
+import type { PrintCommand } from '@printerops/domain';
+import { applyHtmlRenderTransform, buildHtmlPrintScript, resolveHtmlPageSettings } from './windows-spooler.adapter.js';
 
 describe('buildHtmlPrintScript', () => {
   it('uses WebView2 PrintAsync helper and observes a correlated Windows job when available', () => {
@@ -82,5 +83,72 @@ describe('resolveHtmlPageSettings', () => {
       marginLeftMm: 5,
       orientation: 'portrait',
     });
+  });
+});
+
+describe('applyHtmlRenderTransform', () => {
+  const page = {
+    widthMm: 100,
+    heightMm: 50,
+    marginTopMm: 2,
+    marginRightMm: 3,
+    marginBottomMm: 4,
+    marginLeftMm: 5,
+    orientation: 'landscape' as const,
+  };
+  const command = (overrides: Partial<PrintCommand> = {}): PrintCommand => ({
+    jobId: 'job-transform',
+    printerId: 'printer-transform',
+    traceId: 'trace-transform',
+    mimeType: 'text/html',
+    copies: 1,
+    duplex: false,
+    colorMode: 'auto',
+    metadata: {},
+    ...overrides,
+  });
+
+  it('applies profile transforms while preserving the physical page frame', () => {
+    const output = applyHtmlRenderTransform(
+      '<span>complete output</span>',
+      page,
+      command({
+        metadata: {
+          paperProfile: { rotation: 90, flipHorizontal: true, flipVertical: false },
+        },
+      }),
+    );
+
+    expect(output).toContain('transform:rotate(90deg) scaleX(-1) scaleY(1)');
+    expect(output).toContain('width:100mm;height:50mm;overflow:hidden');
+  });
+
+  it('lets per-job values override profile values without changing the page frame', () => {
+    const output = applyHtmlRenderTransform(
+      '<span>complete output</span>',
+      page,
+      command({
+        rotate: 270,
+        flipHorizontal: false,
+        flipVertical: true,
+        metadata: {
+          paperProfile: { rotation: 15, flipHorizontal: true, flipVertical: true },
+        },
+      }),
+    );
+
+    expect(output).toContain('transform:rotate(270deg) scaleX(1) scaleY(-1)');
+    expect(output).not.toContain('rotate(15deg)');
+    expect(output).toContain('width:100mm;height:50mm;overflow:hidden');
+  });
+
+  it('does not wrap output that the shared renderer already transformed', () => {
+    const output = applyHtmlRenderTransform(
+      '<div data-printops-transform-frame="true">already transformed</div>',
+      page,
+      command({ rotate: 90 }),
+    );
+
+    expect(output).toBe('<div data-printops-transform-frame="true">already transformed</div>');
   });
 });

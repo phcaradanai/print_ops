@@ -6,7 +6,7 @@ import type {
   PrintTemplateRepositoryPort,
   TemplateRendererPort,
 } from '@printerops/domain';
-import { generateId, NotFoundError, ValidationError } from '@printerops/shared';
+import { generateId, NotFoundError, ValidationError, readRenderTransformOverrides } from '@printerops/shared';
 import type { CreatePrintJobService } from './create-print-job.service.js';
 
 export interface ReprintJobInput {
@@ -16,6 +16,20 @@ export interface ReprintJobInput {
   confirmedDuplicateRisk: boolean;
   confirmedDestinationChange?: boolean;
 }
+function transformOverridesForJob(job: Job) {
+  const metadataOverrides = readRenderTransformOverrides(job.metadata);
+  return {
+    ...metadataOverrides,
+    ...(metadataOverrides.rotate === undefined && job.rotate !== undefined ? { rotate: job.rotate } : {}),
+    ...(metadataOverrides.flipHorizontal === undefined && job.flipHorizontal !== undefined
+      ? { flipHorizontal: job.flipHorizontal }
+      : {}),
+    ...(metadataOverrides.flipVertical === undefined && job.flipVertical !== undefined
+      ? { flipVertical: job.flipVertical }
+      : {}),
+  };
+}
+
 
 export class ReprintJobService {
   constructor(
@@ -44,6 +58,7 @@ export class ReprintJobService {
       throw new ValidationError('Changing the destination printer requires explicit confirmation');
     }
 
+    const transformOverrides = transformOverridesForJob(original);
     const renderedPrintPayload = await this.resolvePrintContent(original);
     const requestId = `reprint-${generateId()}`;
     const created = await this.createJob.execute({
@@ -66,6 +81,9 @@ export class ReprintJobService {
       sourceSystem: original.sourceSystem,
       sourceReference: original.sourceReference,
       requestId,
+      rotate: transformOverrides.rotate,
+      flipHorizontal: transformOverrides.flipHorizontal,
+      flipVertical: transformOverrides.flipVertical,
       createdBy: actorId,
       metadata: {
         reprintOfJobId: original.id,
@@ -124,7 +142,10 @@ export class ReprintJobService {
       throw new ValidationError('Original paper profile is unavailable');
     }
 
-    const rendered = await this.renderer.renderPrintPayload(template, payload, paper);
+    const transformOverrides = transformOverridesForJob(original);
+    const rendered = Object.keys(transformOverrides).length > 0
+      ? await this.renderer.renderPrintPayload(template, payload, paper, transformOverrides)
+      : await this.renderer.renderPrintPayload(template, payload, paper);
     if (!rendered.renderedPrintPayload) {
       throw new ValidationError('Original job re-render produced no printable content');
     }

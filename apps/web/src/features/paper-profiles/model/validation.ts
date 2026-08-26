@@ -10,7 +10,7 @@ type PaperFormForValidation = Pick<
   | 'marginRightMm'
   | 'marginBottomMm'
   | 'marginLeftMm'
->;
+> & Partial<Pick<PaperForm, 'rotation' | 'flipHorizontal' | 'flipVertical'>>;
 
 export function validatePaperForm(form: PaperFormForValidation): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -18,6 +18,15 @@ export function validatePaperForm(form: PaperFormForValidation): ValidationIssue
   if (form.widthMm <= 0) issues.push({ field: 'widthMm', messageKey: 'validation.dimensionsPositive' });
   if (form.heightMm <= 0) issues.push({ field: 'heightMm', messageKey: 'validation.dimensionsPositive' });
   if (form.dpi <= 0) issues.push({ field: 'dpi', messageKey: 'validation.dpiPositive' });
+  if (form.rotation !== undefined && (!Number.isFinite(form.rotation) || form.rotation < 0 || form.rotation >= 360)) {
+    issues.push({ field: 'rotation', messageKey: 'validation.rotationRange' });
+  }
+  if (form.flipHorizontal !== undefined && typeof form.flipHorizontal !== 'boolean') {
+    issues.push({ field: 'flipHorizontal', messageKey: 'validation.boolean' });
+  }
+  if (form.flipVertical !== undefined && typeof form.flipVertical !== 'boolean') {
+    issues.push({ field: 'flipVertical', messageKey: 'validation.boolean' });
+  }
   if (form.marginTopMm < 0) issues.push({ field: 'marginTopMm', messageKey: 'validation.marginsNonNegative' });
   if (form.marginRightMm < 0) issues.push({ field: 'marginRightMm', messageKey: 'validation.marginsNonNegative' });
   if (form.marginBottomMm < 0) issues.push({ field: 'marginBottomMm', messageKey: 'validation.marginsNonNegative' });
@@ -39,6 +48,15 @@ export function validateImportDraft(draft: ImportDraftForValidation): Validation
   const issues: ValidationIssue[] = [];
   if (!draft.name.trim()) issues.push({ field: 'name', messageKey: 'validation.nameRequired' });
   if (!draft.code.trim()) issues.push({ field: 'code', messageKey: 'validation.nameRequired' });
+  if (draft.rotation !== undefined && (!Number.isFinite(draft.rotation) || draft.rotation < 0 || draft.rotation >= 360)) {
+    issues.push({ field: 'rotation', messageKey: 'validation.rotationRange' });
+  }
+  if (draft.flipHorizontal !== undefined && typeof draft.flipHorizontal !== 'boolean') {
+    issues.push({ field: 'flipHorizontal', messageKey: 'validation.boolean' });
+  }
+  if (draft.flipVertical !== undefined && typeof draft.flipVertical !== 'boolean') {
+    issues.push({ field: 'flipVertical', messageKey: 'validation.boolean' });
+  }
   if (!Number.isFinite(draft.widthMm) || draft.widthMm <= 0) {
     issues.push({ field: 'widthMm', messageKey: 'validation.dimensionsPositive' });
   }

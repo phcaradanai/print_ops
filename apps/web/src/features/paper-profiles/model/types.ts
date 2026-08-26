@@ -39,10 +39,16 @@ export interface PaperForm {
   dpi: number;
   orientation: PaperOrientation;
   unit: 'mm' | 'inch';
+  rotation?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
 }
 
-export interface PaperProfile extends PaperForm {
+export interface PaperProfile extends Omit<PaperForm, 'rotation' | 'flipHorizontal' | 'flipVertical'> {
   id: string;
+  rotation?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
   fields: DynamicField[];
   createdAt: Date;
   updatedAt: Date;

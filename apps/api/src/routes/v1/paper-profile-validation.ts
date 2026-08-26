@@ -66,6 +66,23 @@ function checkGeometry(profile: PaperProfileGeometry): PaperProfileIssue[] {
   return issues;
 }
 
+function checkTransformFields(body: Record<string, unknown>): PaperProfileIssue[] {
+  const issues: PaperProfileIssue[] = [];
+  if (
+    'rotation' in body &&
+    (typeof body['rotation'] !== 'number' || !Number.isFinite(body['rotation']) ||
+      body['rotation'] < 0 || body['rotation'] >= 360)
+  ) {
+    issues.push({ field: 'rotation', message: 'rotation must be a finite number from 0 to less than 360' });
+  }
+  for (const field of ['flipHorizontal', 'flipVertical']) {
+    if (field in body && typeof body[field] !== 'boolean') {
+      issues.push({ field, message: `${field} must be a boolean` });
+    }
+  }
+  return issues;
+}
+
 /** Validates a complete profile body for creation. */
 export function validatePaperProfileCreate(body: Record<string, unknown>): PaperProfileIssue[] {
   const issues: PaperProfileIssue[] = [];
@@ -81,6 +98,7 @@ export function validatePaperProfileCreate(body: Record<string, unknown>): Paper
   if (body['unit'] !== undefined && body['unit'] !== 'mm' && body['unit'] !== 'inch') {
     issues.push({ field: 'unit', message: "unit must be 'mm' or 'inch'" });
   }
+  issues.push(...checkTransformFields(body));
   issues.push(...checkGeometry(body as unknown as PaperProfileGeometry));
   return issues;
 }
@@ -104,6 +122,7 @@ export function validatePaperProfileUpdate(
   if ('unit' in patch && patch['unit'] !== 'mm' && patch['unit'] !== 'inch') {
     issues.push({ field: 'unit', message: "unit must be 'mm' or 'inch'" });
   }
+  issues.push(...checkTransformFields(patch));
   const merged: PaperProfileGeometry = {
     widthMm: current.widthMm,
     heightMm: current.heightMm,

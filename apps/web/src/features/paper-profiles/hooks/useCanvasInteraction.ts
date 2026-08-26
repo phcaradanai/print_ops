@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { getVisualPaperGeometry, mapPrintablePointToVisual, mapVisualPointToPrintable } from '../model/geometry.js';
+import { inverseTransformPoint, resolveRenderTransform, transformPoint } from '@printerops/shared';
 import type { PaperProfileEditor } from './usePaperProfileEditor.js';
 
 const SNAP_THRESHOLD_MM = 2;
@@ -44,15 +45,25 @@ export function useCanvasInteraction(editor: PaperProfileEditor) {
       if (!sheet) return;
       const rect = sheet.getBoundingClientRect();
       const geometry = getVisualPaperGeometry(form);
-      const pointerX = (event.clientX - rect.left) / activeScaleRef.current - geometry.marginLeftMm;
-      const pointerY = (event.clientY - rect.top) / activeScaleRef.current - geometry.marginTopMm;
+      const transform = resolveRenderTransform(form);
+      const pointerPageX = (event.clientX - rect.left) / activeScaleRef.current - dragOffsetRef.current.xMm;
+      const pointerPageY = (event.clientY - rect.top) / activeScaleRef.current - dragOffsetRef.current.yMm;
+      const contentPoint = inverseTransformPoint(
+        pointerPageX,
+        pointerPageY,
+        geometry.widthMm,
+        geometry.heightMm,
+        transform,
+      );
+      const pointerX = contentPoint.x - geometry.marginLeftMm;
+      const pointerY = contentPoint.y - geometry.marginTopMm;
       const visualX = Math.max(0, Math.min(
         geometry.printableWidthMm,
-        pointerX - dragOffsetRef.current.xMm,
+        pointerX,
       ));
       const visualY = Math.max(0, Math.min(
         geometry.printableHeightMm,
-        pointerY - dragOffsetRef.current.yMm,
+        pointerY,
       ));
       const printable = mapVisualPointToPrintable(visualX, visualY, geometry);
       let xMm = Math.min(
@@ -89,10 +100,18 @@ export function useCanvasInteraction(editor: PaperProfileEditor) {
     if (sheet && field) {
       const geometry = getVisualPaperGeometry(form);
       const rect = sheet.getBoundingClientRect();
+      const transform = resolveRenderTransform(form);
       const point = mapPrintablePointToVisual(field.xMm, field.yMm, geometry);
+      const transformedPoint = transformPoint(
+        geometry.marginLeftMm + point.xMm,
+        geometry.marginTopMm + point.yMm,
+        geometry.widthMm,
+        geometry.heightMm,
+        transform,
+      );
       dragOffsetRef.current = {
-        xMm: (event.clientX - rect.left) / scale - geometry.marginLeftMm - point.xMm,
-        yMm: (event.clientY - rect.top) / scale - geometry.marginTopMm - point.yMm,
+        xMm: (event.clientX - rect.left) / scale - transformedPoint.x,
+        yMm: (event.clientY - rect.top) / scale - transformedPoint.y,
       };
     }
     activeSheetRef.current = sheet;

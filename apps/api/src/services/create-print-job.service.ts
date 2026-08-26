@@ -15,6 +15,8 @@ import {
   generateCorrelationId,
   NotFoundError,
   ValidationError,
+  isValidRotation,
+  withRenderTransformOverrides,
 } from '@printerops/shared';
 
 const PRIORITY_MAP: Record<JobPriority, number> = {
@@ -43,6 +45,16 @@ export class CreatePrintJobService {
 
     if (!printer) {
       throw new NotFoundError('Printer', input.printerCode ?? input.printerId ?? 'unknown');
+    }
+
+    if (input.rotate !== undefined && !isValidRotation(input.rotate)) {
+      throw new ValidationError('rotate must be a finite number from 0 to less than 360');
+    }
+    if (input.flipHorizontal !== undefined && typeof input.flipHorizontal !== 'boolean') {
+      throw new ValidationError('flipHorizontal must be a boolean');
+    }
+    if (input.flipVertical !== undefined && typeof input.flipVertical !== 'boolean') {
+      throw new ValidationError('flipVertical must be a boolean');
     }
 
     // Validate copies.
@@ -86,8 +98,14 @@ export class CreatePrintJobService {
     const traceId = generateTraceId();
     const correlationId = generateCorrelationId();
 
+    const metadata = withRenderTransformOverrides(input.metadata, {
+      rotate: input.rotate,
+      flipHorizontal: input.flipHorizontal,
+      flipVertical: input.flipVertical,
+    });
     const job = await this.jobs.create({
       ...input,
+      metadata,
       printerId: printer.id,
       id: jobId,
       traceId,

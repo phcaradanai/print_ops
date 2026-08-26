@@ -3,7 +3,7 @@ import { DISPLAY_UNITS, DPI_OPTIONS } from '../model/defaults.js';
 import { displayValue, toMillimeters } from '../model/units.js';
 import type { PaperForm } from '../model/types.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
-import { FormField, Grid, Input, Select } from '../../../components/ui/index.js';
+import { Checkbox, FormField, Grid, Input, Select } from '../../../components/ui/index.js';
 import { Section } from './editorPrimitives.js';
 import type { Translate } from './types.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
@@ -114,6 +114,36 @@ export function DimensionsSection({ editor, t, anchorRef }: {
               </Select>
             )}
           </FormField>
+          <FormField label={t('page.paperProfiles.rotation')}>
+            {(control) => (
+              <Input
+                {...control}
+                type="number"
+                min={0}
+                max={359}
+                step="any"
+                value={form.rotation}
+                onChange={(event) => {
+                  const value = Number.parseFloat(event.target.value);
+                  if (Number.isFinite(value)) {
+                    editor.patchForm('rotation', Math.max(0, Math.min(359, value)));
+                  }
+                }}
+              />
+            )}
+          </FormField>
+
+          <Checkbox
+            label={t('page.paperProfiles.flipHorizontal')}
+            checked={form.flipHorizontal}
+            onChange={(event) => editor.patchForm('flipHorizontal', event.target.checked)}
+          />
+
+          <Checkbox
+            label={t('page.paperProfiles.flipVertical')}
+            checked={form.flipVertical}
+            onChange={(event) => editor.patchForm('flipVertical', event.target.checked)}
+          />
         </Grid>
       </Section>
     </div>

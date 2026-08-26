@@ -37,6 +37,9 @@ export async function v1PrintJobRoutes(
       copies?: number;
       priority?: import('@printerops/domain').JobPriority;
       metadata?: Record<string, unknown>;
+      rotate?: number;
+      flipHorizontal?: boolean;
+      flipVertical?: boolean;
       /** Optional webhook endpoint that receives this job's terminal print
        *  result. Omitting it preserves the existing contract exactly. */
       endpoint_code?: string;
@@ -92,6 +95,9 @@ export async function v1PrintJobRoutes(
           payload: body.payload ?? {},
           copies: body.copies,
           priority: body.priority,
+          rotate: body.rotate,
+          flipHorizontal: body.flipHorizontal,
+          flipVertical: body.flipVertical,
           endpoint_code: body.endpoint_code,
           metadata: body.metadata,
         },

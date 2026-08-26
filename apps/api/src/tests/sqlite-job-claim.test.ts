@@ -126,6 +126,38 @@ describe('SqliteJobRepository.claim', () => {
 });
 
 describe('SqliteJobRepository.update', () => {
+  it('round-trips transform overrides through create and update', async () => {
+    const created = await repo.create({
+      id: `job-${Math.random().toString(36).slice(2, 10)}`,
+      printerId: 'printer-1',
+      createdBy: 'user-1',
+      mimeType: 'text/plain',
+      copies: 1,
+      duplex: false,
+      colorMode: 'monochrome',
+      metadata: {},
+      traceId: 'trace-1',
+      correlationId: 'corr-1',
+      rotate: 123.5,
+      flipHorizontal: true,
+      flipVertical: false,
+    });
+
+    expect(created.rotate).toBe(123.5);
+    expect(created.flipHorizontal).toBe(true);
+    expect(created.flipVertical).toBe(false);
+
+    const updated = await repo.update(created.id, {
+      rotate: 270,
+      flipHorizontal: false,
+      flipVertical: true,
+    });
+
+    expect(updated.rotate).toBe(270);
+    expect(updated.flipHorizontal).toBe(false);
+    expect(updated.flipVertical).toBe(true);
+  });
+
   it('applies a real patch', async () => {
     const job = await seedJob();
     const updated = await repo.update(job.id, { status: 'PRINTING', runnerId: 'r2' });

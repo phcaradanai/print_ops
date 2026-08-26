@@ -1,5 +1,6 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { qrQuietZoneMm, renderBarcodeSvg } from '../../../lib/barcode.js';
+import { inverseTransformVector, renderTransformCss, resolveRenderTransform } from '@printerops/shared';
 import { useLocale } from '../../../i18n/index.js';
 import { anchorTransform, anchorTransformOrigin } from '../model/fieldGeometry.js';
 import { fontPointSizeToPreviewPixels, getVisualPaperGeometry, mapPrintablePointToVisual } from '../model/geometry.js';
@@ -363,6 +364,7 @@ export function PaperCanvas({
   showDimensions?: boolean;
 }) {
   const { t } = useLocale();
+  const renderTransform = resolveRenderTransform(form);
   const geometry = getVisualPaperGeometry(form);
   const pvW = geometry.widthMm * scale;
   const pvH = geometry.heightMm * scale;
@@ -409,6 +411,19 @@ export function PaperCanvas({
         overflow: 'hidden',
       }}
     >
+      <div
+        data-printops-transform-layer="true"
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width: pvW,
+          height: pvH,
+          overflow: 'visible',
+          transformOrigin: '50% 50%',
+          transform: renderTransformCss(renderTransform),
+        }}
+      >
       {ux.watermarkText && (
         <div style={{
           position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
@@ -483,7 +498,8 @@ export function PaperCanvas({
                       : null;
               if (!delta) return;
               event.preventDefault();
-              onFieldNudge(f.id, delta[0], delta[1]);
+              const sourceDelta = inverseTransformVector(delta[0], delta[1], renderTransform);
+              onFieldNudge(f.id, sourceDelta.x, sourceDelta.y);
             } : undefined}
             className="pp-canvas-field"
             style={{
@@ -571,6 +587,7 @@ export function PaperCanvas({
           pointerEvents: 'none', zIndex: 1,
         }} />
       ))}
+      </div>
     </div>
   );
 }

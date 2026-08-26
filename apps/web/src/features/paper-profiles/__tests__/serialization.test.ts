@@ -46,6 +46,21 @@ describe('Paper Profile serialization', () => {
     });
   });
 
+  it('exports explicitly configured transform fields', () => {
+    const result = serializeProfiles([{
+      ...profile,
+      rotation: 37,
+      flipHorizontal: true,
+      flipVertical: true,
+    }], '2026-07-30T00:00:00.000Z');
+
+    expect(result.profiles[0]).toMatchObject({
+      rotation: 37,
+      flipHorizontal: true,
+      flipVertical: true,
+    });
+  });
+
   it('keeps the established two-space formatted JSON representation', () => {
     const json = stringifyProfiles([profile], '2026-07-30T00:00:00.000Z');
     expect(json).toContain('\n  "version": "1.0"');

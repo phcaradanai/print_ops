@@ -124,7 +124,7 @@ export async function templateRoutes(
 
   app.post('/templates/:id/preview', { onRequest: [requirePermission('template:preview')] }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const body = req.body as { samplePayload?: Record<string, unknown>; paperProfileId?: string };
+    const body = req.body as { samplePayload?: Record<string, unknown>; paperProfileId?: string; rotate?: number; flipHorizontal?: boolean; flipVertical?: boolean };
     const template = await deps.templates.findById(id);
     if (!template) return reply.status(404).send({ error: 'Template not found' });
     const paper = body.paperProfileId
@@ -133,7 +133,14 @@ export async function templateRoutes(
         ? await deps.papers.findById(template.paperProfileId)
         : undefined;
     if (!paper) return reply.status(404).send({ error: 'Paper profile not found' });
-    return deps.renderer.renderPreview(template, body.samplePayload ?? {}, paper);
+    const renderOptions = {
+      ...(body.rotate !== undefined ? { rotate: body.rotate } : {}),
+      ...(body.flipHorizontal !== undefined ? { flipHorizontal: body.flipHorizontal } : {}),
+      ...(body.flipVertical !== undefined ? { flipVertical: body.flipVertical } : {}),
+    };
+    return Object.keys(renderOptions).length > 0
+      ? deps.renderer.renderPreview(template, body.samplePayload ?? {}, paper, renderOptions)
+      : deps.renderer.renderPreview(template, body.samplePayload ?? {}, paper);
   });
 
   app.post('/templates/:id/publish', { onRequest: [requirePermission('template:publish')] }, async (req) => {
@@ -225,6 +232,9 @@ export async function templateRoutes(
         marginTopMm: profile.marginTopMm,
         marginRightMm: profile.marginRightMm,
         marginBottomMm: profile.marginBottomMm,
+        rotation: profile.rotation ?? 0,
+        flipHorizontal: profile.flipHorizontal ?? false,
+        flipVertical: profile.flipVertical ?? false,
         marginLeftMm: profile.marginLeftMm,
         dpi: profile.dpi,
         orientation: profile.orientation,
@@ -276,6 +286,7 @@ export async function templateRoutes(
         ['marginTopMm', 0],
         ['marginRightMm', 0],
         ['marginBottomMm', 0],
+        ['rotation', 0],
         ['marginLeftMm', 0],
         ['dpi', 203],
       ];
@@ -304,6 +315,9 @@ export async function templateRoutes(
         dpi: numbers['dpi']!,
         orientation: (item.orientation === 'landscape' ? 'landscape' : 'portrait') as 'portrait' | 'landscape',
         unit: (item.unit === 'inch' ? 'inch' : 'mm') as 'mm' | 'inch',
+        rotation: numbers['rotation']!,
+        flipHorizontal: item.flipHorizontal ?? false,
+        flipVertical: item.flipVertical ?? false,
         fields: Array.isArray(item.fields) ? item.fields : [],
       };
 
@@ -388,6 +402,9 @@ export async function templateRoutes(
           dpi: profile.dpi,
           orientation: profile.orientation,
           unit: profile.unit,
+          rotation: profile.rotation ?? 0,
+          flipHorizontal: profile.flipHorizontal ?? false,
+          flipVertical: profile.flipVertical ?? false,
           fields: profile.fields ?? [],
         },
       ],

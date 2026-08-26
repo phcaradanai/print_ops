@@ -34,6 +34,14 @@ export interface PaperProfileOption {
    *  one by hand don't have to supply them. */
   widthMm?: number;
   heightMm?: number;
+  marginTopMm?: number;
+  marginRightMm?: number;
+  marginBottomMm?: number;
+  marginLeftMm?: number;
+  orientation?: 'portrait' | 'landscape';
+  rotation?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
   fields: PaperProfileField[];
 }
 

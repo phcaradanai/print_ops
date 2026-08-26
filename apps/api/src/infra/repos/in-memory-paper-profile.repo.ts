@@ -34,6 +34,9 @@ export class InMemoryPaperProfileRepository implements PaperProfileRepositoryPor
     const profile: PaperProfile = {
       ...input,
       fields: input.fields ?? [],
+      rotation: input.rotation ?? 0,
+      flipHorizontal: input.flipHorizontal ?? false,
+      flipVertical: input.flipVertical ?? false,
       id: generateId(),
       createdAt: now,
       updatedAt: now,
