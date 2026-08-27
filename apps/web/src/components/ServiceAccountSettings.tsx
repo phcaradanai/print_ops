@@ -3,7 +3,7 @@ import { apiFetch, getCurrentUser } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useLocale } from '../i18n/index.js';
-import { Button, Input, Card } from './ui/index.js';
+import { Button, Input, Card, StateBadge } from './ui/index.js';
 
 type ServiceAccount = {
   id: string;
@@ -115,7 +115,8 @@ export function ServiceAccountSettings() {
       </form>
       {resource.data.accounts.map((account) => (
         <div key={account.id} className="settings-hint settings-hint--mono" style={{ marginTop: '0.75rem' }}>
-          <strong>{account.name}</strong> · {account.sourceSystem} · {account.apiKeyPrefix}… · {account.isActive ? t('common.active') : t('common.inactive')}
+          <strong>{account.name}</strong> · {account.sourceSystem} · {account.apiKeyPrefix}… ·{' '}
+          <StateBadge value={account.isActive} onLabel={t('status.active')} offLabel={t('status.inactive')} />
           {account.isActive && (
             <div className="settings-actions" style={{ marginTop: '0.5rem' }}>
               <Button variant="secondary" disabled={busy !== null} busy={busy === account.id} onClick={() => void rotate(account.id)}>

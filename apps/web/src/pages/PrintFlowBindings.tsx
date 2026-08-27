@@ -27,6 +27,7 @@ import {
   Panel,
   Select,
   Stack,
+  Switch,
   TableEmpty,
   Text,
 } from '../components/ui/index.js';
@@ -511,14 +512,14 @@ export default function PrintFlowBindings() {
                     </Chip>
                   </DataCell>
                   <DataCell label={bindingColumns.enabled} actions>
-                    <Chip
-                      selected={b.enabled}
-                      disabled={busy}
-                      onClick={() => void patch(b, { enabled: !b.enabled })}
-                      title={b.enabled ? t('status.disabled') : t('status.enabled')}
-                    >
-                      {b.enabled ? t('status.enabled') : t('status.disabled')}
-                    </Chip>
+                    <Switch
+                      label={bindingColumns.enabled}
+                      onLabel={t('status.enabled')}
+                      offLabel={t('status.disabled')}
+                      checked={b.enabled}
+                      onChange={() => void patch(b, { enabled: !b.enabled })}
+                      busy={busy}
+                    />
                   </DataCell>
                 </tr>
               ))}

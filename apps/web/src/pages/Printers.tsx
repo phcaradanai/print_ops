@@ -13,6 +13,7 @@ import {
   LoadingState,
   Mono,
   PageLayout,
+  StateBadge,
   StatusIndicator,
   TableEmpty,
   Text,
@@ -101,9 +102,11 @@ export default function Printers() {
                   <Mono>{p.maxCopiesPerJob ?? t('common.noData')}</Mono>
                 </DataCell>
                 <DataCell label={columns.active}>
-                  <Badge tone={p.isActive ? 'success' : 'neutral'}>
-                    {p.isActive ? t('status.active') : t('status.inactive')}
-                  </Badge>
+                  <StateBadge
+                    value={p.isActive}
+                    onLabel={t('status.active')}
+                    offLabel={t('status.inactive')}
+                  />
                 </DataCell>
               </tr>
             ))}

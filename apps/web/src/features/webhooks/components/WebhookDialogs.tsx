@@ -14,6 +14,7 @@ import {
   Inline,
   Mono,
   Stack,
+  StateBadge,
   Text,
 } from '../../../components/ui/index.js';
 import { curlExample, intakeUrl } from '../model.js';
@@ -118,11 +119,11 @@ export function WebhookDialogs({ controller }: { controller: WebhookWorkspaceCon
                   : detailsEndpoint.routePolicyId || '—'}
               </CardDetailItem>
               <CardDetailItem label={t('page.webhooks.statusLabelColon')}>
-                <Badge tone={detailsEndpoint.enabled ? 'success' : 'neutral'}>
-                  {detailsEndpoint.enabled
-                    ? t('page.webhooks.statusEnabled')
-                    : t('page.webhooks.statusDraft')}
-                </Badge>
+                <StateBadge
+                  value={detailsEndpoint.enabled}
+                  onLabel={t('page.webhooks.statusEnabled')}
+                  offLabel={t('page.webhooks.statusDraft')}
+                />
               </CardDetailItem>
               <CardDetailItem label={t('page.webhooks.callbackTrigger')}>
                 {detailsEndpoint.callbackOnPrintResult

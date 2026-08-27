@@ -10,7 +10,9 @@ import {
   Checkbox,
   Chip,
   MetricTile,
+  StateBadge,
   StatusIndicator,
+  Switch,
   TableEmpty,
   Text,
   statusTone,
@@ -67,6 +69,36 @@ describe('Checkbox', () => {
     const html = renderToStaticMarkup(<Checkbox hideLabel label="Select job a1b2c3" />);
     expect(html).toContain('Select job a1b2c3');
     expect(html).toContain('ui-visually-hidden');
+  });
+});
+
+describe('StateBadge', () => {
+  it('renders a visible icon, state hook, and supporting label for inactive state', () => {
+    const html = renderToStaticMarkup(
+      <StateBadge value={false} onLabel="Enabled" offLabel="Disabled" />,
+    );
+    expect(html).toContain('ui-state-badge--off');
+    expect(html).toContain('data-state="off"');
+    expect(html).toContain('Disabled');
+    expect(html).toContain('ui-state-icon');
+  });
+});
+
+describe('Switch', () => {
+  it('exposes switch semantics and a visible state label for both values', () => {
+    const enabled = renderToStaticMarkup(
+      <Switch label="NATS intake" onLabel="Enabled" offLabel="Disabled" checked onChange={() => undefined} />,
+    );
+    const disabled = renderToStaticMarkup(
+      <Switch label="NATS intake" onLabel="Enabled" offLabel="Disabled" checked={false} onChange={() => undefined} />,
+    );
+    expect(enabled).toContain('role="switch"');
+    expect(enabled).toContain('aria-checked="true"');
+    expect(enabled).toContain('Enabled');
+    expect(enabled).toContain('ui-switch--on');
+    expect(disabled).toContain('aria-checked="false"');
+    expect(disabled).toContain('Disabled');
+    expect(disabled).toContain('ui-switch--off');
   });
 });
 

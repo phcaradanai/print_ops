@@ -1,3 +1,4 @@
+import { StateIcon } from './status.js';
 import {
   forwardRef,
   type ButtonHTMLAttributes,
@@ -154,6 +155,54 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
       <span className={`ui-check__copy${hideLabel ? ' ui-visually-hidden' : ''}`}>
         <span className="ui-check__label">{label}</span>
         {description != null && <span className="ui-check__description">{description}</span>}
+      </span>
+    </label>
+  );
+});
+
+export interface SwitchProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'checked' | 'defaultChecked'> {
+  label: ReactNode;
+  onLabel: ReactNode;
+  offLabel: ReactNode;
+  checked: boolean;
+  description?: ReactNode;
+  busy?: boolean;
+}
+
+export const Switch = forwardRef<HTMLInputElement, SwitchProps>(function Switch({
+  label,
+  onLabel,
+  offLabel,
+  description,
+  checked,
+  busy = false,
+  disabled = false,
+  className = '',
+  ...props
+}, ref) {
+  const state = checked ? 'on' : 'off';
+  const blocked = disabled || busy;
+  return (
+    <label className={`ui-switch ui-switch--${state}${blocked ? ' is-disabled' : ''}${className ? ` ${className}` : ''}`}>
+      <input
+        {...props}
+        ref={ref}
+        type="checkbox"
+        role="switch"
+        checked={checked}
+        disabled={blocked}
+        aria-checked={checked}
+        aria-busy={busy || undefined}
+      />
+      <span className="ui-switch__track" aria-hidden="true">
+        <span className="ui-switch__thumb"><StateIcon value={checked} /></span>
+      </span>
+      <span className="ui-switch__copy">
+        <span className="ui-switch__label">{label}</span>
+        <span className={`ui-switch__state ui-switch__state--${state}`}>
+          {checked ? onLabel : offLabel}
+        </span>
+        {description != null && <span className="ui-switch__description">{description}</span>}
       </span>
     </label>
   );

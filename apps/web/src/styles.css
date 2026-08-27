@@ -121,6 +121,7 @@
   --rounded-sm: 4px;
   --rounded-md: 6px;
   --rounded-lg: 8px;
+  --rounded-pill: 9999px;
 
   /* -- spacing -- */
   --spacing-xs: 0.35rem;

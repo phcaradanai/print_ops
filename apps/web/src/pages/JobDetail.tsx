@@ -39,6 +39,7 @@ import {
   RecordList,
   RecordHeader,
   Stack,
+  StateBadge,
   StatusBadge,
   Text,
   Card,
@@ -307,7 +308,9 @@ function ResultDelivery({
         {/* Configuration, so "nothing was delivered" always has a stated reason. */}
         <CardDetail>
           <CardDetailItem label={t('page.jobDetail.callbackEnabled')}>
-            {!configured ? t('page.jobDetail.callbackNotConfigured') : intent?.enabled ? t('status.enabled') : t('status.disabled')}
+            {!configured
+              ? t('page.jobDetail.callbackNotConfigured')
+              : <StateBadge value={Boolean(intent?.enabled)} onLabel={t('status.enabled')} offLabel={t('status.disabled')} />}
           </CardDetailItem>
           <CardDetailItem label={t('page.jobDetail.callbackTrigger')}>{intent?.trigger ?? '—'}</CardDetailItem>
           <CardDetailItem label={t('page.jobDetail.callbackTransport')}>{intent?.transports?.join(' + ') || '—'}</CardDetailItem>

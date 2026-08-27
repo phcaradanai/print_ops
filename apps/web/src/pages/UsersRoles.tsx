@@ -7,6 +7,8 @@ import { useApiAction } from '../hooks/useApiAction.js';
 import {
   Badge,
   Button,
+  StateBadge,
+  Switch,
   Checkbox,
   DataCell,
   DataHead,
@@ -219,16 +221,16 @@ export default function UsersRoles() {
 
       {canEditStatus(user) && (
         <div>
-          <Button
-            size="sm"
-            variant={user.isActive ? 'danger' : 'secondary'}
+          <Switch
+            label={t('page.usersRoles.status')}
+            onLabel={t('page.usersRoles.active')}
+            offLabel={t('page.usersRoles.inactive')}
+            checked={user.isActive}
             busy={changeStatus.pending && statusUserId === user.id}
             disabled={changeStatus.pending && statusUserId !== user.id}
             aria-label={user.isActive ? t('page.usersRoles.deactivateUser') : t('page.usersRoles.activateUser')}
-            onClick={() => void handleStatusChange(user)}
-          >
-            {user.isActive ? t('page.usersRoles.deactivate') : t('page.usersRoles.activate')}
-          </Button>
+            onChange={() => void handleStatusChange(user)}
+          />
         </div>
       )}
       {changeStatus.error != null && statusUserId === user.id && (
@@ -287,9 +289,11 @@ export default function UsersRoles() {
                 <DataCell label={t('page.usersRoles.email')}>{user.email}</DataCell>
                 <DataCell label={t('page.usersRoles.role')}><Badge>{user.role}</Badge></DataCell>
                 <DataCell label={t('page.usersRoles.status')}>
-                  <Badge tone={user.isActive ? 'success' : 'danger'}>
-                    {user.isActive ? t('page.usersRoles.active') : t('page.usersRoles.inactive')}
-                  </Badge>
+                  <StateBadge
+                    value={user.isActive}
+                    onLabel={t('page.usersRoles.active')}
+                    offLabel={t('page.usersRoles.inactive')}
+                  />
                 </DataCell>
                 <DataCell label={t('page.usersRoles.actions')} actions>{renderUserActions(user)}</DataCell>
               </tr>

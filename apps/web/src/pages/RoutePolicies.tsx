@@ -6,7 +6,6 @@ import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
 import {
   Alert,
-  Badge,
   Button,
   EmptyState,
   ErrorState,
@@ -20,6 +19,7 @@ import {
   Panel,
   RecordCard,
   RecordList,
+  StateBadge,
   Text,
   Textarea,
 } from '../components/ui/index.js';
@@ -130,9 +130,7 @@ export default function RoutePolicies() {
                   <Inline gap="md">
                     <Mono>{policy.policyCode}</Mono>
                     <Text weight="semibold" tone="strong">{policy.name}</Text>
-                    <Badge tone={policy.enabled ? 'success' : 'neutral'}>
-                      {policy.enabled ? t('status.enabled') : t('status.disabled')}
-                    </Badge>
+                    <StateBadge value={policy.enabled} onLabel={t('status.enabled')} offLabel={t('status.disabled')} />
                   </Inline>
                 </RecordCard>
               ))}

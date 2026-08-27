@@ -9,6 +9,7 @@ import {
   DataHead,
   DataTable,
   EmptyState,
+  Switch,
   Inline,
   Mono,
   Pagination,
@@ -244,11 +245,13 @@ export function EndpointList({
                   <DataCell><Mono>{endpoint.authMode || 'NONE'}</Mono></DataCell>
                   <DataCell>{policyLabel(controller, endpoint)}</DataCell>
                   <DataCell>
-                    <Badge tone={endpoint.enabled ? 'success' : 'neutral'}>
-                      {endpoint.enabled
-                        ? t('page.webhooks.statusEnabled')
-                        : t('page.webhooks.statusDraft')}
-                    </Badge>
+                    <Switch
+                      label={t('page.webhooks.enabled')}
+                      onLabel={t('page.webhooks.statusEnabled')}
+                      offLabel={t('page.webhooks.statusDraft')}
+                      checked={endpoint.enabled}
+                      onChange={() => void toggleEndpoint(endpoint)}
+                    />
                   </DataCell>
                   <DataCell>
                     <Badge tone={endpoint.callbackTransport === 'NONE' ? 'neutral' : 'info'}>
@@ -287,11 +290,13 @@ export function EndpointList({
                     <Mono wrap>{endpoint.endpointCode}</Mono>
                   </Stack>
                 </Inline>
-                <Badge tone={endpoint.enabled ? 'success' : 'neutral'}>
-                  {endpoint.enabled
-                    ? t('page.webhooks.statusEnabled')
-                    : t('page.webhooks.statusDraft')}
-                </Badge>
+                <Switch
+                  label={t('page.webhooks.enabled')}
+                  onLabel={t('page.webhooks.statusEnabled')}
+                  offLabel={t('page.webhooks.statusDraft')}
+                  checked={endpoint.enabled}
+                  onChange={() => void toggleEndpoint(endpoint)}
+                />
               </RecordHeader>
               <div className="webhook-record-grid">
                 <div>

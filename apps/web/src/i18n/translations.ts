@@ -68,6 +68,8 @@ const en: TranslationDict = {
   'status.unregistered': 'Unregistered',
   'status.enabled': 'enabled',
   'status.disabled': 'disabled',
+  'status.on': 'on',
+  'status.off': 'off',
   'status.active': 'Active',
   'status.inactive': 'Inactive',
 
@@ -1421,6 +1423,8 @@ const th: TranslationDict = {
   'status.unregistered': 'ยังไม่ได้ลงทะเบียน',
   'status.enabled': 'เปิดใช้งาน',
   'status.disabled': 'ปิดใช้งาน',
+  'status.on': 'เปิด',
+  'status.off': 'ปิด',
   'status.active': 'พร้อมใช้งาน',
   'status.inactive': 'ไม่พร้อมใช้งาน',
 

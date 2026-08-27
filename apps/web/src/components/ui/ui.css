@@ -137,6 +137,43 @@
 .ui-badge--warning { border-color: color-mix(in srgb, var(--state-warning-text) 35%, var(--neutral-border)); background: var(--state-warning-surface); color: var(--state-warning-text); }
 .ui-badge--danger { border-color: color-mix(in srgb, var(--state-danger-text) 35%, var(--neutral-border)); background: var(--state-danger-surface); color: var(--state-danger-text); }
 
+.ui-state-icon { display: block; flex: 0 0 auto; }
+.ui-state-badge {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 1.65rem;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 0.2rem 0.6rem 0.2rem 0.35rem;
+  border: 1px solid;
+  border-radius: var(--rounded-pill);
+  font-size: var(--font-label-size);
+  font-weight: 650;
+  line-height: 1.25;
+  white-space: normal;
+}
+.ui-state-badge--on {
+  border-color: color-mix(in srgb, var(--state-success-text) 48%, var(--neutral-border));
+  background: var(--state-success-surface);
+  color: var(--state-success-text);
+}
+.ui-state-badge--off {
+  border-color: color-mix(in srgb, var(--state-danger-text) 42%, var(--neutral-border));
+  background: var(--state-danger-surface);
+  color: var(--state-danger-text);
+}
+.ui-state-badge__icon {
+  display: inline-grid;
+  width: 1.2rem;
+  height: 1.2rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: var(--neutral-surface);
+}
+.ui-state-badge__label { min-width: 0; overflow-wrap: anywhere; }
+
 .ui-inline-error { display: block; color: var(--state-danger-text); font-size: var(--font-label-size); line-height: 1.4; }
 .ui-muted-copy { color: var(--neutral-text-muted); font-size: var(--font-label-size); }
 

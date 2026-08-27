@@ -3,6 +3,7 @@ import { useLocale } from '../../../i18n/index.js';
 import { useTemplateWorkspace } from '../hooks/useTemplateWorkspace.js';
 import {
   Badge, Button, Card, Chip, DataCell, DataHead, DataTable, EmptyState,
+  StateBadge,
   Heading, IconButton, Inline, LoadingState, Mono, Select, TableEmpty, Text, type BadgeTone
 } from '../../../components/ui/index.js';
 import { TemplateIcon } from './TemplateIcon.js';
@@ -156,7 +157,9 @@ export function TemplateLibrary() {
                 <DataCell label={t('page.templates.engine')}><Badge>{tpl.engine}</Badge></DataCell>
                 <DataCell label={t('page.templates.version')}><Mono>{tpl.version}</Mono></DataCell>
                 <DataCell label={t('page.templates.status')}>
-                  <Badge tone={STATUS_BADGE_TONE[tpl.status] ?? 'neutral'}>{tpl.status}</Badge>
+                  {tpl.status === 'DISABLED'
+                    ? <StateBadge value={false} onLabel={tpl.status} offLabel={tpl.status} />
+                    : <Badge tone={STATUS_BADGE_TONE[tpl.status] ?? 'neutral'}>{tpl.status}</Badge>}
                 </DataCell>
                 <DataCell label={t('page.templates.updated')}>
                   <Text size="label" tone="muted" nowrap>{formatDate(tpl.updatedAt ?? tpl.createdAt, locale)}</Text>
