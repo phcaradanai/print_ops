@@ -112,7 +112,7 @@ API defaults from `apps/api/src/server.ts` and `apps/api/src/app.ts`:
 | `PORT` | `31415` | API port |
 | `HOST` | `0.0.0.0` | API bind host |
 | `JWT_SECRET` | `dev-secret-change-in-production` | Development JWT secret |
-| `PRINTOPS_DEV_SEED` | `true` under `npm run dev -w apps/api` | Seeds the four development Role accounts; set `false` to exercise optional owner setup |
+| `PRINTOPS_DEV_SEED` | Default accounts when unset; all dev fixtures when `true`; disabled when `false` | Seeds the four default Role accounts; set `false` to require optional owner setup |
 | `PRINTOPS_DEV_API_KEY` | `printops-dev-apikey-2026` | Dev API key for `/api/v1` external endpoints |
 
 Runner defaults (primary runner is `apps/runner-go`; see its README for the full config reference):
@@ -136,7 +136,7 @@ The Go runner uses `PRINTOPS_`-prefixed variables (e.g. `PRINTOPS_API_BASE_URL`,
 - Web UI runs on `http://localhost:3000`.
 - Vite proxies API/auth requests to `http://127.0.0.1:31415`.
 
-Seeded local development role accounts (`npm run dev -w apps/api`):
+Default dashboard role accounts (created unless `PRINTOPS_DEV_SEED=false`):
 
 | Role | Email | Password |
 | --- | --- | --- |
@@ -145,8 +145,10 @@ Seeded local development role accounts (`npm run dev -w apps/api`):
 | `OPERATOR` | `user@printerops.local` | `Dev-password1!` |
 | `VIEWER` | `viewer@printerops.local` | `Dev-password1!` |
 
-These credentials are development fixtures only. They are not created by the
-production server or packaged desktop application.
+These default credentials are available in local development, production
+server, and packaged desktop installations. Set `PRINTOPS_DEV_SEED=false`
+before the first start when you want a fresh installation to require optional
+owner setup instead. The default password should be changed for real use.
 
 Other seeded local development values:
 
@@ -175,7 +177,8 @@ discovery/runner bootstrap, configured NATS intake, and existing service-account
 API keys continue to operate without an
 OWNER account. Existing OWNER/ADMIN/OPERATOR/VIEWER accounts continue to sign
 in with their configured RBAC permissions, and owner creation remains an
-optional action on the sign-in screen. External HTTP intake is never anonymous;
+optional action on the sign-in screen. When default accounts already exist,
+creating another OWNER requires an active OWNER credential. External HTTP intake is never anonymous;
 it still requires an active service-account key.
 
 Run individual services:
@@ -542,7 +545,7 @@ Operators can also retrieve:
 - Development storage is in-memory unless `DB_MODE=sqlite` is set. Packaged desktop storage is SQLite and survives restarts/upgrades in its app-data directory.
 - PostgreSQL repositories remain TBD / ต้องยืนยัน; SQLite is the current packaged-desktop persistence path.
 - Queueing is in-memory, not Redis/BullMQ.
-- Seeded development users require `Dev-password1!`; a non-seeded installation uses the first-owner setup flow.
+- Default dashboard users use `Dev-password1!`; set `PRINTOPS_DEV_SEED=false` on a fresh installation to use the optional first-owner setup flow instead.
 - API key auth exists for external `/api/v1` endpoints, with a seeded dev key.
 - Real printer adapters are not confirmed production-ready.
 - Packaged Windows execution is owned by the bundled API local worker through the TypeScript `WindowsSpoolerAdapter`. The Go runner performs discovery and heartbeat only.
@@ -626,7 +629,7 @@ API:
 | `PORT` | `31415` | port ของ API |
 | `HOST` | `0.0.0.0` | host ที่ API bind |
 | `JWT_SECRET` | `dev-secret-change-in-production` | secret สำหรับ dev JWT |
-| `PRINTOPS_DEV_SEED` | `true` เมื่อใช้ `npm run dev -w apps/api` | สร้างบัญชี Role สำหรับ dev ทั้ง 4 ระดับ; กำหนด `false` เมื่อต้องการทดสอบ optional owner setup |
+| `PRINTOPS_DEV_SEED` | ไม่กำหนด = บัญชี default; `true` = fixture dev ทั้งหมด; `false` = ไม่สร้างบัญชี default | สร้างบัญชี Role เริ่มต้น; กำหนด `false` เมื่อต้องการใช้ optional owner setup |
 | `PRINTOPS_DEV_API_KEY` | `printops-dev-apikey-2026` | API key สำหรับ external API ใน dev |
 
 Runner (runner หลักคือ `apps/runner-go`; ดู config ทั้งหมดใน README ของ Go runner):
@@ -642,7 +645,7 @@ Runner (runner หลักคือ `apps/runner-go`; ดู config ทั้�
 | `DISCOVERY_INTERVAL_MS` | `60000` | รอบเวลาค้นหา printer |
 | `DISCOVERY_ADAPTER` | `auto` | `auto`, `windows`, `macos`, หรือ `fake` |
 
-บัญชี Role สำหรับ development ที่ seed โดย `npm run dev -w apps/api`:
+บัญชี Role เริ่มต้น (สร้างโดยค่า default ยกเว้นกำหนด `PRINTOPS_DEV_SEED=false`):
 
 | Role | อีเมล | รหัสผ่าน |
 | --- | --- | --- |
@@ -651,8 +654,9 @@ Runner (runner หลักคือ `apps/runner-go`; ดู config ทั้�
 | `OPERATOR` | `user@printerops.local` | `Dev-password1!` |
 | `VIEWER` | `viewer@printerops.local` | `Dev-password1!` |
 
-บัญชีเหล่านี้ใช้สำหรับ development เท่านั้น production server และ desktop app
-ที่ bundle แล้วจะไม่สร้างบัญชีชุดนี้
+บัญชี default เหล่านี้ใช้ได้ทั้ง development, production server และ desktop app
+ที่ bundle แล้ว หากต้องการ installation แบบไม่มีบัญชี default ให้กำหนด
+`PRINTOPS_DEV_SEED=false` ก่อนเริ่มระบบ และควรเปลี่ยนรหัสผ่าน default ก่อนใช้งานจริง
 
 ค่า development อื่นที่ seed มาให้:
 
@@ -671,14 +675,15 @@ Runner (runner หลักคือ `apps/runner-go`; ดู config ทั้�
 PRINTOPS_API_BASE_URL=http://127.0.0.1:31415 PRINTOPS_DEV_PASSWORD='Dev-password1!' npm run dev
 ```
 
-คำสั่ง dev ของ API จะสร้างบัญชี OWNER/ADMIN/OPERATOR/VIEWER ที่ระบุไว้โดยอัตโนมัติ
+API จะสร้างบัญชี default ในทุก runtime mode เมื่อไม่ได้กำหนด `PRINTOPS_DEV_SEED=false`; ส่วนคำสั่ง dev จะเปิดการ seed fixture อื่น ๆ ให้โดยอัตโนมัติ
 หากกำหนด `PRINTOPS_DEV_SEED=false` ระบบจะไม่สร้าง demo accounts และจะแสดง
 ตัวเลือกตั้งค่า OWNER คนแรกแทน การตั้งค่า OWNER มีผลเฉพาะการเข้าใช้และบริหาร
 dashboard เท่านั้น ไม่ปิด printer discovery/runner, NATS intake ที่ตั้งค่าไว้
 หรือ API key ของ service account ที่ยัง active อยู่ โดย HTTP intake ยังต้องใช้
 API key เสมอและไม่ได้เปิดรับงานแบบ anonymous บัญชี OWNER/ADMIN/OPERATOR/VIEWER
 ที่ตั้งค่าไว้อยู่แล้วสามารถเข้าสู่ระบบตามสิทธิ์ RBAC เดิม ส่วนการสร้าง OWNER
-เป็นตัวเลือกบนหน้าเข้าสู่ระบบ
+เป็นตัวเลือกบนหน้าเข้าสู่ระบบ และยังใช้สร้าง OWNER เพิ่มได้ โดยต้องยืนยัน
+อีเมลและรหัสผ่านของ OWNER ที่ยัง active ก่อน
 
 หรือแยกรันคนละ terminal:
 
@@ -917,7 +922,7 @@ PrintOps รับคำสั่งพิมพ์ผ่าน HTTP API, ตร
 
 1. เปิด API, web UI, และ runner
 2. เข้า `http://localhost:3000`
-3. ถ้าเปิด dev seed ให้ใช้บัญชี Role ในตารางด้านบน เช่น `admin@printerops.local` / `Dev-password1!`; ถ้าไม่เปิด seed สามารถเลือกตั้งค่า OWNER หรือใช้บัญชี Role ที่ provision ไว้แล้ว
+3. ถ้าใช้ค่า default หรือเปิด dev seed ให้ใช้บัญชี Role ในตารางด้านบน เช่น `admin@printerops.local` / `Dev-password1!`; ถ้ากำหนด `PRINTOPS_DEV_SEED=false` ให้เลือกตั้งค่า OWNER หรือใช้บัญชี Role ที่ provision ไว้แล้ว
 4. ดูหน้า **Printers** ว่ามี fake printer ที่ seed มา
 5. ดูหน้า **Runners** ว่า runner online
 6. ให้โปรแกรม integration หรือ curl ส่ง print job เข้า external API
@@ -1004,7 +1009,7 @@ field ที่ยืนยันจาก route code ว่าจำเป็�
 - Dev API ใช้ in-memory เป็นค่าเริ่มต้น แต่เลือก `DB_MODE=sqlite` ได้ ส่วน packaged desktop ใช้ SQLite ใน app-data และข้อมูลอยู่ข้ามการ restart/upgrade
 - PostgreSQL persistence ยังต้องยืนยัน; packaged desktop ใช้ SQLite เป็น persistence path ปัจจุบัน
 - queue ยังเป็น in-memory ไม่ใช่ Redis/BullMQ
-- demo users ใช้รหัสผ่าน `Dev-password1!`; installation ที่ไม่ seed จะใช้ขั้นตอนตั้งค่า OWNER คนแรก
+- บัญชี dashboard default ใช้รหัสผ่าน `Dev-password1!`; ถ้ากำหนด `PRINTOPS_DEV_SEED=false` ตั้งแต่ก่อนเริ่ม installation ใหม่ จะใช้ขั้นตอนตั้งค่า OWNER คนแรกแทน
 - external API มี API key auth และมี dev key ที่ seed มา
 - real printer adapters ยังไม่ยืนยันว่าใช้งาน production ได้
 - ในแพ็กเกจ Windows ตัวทำงาน API ภายในเครื่องเป็นผู้ดำเนินงานพิมพ์ผ่าน TypeScript `WindowsSpoolerAdapter` ส่วน Go runner ใช้ค้นหาเครื่องพิมพ์และส่ง heartbeat เท่านั้น

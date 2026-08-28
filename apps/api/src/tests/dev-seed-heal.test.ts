@@ -52,6 +52,49 @@ async function seedLegacyDevUser(email: string, role: 'OWNER' | 'ADMIN' | 'OPERA
 }
 
 describe('dev seed heals legacy accounts', () => {
+  it('seeds the default OWNER when PRINTOPS_DEV_SEED is omitted', async () => {
+    delete process.env['PRINTOPS_DEV_SEED'];
+
+    const built = await buildApp({ jwtSecret: 'default-seed-owner-test-secret' });
+    try {
+      for (const [email, role] of [
+        ['sysadmin@printerops.local', 'OWNER'],
+        ['admin@printerops.local', 'ADMIN'],
+        ['user@printerops.local', 'OPERATOR'],
+        ['viewer@printerops.local', 'VIEWER'],
+      ] as const) {
+        const login = await built.app.inject({
+          method: 'POST',
+          url: '/auth/login',
+          payload: { email, password: 'Dev-password1!' },
+        });
+        expect(login.statusCode).toBe(200);
+        expect(login.json().user.role).toBe(role);
+      }
+    } finally {
+      await built.app.close();
+    }
+  });
+
+  it('keeps the explicit PRINTOPS_DEV_SEED=false opt-out for owner setup', async () => {
+    process.env['PRINTOPS_DEV_SEED'] = 'false';
+
+    const built = await buildApp({ jwtSecret: 'default-seed-opt-out-test-secret' });
+    try {
+      const bootstrap = await built.app.inject({ method: 'GET', url: '/auth/bootstrap' });
+      expect(bootstrap.json()).toEqual({ state: 'REQUIRED_NEW', ownerEmailHints: [] });
+
+      const login = await built.app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email: 'sysadmin@printerops.local', password: 'Dev-password1!' },
+      });
+      expect(login.statusCode).toBe(401);
+    } finally {
+      await built.app.close();
+    }
+  });
+
   it('re-hashes an OWNER whose legacy placeholder hash can never verify', async () => {
     await seedLegacyDevUser('sysadmin@printerops.local', 'OWNER');
 

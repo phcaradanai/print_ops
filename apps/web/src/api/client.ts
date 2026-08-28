@@ -297,6 +297,8 @@ export async function bootstrapOwner(input: {
   email: string;
   password: string;
   passwordConfirmation: string;
+  authorizationEmail?: string;
+  authorizationPassword?: string;
 }): Promise<SessionUser> {
   const path = '/auth/bootstrap';
   const res = await fetch(apiBase() + '/api' + path, {

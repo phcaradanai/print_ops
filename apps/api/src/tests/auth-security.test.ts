@@ -80,6 +80,70 @@ describe('owner bootstrap', () => {
     expect((await app.inject({ method: 'GET', url: '/auth/bootstrap' })).json()).toEqual({ state: 'READY', ownerEmailHints: [] });
   });
 
+  it('allows an active owner to create an additional owner after bootstrap is ready', async () => {
+    const users = new InMemoryUserRepository();
+    users.seed({
+      id: 'default-owner',
+      email: 'sysadmin@printerops.local',
+      name: 'Sysadmin',
+      passwordHash: await hashPassword('Dev-password1!'),
+      role: 'OWNER',
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const { app } = await authApp(users);
+
+    expect((await app.inject({ method: 'GET', url: '/auth/bootstrap' })).json()).toEqual({ state: 'READY', ownerEmailHints: [] });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/bootstrap',
+      payload: {
+        name: 'Second Owner',
+        email: 'owner2@example.test',
+        password: 'Another-owner-password1!',
+        passwordConfirmation: 'Another-owner-password1!',
+        authorizationEmail: 'sysadmin@printerops.local',
+        authorizationPassword: 'Dev-password1!',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().user).toMatchObject({ email: 'owner2@example.test', role: 'OWNER' });
+    expect((await users.findAll()).filter((user) => user.role === 'OWNER')).toHaveLength(2);
+  });
+
+  it('requires an active owner credential for additional owner setup', async () => {
+    const users = new InMemoryUserRepository();
+    users.seed({
+      id: 'default-owner',
+      email: 'sysadmin@printerops.local',
+      name: 'Sysadmin',
+      passwordHash: await hashPassword('Dev-password1!'),
+      role: 'OWNER',
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const { app } = await authApp(users);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/bootstrap',
+      payload: {
+        name: 'Unauthorized Owner',
+        email: 'owner2@example.test',
+        password: 'Another-owner-password1!',
+        passwordConfirmation: 'Another-owner-password1!',
+        authorizationEmail: 'sysadmin@printerops.local',
+        authorizationPassword: 'Wrong-password1!',
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(await users.findByEmail('owner2@example.test')).toBeUndefined();
+  });
+
   it('requires the existing owner email when migrating a passwordless database', async () => {
     const users = new InMemoryUserRepository();
     users.seed({

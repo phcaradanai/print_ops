@@ -40,6 +40,12 @@ const PrinterBindings = lazy(() => import('./pages/PrinterBindings.js'));
 const PrintFlowBindings = lazy(() => import('./pages/PrintFlowBindings.js'));
 
 const MOBILE_NAV_QUERY = '(max-width: 1024px)';
+const DEFAULT_LOGIN_EMAIL = 'sysadmin@printerops.local';
+const DEFAULT_LOGIN_PASSWORD = 'Dev-password1!';
+interface OwnerSetupAuthorization {
+  email: string;
+  password: string;
+}
 
 function isMobileNavViewport() {
   return typeof window !== 'undefined'
@@ -177,16 +183,16 @@ function SplashScreen({ error, onRetry }: { error?: boolean; onRetry?: () => voi
       setStatus(t('splash.unable'));
       return;
     }
-    
+
     let cancelled = false;
     let attempts = 0;
-    
+
     const interval = setInterval(() => {
       if (cancelled) return;
       attempts++;
       setStatus(t('splash.progress').replace('{n}', String(attempts)));
     }, 1000);
-    
+
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -221,14 +227,14 @@ function LoginView({
 }: {
   onLogin: (user: SessionUser) => void;
   bootstrap: BootstrapInfo;
-  onOwnerSetup: () => void;
+  onOwnerSetup: (authorization: OwnerSetupAuthorization) => void;
   /** True when the app returned here because a 401 ended the session. */
   sessionExpired?: boolean;
 }) {
   const { t } = useLocale();
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const [email, setEmail] = useState(import.meta.env.DEV ? 'sysadmin@printerops.local' : '');
-  const [password, setPassword] = useState(import.meta.env.DEV ? 'Dev-password1!' : '');
+  const [email, setEmail] = useState(DEFAULT_LOGIN_EMAIL);
+  const [password, setPassword] = useState(DEFAULT_LOGIN_PASSWORD);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -306,14 +312,12 @@ function LoginView({
           {submitting ? t('common.signingIn') : t('common.signIn')}
         </Button>
 
-        {bootstrap.state !== 'READY' && (
-          <div className="login-optional-setup">
-            <p>{t('setup.optionalNotice')}</p>
-            <button type="button" className="login-secondary-action" onClick={onOwnerSetup}>
-              {t('setup.openOptional')}
-            </button>
-          </div>
-        )}
+        <div className="login-optional-setup">
+          <p>{bootstrap.state === 'READY' ? t('setup.readyNotice') : t('setup.optionalNotice')}</p>
+          <button type="button" className="login-secondary-action" onClick={() => onOwnerSetup({ email, password })}>
+            {t('setup.openOptional')}
+          </button>
+        </div>
 
         {import.meta.env.DEV && <div className="login-hint">{t('login.hint')}</div>}
       </form>
@@ -321,10 +325,22 @@ function LoginView({
   );
 }
 
-function OwnerSetupView({ bootstrap, onComplete, onBack }: { bootstrap: BootstrapInfo; onComplete: (user: SessionUser) => void; onBack: () => void }) {
+function OwnerSetupView({
+  bootstrap,
+  authorization,
+  onComplete,
+  onBack,
+}: {
+  bootstrap: BootstrapInfo;
+  authorization: OwnerSetupAuthorization;
+  onComplete: (user: SessionUser) => void;
+  onBack: () => void;
+}) {
   const { t } = useLocale();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [name, setName] = useState('');
+  const [authorizationEmail, setAuthorizationEmail] = useState(authorization.email);
+  const [authorizationPassword, setAuthorizationPassword] = useState(authorization.password);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
@@ -340,7 +356,10 @@ function OwnerSetupView({ bootstrap, onComplete, onBack }: { bootstrap: Bootstra
     setSubmitting(true);
     setError(null);
     try {
-      onComplete(await bootstrapOwner({ name, email, password, passwordConfirmation }));
+      const ownerAuthorization = bootstrap.state === 'READY'
+        ? { authorizationEmail: authorizationEmail.trim(), authorizationPassword }
+        : {};
+      onComplete(await bootstrapOwner({ name, email, password, passwordConfirmation, ...ownerAuthorization }));
     } catch (err) {
       setError(errorMessage(err, t('setup.error')));
     } finally {
@@ -353,12 +372,23 @@ function OwnerSetupView({ bootstrap, onComplete, onBack }: { bootstrap: Bootstra
       <form className="login-panel" onSubmit={(event) => void submit(event)}>
         <div>
           <h1 ref={headingRef} tabIndex={-1}>{t('setup.title')}</h1>
-          <p>{bootstrap.state === 'MIGRATION_REQUIRED' ? t('setup.migrationSubtitle') : t('setup.subtitle')}</p>
+          <p>{bootstrap.state === 'MIGRATION_REQUIRED' ? t('setup.migrationSubtitle') : bootstrap.state === 'READY' ? t('setup.readySubtitle') : t('setup.subtitle')}</p>
           {bootstrap.state === 'MIGRATION_REQUIRED' && bootstrap.ownerEmailHints.length > 0 && (
             <p className="login-hint">{t('setup.migrationOwnerHint').replace('{emails}', bootstrap.ownerEmailHints.join(', '))}</p>
           )}
         </div>
         <div style={{ display: 'grid', gap: '1rem' }}>
+          {bootstrap.state === 'READY' && (
+            <>
+              <div className="login-hint">{t('setup.authorizationNotice')}</div>
+              <FormField label={t('setup.authorizationEmail')} required>
+                {(control) => <Input {...control} value={authorizationEmail} onChange={(event) => setAuthorizationEmail(event.target.value)} type="email" autoComplete="username" required />}
+              </FormField>
+              <FormField label={t('setup.authorizationPassword')} required>
+                {(control) => <Input {...control} value={authorizationPassword} onChange={(event) => setAuthorizationPassword(event.target.value)} type="password" autoComplete="current-password" required />}
+              </FormField>
+            </>
+          )}
           <FormField label={t('setup.name')} required>
             {(control) => <Input {...control} value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required />}
           </FormField>
@@ -375,7 +405,7 @@ function OwnerSetupView({ bootstrap, onComplete, onBack }: { bootstrap: Bootstra
         <div className="login-hint" style={{ marginTop: '0.5rem' }}>{t('setup.passwordHint')}</div>
         {error && <div className="login-error" role="alert">{error}</div>}
         <Button type="submit" disabled={submitting} busy={submitting} style={{ marginTop: '0.5rem' }}>
-          {submitting ? t('setup.creating') : t('setup.create')}
+          {submitting ? t('setup.creating') : bootstrap.state === 'READY' ? t('setup.createAdditional') : t('setup.create')}
         </Button>
         <Button variant="ghost" type="button" className="login-secondary-action" onClick={onBack}>
           {t('setup.backToLogin')}
@@ -666,6 +696,10 @@ export default function App() {
   const [sessionExpired, setSessionExpired] = useState(false);
   const [bootstrap, setBootstrap] = useState<BootstrapInfo>({ state: 'READY', ownerEmailHints: [] });
   const [authMode, setAuthMode] = useState<'login' | 'owner-setup'>('login');
+  const [setupAuthorization, setSetupAuthorization] = useState<OwnerSetupAuthorization>({
+    email: DEFAULT_LOGIN_EMAIL,
+    password: DEFAULT_LOGIN_PASSWORD,
+  });
 
   // Subscribed BEFORE the session check below, so a 401 from that very first
   // `getCurrentUser()` is handled by the same path as one that happens an hour
@@ -739,9 +773,12 @@ export default function App() {
               setUser(next);
             }}
             bootstrap={bootstrap}
-            onOwnerSetup={() => setAuthMode('owner-setup')}
+            onOwnerSetup={(authorization) => {
+              setSetupAuthorization(authorization);
+              setAuthMode('owner-setup');
+            }}
             sessionExpired={sessionExpired}
-          /> : <OwnerSetupView bootstrap={bootstrap} onComplete={(next) => {
+          /> : <OwnerSetupView bootstrap={bootstrap} authorization={setupAuthorization} onComplete={(next) => {
             setBootstrap({ state: 'READY', ownerEmailHints: [] });
             setAuthMode('login');
             setUser(next);

@@ -169,6 +169,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
           'req.headers.x-api-key',
           'req.body.password',
           'req.body.passwordConfirmation',
+          'req.body.authorizationPassword',
           'req.body.secret',
           'req.body.apiKey',
           'req.body.callbackSecret',
@@ -603,13 +604,18 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // must not pause an already provisioned integration after a restart.
   const apiKeyHook = buildApiKeyAuth(serviceAccountRepo);
 
-  // A persistent store must never be re-seeded as a new instance on every
-  // desktop start; doing so duplicates sample data and can overwrite records.
-  const devSeedEnabled = process.env['PRINTOPS_DEV_SEED'] === 'true';
-  const shouldSeedDemoData = devSeedEnabled && (!useSqlite || (await userRepo.findAll({ limit: 1 })).length === 0);
+  // The default role accounts are the initial sign-in path for both local
+  // development and packaged installations. Keep the existing environment
+  // variable as an explicit opt-out so a deployment can still require owner
+  // setup instead. A persistent store must never be re-seeded as a new
+  // instance on every desktop start; doing so duplicates sample data and can
+  // overwrite records.
+  const defaultAccountsEnabled = process.env['PRINTOPS_DEV_SEED'] !== 'false';
+  const devFixturesEnabled = process.env['PRINTOPS_DEV_SEED'] === 'true';
+  const shouldSeedDemoData = devFixturesEnabled && (!useSqlite || (await userRepo.findAll({ limit: 1 })).length === 0);
 
-  const devPasswordHash = devSeedEnabled ? await hashPassword('Dev-password1!') : undefined;
-  if (devSeedEnabled) {
+  const defaultPasswordHash = defaultAccountsEnabled ? await hashPassword('Dev-password1!') : undefined;
+  if (defaultAccountsEnabled) {
     for (const user of [
       { email: 'sysadmin@printerops.local', name: 'Sysadmin', role: 'OWNER' as const },
       { email: 'admin@printerops.local', name: 'Admin', role: 'ADMIN' as const },
@@ -622,7 +628,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
           id: generateId(),
           email: user.email,
           name: user.name,
-          passwordHash: devPasswordHash,
+          passwordHash: defaultPasswordHash,
           role: user.role,
           isActive: true,
           createdAt: new Date(),
@@ -632,18 +638,18 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       }
       // Legacy databases from before credential hardening stored a placeholder
       // hash ("123456") that verifyPassword rejects, and owner bootstrap may
-      // have deactivated the non-owner dev accounts. Re-hash and reactivate so
-      // the documented dev credentials keep working after an upgrade instead of
+      // have deactivated the non-owner default accounts. Re-hash and reactivate so
+      // the documented default credentials keep working after an upgrade instead of
       // stranding the dev accounts in an unloggable state.
       if (!existing.passwordHash?.startsWith('scrypt$') || !existing.isActive) {
-        await userRepo.update(existing.id, { passwordHash: devPasswordHash, isActive: true });
+        await userRepo.update(existing.id, { passwordHash: defaultPasswordHash, isActive: true });
       }
     }
   }
 
   // Seed dev service account
   const devKey = DEV_API_KEY;
-  if (devSeedEnabled && !(await serviceAccountRepo.findBySourceSystem('integration-service'))) {
+  if (devFixturesEnabled && !(await serviceAccountRepo.findBySourceSystem('integration-service'))) {
     serviceAccountRepo.seed({
       id: generateId(),
       name: 'Dev Integration Service',
