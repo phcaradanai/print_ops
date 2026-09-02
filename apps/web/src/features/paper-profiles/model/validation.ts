@@ -11,7 +11,27 @@ type PaperFormForValidation = Pick<
   | 'marginRightMm'
   | 'marginBottomMm'
   | 'marginLeftMm'
+  | 'layout'
 > & Partial<Pick<PaperForm, 'rotation' | 'flipHorizontal' | 'flipVertical'>>;
+
+function validateLayout(form: PaperFormForValidation): ValidationIssue[] {
+  const layout = form.layout;
+  if (!layout) return [];
+  const issues: ValidationIssue[] = [];
+  const finitePositive = (value: number) => Number.isFinite(value) && value > 0;
+  if (!Number.isInteger(layout.columns) || layout.columns < 1) issues.push({ field: 'layout.columns', messageKey: 'validation.layoutColumns' });
+  if (!finitePositive(layout.cellWidthMm)) issues.push({ field: 'layout.cellWidthMm', messageKey: 'validation.layoutPositive' });
+  if (!finitePositive(layout.cellHeightMm)) issues.push({ field: 'layout.cellHeightMm', messageKey: 'validation.layoutPositive' });
+  if (!Number.isFinite(layout.columnGapMm) || layout.columnGapMm < 0) issues.push({ field: 'layout.columnGapMm', messageKey: 'validation.layoutGap' });
+  if (!finitePositive(layout.rowPitchMm)) issues.push({ field: 'layout.rowPitchMm', messageKey: 'validation.layoutPositive' });
+  const printableWidth = form.widthMm - form.marginLeftMm - form.marginRightMm;
+  const printableHeight = form.heightMm - form.marginTopMm - form.marginBottomMm;
+  const usedWidth = layout.columns * layout.cellWidthMm + Math.max(0, layout.columns - 1) * layout.columnGapMm;
+  if (Number.isFinite(usedWidth) && usedWidth > printableWidth + 0.0001) issues.push({ field: 'layout', messageKey: 'validation.layoutDoesNotFitWidth' });
+  if (Number.isFinite(layout.cellHeightMm) && layout.cellHeightMm > printableHeight + 0.0001) issues.push({ field: 'layout.cellHeightMm', messageKey: 'validation.layoutDoesNotFitHeight' });
+  if (Number.isFinite(layout.rowPitchMm) && Number.isFinite(layout.cellHeightMm) && layout.rowPitchMm < layout.cellHeightMm) issues.push({ field: 'layout.rowPitchMm', messageKey: 'validation.layoutPitch' });
+  return issues;
+}
 
 export function validatePaperForm(form: PaperFormForValidation): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -39,6 +59,7 @@ export function validatePaperForm(form: PaperFormForValidation): ValidationIssue
   if (form.marginTopMm + form.marginBottomMm >= form.heightMm) {
     issues.push({ field: 'margins', messageKey: 'validation.marginsExceedHeight' });
   }
+  issues.push(...validateLayout(form));
   return issues;
 }
 
@@ -79,5 +100,6 @@ export function validateImportDraft(draft: ImportDraftForValidation): Validation
   if (draft.marginTopMm + draft.marginBottomMm >= draft.heightMm) {
     issues.push({ field: 'margins', messageKey: 'validation.marginsExceedHeight' });
   }
+  issues.push(...validateLayout(draft));
   return issues;
 }

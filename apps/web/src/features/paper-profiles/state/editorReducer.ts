@@ -70,6 +70,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           rotation: action.profile.rotation ?? 0,
           flipHorizontal: action.profile.flipHorizontal ?? false,
           flipVertical: action.profile.flipVertical ?? false,
+          layout: action.profile.layout ? { ...action.profile.layout } : undefined,
         },
         ux: { ...state.ux, dynamicFields: [...(action.profile.fields ?? [])] },
         selectedFieldId: null,

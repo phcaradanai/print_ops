@@ -9,6 +9,7 @@ import type {
   PaperProfile,
   JobStatus,
 } from '@printerops/domain';
+import { paperProfileForCell, resolvePaperProfileGeometry, snapshotPaperProfileGeometry } from '@printerops/domain';
 import { generateId, NotFoundError, ValidationError } from '@printerops/shared';
 import { CreatePrintJobService } from './create-print-job.service.js';
 import type { ExecuteJobService } from './execute-job.service.js';
@@ -71,6 +72,7 @@ export class SandboxService {
     if (!template) throw new NotFoundError('PrintTemplate', input.templateCode);
 
     const paper = await this.resolvePaper(template, input.paperProfileId);
+    const renderPaper = paperProfileForCell(paper);
 
     // Validate template structure
     const validation = await this.renderer.validateTemplate(template);
@@ -80,7 +82,7 @@ export class SandboxService {
     const rendered = await this.renderer.renderPrintPayload(
       template,
       input.samplePayload,
-      paper,
+      renderPaper,
     );
 
     const preview = await this.renderer.renderPreview(
@@ -132,6 +134,7 @@ export class SandboxService {
               sandbox: true,
               runId,
               paperProfile: {
+                paperProfileId: paper.id,
                 widthMm: paper.widthMm,
                 gapMm: paper.gapMm ?? 0,
                 heightMm: paper.heightMm,
@@ -141,6 +144,7 @@ export class SandboxService {
                 marginLeftMm: paper.marginLeftMm,
                 orientation: paper.orientation,
                 dpi: paper.dpi,
+                geometry: snapshotPaperProfileGeometry(paper),
               },
             },
           },
@@ -238,6 +242,13 @@ export class SandboxService {
           throw new Error('CreatePrintJobService not provided for test-print');
         }
         const paper = await this.resolvePaper(template, paperProfileId);
+        const geometry = resolvePaperProfileGeometry(paper);
+        const pageHeightMm = geometry.layout.columns > 1
+          ? Math.max(paper.heightMm, geometry.layout.rowPitchMm + paper.marginTopMm + paper.marginBottomMm)
+          : paper.heightMm;
+        const renderedPrintPayload = geometry.layout.columns > 1
+          ? composeGridHtml(runs.map((run) => run.renderedPayload), paper)
+          : composeMultipageHtml(runs.map((run) => run.renderedPayload), paper);
         const job = await this.createJob.execute(
           {
             printerId: '',
@@ -245,10 +256,7 @@ export class SandboxService {
             templateCode: template.templateCode,
             resolvedTemplateCode: template.templateCode,
             paperProfileId: paper.id,
-            renderedPrintPayload: composeMultipageHtml(
-              runs.map((run) => run.renderedPayload),
-              paper,
-            ),
+            renderedPrintPayload,
             createdBy: 'sandbox',
             mimeType: 'text/html',
             copies: 1,
@@ -258,8 +266,11 @@ export class SandboxService {
               sandbox: true,
               batchId,
               runIds: runs.map((run) => run.runId),
-              pageCount: runs.length,
+              itemCount: runs.length,
+              pageHeightMm,
+              pageCount: geometry.layout.columns > 1 ? Math.ceil(runs.length / geometry.layout.columns) : runs.length,
               paperProfile: {
+                paperProfileId: paper.id,
                 widthMm: paper.widthMm,
                 gapMm: paper.gapMm ?? 0,
                 heightMm: paper.heightMm,
@@ -269,6 +280,7 @@ export class SandboxService {
                 marginLeftMm: paper.marginLeftMm,
                 orientation: paper.orientation,
                 dpi: paper.dpi,
+                geometry: snapshotPaperProfileGeometry(paper),
               },
             },
           },
@@ -323,4 +335,39 @@ export class SandboxService {
     if (!paper) throw new NotFoundError('PaperProfile', paperId);
     return paper;
   }
+}
+
+/** Place one rendered template instance in each physical cell of a row. */
+function composeGridHtml(renderedPages: string[], paper: PaperProfile): string {
+  const geometry = resolvePaperProfileGeometry(paper);
+  const columns = geometry.layout.columns;
+  if (columns <= 1) return composeMultipageHtml(renderedPages, paper);
+  const pageHeightMm = Math.max(
+    paper.heightMm,
+    geometry.layout.rowPitchMm + paper.marginTopMm + paper.marginBottomMm,
+  );
+  const rowCount = Math.ceil(renderedPages.length / columns);
+
+  return Array.from({ length: rowCount }, (_, row) => {
+    const rowPages = renderedPages.slice(row * columns, (row + 1) * columns);
+    const cells = rowPages.map((renderedPage, column) => {
+      const cell = geometry.cells[column]!;
+      const style = [
+        'position:absolute',
+        `left:${cell.xMm}mm`,
+        `top:${paper.marginTopMm}mm`,
+        `width:${geometry.layout.cellWidthMm}mm`,
+        `height:${geometry.layout.cellHeightMm}mm`,
+        'overflow:hidden',
+        'box-sizing:border-box',
+        'break-inside:avoid',
+        'page-break-inside:avoid',
+      ].join(';') + ';';
+      return `<div data-printops-cell-column="${column + 1}" style="${style}">${renderedPage}</div>`;
+    });
+    const breakStyle = row < rowCount - 1
+      ? 'break-after:page;page-break-after:always;'
+      : '';
+    return `<section data-printops-row="${row + 1}" style="position:relative;display:block;width:${paper.widthMm}mm;height:${pageHeightMm}mm;margin:0;padding:0;overflow:hidden;box-sizing:border-box;break-inside:avoid;page-break-inside:avoid;${breakStyle}">${cells.join('')}</section>`;
+  }).join('');
 }

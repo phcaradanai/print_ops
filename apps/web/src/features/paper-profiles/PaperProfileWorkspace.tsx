@@ -142,7 +142,7 @@ export default function PaperProfileWorkspace() {
         // See docs/frontend/LAYOUT_COMPONENT_STANDARD.md.
         <div className="pp-main-layout">
           <ProfileFormPanel editor={editor} persistence={persistence} popups={popups} t={t}
-            onNotice={showNotice} onSaved={finishSave} onCancel={returnToLibrary} />
+            onNotice={showNotice} onSaved={finishSave} onCancel={returnToLibrary} profiles={persistence.profiles} />
           <PreviewPanel editor={editor} popups={popups} interaction={interaction}
             options={canvasOptions} setOptions={setCanvasOptions} sheetRef={mainSheetRef}
             artwork={importDesign.currentArtwork} t={t} />

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { DISPLAY_UNITS, DPI_OPTIONS } from '../model/defaults.js';
 import { displayValue, toMillimeters } from '../model/units.js';
-import type { PaperForm } from '../model/types.js';
+import type { PaperForm, PaperProfileLayout } from '../model/types.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import { FormField, Grid, Input, Select, Switch } from '../../../components/ui/index.js';
 import { Section } from './editorPrimitives.js';
@@ -38,6 +38,66 @@ export function DimensionInput({ editor, field, label, t }: {
       )}
     </FormField>
   );
+}
+
+function LayoutInput({ editor, field, label, t }: {
+  editor: PaperProfileEditor;
+  field: keyof PaperProfileLayout;
+  label: string;
+  t: Translate;
+}) {
+  const layout = editor.form.layout;
+  const value = layout?.[field] ?? (field === 'columns' ? 1 : field === 'cellWidthMm'
+    ? Math.max(0, editor.form.widthMm - editor.form.marginLeftMm - editor.form.marginRightMm)
+    : field === 'cellHeightMm'
+      ? Math.max(0, editor.form.heightMm - editor.form.marginTopMm - editor.form.marginBottomMm)
+      : field === 'rowPitchMm'
+        ? Math.max(0, editor.form.heightMm - editor.form.marginTopMm - editor.form.marginBottomMm + (editor.form.gapMm ?? 0))
+        : 0);
+  return (
+    <FormField label={t(label)}>
+      {(control) => (
+        <Input
+          {...control}
+          type="number"
+          min={field === 'columns' ? 1 : 0}
+          step={field === 'columns' ? 1 : 'any'}
+          value={value}
+          onChange={(event) => {
+            const next = Number.parseFloat(event.target.value);
+            if (!Number.isFinite(next)) return;
+            const current = layout ?? {
+              columns: 1,
+              cellWidthMm: editor.form.widthMm - editor.form.marginLeftMm - editor.form.marginRightMm,
+              cellHeightMm: editor.form.heightMm - editor.form.marginTopMm - editor.form.marginBottomMm,
+              columnGapMm: editor.form.gapMm ?? 0,
+              rowPitchMm: editor.form.heightMm - editor.form.marginTopMm - editor.form.marginBottomMm + (editor.form.gapMm ?? 0),
+            };
+            editor.patchForm('layout', {
+              ...current,
+              [field]: field === 'columns' ? Math.max(1, Math.round(next)) : next,
+            });
+          }}
+        />
+      )}
+    </FormField>
+  );
+}
+
+function layoutIssues(form: PaperForm): string[] {
+  const layout = form.layout;
+  if (!layout) return [];
+  const printableWidth = form.widthMm - form.marginLeftMm - form.marginRightMm;
+  const printableHeight = form.heightMm - form.marginTopMm - form.marginBottomMm;
+  const usedWidth = layout.columns * layout.cellWidthMm + Math.max(0, layout.columns - 1) * layout.columnGapMm;
+  const issues: string[] = [];
+  if (!Number.isInteger(layout.columns) || layout.columns < 1) issues.push('page.paperProfiles.layoutColumnsInvalid');
+  if (layout.cellWidthMm <= 0 || layout.cellHeightMm <= 0 || layout.rowPitchMm <= 0) issues.push('page.paperProfiles.layoutValuesInvalid');
+  if (layout.columnGapMm < 0) issues.push('page.paperProfiles.layoutGapInvalid');
+  if (usedWidth > printableWidth + 0.0001) issues.push('page.paperProfiles.layoutWidthInvalid');
+  if (layout.cellHeightMm > printableHeight + 0.0001) issues.push('page.paperProfiles.layoutHeightInvalid');
+  if (layout.rowPitchMm < layout.cellHeightMm) issues.push('page.paperProfiles.layoutPitchInvalid');
+  return issues;
 }
 
 export function DimensionsSection({ editor, t, anchorRef }: {
@@ -151,6 +211,25 @@ export function DimensionsSection({ editor, t, anchorRef }: {
             onChange={(event) => editor.patchForm('flipVertical', event.target.checked)}
           />
         </Grid>
+        <div className="pp-layout-controls">
+          <div className="pp-layout-controls__heading">
+            <strong>{t('page.paperProfiles.layoutTitle')}</strong>
+            <span>{t('page.paperProfiles.layoutHint')}</span>
+          </div>
+          <Grid columns={3} gap="md">
+            <LayoutInput editor={editor} field="columns" label="page.paperProfiles.layoutColumns" t={t} />
+            <LayoutInput editor={editor} field="cellWidthMm" label="page.paperProfiles.layoutCellWidth" t={t} />
+            <LayoutInput editor={editor} field="cellHeightMm" label="page.paperProfiles.layoutCellHeight" t={t} />
+            <LayoutInput editor={editor} field="columnGapMm" label="page.paperProfiles.layoutColumnGap" t={t} />
+            <LayoutInput editor={editor} field="rowPitchMm" label="page.paperProfiles.layoutRowPitch" t={t} />
+          </Grid>
+          <div className="pp-layout-summary" role="status">
+            {editor.form.layout
+              ? `${t('page.paperProfiles.layoutUsedWidth')}: ${(editor.form.layout.columns * editor.form.layout.cellWidthMm + Math.max(0, editor.form.layout.columns - 1) * editor.form.layout.columnGapMm).toFixed(2)} / ${Math.max(0, editor.form.widthMm - editor.form.marginLeftMm - editor.form.marginRightMm).toFixed(2)} mm`
+              : t('page.paperProfiles.layoutSingleColumn')}
+          </div>
+          {layoutIssues(editor.form).map((issue) => <div className="pp-layout-error" role="alert" key={issue}>{t(issue)}</div>)}
+        </div>
       </Section>
     </div>
   );

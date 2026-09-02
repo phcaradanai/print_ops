@@ -61,6 +61,11 @@ describe('Paper Profile serialization', () => {
     });
   });
 
+  it('round-trips explicit multi-column layout', () => {
+    const result = serializeProfiles([{ ...profile, layout: { columns: 3, cellWidthMm: 30, cellHeightMm: 11, columnGapMm: 2, rowPitchMm: 11 } }]);
+    expect(result.profiles[0].layout).toEqual({ columns: 3, cellWidthMm: 30, cellHeightMm: 11, columnGapMm: 2, rowPitchMm: 11 });
+  });
+
   it('keeps the established two-space formatted JSON representation', () => {
     const json = stringifyProfiles([profile], '2026-07-30T00:00:00.000Z');
     expect(json).toContain('\n  "version": "1.0"');

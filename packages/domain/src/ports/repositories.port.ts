@@ -18,6 +18,11 @@ import type {
   CreateWebhookRoutePolicyInput,
 } from '../models/template.js';
 import type { ImportedDesign, CreateImportedDesignInput } from '../models/imported-design.js';
+import type {
+  PrinterPaperCalibration,
+  CreatePrinterPaperCalibrationInput,
+  UpdatePrinterPaperCalibrationInput,
+} from '../models/printer-calibration.js';
 import type { IntakeAttempt, CreateIntakeAttemptInput, IntakeOutcome, IntakeSource } from '../models/intake-attempt.js';
 import type {
   WebhookCallbackAttempt,
@@ -124,6 +129,15 @@ export interface PaperProfileRepositoryPort {
   findAll(opts?: ListOptions): Promise<PaperProfile[]>;
   create(input: CreatePaperProfileInput): Promise<PaperProfile>;
   update(id: string, patch: Partial<PaperProfile>): Promise<PaperProfile>;
+  delete(id: string): Promise<void>;
+}
+
+export interface PrinterPaperCalibrationRepositoryPort {
+  findById(id: string): Promise<PrinterPaperCalibration | undefined>;
+  findByKey(printerId: string, paperProfileId: string, dpi: number): Promise<PrinterPaperCalibration | undefined>;
+  findAll(opts?: ListOptions & { printerId?: string; paperProfileId?: string }): Promise<PrinterPaperCalibration[]>;
+  create(input: CreatePrinterPaperCalibrationInput): Promise<PrinterPaperCalibration>;
+  update(id: string, patch: UpdatePrinterPaperCalibrationInput): Promise<PrinterPaperCalibration>;
   delete(id: string): Promise<void>;
 }
 

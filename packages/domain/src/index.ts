@@ -8,6 +8,8 @@ export * from './models/audit.js';
 export * from './models/service-account.js';
 export * from './models/discovered-printer.js';
 export * from './models/template.js';
+export * from './models/paper-geometry.js';
+export * from './models/printer-calibration.js';
 export * from './models/imported-design.js';
 export * from './models/intake-attempt.js';
 export * from './models/webhook-callback-attempt.js';

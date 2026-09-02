@@ -17,6 +17,7 @@ import { InMemoryWebhookEndpointRepository, InMemoryWebhookRoutePolicyRepository
 import { InMemoryImportedDesignRepository } from './infra/repos/in-memory-imported-design.repo.js';
 import { InMemoryIntakeAttemptRepository } from './infra/repos/in-memory-intake-attempt.repo.js';
 import { InMemoryWebhookCallbackAttemptRepository } from './infra/repos/in-memory-webhook-callback-attempt.repo.js';
+import { InMemoryPrinterPaperCalibrationRepository } from './infra/repos/in-memory-printer-paper-calibration.repo.js';
 
 import { SqlitePrinterRepository } from './infra/repos/sqlite/sqlite-printer.repo.js';
 import { SqliteJobRepository } from './infra/repos/sqlite/sqlite-job.repo.js';
@@ -32,6 +33,7 @@ import { SqlitePrinterTemplateBindingRepository } from './infra/repos/sqlite/sql
 import { SqliteWebhookEndpointRepository } from './infra/repos/sqlite/sqlite-webhook-endpoint.repo.js';
 import { SqliteWebhookRoutePolicyRepository } from './infra/repos/sqlite/sqlite-webhook-route-policy.repo.js';
 import { SqliteImportedDesignRepository } from './infra/repos/sqlite/sqlite-imported-design.repo.js';
+import { SqlitePrinterPaperCalibrationRepository } from './infra/repos/sqlite/sqlite-printer-paper-calibration.repo.js';
 
 import { InMemoryEventBus } from './infra/eventbus/in-memory-eventbus.js';
 import { InMemoryJobQueue } from './infra/queue/in-memory-queue.js';
@@ -88,6 +90,7 @@ import {
 import { retryPolicyFromEnv } from './services/callback-retry-policy.js';
 import { paperProfileImportRoutes } from './routes/v1/paper-profile-imports.routes.js';
 import { sandboxRoutes } from './routes/v1/sandbox.routes.js';
+import { printerCalibrationRoutes } from './routes/v1/printer-calibration.routes.js';
 import { printIntakeConfigFromEnv, type PrintIntakeConfig } from './infra/nats/print-intake.js';
 import { NatsConnectionManager } from './infra/nats/nats-connection-manager.js';
 import { v1PrintFlowRoutes } from './routes/v1/print-flow.routes.js';
@@ -280,6 +283,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const discoveredPrinterRepo = useSqlite ? new SqliteDiscoveredPrinterRepository() : new InMemoryDiscoveredPrinterRepository();
   const templateRepo = useSqlite ? new SqlitePrintTemplateRepository() : new InMemoryPrintTemplateRepository();
   const paperRepo = useSqlite ? new SqlitePaperProfileRepository() : new InMemoryPaperProfileRepository();
+  const calibrationRepo = useSqlite ? new SqlitePrinterPaperCalibrationRepository() : new InMemoryPrinterPaperCalibrationRepository();
   const bindingRepo = useSqlite ? new SqlitePrinterTemplateBindingRepository() : new InMemoryPrinterTemplateBindingRepository();
   const webhookEndpointRepo = useSqlite ? new SqliteWebhookEndpointRepository() : new InMemoryWebhookEndpointRepository();
   const webhookPolicyRepo = useSqlite ? new SqliteWebhookRoutePolicyRepository() : new InMemoryWebhookRoutePolicyRepository();
@@ -366,7 +370,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // Services
   const createPrinter = new CreatePrinterService(printerRepo, eventBus, auditRepo);
   const getPrinterStatus = new GetPrinterStatusService(printerRepo, registry);
-  const createJob = new CreatePrintJobService(jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus);
+  const createJob = new CreatePrintJobService(jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus, calibrationRepo, paperRepo);
   const reprintJob = new ReprintJobService(
     jobRepo,
     createJob,
@@ -386,6 +390,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     // Lets POST /api/v1/print-jobs accept an optional `endpoint_code` and
     // snapshot that endpoint's callback configuration onto the job.
     webhookEndpointRepo,
+    calibrationRepo,
   );
   // Dynamic printing (the template/profile HTTP route and NATS intake) is a
   // rendered-document flow. Keep its service separate from the legacy
@@ -396,6 +401,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus,
     templateRepo, paperRepo, templateRenderer, intakeAttemptRepo,
     webhookEndpointRepo,
+    calibrationRepo,
   );
   const cancelJob = new CancelJobService(jobRepo, traceRepo, auditRepo, eventBus);
   const executeJob = new ExecuteJobService(jobRepo, printerRepo, traceRepo, auditRepo, queue, eventBus, registry);
@@ -426,6 +432,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     // NATS does connect, this is replaced with a NATS-capable instance below.
     new WebhookCallbackService(app.log, httpCallbackSender, undefined, webhookCallbackAttemptRepo),
     app.log,
+    calibrationRepo,
   );
 
   const resolvePrinterBinding = new ResolvePrinterBindingService(paperRepo, bindingRepo, templateRepo);
@@ -899,6 +906,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
     await v1RunnerJobRoutes(v1, { jobs: jobRepo, printers: printerRepo, traces: traceRepo, audit: auditRepo, events: eventBus });
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
+    await printerCalibrationRoutes(v1, { calibrations: calibrationRepo, printers: printerRepo, papers: paperRepo, audit: auditRepo, createJob, executeJob });
     await sandboxRoutes(v1, { sandbox: sandboxSvc, connectivity: connectivitySvc, audit: auditRepo });
     await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob, getPrinterStatus, logger: app.log, callbackSender: httpCallbackSender, callbackNats: routeNatsPublisher, callbackAttemptLog: webhookCallbackAttemptRepo, callbackDeliveries: callbackDeliveryRepo });
     await paperProfileImportRoutes(v1, { importService: importPaperProfile });

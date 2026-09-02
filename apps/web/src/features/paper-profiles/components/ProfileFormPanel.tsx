@@ -3,14 +3,16 @@ import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { PaperProfilePersistence } from '../hooks/usePaperProfilePersistence.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { SectionKey } from '../state/editorState.js';
+import type { PaperProfile } from '../model/types.js';
 import { BasicInfoSection } from './BasicInfoSection.js';
+import { CalibrationSection } from './CalibrationSection.js';
 import { DimensionsSection } from './DimensionsSection.js';
 import { DynamicFieldsSection } from './DynamicFieldsSection.js';
 import { MarginsSection } from './MarginsSection.js';
 import { PaperProfileCommandBar } from './PaperProfileCommandBar.js';
 import type { Translate } from './types.js';
 
-export function ProfileFormPanel({ editor, persistence, popups, t, onNotice, onSaved, onCancel }: {
+export function ProfileFormPanel({ editor, persistence, popups, t, onNotice, onSaved, onCancel, profiles }: {
   editor: PaperProfileEditor;
   persistence: PaperProfilePersistence;
   popups: PaperProfilePopups;
@@ -18,11 +20,13 @@ export function ProfileFormPanel({ editor, persistence, popups, t, onNotice, onS
   onNotice: (message: string) => void;
   onSaved: () => void;
   onCancel: () => void;
+  profiles: PaperProfile[];
 }) {
   const basicInfo = useRef<HTMLDivElement>(null);
   const dimensions = useRef<HTMLDivElement>(null);
   const margins = useRef<HTMLDivElement>(null);
   const fields = useRef<HTMLDivElement>(null);
+  const calibration = useRef<HTMLDivElement>(null);
   const refs = { basicInfo, dimensions, margins, fields };
   const scrollTo = (section: SectionKey) => {
     if (!editor.state.sectionsOpen[section]) editor.setSection(section, true);
@@ -36,6 +40,8 @@ export function ProfileFormPanel({ editor, persistence, popups, t, onNotice, onS
         <BasicInfoSection editor={editor} t={t} anchorRef={basicInfo} />
         <DimensionsSection editor={editor} t={t} anchorRef={dimensions} />
         <MarginsSection editor={editor} t={t} anchorRef={margins} />
+        <CalibrationSection profiles={profiles} defaultProfileId={editor.state.editingProfileId}
+          anchorRef={calibration} t={t} />
         <DynamicFieldsSection editor={editor} t={t} anchorRef={fields} onNotice={onNotice} />
       </div>
     </div>

@@ -28,6 +28,14 @@ export interface DynamicField {
   align: 'left' | 'center' | 'right';
 }
 
+export interface PaperProfileLayout {
+  columns: number;
+  cellWidthMm: number;
+  cellHeightMm: number;
+  columnGapMm: number;
+  rowPitchMm: number;
+}
+
 export interface PaperForm {
   code: string;
   name: string;
@@ -44,6 +52,7 @@ export interface PaperForm {
   rotation?: number;
   flipHorizontal?: boolean;
   flipVertical?: boolean;
+  layout?: PaperProfileLayout;
 }
 
 export interface PaperProfile extends Omit<PaperForm, 'rotation' | 'flipHorizontal' | 'flipVertical'> {

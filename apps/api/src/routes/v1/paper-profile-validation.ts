@@ -90,6 +90,68 @@ function checkGapMm(body: Record<string, unknown>): PaperProfileIssue[] {
   return [];
 }
 
+function checkLayout(
+  body: Record<string, unknown>,
+  profile: PaperProfileGeometry,
+): PaperProfileIssue[] {
+  if (!('layout' in body) || body['layout'] === undefined) return [];
+  const raw = body['layout'];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return [{ field: 'layout', message: 'layout must be an object' }];
+  }
+  const layout = raw as Record<string, unknown>;
+  const issues: PaperProfileIssue[] = [];
+  const columns = layout['columns'];
+  if (!Number.isInteger(columns) || (columns as number) < 1 || (columns as number) > 50) {
+    issues.push({ field: 'layout.columns', message: 'layout.columns must be a whole number from 1 to 50' });
+  }
+  const positive: Array<[string, string]> = [
+    ['cellWidthMm', 'layout.cellWidthMm must be a finite number greater than zero'],
+    ['cellHeightMm', 'layout.cellHeightMm must be a finite number greater than zero'],
+    ['rowPitchMm', 'layout.rowPitchMm must be a finite number greater than zero'],
+  ];
+  for (const [field, message] of positive) {
+    if (!isFiniteNumber(layout[field]) || (layout[field] as number) <= 0) {
+      issues.push({ field: `layout.${field}`, message });
+    }
+  }
+  if (!isFiniteNumber(layout['columnGapMm']) || (layout['columnGapMm'] as number) < 0) {
+    issues.push({
+      field: 'layout.columnGapMm',
+      message: 'layout.columnGapMm must be a finite number of at least zero',
+    });
+  }
+  if (issues.length > 0) return issues;
+
+  const columnCount = columns as number;
+  const cellWidthMm = layout['cellWidthMm'] as number;
+  const cellHeightMm = layout['cellHeightMm'] as number;
+  const columnGapMm = layout['columnGapMm'] as number;
+  const rowPitchMm = layout['rowPitchMm'] as number;
+  const printableWidthMm = profile.widthMm - profile.marginLeftMm - profile.marginRightMm;
+  const printableHeightMm = profile.heightMm - profile.marginTopMm - profile.marginBottomMm;
+  const usedWidthMm = columnCount * cellWidthMm + (columnCount - 1) * columnGapMm;
+  if (usedWidthMm > printableWidthMm + 1e-9) {
+    issues.push({
+      field: 'layout',
+      message: 'layout cells and column gaps must fit the printable width',
+    });
+  }
+  if (cellHeightMm > printableHeightMm + 1e-9) {
+    issues.push({
+      field: 'layout.cellHeightMm',
+      message: 'layout.cellHeightMm must fit the printable height',
+    });
+  }
+  if (rowPitchMm + 1e-9 < cellHeightMm) {
+    issues.push({
+      field: 'layout.rowPitchMm',
+      message: 'layout.rowPitchMm must be at least layout.cellHeightMm',
+    });
+  }
+  return issues;
+}
+
 /** Validates a complete profile body for creation. */
 export function validatePaperProfileCreate(body: Record<string, unknown>): PaperProfileIssue[] {
   const issues: PaperProfileIssue[] = [];
@@ -108,6 +170,9 @@ export function validatePaperProfileCreate(body: Record<string, unknown>): Paper
   issues.push(...checkTransformFields(body));
   issues.push(...checkGapMm(body));
   issues.push(...checkGeometry(body as unknown as PaperProfileGeometry));
+  if (issues.length === 0) {
+    issues.push(...checkLayout(body, body as unknown as PaperProfileGeometry));
+  }
   return issues;
 }
 
@@ -147,6 +212,12 @@ export function validatePaperProfileUpdate(
     ) as Partial<PaperProfileGeometry>),
   };
   issues.push(...checkGeometry(merged));
+  if (issues.length === 0) {
+    const layoutBody: Record<string, unknown> = {
+      layout: 'layout' in patch ? patch['layout'] : current.layout,
+    };
+    issues.push(...checkLayout(layoutBody, merged));
+  }
   return issues;
 }
 

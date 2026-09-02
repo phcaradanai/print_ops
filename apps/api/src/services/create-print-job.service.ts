@@ -7,6 +7,8 @@ import type {
   PrinterRepositoryPort,
   CreateJobInput,
   Job,
+  PaperProfileRepositoryPort,
+  PrinterPaperCalibrationRepositoryPort,
 } from '@printerops/domain';
 import type { JobPriority } from '@printerops/domain';
 import {
@@ -30,7 +32,9 @@ export class CreatePrintJobService {
     private queue: JobQueuePort,
     private traces: TraceRepositoryPort,
     private audit: AuditRepositoryPort,
-    private events: EventBusPort
+    private events: EventBusPort,
+    private calibrations?: PrinterPaperCalibrationRepositoryPort,
+    private papers?: PaperProfileRepositoryPort,
   ) {}
 
   async execute(input: CreateJobInput, actorId: string): Promise<Job> {
@@ -103,6 +107,28 @@ export class CreatePrintJobService {
       flipHorizontal: input.flipHorizontal,
       flipVertical: input.flipVertical,
     });
+    // Calibration is resolved from the trusted printer/profile tuple at job
+    // creation time. Never accept offsets supplied by an external payload.
+    delete metadata['printerCalibration'];
+    if (this.calibrations && input.paperProfileId) {
+      // The profile's DPI comes from the repository, not request metadata.
+      // Metadata is only a rendering snapshot and can be supplied by a caller.
+      const profileDpi = this.papers
+        ? (await this.papers.findById(input.paperProfileId))?.dpi
+        : undefined;
+      if (typeof profileDpi === 'number' && Number.isInteger(profileDpi) && profileDpi > 0) {
+        const calibration = await this.calibrations.findByKey(printer.id, input.paperProfileId, profileDpi);
+        if (calibration) {
+          metadata['printerCalibration'] = {
+            printerId: calibration.printerId,
+            paperProfileId: calibration.paperProfileId,
+            dpi: calibration.dpi,
+            xOffsetDots: calibration.xOffsetDots,
+            yOffsetDots: calibration.yOffsetDots,
+          };
+        }
+      }
+    }
     const job = await this.jobs.create({
       ...input,
       metadata,

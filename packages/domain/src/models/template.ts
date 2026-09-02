@@ -70,6 +70,19 @@ export interface PaperProfileField {
   align: 'left' | 'center' | 'right';
 }
 
+/**
+ * Physical repeated-label layout. Omitting it preserves legacy one-cell
+ * profiles; consumers resolve that case from the printable media area.
+ */
+export interface PaperProfileLayout {
+  columns: number;
+  cellWidthMm: number;
+  cellHeightMm: number;
+  columnGapMm: number;
+  /** Distance between the origins of consecutive feed rows. */
+  rowPitchMm: number;
+}
+
 export interface PaperProfile {
   id: string;
   code: string;
@@ -88,6 +101,8 @@ export interface PaperProfile {
   rotation?: number;
   flipHorizontal?: boolean;
   flipVertical?: boolean;
+  /** Optional so existing stored profiles remain valid as a one-cell layout. */
+  layout?: PaperProfileLayout;
   fields: PaperProfileField[];
   createdAt: Date;
   updatedAt: Date;

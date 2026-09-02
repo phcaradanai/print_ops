@@ -22,6 +22,7 @@ export interface PaperProfileExport {
       | 'rotation'
       | 'flipHorizontal'
       | 'flipVertical'
+      | 'layout'
       | 'fields'
     >
   >;
@@ -39,7 +40,7 @@ export function serializeProfiles(
       code: profile.code,
       name: profile.name,
       widthMm: profile.widthMm,
-       gapMm: profile.gapMm ?? 0,
+      ...(profile.gapMm !== undefined ? { gapMm: profile.gapMm } : {}),
       heightMm: profile.heightMm,
       marginTopMm: profile.marginTopMm,
       marginRightMm: profile.marginRightMm,
@@ -51,6 +52,7 @@ export function serializeProfiles(
       ...(profile.rotation !== undefined ? { rotation: profile.rotation } : {}),
       ...(profile.flipHorizontal !== undefined ? { flipHorizontal: profile.flipHorizontal } : {}),
       ...(profile.flipVertical !== undefined ? { flipVertical: profile.flipVertical } : {}),
+      ...(profile.layout ? { layout: { ...profile.layout } } : {}),
       fields: profile.fields ?? [],
     })),
   };

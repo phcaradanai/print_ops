@@ -1,6 +1,6 @@
 import type { Database } from 'sql.js';
 
-export const CURRENT_SCHEMA_VERSION = 5;
+export const CURRENT_SCHEMA_VERSION = 6;
 
 export function schemaVersion(db: Database): number {
   const result = db.exec('PRAGMA user_version');
@@ -50,6 +50,7 @@ export function runSchemaMigration(db: Database): void {
     if (fromVersion < 3) migrateVersionTwoToThree(db);
     if (fromVersion < 4) migrateVersionThreeToFour(db);
     if (fromVersion < 5) migrateVersionFourToFive(db);
+    if (fromVersion < 6) migrateVersionFiveToSix(db);
     db.run(`PRAGMA user_version=${CURRENT_SCHEMA_VERSION}`);
     db.run('COMMIT');
   } catch (error) {
@@ -85,7 +86,26 @@ function migrateVersionFourToFive(db: Database): void {
   ensureColumn(db, 'paper_profiles', 'gap_mm', 'REAL NOT NULL DEFAULT 0');
 }
 
-
+function migrateVersionFiveToSix(db: Database): void {
+  if (db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'paper_profiles'")[0]?.values.length === 1) {
+    ensureColumn(db, 'paper_profiles', 'layout', 'TEXT');
+  }
+  db.run(`
+    CREATE TABLE IF NOT EXISTS printer_paper_calibrations (
+      id TEXT PRIMARY KEY NOT NULL,
+      printer_id TEXT NOT NULL,
+      paper_profile_id TEXT NOT NULL,
+      dpi INTEGER NOT NULL CHECK (dpi > 0),
+      x_offset_dots INTEGER NOT NULL CHECK (x_offset_dots BETWEEN -10000 AND 10000),
+      y_offset_dots INTEGER NOT NULL CHECK (y_offset_dots BETWEEN -10000 AND 10000),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (printer_id) REFERENCES printers(id) ON DELETE CASCADE,
+      FOREIGN KEY (paper_profile_id) REFERENCES paper_profiles(id) ON DELETE CASCADE,
+      UNIQUE(printer_id, paper_profile_id, dpi)
+    )
+  `);
+}
 function migrateVersionZeroToOne(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS printers (
@@ -310,8 +330,8 @@ function migrateVersionZeroToOne(db: Database): void {
       code TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
       width_mm REAL NOT NULL,
-       gap_mm REAL NOT NULL DEFAULT 0,
       height_mm REAL NOT NULL,
+      gap_mm REAL NOT NULL DEFAULT 0,
       margin_top_mm REAL NOT NULL DEFAULT 0,
       margin_right_mm REAL NOT NULL DEFAULT 0,
       margin_bottom_mm REAL NOT NULL DEFAULT 0,
@@ -323,6 +343,7 @@ function migrateVersionZeroToOne(db: Database): void {
       flip_horizontal INTEGER NOT NULL DEFAULT 0,
       flip_vertical INTEGER NOT NULL DEFAULT 0,
       fields TEXT NOT NULL DEFAULT '[]',
+      layout TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )

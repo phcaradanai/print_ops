@@ -23,6 +23,7 @@ function rowToPaperProfile(row: Record<string, unknown>): PaperProfile {
     flipHorizontal: Boolean(row['flip_horizontal']),
     flipVertical: Boolean(row['flip_vertical']),
     fields: fromJson(row['fields'], []),
+    layout: fromJson(row['layout'], undefined) as PaperProfile['layout'],
     createdAt: toDate(row['created_at']),
     updatedAt: toDate(row['updated_at']),
   };
@@ -75,8 +76,8 @@ export class SqlitePaperProfileRepository implements PaperProfileRepositoryPort 
     const now = dateStr(new Date());
 
     db.run(
-      `INSERT INTO paper_profiles (id, code, name, width_mm, height_mm, gap_mm, margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm, dpi, orientation, unit, rotation, flip_horizontal, flip_vertical, fields, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO paper_profiles (id, code, name, width_mm, height_mm, gap_mm, margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm, dpi, orientation, unit, rotation, flip_horizontal, flip_vertical, fields, layout, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.code,
@@ -95,6 +96,7 @@ export class SqlitePaperProfileRepository implements PaperProfileRepositoryPort 
         input.flipHorizontal ? 1 : 0,
         input.flipVertical ? 1 : 0,
         toJson(input.fields ?? []),
+        input.layout ? toJson(input.layout) : null,
         now,
         now,
       ],
@@ -138,6 +140,7 @@ export class SqlitePaperProfileRepository implements PaperProfileRepositoryPort 
     if ('flipVertical' in patch) add('flip_vertical', patch.flipVertical ? 1 : 0);
     if ('fields' in patch) add('fields', toJson(patch.fields ?? []));
 
+    if ('layout' in patch) add('layout', patch.layout ? toJson(patch.layout) : null);
     add('updated_at', dateStr(new Date()));
 
     const sql = `UPDATE paper_profiles SET ${fields.join(', ')} WHERE id = ?`;

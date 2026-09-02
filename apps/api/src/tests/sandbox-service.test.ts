@@ -190,6 +190,66 @@ describe('SandboxService', () => {
     expect(batch.runs.every((run) => run.testPrintSuccess)).toBe(true);
   });
 
+  it('packs a 3-up HTML batch into rows without skipped labels', async () => {
+    await printerRepo.create({
+      code: 'GRID_PRINTER',
+      name: 'Grid Printer',
+      protocol: 'fake',
+      connectionUri: 'fake://grid',
+      isActive: true,
+      metadata: {},
+    });
+    const gridPaper = await paperRepo.create({
+      code: 'LABEL_98X11_3UP',
+      name: '98x11 3-up',
+      widthMm: 98,
+      heightMm: 11,
+      marginTopMm: 0,
+      marginRightMm: 0,
+      marginBottomMm: 0,
+      marginLeftMm: 0,
+      gapMm: 0,
+      dpi: 203,
+      orientation: 'landscape',
+      unit: 'mm',
+      layout: {
+        columns: 3,
+        cellWidthMm: 31,
+        cellHeightMm: 9,
+        columnGapMm: 2,
+        rowPitchMm: 11,
+      },
+    });
+    await templateRepo.create({
+      templateCode: 'HTML_GRID_BATCH',
+      name: 'HTML Grid Batch',
+      engine: 'HTML',
+      content: '<div>{{barcode}}</div>',
+      paperProfileId: gridPaper.id,
+      status: 'PUBLISHED',
+      createdBy: 'seed',
+    });
+
+    const svc = makeService();
+    const batch = await svc.runBatch('HTML_GRID_BATCH', Array.from({ length: 50 }, (_, index) => ({
+      samplePayload: { barcode: String(100001 + index) },
+      testPrint: { printerCode: 'GRID_PRINTER' },
+    })));
+
+    const jobs = await jobRepo.findAll();
+    expect(jobs).toHaveLength(1);
+    const payload = jobs[0]!.renderedPrintPayload ?? '';
+    expect(payload.match(/data-printops-row=/g)).toHaveLength(17);
+    expect(payload.match(/data-printops-cell-column="1"/g)).toHaveLength(17);
+    expect(payload.match(/data-printops-cell-column="2"/g)).toHaveLength(17);
+    expect(payload.match(/data-printops-cell-column="3"/g)).toHaveLength(16);
+    expect(payload.match(/data-printops-page=/g)).toBeNull();
+    expect(payload).toContain('left:0mm');
+    expect(payload).toContain('left:33mm');
+    expect(payload).toContain('left:66mm');
+    expect(batch.runs.every((run) => run.testPrintSuccess)).toBe(true);
+  });
+
   it('throws NotFoundError for nonexistent template', async () => {
     const svc = makeService();
     await expect(

@@ -46,6 +46,7 @@ export const DEFAULT_FORM: PaperForm = {
   rotation: 0,
   flipHorizontal: false,
   flipVertical: false,
+  layout: undefined,
 };
 
 export const DEFAULT_UX: PaperProfileUx = {

@@ -13,8 +13,9 @@ import type {
   WebhookEndpoint,
   EventBusPort,
   AcceptanceCallbackSystemField,
+  PrinterPaperCalibrationRepositoryPort,
 } from '@printerops/domain';
-import { CALLBACK_INTENT_METADATA_KEY } from '@printerops/domain';
+import { CALLBACK_INTENT_METADATA_KEY, paperProfileForCell, snapshotPaperProfileGeometry } from '@printerops/domain';
 import { isValidRotation, NotFoundError, ValidationError } from '@printerops/shared';
 import { buildCallbackIntentSafe, wantsAcceptanceCallback } from './callback-intent.service.js';
 import { CreatePrintJobService } from './create-print-job.service.js';
@@ -107,8 +108,9 @@ export class DynamicIntakeService {
     private renderer: TemplateRendererPort,
     callbacks?: WebhookCallbackService,
     callbackLogger?: WebhookCallbackLogger,
+    calibrations?: PrinterPaperCalibrationRepositoryPort,
   ) {
-    this.createJob = new CreatePrintJobService(jobs, printers, queue, traces, audit, events);
+    this.createJob = new CreatePrintJobService(jobs, printers, queue, traces, audit, events, calibrations, papers);
     this.callbacks = callbacks;
     if (callbackLogger) this.callbackLogger = callbackLogger;
   }
@@ -164,8 +166,8 @@ export class DynamicIntakeService {
     const paper = await this.resolvePaper(route.printerCode, route.templateCode, template.paperProfileId);
     const renderOptions = renderTransformOverrides(req.body);
     const rendered = Object.keys(renderOptions).length > 0
-      ? await this.renderer.renderPrintPayload(template, route.mappedPayload, paper, renderOptions)
-      : await this.renderer.renderPrintPayload(template, route.mappedPayload, paper);
+      ? await this.renderer.renderPrintPayload(template, route.mappedPayload, paperProfileForCell(paper), renderOptions)
+      : await this.renderer.renderPrintPayload(template, route.mappedPayload, paperProfileForCell(paper));
     const renderedAt = new Date();
     const routeResolveMs = routeResolvedAt.getTime() - routeStart;
 
@@ -216,6 +218,7 @@ export class DynamicIntakeService {
           intakePayload: req.body,
           paperProfile: {
             widthMm: paper.widthMm,
+            paperProfileId: paper.id,
             heightMm: paper.heightMm,
             gapMm: paper.gapMm ?? 0,
             marginTopMm: paper.marginTopMm,
@@ -227,6 +230,7 @@ export class DynamicIntakeService {
             rotation: paper.rotation ?? 0,
             flipHorizontal: paper.flipHorizontal ?? false,
             flipVertical: paper.flipVertical ?? false,
+            geometry: snapshotPaperProfileGeometry(paper),
           },
         },
       },

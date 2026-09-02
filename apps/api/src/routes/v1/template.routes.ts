@@ -40,11 +40,17 @@ function escapeHtmlAttr(raw: string): string {
 function buildFieldsTemplateHtml(profile: PaperProfile): string {
   const naturalOrientation = profile.widthMm > profile.heightMm ? 'landscape' : 'portrait';
   const rotated = naturalOrientation !== profile.orientation;
-  const widthMm = rotated ? profile.heightMm : profile.widthMm;
-  const heightMm = rotated ? profile.widthMm : profile.heightMm;
+  const cellWidthMm = profile.layout && profile.layout.columns > 1
+    ? profile.layout.cellWidthMm
+    : profile.widthMm;
+  const cellHeightMm = profile.layout && profile.layout.columns > 1
+    ? profile.layout.cellHeightMm
+    : profile.heightMm;
+  const widthMm = rotated ? cellHeightMm : cellWidthMm;
+  const heightMm = rotated ? cellWidthMm : cellHeightMm;
   const sourcePrintableHeightMm = Math.max(
     0,
-    profile.heightMm - profile.marginTopMm - profile.marginBottomMm,
+    cellHeightMm - profile.marginTopMm - profile.marginBottomMm,
   );
   const spans = (profile.fields ?? [])
     .map((f) => {
@@ -244,6 +250,7 @@ export async function templateRoutes(
         dpi: profile.dpi,
         orientation: profile.orientation,
         unit: profile.unit,
+        layout: profile.layout,
         fields: profile.fields ?? [],
       })),
     };
@@ -325,6 +332,7 @@ export async function templateRoutes(
         rotation: numbers['rotation']!,
         flipHorizontal: item.flipHorizontal ?? false,
         flipVertical: item.flipVertical ?? false,
+        layout: item.layout,
         fields: Array.isArray(item.fields) ? item.fields : [],
       };
 
@@ -401,6 +409,7 @@ export async function templateRoutes(
           code: profile.code,
           name: profile.name,
           widthMm: profile.widthMm,
+          gapMm: profile.gapMm ?? 0,
           heightMm: profile.heightMm,
           marginTopMm: profile.marginTopMm,
           marginRightMm: profile.marginRightMm,
@@ -412,6 +421,7 @@ export async function templateRoutes(
           rotation: profile.rotation ?? 0,
           flipHorizontal: profile.flipHorizontal ?? false,
           flipVertical: profile.flipVertical ?? false,
+          layout: profile.layout,
           fields: profile.fields ?? [],
         },
       ],

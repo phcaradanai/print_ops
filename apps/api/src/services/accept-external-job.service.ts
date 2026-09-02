@@ -13,8 +13,9 @@ import type {
   Job,
   JobPriority,
   WebhookEndpointRepositoryPort,
+  PrinterPaperCalibrationRepositoryPort,
 } from '@printerops/domain';
-import { CALLBACK_INTENT_METADATA_KEY } from '@printerops/domain';
+import { CALLBACK_INTENT_METADATA_KEY, paperProfileForCell, snapshotPaperProfileGeometry } from '@printerops/domain';
 import { AppError, isValidRotation, ValidationError } from '@printerops/shared';
 import { CreatePrintJobService } from './create-print-job.service.js';
 import { resolveEndpointCallbackIntent } from './callback-intent.service.js';
@@ -73,8 +74,9 @@ export class AcceptExternalJobService {
     private renderer?: TemplateRendererPort,
     private intakeLog?: IntakeAttemptRepositoryPort,
     private endpoints?: WebhookEndpointRepositoryPort,
+    private calibrations?: PrinterPaperCalibrationRepositoryPort,
   ) {
-    this.createJob = new CreatePrintJobService(jobs, printers, queue, traces, audit, events);
+    this.createJob = new CreatePrintJobService(jobs, printers, queue, traces, audit, events, calibrations, papers);
   }
 
   async execute(
@@ -187,6 +189,7 @@ export class AcceptExternalJobService {
         {
           paperProfileMetadata = {
             widthMm: paper.widthMm,
+            paperProfileId: paper.id,
             gapMm: paper.gapMm ?? 0,
             heightMm: paper.heightMm,
             marginTopMm: paper.marginTopMm,
@@ -198,6 +201,7 @@ export class AcceptExternalJobService {
             rotation: paper.rotation ?? 0,
             flipHorizontal: paper.flipHorizontal ?? false,
             flipVertical: paper.flipVertical ?? false,
+            geometry: snapshotPaperProfileGeometry(paper),
           };
           // Two very different failure classes meet here and must not be
           // conflated (product decision, 2026-08-03):
@@ -208,8 +212,8 @@ export class AcceptExternalJobService {
           //    this is a rejection the caller hears about, not a warning.
           try {
             const rendered = Object.keys(renderOptions).length > 0
-              ? await this.renderer.renderPrintPayload(template, req.payload, paper, renderOptions)
-              : await this.renderer.renderPrintPayload(template, req.payload, paper);
+              ? await this.renderer.renderPrintPayload(template, req.payload, paperProfileForCell(paper), renderOptions)
+              : await this.renderer.renderPrintPayload(template, req.payload, paperProfileForCell(paper));
             renderedPrintPayload = rendered.renderedPrintPayload;
             renderWarnings = rendered.warnings ?? [];
           } catch (err) {

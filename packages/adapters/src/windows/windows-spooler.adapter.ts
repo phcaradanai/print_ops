@@ -1609,7 +1609,8 @@ if ($null -eq $workOffline -and $null -ne $win32) { $workOffline = $win32.WorkOf
     try {
       const page = resolveHtmlPageSettings(html, command.metadata);
       const transformedHtml = applyHtmlRenderTransform(html, page, command);
-      await writeFile(file, transformedHtml, 'utf-8');
+      const calibratedHtml = applyHtmlCalibration(transformedHtml, page, command);
+      await writeFile(file, calibratedHtml, 'utf-8');
       const jobName = `PrintOps:${command.jobId ?? jobId}`;
       // Serve-mode requests omit resultPath/userDataFolder: the result goes
       // to result-<jobId>.json and the WebView2 data folder is shared and
@@ -2136,6 +2137,67 @@ export function applyHtmlRenderTransform(
   return wrapHtmlWithRenderTransform(html, page.widthMm, page.heightMm, transform);
 }
 
+function formatCalibrationMm(value: number): string {
+  return Number(value.toFixed(6)).toString();
+}
+
+/**
+ * Apply a signed, dot-based printer calibration after render transforms.
+ * Calibration is intentionally a small, validated translation wrapper: it
+ * keeps the template coordinates deterministic while correcting the physical
+ * printer origin measured for one printer/profile/DPI tuple.
+ */
+export function applyHtmlCalibration(
+  html: string,
+  page: HtmlPageSettings,
+  command: PrintCommand,
+): string {
+  const raw = command.metadata?.['printerCalibration'];
+  if (raw === undefined || raw === null) return html;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('INVALID_PRINTER_CALIBRATION: calibration must be an object');
+  }
+
+  const calibration = raw as Record<string, unknown>;
+  const profile = command.metadata?.['paperProfile'];
+  const profileValues = profile && typeof profile === 'object' && !Array.isArray(profile)
+    ? profile as Record<string, unknown>
+    : {};
+  const printerId = calibration['printerId'];
+  const paperProfileId = calibration['paperProfileId'];
+  const expectedPaperProfileId = profileValues['paperProfileId'];
+  const dpi = calibration['dpi'];
+  const expectedDpi = metadataNumber(command.metadata, 'dpi');
+  const xOffsetDots = calibration['xOffsetDots'];
+  const yOffsetDots = calibration['yOffsetDots'];
+  const valid =
+    typeof printerId === 'string' && printerId.length > 0 &&
+    printerId === command.printerId &&
+    typeof paperProfileId === 'string' && paperProfileId.length > 0 &&
+    paperProfileId === expectedPaperProfileId &&
+    Number.isInteger(dpi) && dpi === expectedDpi && (dpi as number) > 0 &&
+    Number.isInteger(xOffsetDots) && Math.abs(xOffsetDots as number) <= 10000 &&
+    Number.isInteger(yOffsetDots) && Math.abs(yOffsetDots as number) <= 10000;
+  if (!valid) {
+    throw new Error(
+      'INVALID_PRINTER_CALIBRATION: calibration does not match the printer, paper profile, or DPI',
+    );
+  }
+
+  const xMm = (xOffsetDots as number) * 25.4 / (dpi as number);
+  const yMm = (yOffsetDots as number) * 25.4 / (dpi as number);
+  const frameStyle =
+    'position:relative;width:' + formatCalibrationMm(page.widthMm) + 'mm;' +
+    'height:' + formatCalibrationMm(page.heightMm) + 'mm;overflow:hidden;box-sizing:border-box;';
+  const contentStyle =
+    'position:absolute;left:' + formatCalibrationMm(xMm) + 'mm;top:' + formatCalibrationMm(yMm) + 'mm;' +
+    'width:' + formatCalibrationMm(page.widthMm) + 'mm;height:' + formatCalibrationMm(page.heightMm) + 'mm;' +
+    'overflow:visible;box-sizing:border-box;';
+  return '<div data-printops-calibration-frame="true" style="' + frameStyle +
+    '"><div data-printops-calibration-layer="true" style="' + contentStyle + '">' + html +
+    '</div></div>';
+}
+
 /** Resolve actual driver page settings from the selected profile, with the
  * dimensions embedded in generated HTML as a backwards-compatible fallback. */
 export function resolveHtmlPageSettings(
@@ -2145,7 +2207,7 @@ export function resolveHtmlPageSettings(
   const widthMatch = html.match(/(?:^|[;"'])\s*width\s*:\s*([0-9]+(?:\.[0-9]+)?)mm/i);
   const heightMatch = html.match(/(?:^|[;"'])\s*height\s*:\s*([0-9]+(?:\.[0-9]+)?)mm/i);
   const widthMm = metadataNumber(metadata, 'widthMm') ?? Number(widthMatch?.[1]);
-  const heightMm = metadataNumber(metadata, 'heightMm') ?? Number(heightMatch?.[1]);
+  const heightMm = metadataNumber(metadata, 'pageHeightMm') ?? metadataNumber(metadata, 'heightMm') ?? Number(heightMatch?.[1]);
   if (!Number.isFinite(widthMm) || widthMm <= 0 || !Number.isFinite(heightMm) || heightMm <= 0) {
     throw new Error(
       'PAPER_PROFILE_REQUIRED: HTML printing requires widthMm and heightMm from the selected paper profile',
