@@ -84,6 +84,25 @@ describe('resolveHtmlPageSettings', () => {
       orientation: 'portrait',
     });
   });
+
+  it('keeps the driver page at the label face height so a gap sensor is not counted twice', () => {
+    expect(resolveHtmlPageSettings('<main />', {
+      paperProfile: {
+        widthMm: 98,
+        heightMm: 11,
+        gapMm: 2,
+        marginTopMm: 0.05,
+        marginRightMm: 2,
+        marginBottomMm: 0.05,
+        marginLeftMm: 2,
+        orientation: 'landscape',
+      },
+    })).toMatchObject({
+      widthMm: 98,
+      heightMm: 11,
+      orientation: 'landscape',
+    });
+  });
 });
 
 describe('applyHtmlRenderTransform', () => {

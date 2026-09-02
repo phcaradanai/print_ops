@@ -217,6 +217,7 @@ export class DynamicIntakeService {
           paperProfile: {
             widthMm: paper.widthMm,
             heightMm: paper.heightMm,
+            gapMm: paper.gapMm ?? 0,
             marginTopMm: paper.marginTopMm,
             marginRightMm: paper.marginRightMm,
             marginBottomMm: paper.marginBottomMm,

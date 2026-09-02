@@ -257,6 +257,42 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
         message: 'No print content available (renderedPrintPayload or documentBase64 required)',
       };
     }
+    // Out-Printer treats text as an office document and lets the Windows
+    // driver choose its own page size. That is unsafe for a Datamax label
+    // printer: a 100x50 profile can otherwise be fed with the driver's default
+    // page/pitch, which is exactly how a 3-up sheet starts slipping across
+    // columns and skipping repeat intervals. Route profile-backed text through
+    // the same WebView2 path as HTML so page width, height, margins, and
+    // orientation are applied to every copy.
+    const datamaxProfileText =
+      isDatamaxI4208(command.metadata, printerName) && isTextPrintMimeType(command.mimeType);
+    if (datamaxProfileText && !hasUsablePaperProfile(command.metadata)) {
+      return {
+        success: false,
+        errorCode: 'PAPER_PROFILE_REQUIRED',
+        message: 'Datamax-O\'Neil I-4208 text printing requires a valid paper profile with physical dimensions',
+      };
+    }
+    const printAsHtml = command.mimeType === 'text/html' || datamaxProfileText;
+
+    if (datamaxProfileText) {
+      return this.sendAndVerify({
+        printerName,
+        copies: Math.max(1, command.copies),
+        metadata: command.metadata,
+        onProgress: command.onProgress,
+        jobId: command.jobId,
+        subject: `job ${command.jobId}`,
+        requireIppJobConfirmation: printAsHtml,
+        expectedIppJobName: printAsHtml ? `PrintOps:${command.jobId}` : undefined,
+        emit: async () => this.printHtml(
+          printerName,
+          textPayloadToHtml(content.toString('utf-8')),
+          command,
+        ),
+      });
+    }
+
 
     return this.sendAndVerify({
       printerName,
@@ -2010,6 +2046,61 @@ function metadataNumber(metadata: Record<string, unknown>, key: string): number 
   }
   return undefined;
 }
+/** MIME types that represent a text template rather than a printer language. */
+function isTextPrintMimeType(mimeType: string): boolean {
+  const normalized = mimeType.trim().toLowerCase();
+  return normalized === 'text/plain' || normalized === 'raw_text';
+}
+
+/**
+ * Identify the Datamax-O'Neil I-4208 family from printer metadata or the
+ * resolved Windows queue name. The model field is sufficient on its own;
+ * otherwise require the Datamax/O'Neil brand to avoid hijacking an unrelated
+ * queue whose name happens to contain a similar number.
+ */
+export function isDatamaxI4208(
+  metadata: Record<string, unknown> | undefined,
+  printerName?: string,
+): boolean {
+  const modelValues = [metadata?.['model'], metadata?.['printerModel']]
+    .filter((value): value is string => typeof value === 'string');
+  const values = [
+    ...modelValues,
+    metadata?.['driverName'],
+    metadata?.['printerName'],
+    metadata?.['printerCode'],
+    metadata?.['name'],
+    printerName,
+  ].filter((value): value is string => typeof value === 'string').join(' ');
+  if (!/\bi[\s-]?4208\b/i.test(values)) return false;
+  return /\bdatamax\b|\bo'?neil\b/i.test(values) ||
+    modelValues.some((value) => /\bi[\s-]?4208\b/i.test(value));
+}
+
+function hasUsablePaperProfile(metadata: Record<string, unknown> | undefined): boolean {
+  if (!metadata) return false;
+  const widthMm = metadataNumber(metadata, 'widthMm');
+  const heightMm = metadataNumber(metadata, 'heightMm');
+  if (widthMm === undefined || heightMm === undefined || widthMm <= 0 || heightMm <= 0) return false;
+  const marginLeftMm = Math.max(0, metadataNumber(metadata, 'marginLeftMm') ?? 0);
+  const marginRightMm = Math.max(0, metadataNumber(metadata, 'marginRightMm') ?? 0);
+  const marginTopMm = Math.max(0, metadataNumber(metadata, 'marginTopMm') ?? 0);
+  const marginBottomMm = Math.max(0, metadataNumber(metadata, 'marginBottomMm') ?? 0);
+  return widthMm > marginLeftMm + marginRightMm && heightMm > marginTopMm + marginBottomMm;
+}
+
+/** Keep a RAW_TEXT template safe when it is promoted to a browser document. */
+export function textPayloadToHtml(text: string): string {
+  const escaped = text.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character] ?? character);
+  return `<div style="box-sizing:border-box;width:100%;height:100%;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;font-family:Arial,sans-serif;font-size:10pt;line-height:1.2;">${escaped}</div>`;
+}
+
 
 function metadataString(metadata: Record<string, unknown>, key: string): string | undefined {
   const direct = metadata[key];
@@ -2055,7 +2146,6 @@ export function resolveHtmlPageSettings(
   const heightMatch = html.match(/(?:^|[;"'])\s*height\s*:\s*([0-9]+(?:\.[0-9]+)?)mm/i);
   const widthMm = metadataNumber(metadata, 'widthMm') ?? Number(widthMatch?.[1]);
   const heightMm = metadataNumber(metadata, 'heightMm') ?? Number(heightMatch?.[1]);
-
   if (!Number.isFinite(widthMm) || widthMm <= 0 || !Number.isFinite(heightMm) || heightMm <= 0) {
     throw new Error(
       'PAPER_PROFILE_REQUIRED: HTML printing requires widthMm and heightMm from the selected paper profile',

@@ -83,5 +83,17 @@ namespace PrintOps.HtmlPrint.Tests
             Assert.Contains("@page{size:100mm 50mm;margin:0;}", css);
             Assert.Contains("width:96mm!important;height:46mm!important;", css);
         }
+
+        [Fact]
+        public void MultipageLabels_ReleaseTheSinglePageClipAndBreakAtEveryLabel()
+        {
+            var geometry = PrintGeometry.FromRequest(MakeRequest());
+            var css = WebView2PrintSession.BuildPageCss(geometry);
+
+            Assert.Contains("html.printops-multipage #printops-print-root", css);
+            Assert.Contains("height:auto!important;max-height:none!important;overflow:visible!important;", css);
+            Assert.Contains("[data-printops-page]:not(:last-child)", css);
+            Assert.Contains("break-after:page!important;page-break-after:always!important;", css);
+        }
     }
 }

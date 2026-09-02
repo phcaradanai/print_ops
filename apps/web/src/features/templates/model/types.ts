@@ -22,6 +22,7 @@ export interface PaperProfileField {
   type?: 'text' | 'barcode' | 'qrcode' | 'date' | 'number';
   barcodeSymbology?: BarcodeSymbology;
   barcodeHeightMm?: number;
+  barcodeWidthMm?: number;
   qrSizeMm?: number;
 }
 

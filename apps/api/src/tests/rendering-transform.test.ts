@@ -54,7 +54,7 @@ describe('HTML rendering transforms', () => {
       expect(output).toContain('data-printops-transform-frame="true"');
       expect(output).toContain('transform:rotate(90deg) scaleX(-1) scaleY(1)');
       expect(output).toContain('Sample label');
-      expect(output).toContain('data:image/png;base64,');
+      expect(output).toContain('data:image/svg+xml;base64,');
       expect(output).toContain('data:image/svg+xml;base64,');
       expect(output).toContain('width:100mm;height:50mm;overflow:hidden');
     }

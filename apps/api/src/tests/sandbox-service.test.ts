@@ -153,6 +153,43 @@ describe('SandboxService', () => {
     await expect(svc.runBatch('TEST_LABEL', [])).rejects.toThrow(/at least one scenario/i);
   });
 
+  it('submits same-printer HTML batch as one multipage spool job', async () => {
+    await printerRepo.create({
+      code: 'TEST_PRINTER',
+      name: 'Test Printer',
+      protocol: 'fake',
+      connectionUri: 'fake://test',
+      isActive: true,
+      metadata: {},
+    });
+    await templateRepo.create({
+      templateCode: 'HTML_BATCH',
+      name: 'HTML Batch',
+      engine: 'HTML',
+      content: '<div>{{name}}</div>',
+      paperProfileId: (await paperRepo.findAll())[0]!.id,
+      status: 'PUBLISHED',
+      createdBy: 'seed',
+    });
+
+    const svc = makeService();
+    const batch = await svc.runBatch('HTML_BATCH', [
+      { samplePayload: { name: '000001' }, testPrint: { printerCode: 'TEST_PRINTER' } },
+      { samplePayload: { name: '000002' }, testPrint: { printerCode: 'TEST_PRINTER' } },
+      { samplePayload: { name: '000003' }, testPrint: { printerCode: 'TEST_PRINTER' } },
+    ]);
+
+    const jobs = await jobRepo.findAll();
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]!.renderedPrintPayload?.match(/data-printops-page=/g)).toHaveLength(3);
+    expect(batch.runs.map((run) => run.testJobId)).toEqual([
+      jobs[0]!.id,
+      jobs[0]!.id,
+      jobs[0]!.id,
+    ]);
+    expect(batch.runs.every((run) => run.testPrintSuccess)).toBe(true);
+  });
+
   it('throws NotFoundError for nonexistent template', async () => {
     const svc = makeService();
     await expect(

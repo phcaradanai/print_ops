@@ -187,6 +187,7 @@ export class AcceptExternalJobService {
         {
           paperProfileMetadata = {
             widthMm: paper.widthMm,
+            gapMm: paper.gapMm ?? 0,
             heightMm: paper.heightMm,
             marginTopMm: paper.marginTopMm,
             marginRightMm: paper.marginRightMm,

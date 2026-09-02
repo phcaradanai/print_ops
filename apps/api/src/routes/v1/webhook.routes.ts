@@ -306,6 +306,7 @@ export async function webhookRoutes(
           sandbox: true,
           paperProfile: {
             widthMm: paper.widthMm,
+             gapMm: paper.gapMm ?? 0,
             heightMm: paper.heightMm,
             marginTopMm: paper.marginTopMm,
             marginRightMm: paper.marginRightMm,

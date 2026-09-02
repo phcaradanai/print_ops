@@ -15,6 +15,7 @@ import {
   validatePaperProfileUpdate,
 } from './paper-profile-validation.js';
 
+const DEFAULT_BARCODE_WIDTH_MM = 28;
 /**
  * CSS anchor transform for a field's text alignment — kept in lockstep with
  * apps/web/src/pages/PaperProfiles.tsx's anchorTransform() so the printed HTML
@@ -54,10 +55,13 @@ function buildFieldsTemplateHtml(profile: PaperProfile): string {
       const xMm = rotated ? sourcePrintableHeightMm - f.yMm : f.xMm;
       const yMm = rotated ? f.xMm : f.yMm;
       const isMachineReadable = f.type === 'barcode' || f.type === 'qrcode';
+      const barcodeBoxStyle = f.type === 'barcode'
+        ? `display:inline-block;width:${f.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM}mm;height:${f.barcodeHeightMm ?? 12}mm;overflow:hidden;`
+        : '';
       const style =
         `position:absolute;left:${xMm}mm;top:${yMm}mm;` +
         (isMachineReadable
-          ? 'font-size:0;line-height:0;'
+          ? `${barcodeBoxStyle}font-size:0;line-height:0;`
           : `font-size:${f.fontSize}pt;font-weight:${f.bold ? 700 : 400};color:${escapeHtmlAttr(f.color)};`) +
         `white-space:nowrap;` +
         fieldAnchorTransform(f.align);
@@ -229,6 +233,7 @@ export async function templateRoutes(
         name: profile.name,
         widthMm: profile.widthMm,
         heightMm: profile.heightMm,
+         gapMm: profile.gapMm ?? 0,
         marginTopMm: profile.marginTopMm,
         marginRightMm: profile.marginRightMm,
         marginBottomMm: profile.marginBottomMm,
@@ -283,6 +288,7 @@ export async function templateRoutes(
       const numericFields: Array<[string, number]> = [
         ['widthMm', 100],
         ['heightMm', 150],
+         ['gapMm', 0],
         ['marginTopMm', 0],
         ['marginRightMm', 0],
         ['marginBottomMm', 0],
@@ -308,6 +314,7 @@ export async function templateRoutes(
         name: item.name.trim(),
         widthMm: numbers['widthMm']!,
         heightMm: numbers['heightMm']!,
+         gapMm: numbers['gapMm']!,
         marginTopMm: numbers['marginTopMm']!,
         marginRightMm: numbers['marginRightMm']!,
         marginBottomMm: numbers['marginBottomMm']!,

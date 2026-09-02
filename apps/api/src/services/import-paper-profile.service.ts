@@ -52,6 +52,7 @@ export interface ImportRequest {
     name: string;
     widthMm: number;
     heightMm: number;
+    gapMm?: number;
     marginTopMm: number;
     marginRightMm: number;
     marginBottomMm: number;
@@ -158,6 +159,7 @@ export class ImportPaperProfileService {
         code: req.profile.code.trim(),
         name: req.profile.name.trim(),
         widthMm: req.profile.widthMm,
+        gapMm: req.profile.gapMm ?? 0,
         heightMm: req.profile.heightMm,
         marginTopMm: req.profile.marginTopMm,
         marginRightMm: req.profile.marginRightMm,
@@ -378,6 +380,10 @@ function validateProfileInput(profile: ImportRequest['profile']): void {
         `profile.${dimName} must be a finite number between 0 and ${MAX_PROFILE_DIMENSION_MM}, got ${val}`,
       );
     }
+  if (profile.gapMm !== undefined && (
+    typeof profile.gapMm !== 'number' || !Number.isFinite(profile.gapMm) ||
+    profile.gapMm < 0 || profile.gapMm > MAX_PROFILE_DIMENSION_MM
+  )) errors.push(`profile.gapMm must be a finite number between 0 and ${MAX_PROFILE_DIMENSION_MM}`);
   }
 
   if (typeof profile.widthMm !== 'number' || !Number.isFinite(profile.widthMm) || profile.widthMm <= 0) {

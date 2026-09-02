@@ -5,6 +5,7 @@ type PaperFormForValidation = Pick<
   | 'name'
   | 'widthMm'
   | 'heightMm'
+  | 'gapMm'
   | 'dpi'
   | 'marginTopMm'
   | 'marginRightMm'
@@ -27,6 +28,7 @@ export function validatePaperForm(form: PaperFormForValidation): ValidationIssue
   if (form.flipVertical !== undefined && typeof form.flipVertical !== 'boolean') {
     issues.push({ field: 'flipVertical', messageKey: 'validation.boolean' });
   }
+  if (form.gapMm !== undefined && (!Number.isFinite(form.gapMm) || form.gapMm < 0)) issues.push({ field: 'gapMm', messageKey: 'validation.gapNonNegative' });
   if (form.marginTopMm < 0) issues.push({ field: 'marginTopMm', messageKey: 'validation.marginsNonNegative' });
   if (form.marginRightMm < 0) issues.push({ field: 'marginRightMm', messageKey: 'validation.marginsNonNegative' });
   if (form.marginBottomMm < 0) issues.push({ field: 'marginBottomMm', messageKey: 'validation.marginsNonNegative' });
@@ -63,6 +65,7 @@ export function validateImportDraft(draft: ImportDraftForValidation): Validation
   if (!Number.isFinite(draft.heightMm) || draft.heightMm <= 0) {
     issues.push({ field: 'heightMm', messageKey: 'validation.dimensionsPositive' });
   }
+  if (draft.gapMm !== undefined && (!Number.isFinite(draft.gapMm) || draft.gapMm < 0)) issues.push({ field: 'gapMm', messageKey: 'validation.gapNonNegative' });
   if (!Number.isFinite(draft.dpi) || draft.dpi <= 0) {
     issues.push({ field: 'dpi', messageKey: 'validation.dpiPositive' });
   }

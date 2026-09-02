@@ -1,6 +1,6 @@
 import type { Database } from 'sql.js';
 
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 export function schemaVersion(db: Database): number {
   const result = db.exec('PRAGMA user_version');
@@ -49,6 +49,7 @@ export function runSchemaMigration(db: Database): void {
     if (fromVersion < 2) migrateVersionOneToTwo(db);
     if (fromVersion < 3) migrateVersionTwoToThree(db);
     if (fromVersion < 4) migrateVersionThreeToFour(db);
+    if (fromVersion < 5) migrateVersionFourToFive(db);
     db.run(`PRAGMA user_version=${CURRENT_SCHEMA_VERSION}`);
     db.run('COMMIT');
   } catch (error) {
@@ -79,6 +80,11 @@ function migrateVersionThreeToFour(db: Database): void {
   ensureColumn(db, 'jobs', 'flip_horizontal', 'INTEGER');
   ensureColumn(db, 'jobs', 'flip_vertical', 'INTEGER');
 }
+function migrateVersionFourToFive(db: Database): void {
+  if (db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'paper_profiles'")[0]?.values.length !== 1) return;
+  ensureColumn(db, 'paper_profiles', 'gap_mm', 'REAL NOT NULL DEFAULT 0');
+}
+
 
 function migrateVersionZeroToOne(db: Database): void {
   db.run(`
@@ -304,6 +310,7 @@ function migrateVersionZeroToOne(db: Database): void {
       code TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
       width_mm REAL NOT NULL,
+       gap_mm REAL NOT NULL DEFAULT 0,
       height_mm REAL NOT NULL,
       margin_top_mm REAL NOT NULL DEFAULT 0,
       margin_right_mm REAL NOT NULL DEFAULT 0,

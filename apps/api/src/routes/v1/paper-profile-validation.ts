@@ -82,6 +82,13 @@ function checkTransformFields(body: Record<string, unknown>): PaperProfileIssue[
   }
   return issues;
 }
+function checkGapMm(body: Record<string, unknown>): PaperProfileIssue[] {
+  const value = body['gapMm'];
+  if (value !== undefined && (!isFiniteNumber(value) || value < 0)) {
+    return [{ field: 'gapMm', message: 'gapMm must be a finite number of at least zero' }];
+  }
+  return [];
+}
 
 /** Validates a complete profile body for creation. */
 export function validatePaperProfileCreate(body: Record<string, unknown>): PaperProfileIssue[] {
@@ -99,6 +106,7 @@ export function validatePaperProfileCreate(body: Record<string, unknown>): Paper
     issues.push({ field: 'unit', message: "unit must be 'mm' or 'inch'" });
   }
   issues.push(...checkTransformFields(body));
+  issues.push(...checkGapMm(body));
   issues.push(...checkGeometry(body as unknown as PaperProfileGeometry));
   return issues;
 }
@@ -123,6 +131,7 @@ export function validatePaperProfileUpdate(
     issues.push({ field: 'unit', message: "unit must be 'mm' or 'inch'" });
   }
   issues.push(...checkTransformFields(patch));
+  issues.push(...checkGapMm(patch));
   const merged: PaperProfileGeometry = {
     widthMm: current.widthMm,
     heightMm: current.heightMm,

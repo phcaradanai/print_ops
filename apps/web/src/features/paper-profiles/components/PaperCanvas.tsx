@@ -4,7 +4,7 @@ import { inverseTransformVector, renderTransformCss, resolveRenderTransform } fr
 import { useLocale } from '../../../i18n/index.js';
 import { anchorTransform, anchorTransformOrigin } from '../model/fieldGeometry.js';
 import { fontPointSizeToPreviewPixels, getVisualPaperGeometry, mapPrintablePointToVisual } from '../model/geometry.js';
-import { DEFAULT_BARCODE_HEIGHT_MM, DEFAULT_QR_SIZE_MM } from '../model/defaults.js';
+import { DEFAULT_BARCODE_HEIGHT_MM, DEFAULT_BARCODE_WIDTH_MM, DEFAULT_QR_SIZE_MM } from '../model/defaults.js';
 import type {
   DynamicField,
   DynamicFieldBarcodeSymbology,
@@ -193,6 +193,7 @@ export function FieldTypeControls({
           // Pre-fill a sensible real-world size the first time a field becomes
           // a barcode/QR, so the size input never starts out blank/undefined.
           if (nextType === 'barcode' && field.barcodeHeightMm == null) patch.barcodeHeightMm = DEFAULT_BARCODE_HEIGHT_MM;
+          if (nextType === 'barcode' && field.barcodeWidthMm == null) patch.barcodeWidthMm = DEFAULT_BARCODE_WIDTH_MM;
           if (nextType === 'qrcode' && field.qrSizeMm == null) patch.qrSizeMm = DEFAULT_QR_SIZE_MM;
           onUpdate(patch);
         }}
@@ -231,6 +232,20 @@ export function FieldTypeControls({
             }}
             className={numberClassName}
           />
+          <input
+            aria-label={t('page.paperProfiles.barcodeWidthMm')}
+            title={t('page.paperProfiles.barcodeWidthMm')}
+            type="number"
+            min={4}
+            max={100}
+            step={0.5}
+            value={field.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              if (!isNaN(v)) onUpdate({ barcodeWidthMm: Math.max(4, Math.min(100, v)) });
+            }}
+            className={numberClassName}
+          />
         </>
       )}
       {field.type === 'qrcode' && (
@@ -266,7 +281,7 @@ export function FieldBarcodePreview({ field }: { field: DynamicField }) {
   const sample = field.defaultValue || field.label || field.key || (field.type === 'qrcode' ? 'QR-SAMPLE' : '123456');
   const svg = renderBarcodeSvg(sample, field.type, field.barcodeSymbology);
   const heightMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM);
-  const widthMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : undefined;
+  const widthMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM);
   const quietMm = field.type === 'qrcode' ? (qrQuietZoneMm(sample, heightMm) ?? 0) : 0;
   return (
     <div className="pp-barcode-preview">
@@ -277,12 +292,12 @@ export function FieldBarcodePreview({ field }: { field: DynamicField }) {
             display: 'inline-block',
             maxWidth: '100%',
             height: `${heightMm}mm`,
-            width: widthMm ? `${widthMm}mm` : 'auto',
+            width: `${widthMm}mm`,
             padding: quietMm ? `${quietMm}mm` : undefined,
             background: quietMm ? 'var(--neutral-surface)' : undefined,
             lineHeight: 0,
           }}
-          dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', `<svg style="height:100%;width:${widthMm ? '100%' : 'auto'}" `) }}
+          dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', `<svg style="display:block;height:100%;width:100%;object-fit:contain" `) }}
         />
       ) : (
         <span style={{ fontSize: 'var(--font-label-size)', color: 'var(--neutral-text-muted)' }}>[{field.type}: {sample || '?'}]</span>
@@ -307,7 +322,9 @@ function FieldPreviewContent({ field, scale }: { field: DynamicField; scale: num
     const svg = renderBarcodeSvg(sample, field.type, field.barcodeSymbology);
     if (svg) {
       const realHeightMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM);
+      const realWidthMm = field.type === 'qrcode' ? realHeightMm : (field.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM);
       const heightPx = Math.max(10, realHeightMm * scale);
+      const widthPx = Math.max(10, realWidthMm * scale);
       const square = field.type === 'qrcode';
       const quietPx = square ? (qrQuietZoneMm(sample, realHeightMm) ?? 0) * scale : 0;
       return (
@@ -316,12 +333,12 @@ function FieldPreviewContent({ field, scale }: { field: DynamicField; scale: num
           style={{
             display: 'inline-block',
             height: heightPx,
-            width: square ? heightPx : 'auto',
+            width: widthPx,
             padding: quietPx || undefined,
             background: quietPx ? '#fff' : undefined,
             lineHeight: 0,
           }}
-          dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', `<svg style="display:block;height:100%;width:${square ? '100%' : 'auto'}" `) }}
+          dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', `<svg style="display:block;height:100%;width:100%;object-fit:contain" `) }}
         />
       );
     }

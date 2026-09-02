@@ -22,6 +22,7 @@ export const ENGINE_ICON: Record<typeof ENGINES[number], TemplateIconName> = {
 };
 
 const DEFAULT_BARCODE_HEIGHT_MM = 12;
+const DEFAULT_BARCODE_WIDTH_MM = 28;
 const DEFAULT_QR_SIZE_MM = 20;
 const COMBINED_PREVIEW_PATTERN = /\{\{\s*(?:(barcode|qrcode)\s*:\s*([a-zA-Z0-9_.-]+)|([a-zA-Z0-9_.-]+))\s*\}\}/g;
 
@@ -91,9 +92,10 @@ export function localPreview(
       const svg = renderBarcodeSvg(String(value), kind, field?.barcodeSymbology);
       if (svg) {
         const heightMm = kind === 'qrcode' ? (field?.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field?.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM);
-        const widthCss = kind === 'qrcode' ? `${heightMm}mm` : 'auto';
+        const widthMm = kind === 'qrcode' ? heightMm : (field ? (field.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM) : undefined);
+        const widthCss = widthMm != null ? `${widthMm}mm` : 'auto';
         const quietMm = kind === 'qrcode' ? (qrQuietZoneMm(String(value), heightMm) ?? 0) : 0;
-        const sizedSvg = svg.replace('<svg ', `<svg style="height:100%;width:${kind === 'qrcode' ? '100%' : 'auto'}" `);
+        const sizedSvg = svg.replace('<svg ', `<svg style="display:block;height:100%;width:100%;object-fit:contain" `);
         return {
           html: `<span class="tpl-preview-barcode" style="display:inline-block;height:${heightMm}mm;width:${widthCss};padding:${quietMm}mm;background:#fff;line-height:0;vertical-align:middle">${sizedSvg}</span>`,
           raw: true,

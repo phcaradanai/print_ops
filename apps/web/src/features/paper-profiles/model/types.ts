@@ -18,6 +18,7 @@ export interface DynamicField {
   type: DynamicFieldType;
   barcodeSymbology?: DynamicFieldBarcodeSymbology;
   barcodeHeightMm?: number;
+  barcodeWidthMm?: number;
   qrSizeMm?: number;
   xMm: number;
   yMm: number;
@@ -31,6 +32,7 @@ export interface PaperForm {
   code: string;
   name: string;
   widthMm: number;
+  gapMm?: number;
   heightMm: number;
   marginTopMm: number;
   marginRightMm: number;

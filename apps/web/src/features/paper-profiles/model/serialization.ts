@@ -11,6 +11,7 @@ export interface PaperProfileExport {
       | 'name'
       | 'widthMm'
       | 'heightMm'
+       | 'gapMm'
       | 'marginTopMm'
       | 'marginRightMm'
       | 'marginBottomMm'
@@ -38,6 +39,7 @@ export function serializeProfiles(
       code: profile.code,
       name: profile.name,
       widthMm: profile.widthMm,
+       gapMm: profile.gapMm ?? 0,
       heightMm: profile.heightMm,
       marginTopMm: profile.marginTopMm,
       marginRightMm: profile.marginRightMm,

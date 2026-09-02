@@ -57,6 +57,9 @@ export interface PaperProfileField {
   barcodeSymbology?: BarcodeSymbology;
   /** Only meaningful when type === 'barcode'. Bar height in mm. Defaults to 12mm when unset. */
   barcodeHeightMm?: number;
+  /** Only meaningful when type === 'barcode'. Bounding-box width in mm. When
+   * unset, the barcode keeps its natural width. */
+  barcodeWidthMm?: number;
   /** Only meaningful when type === 'qrcode'. Side length in mm. Defaults to 20mm when unset. */
   qrSizeMm?: number;
   xMm: number;
@@ -72,6 +75,8 @@ export interface PaperProfile {
   code: string;
   name: string;
   widthMm: number;
+  /** Non-printing gap after the label in the feed direction, in mm. */
+  gapMm?: number;
   heightMm: number;
   marginTopMm: number;
   marginRightMm: number;

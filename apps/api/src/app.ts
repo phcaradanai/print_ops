@@ -670,14 +670,14 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   if (shouldSeedDemoData) {
   await printerRepo.create({
     code: 'LAB_LABEL_01',
-    name: 'Lab Label Printer (EPSON L15160)',
+    name: "Lab Label Printer (Datamax-O'Neil I-4208)",
     location: 'Lab Room A',
     protocol: 'windows_spooler',
-    connectionUri: 'spooler://sandbox-runner/' + encodeURIComponent('EPSON4F6A3C (L15160 Series)'),
+    connectionUri: 'spooler://sandbox-runner/' + encodeURIComponent("Datamax-O'Neil I-4208"),
     isActive: true,
     allowedTemplates: ['default-label', 'barcode-label', 'patient-label', 'LAB_LABEL_DEFAULT', 'BARCODE_LABEL_DEFAULT', 'TEST_LABEL'],
     maxCopiesPerJob: 10,
-    metadata: { model: 'FakeZebra', dpi: 203 },
+    metadata: { model: "Datamax-O'Neil I-4208", dpi: 203, mediaSensor: 'gap' },
   });
 
   await printerRepo.create({
@@ -701,7 +701,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     marginBottomMm: 2,
     marginLeftMm: 2,
     dpi: 203,
-    orientation: 'portrait',
+    orientation: 'landscape',
     unit: 'mm',
   });
 
@@ -715,7 +715,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     marginBottomMm: 2,
     marginLeftMm: 2,
     dpi: 203,
-    orientation: 'portrait',
+    orientation: 'landscape',
     unit: 'mm',
   });
 
@@ -783,7 +783,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     marginBottomMm: 2,
     marginLeftMm: 2,
     dpi: 203,
-    orientation: 'portrait',
+    orientation: 'landscape',
     unit: 'mm',
   });
 

@@ -10,7 +10,7 @@ import { PaperProfileIcon } from './PaperProfileIcon.js';
 
 export function DimensionInput({ editor, field, label, t }: {
   editor: PaperProfileEditor;
-  field: keyof Pick<PaperForm, 'widthMm' | 'heightMm' | 'marginTopMm' | 'marginRightMm' | 'marginBottomMm' | 'marginLeftMm'>;
+  field: keyof Pick<PaperForm, 'widthMm' | 'heightMm' | 'gapMm' | 'marginTopMm' | 'marginRightMm' | 'marginBottomMm' | 'marginLeftMm'>;
   label: string;
   t: Translate;
 }) {
@@ -19,6 +19,7 @@ export function DimensionInput({ editor, field, label, t }: {
   const [raw, setRaw] = useState<string | null>(null);
   const { displayUnit } = editor.ux;
   useEffect(() => setRaw(null), [displayUnit]);
+  const valueMm = editor.form[field] ?? 0;
   return (
     <FormField label={`${t(label)} (${displayUnit})`}>
       {(control) => (
@@ -26,7 +27,7 @@ export function DimensionInput({ editor, field, label, t }: {
           {...control}
           type="number"
           step="any"
-          value={raw ?? String(displayValue(editor.form[field], displayUnit, editor.form.dpi))}
+           value={raw ?? String(displayValue(valueMm, displayUnit, editor.form.dpi))}
           onChange={(event) => {
             setRaw(event.target.value);
             const value = Number.parseFloat(event.target.value);
@@ -65,6 +66,7 @@ export function DimensionsSection({ editor, t, anchorRef }: {
 
           <DimensionInput editor={editor} field="widthMm" label="page.paperProfiles.width" t={t} />
           <DimensionInput editor={editor} field="heightMm" label="page.paperProfiles.height" t={t} />
+          <DimensionInput editor={editor} field="gapMm" label="page.paperProfiles.gap" t={t} />
 
           <FormField label={t('page.paperProfiles.orientation')}>
             {(control) => (

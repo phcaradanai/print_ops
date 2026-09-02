@@ -342,6 +342,7 @@ namespace PrintOps.HtmlPrint
                 "document.body.appendChild(root);" +
                 "if(document.fonts&&document.fonts.ready){await document.fonts.ready;}" +
                 "const imgs=Array.from(document.images||[]);await Promise.all(imgs.filter(i=>!i.complete).map(i=>new Promise(r=>{i.onload=r;i.onerror=r;})));" +
+                "if(root.querySelectorAll('[data-printops-page]').length>1){document.documentElement.classList.add('printops-multipage');}" +
                 "return true;})()";
             await WithTimeout(
                 webView.CoreWebView2.ExecuteScriptAsync(script),
@@ -409,7 +410,13 @@ namespace PrintOps.HtmlPrint
                 "#printops-print-root{{position:relative!important;display:block!important;margin:0!important;padding:0!important;" +
                 "width:{2}mm!important;height:{3}mm!important;min-width:0!important;min-height:0!important;" +
                 "max-width:{2}mm!important;max-height:{3}mm!important;overflow:hidden!important;box-sizing:border-box!important;" +
-                "break-inside:avoid!important;page-break-inside:avoid!important;}}",
+                "break-inside:avoid!important;page-break-inside:avoid!important;}}" +
+                "html.printops-multipage,html.printops-multipage body{{height:auto!important;max-height:none!important;overflow:visible!important;}}" +
+                "html.printops-multipage #printops-print-root{{height:auto!important;max-height:none!important;overflow:visible!important;" +
+                "break-inside:auto!important;page-break-inside:auto!important;}}" +
+                "html.printops-multipage [data-printops-page]{{width:{2}mm!important;height:{3}mm!important;margin:0!important;padding:0!important;" +
+                "overflow:hidden!important;box-sizing:border-box!important;break-inside:avoid!important;page-break-inside:avoid!important;}}" +
+                "html.printops-multipage [data-printops-page]:not(:last-child){{break-after:page!important;page-break-after:always!important;}}",
                 geometry.PageWidthMm,
                 geometry.PageHeightMm,
                 geometry.PrintableWidthMm,

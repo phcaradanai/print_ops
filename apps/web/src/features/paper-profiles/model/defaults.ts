@@ -1,6 +1,9 @@
 import type { DisplayUnit, PaperForm, PaperProfileUx } from './types.js';
 
 export const DEFAULT_BARCODE_HEIGHT_MM = 12;
+/** A conservative one-column width for the common 3-up label stock. Operators
+ * can override this per field when the physical cell is different. */
+export const DEFAULT_BARCODE_WIDTH_MM = 28;
 export const DEFAULT_QR_SIZE_MM = 20;
 
 export const PAPER_PRESETS = [
@@ -31,13 +34,14 @@ export const DEFAULT_FORM: PaperForm = {
   code: '',
   name: '',
   widthMm: 100,
+  gapMm: 0,
   heightMm: 50,
   marginTopMm: 2,
   marginRightMm: 2,
   marginBottomMm: 2,
   marginLeftMm: 2,
   dpi: 203,
-  orientation: 'portrait',
+  orientation: 'landscape',
   unit: 'mm',
   rotation: 0,
   flipHorizontal: false,

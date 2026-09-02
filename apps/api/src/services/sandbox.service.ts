@@ -34,6 +34,24 @@ function valueAt(payload: Record<string, unknown>, field: string): unknown {
   }, payload);
 }
 
+function composeMultipageHtml(renderedPages: string[], paper: PaperProfile): string {
+  const printableWidthMm = Math.max(
+    0.1,
+    paper.widthMm - paper.marginLeftMm - paper.marginRightMm,
+  );
+  const printableHeightMm = Math.max(
+    0.1,
+    paper.heightMm - paper.marginTopMm - paper.marginBottomMm,
+  );
+
+  return renderedPages.map((renderedPage, index) => {
+    const breakStyle = index < renderedPages.length - 1
+      ? 'break-after:page;page-break-after:always;'
+      : '';
+    return '<section data-printops-page="' + (index + 1) + '" style="position:relative;display:block;width:' + printableWidthMm + 'mm;height:' + printableHeightMm + 'mm;margin:0;padding:0;overflow:hidden;box-sizing:border-box;break-inside:avoid;page-break-inside:avoid;' + breakStyle + '">' + renderedPage + '</section>';
+  }).join('');
+}
+
 export class SandboxService {
   constructor(
     private templates: PrintTemplateRepositoryPort,
@@ -115,6 +133,7 @@ export class SandboxService {
               runId,
               paperProfile: {
                 widthMm: paper.widthMm,
+                gapMm: paper.gapMm ?? 0,
                 heightMm: paper.heightMm,
                 marginTopMm: paper.marginTopMm,
                 marginRightMm: paper.marginRightMm,
@@ -186,13 +205,21 @@ export class SandboxService {
 
     const batchId = generateId();
     const runs: SandboxRunResult[] = [];
+    const template = await this.templates.findByCode(templateCode);
+    if (!template) throw new NotFoundError('PrintTemplate', templateCode);
+    const requestedPrinters = scenarios.map((scenario) => scenario.testPrint?.printerCode);
+    const consolidatedPrinterCode = requestedPrinters[0];
+    const consolidateTestPrint =
+      template.engine === 'HTML' &&
+      consolidatedPrinterCode != null &&
+      requestedPrinters.every((printerCode) => printerCode === consolidatedPrinterCode);
 
     for (const scenario of scenarios) {
       const result = await this.run({
         templateCode,
         paperProfileId,
         samplePayload: scenario.samplePayload,
-        testPrint: scenario.testPrint,
+        testPrint: consolidateTestPrint ? undefined : scenario.testPrint,
       });
       runs.push(result);
     }
@@ -200,6 +227,77 @@ export class SandboxService {
     const passed = runs.filter((r) => r.allFieldsResolved && r.templateValid);
     const failed = runs.filter((r) => !r.allFieldsResolved || !r.templateValid);
     const totalRenderTimeMs = runs.reduce((sum, r) => sum + r.renderTimeMs, 0);
+
+    // A same-printer HTML batch must be one spool document. Submitting every
+    // scenario as an independent Windows job makes a label driver re-acquire
+    // top-of-form between jobs and can consume a blank label between run
+    // numbers. One paginated document keeps 000001..00000N on adjacent stock.
+    if (consolidateTestPrint) {
+      try {
+        if (!this.createJob) {
+          throw new Error('CreatePrintJobService not provided for test-print');
+        }
+        const paper = await this.resolvePaper(template, paperProfileId);
+        const job = await this.createJob.execute(
+          {
+            printerId: '',
+            printerCode: consolidatedPrinterCode,
+            templateCode: template.templateCode,
+            resolvedTemplateCode: template.templateCode,
+            paperProfileId: paper.id,
+            renderedPrintPayload: composeMultipageHtml(
+              runs.map((run) => run.renderedPayload),
+              paper,
+            ),
+            createdBy: 'sandbox',
+            mimeType: 'text/html',
+            copies: 1,
+            duplex: false,
+            colorMode: 'auto',
+            metadata: {
+              sandbox: true,
+              batchId,
+              runIds: runs.map((run) => run.runId),
+              pageCount: runs.length,
+              paperProfile: {
+                widthMm: paper.widthMm,
+                gapMm: paper.gapMm ?? 0,
+                heightMm: paper.heightMm,
+                marginTopMm: paper.marginTopMm,
+                marginRightMm: paper.marginRightMm,
+                marginBottomMm: paper.marginBottomMm,
+                marginLeftMm: paper.marginLeftMm,
+                orientation: paper.orientation,
+                dpi: paper.dpi,
+              },
+            },
+          },
+          'sandbox',
+        );
+
+        const executedJob = this.executeJob
+          ? await this.executeJob.execute(job.id, 'sandbox')
+          : job;
+        const status = executedJob.status;
+        const success = this.executeJob != null && status === 'SUCCESS';
+        const error = this.executeJob
+          ? executedJob.errorMessage
+          : 'Runner not available - job queued but not executed';
+        for (const run of runs) {
+          run.testJobId = job.id;
+          run.testPrintStatus = status;
+          run.testPrintSuccess = success;
+          run.testPrintError = error;
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        for (const run of runs) {
+          run.testPrintSuccess = false;
+          run.testPrintStatus = 'FAILED';
+          run.testPrintError = message;
+        }
+      }
+    }
 
     return {
       batchId,

@@ -11,6 +11,7 @@ function rowToPaperProfile(row: Record<string, unknown>): PaperProfile {
     name: row['name'] as string,
     widthMm: row['width_mm'] as number,
     heightMm: row['height_mm'] as number,
+    gapMm: typeof row['gap_mm'] === 'number' ? row['gap_mm'] as number : 0,
     marginTopMm: row['margin_top_mm'] as number,
     marginRightMm: row['margin_right_mm'] as number,
     marginBottomMm: row['margin_bottom_mm'] as number,
@@ -74,14 +75,15 @@ export class SqlitePaperProfileRepository implements PaperProfileRepositoryPort 
     const now = dateStr(new Date());
 
     db.run(
-      `INSERT INTO paper_profiles (id, code, name, width_mm, height_mm, margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm, dpi, orientation, unit, rotation, flip_horizontal, flip_vertical, fields, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO paper_profiles (id, code, name, width_mm, height_mm, gap_mm, margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm, dpi, orientation, unit, rotation, flip_horizontal, flip_vertical, fields, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.code,
         input.name,
         input.widthMm,
         input.heightMm,
+        input.gapMm ?? 0,
         input.marginTopMm,
         input.marginRightMm,
         input.marginBottomMm,
@@ -121,6 +123,7 @@ export class SqlitePaperProfileRepository implements PaperProfileRepositoryPort 
 
     if ('code' in patch) add('code', patch.code);
     if ('name' in patch) add('name', patch.name);
+    if ('gapMm' in patch) add('gap_mm', patch.gapMm ?? 0);
     if ('widthMm' in patch) add('width_mm', patch.widthMm);
     if ('heightMm' in patch) add('height_mm', patch.heightMm);
     if ('marginTopMm' in patch) add('margin_top_mm', patch.marginTopMm);

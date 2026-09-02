@@ -27,6 +27,8 @@ const FIELD_PATTERN = /\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g;
 const COMBINED_PATTERN =
   /\{\{\s*(?:(barcode|qrcode)\s*:\s*([a-zA-Z0-9_.-]+)(?:\s*:\s*([a-zA-Z0-9_-]+))?|([a-zA-Z0-9_.-]+))\s*\}\}/g;
 
+const DEFAULT_BARCODE_WIDTH_MM = 28;
+
 interface BarcodeToken {
   /** The exact `{{...}}` text matched — used as the cache key. */
   raw: string;
@@ -36,6 +38,9 @@ interface BarcodeToken {
   /** Bar height in mm, inherited from the matching paper-profile field (see
    *  `findBarcodeTokens`). Only meaningful for kind === 'barcode'. */
   heightMm?: number;
+  /** Bounding-box width in mm, inherited from the matching paper-profile
+   * field. Only meaningful for kind === 'barcode'. */
+  widthMm?: number;
   /** Side length in mm, inherited from the matching paper-profile field. Only
    *  meaningful for kind === 'qrcode'. */
   sizeMm?: number;
@@ -102,6 +107,7 @@ function findBarcodeTokens(content: string, paperProfile?: PaperProfile): Map<st
         key: explicitKey,
         symbology: (symbology as BarcodeSymbology | undefined) ?? matchingField?.barcodeSymbology,
         heightMm: matchingField?.barcodeHeightMm,
+        widthMm: matchingField ? (matchingField.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM) : undefined,
         sizeMm: matchingField?.qrSizeMm,
       });
       continue;
@@ -115,6 +121,7 @@ function findBarcodeTokens(content: string, paperProfile?: PaperProfile): Map<st
           key: plainKey,
           symbology: field.barcodeSymbology,
           heightMm: field.barcodeHeightMm,
+          widthMm: field.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM,
           sizeMm: field.qrSizeMm,
         });
       }
@@ -179,22 +186,36 @@ function zplBarcodeCommand(token: BarcodeToken, value: string, dpi: number): str
  * the barcode/QR prints (and previews) at the physical size the operator
  * configured on the paper-profile field — not at whatever arbitrary raster
  * pixel count bwip-js happened to produce. QR is square (width = height);
- * 1D barcodes only constrain height and let width follow the data's natural
- * aspect ratio (forcing a width would squash/stretch the bars unreadably).
+ * 1D barcodes use the configured bounding-box width. The SVG renderer marks
+ * them as non-preserving in aspect ratio so the bars occupy that box instead
+ * of being silently reduced to their natural-width inset. Human-readable text
+ * is rendered as a separate line inside the same fixed barcode box, so it
+ * cannot change the bar position or overflow the label edge.
  */
 function imgTag(
   dataUri: string,
   kind: 'barcode' | 'qrcode',
   sizeMm?: { heightMm?: number; sizeMm?: number; quietZoneMm?: number },
+  widthMm?: number,
+  humanReadable?: string,
 ): string {
   const heightMm = kind === 'qrcode' ? (sizeMm?.sizeMm ?? 20) : (sizeMm?.heightMm ?? 12);
-  const widthCss = kind === 'qrcode' ? `${heightMm}mm` : 'auto';
-  const image = `<img src="${dataUri}" alt="${kind}" style="display:block;height:${heightMm}mm;width:${widthCss};max-width:none" />`;
-  if (kind !== 'qrcode') return image;
-  // Four-module quiet zone lives outside the requested symbol. Putting it
-  // inside the 20mm image box would recreate the measured undersize defect.
-  const quietZoneMm = sizeMm?.quietZoneMm ?? 0;
-  return `<span style="display:inline-block;padding:${quietZoneMm}mm;background:#fff;line-height:0">${image}</span>`;
+  const barcodeWidthMm = kind === 'barcode' ? widthMm : undefined;
+  const widthCss = kind === 'qrcode' ? `${heightMm}mm` : barcodeWidthMm != null ? `${barcodeWidthMm}mm` : 'auto';
+  const showHri = kind === 'barcode' && humanReadable != null;
+  const hriHeightMm = showHri ? Math.min(2, Math.max(1.6, heightMm * 0.25)) : 0;
+  const barsHeightMm = showHri ? Math.max(1, heightMm - hriHeightMm) : heightMm;
+  const fitCss = kind === 'barcode' && barcodeWidthMm != null ? ';object-fit:fill;image-rendering:crisp-edges' : '';
+  const image = `<img src="${dataUri}" alt="${kind}" style="display:block;height:${barsHeightMm}mm;width:${widthCss};max-width:none${fitCss}" />`;
+  if (!showHri) {
+    if (kind !== 'qrcode') return image;
+    // Four-module quiet zone lives outside the requested symbol. Putting it
+    // inside the 20mm image box would recreate the measured undersize defect.
+    const quietZoneMm = sizeMm?.quietZoneMm ?? 0;
+    return `<span style="display:inline-block;padding:${quietZoneMm}mm;background:#fff;line-height:0">${image}</span>`;
+  }
+  const hri = `<span style="display:block;width:100%;height:${hriHeightMm}mm;line-height:${hriHeightMm}mm;font-family:Arial,sans-serif;font-size:1.5mm;font-weight:400;text-align:center;white-space:nowrap;overflow:hidden;color:#000">${escapeHtml(humanReadable)}</span>`;
+  return `<span style="display:inline-flex;flex-direction:column;align-items:center;justify-content:flex-start;width:${widthCss};height:${heightMm}mm;max-width:none;overflow:hidden;line-height:0;vertical-align:top">${image}${hri}</span>`;
 }
 
 export class SimpleTemplateRenderer implements TemplateRendererPort {
@@ -263,7 +284,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
           heightMm: tok.heightMm,
           sizeMm: tok.sizeMm,
           quietZoneMm: img.quietZoneMm,
-        });
+        }, tok.widthMm, String(valueAt(payload, tok.key)));
       });
     } else if (template.engine === 'ZPL') {
       // Zebra printers decode ^BC/^BQ natively — emit the real command so it
@@ -354,7 +375,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
             heightMm: tok.heightMm,
             sizeMm: tok.sizeMm,
             quietZoneMm: img.quietZoneMm,
-          }) : '';
+          }, tok.widthMm, String(valueAt(payload, tok.key))) : '';
         });
     } else if (tokens.size === 0) {
       body = escapeHtml(renderContent(template.content, payload).rendered);
@@ -371,7 +392,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
             heightMm: tok.heightMm,
             sizeMm: tok.sizeMm,
             quietZoneMm: img.quietZoneMm,
-          }) : `<span class="tpl-preview-missing">[${escapeHtml(tok.kind)}: ${escapeHtml(tok.key)}]</span>`;
+          }, tok.widthMm, String(valueAt(payload, tok.key))) : `<span class="tpl-preview-missing">[${escapeHtml(tok.kind)}: ${escapeHtml(tok.key)}]</span>`;
         } else {
           const plainKey = m[4];
           const value = plainKey ? valueAt(payload, plainKey) : undefined;

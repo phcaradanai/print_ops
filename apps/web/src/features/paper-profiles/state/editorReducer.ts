@@ -58,6 +58,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           code: action.profile.code,
           name: action.profile.name,
           widthMm: action.profile.widthMm,
+          gapMm: action.profile.gapMm ?? 0,
           heightMm: action.profile.heightMm,
           marginTopMm: action.profile.marginTopMm,
           marginRightMm: action.profile.marginRightMm,
