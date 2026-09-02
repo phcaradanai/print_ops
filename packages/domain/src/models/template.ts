@@ -1,5 +1,6 @@
 export type TemplateEngine =
   | 'RAW_TEXT'
+  | 'DPL'
   | 'ZPL'
   | 'TSPL'
   | 'EPL'

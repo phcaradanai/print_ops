@@ -257,6 +257,39 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
         message: 'No print content available (renderedPrintPayload or documentBase64 required)',
       };
     }
+
+    const datamaxNativeDpl =
+      isDatamaxI4208(command.metadata, printerName) && (isDplPrintMimeType(command.mimeType) || isDatamaxDplPayload(content));
+    if (datamaxNativeDpl) {
+      if (!isDatamaxDplPayload(content)) {
+        return {
+          success: false,
+          errorCode: 'INVALID_DATAMAX_DPL',
+          message: 'Datamax native output must be a complete DPL label stream',
+        };
+      }
+      if (!hasUsablePaperProfile(command.metadata)) {
+        return {
+          success: false,
+          errorCode: 'PAPER_PROFILE_REQUIRED',
+          message: 'Datamax-O\'Neil I-4208 DPL printing requires a valid paper profile with physical dimensions',
+        };
+      }
+      return this.sendAndVerify({
+        printerName,
+        copies: Math.max(1, command.copies),
+        metadata: command.metadata,
+        onProgress: command.onProgress,
+        jobId: command.jobId,
+        subject: `job ${command.jobId}`,
+        requireIppJobConfirmation: false,
+        emit: async () => {
+          await this.printRaw(printerName, applyDplCalibration(content, command));
+          return undefined;
+        },
+      });
+    }
+
     // Out-Printer treats text as an office document and lets the Windows
     // driver choose its own page size. That is unsafe for a Datamax label
     // printer: a 100x50 profile can otherwise be fed with the driver's default
@@ -2257,6 +2290,9 @@ function isRawPrinterLanguage(mimeType: string): boolean {
     'application/tspl',
     'application/epl',
     'application/pcl',
+    'application/dpl',
+    'application/vnd.datamax-dpl',
+    'text/x-dpl',
   ]).has(mimeType.trim().toLowerCase());
 }
 
@@ -2491,3 +2527,57 @@ const RAW_PRINT_PS_SUFFIX = `
 $bytes = [System.IO.File]::ReadAllBytes($path)
 if (-not [RawPrinter]::SendBytes($name, $bytes)) { Write-Error 'RawPrinter.SendBytes returned false' }
 `;
+
+function isDplPrintMimeType(mimeType: string): boolean {
+  return new Set(['application/dpl', 'application/vnd.datamax-dpl', 'text/x-dpl'])
+    .has(mimeType.trim().toLowerCase());
+}
+
+function isDatamaxDplPayload(data: Buffer): boolean {
+  return data.includes(Buffer.from([0x02, 0x4c, 0x0d])) &&
+    /\x02L\r[\s\S]*\rE\r/.test(data.toString('latin1'));
+}
+
+function dplCoordinate(value: number): string {
+  if (!Number.isInteger(value) || value < 0 || value > 9999) {
+    throw new Error('INVALID_PRINTER_CALIBRATION: DPL field moved outside the 0..9999 dot coordinate range');
+  }
+  return String(value).padStart(4, '0');
+}
+
+/** Apply a validated printer/profile calibration to native DPL fields. */
+export function applyDplCalibration(data: Buffer, command: PrintCommand): Buffer {
+  const raw = command.metadata?.['printerCalibration'];
+  if (raw === undefined || raw === null) return data;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('INVALID_PRINTER_CALIBRATION: calibration must be an object');
+  }
+  const calibration = raw as Record<string, unknown>;
+  const profile = command.metadata?.['paperProfile'];
+  const profileValues = profile && typeof profile === 'object' && !Array.isArray(profile)
+    ? profile as Record<string, unknown>
+    : {};
+  const valid =
+    typeof calibration['printerId'] === 'string' && calibration['printerId'] === command.printerId &&
+    typeof calibration['paperProfileId'] === 'string' &&
+      calibration['paperProfileId'] === profileValues['paperProfileId'] &&
+    Number.isInteger(calibration['dpi']) && calibration['dpi'] === metadataNumber(command.metadata, 'dpi') &&
+    (calibration['dpi'] as number) > 0 &&
+    Number.isInteger(calibration['xOffsetDots']) && Math.abs(calibration['xOffsetDots'] as number) <= 10000 &&
+    Number.isInteger(calibration['yOffsetDots']) && Math.abs(calibration['yOffsetDots'] as number) <= 10000;
+  if (!valid) {
+    throw new Error('INVALID_PRINTER_CALIBRATION: calibration does not match the printer, paper profile, or DPI');
+  }
+  const xOffsetDots = calibration['xOffsetDots'] as number;
+  const yOffsetDots = calibration['yOffsetDots'] as number;
+  const dpi = calibration['dpi'] as number;
+  const xOffsetUnits = Math.round((xOffsetDots * 25.4 * 10) / dpi);
+  const yOffsetUnits = Math.round((yOffsetDots * 25.4 * 10) / dpi);
+  const shifted = data.toString('latin1').split('\r').map((line) => {
+    if (!/^[1-4][0-9A-Za-z][1-9A-O][1-9A-O]\d{3}\d{4}\d{4}/.test(line)) return line;
+    const row = Number(line.slice(7, 11)) + yOffsetUnits;
+    const column = Number(line.slice(11, 15)) + xOffsetUnits;
+    return `${line.slice(0, 7)}${dplCoordinate(row)}${dplCoordinate(column)}${line.slice(15)}`;
+  }).join('\r');
+  return Buffer.from(shifted, 'latin1');
+}

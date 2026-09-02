@@ -6,8 +6,10 @@ import type {
   BarcodeSymbology,
   RenderTransformOverrides,
 } from '@printerops/domain';
+import { paperProfileForCell } from '@printerops/domain';
 import { getOrientedPaperGeometry, resolveRenderTransform, wrapHtmlWithRenderTransform } from '@printerops/shared';
 import { qrGeometry, renderBarcodeDataUri, renderZplQrGraphic } from './barcode-renderer.js';
+import { renderDatamaxDpl } from './datamax-dpl-renderer.js';
 
 type CompiledTemplate = {
   fields: string[];
@@ -266,7 +268,11 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     const tokens = findBarcodeTokens(template.content, paperProfile);
 
     let rendered: string;
-    if (tokens.size === 0) {
+    if (template.engine === 'DPL') {
+      const dpl = renderDatamaxDpl(template.content, payload, paperProfileForCell(paperProfile), renderOptions);
+      rendered = dpl.dpl;
+      warnings.push(...dpl.warnings);
+    } else if (tokens.size === 0) {
       const r = renderContent(template.content, payload);
       rendered = r.rendered;
       warnings.push(...r.warnings);

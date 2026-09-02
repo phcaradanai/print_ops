@@ -3,7 +3,7 @@ import { qrQuietZoneMm, renderBarcodeSvg, type BarcodeKind, type BarcodeSymbolog
 import type { PaperProfileOption, SampleMode } from '../model/types.js';
 import { getOrientedPaperGeometry, resolveRenderTransform, wrapHtmlWithRenderTransform } from '@printerops/shared';
 
-export const ENGINES = ['RAW_TEXT', 'ZPL', 'HTML', 'JSON_LAYOUT', 'TSPL', 'EPL', 'PDF_LIKE_PREVIEW'] as const;
+export const ENGINES = ['RAW_TEXT', 'DPL', 'ZPL', 'HTML', 'JSON_LAYOUT', 'TSPL', 'EPL', 'PDF_LIKE_PREVIEW'] as const;
 
 export type TemplateIconName =
   | 'back' | 'barcode' | 'braces' | 'check' | 'close' | 'code' | 'delete'
@@ -13,6 +13,7 @@ export type TemplateIconName =
 
 export const ENGINE_ICON: Record<typeof ENGINES[number], TemplateIconName> = {
   RAW_TEXT: 'text',
+  DPL: 'printer',
   ZPL: 'label',
   HTML: 'code',
   JSON_LAYOUT: 'braces',

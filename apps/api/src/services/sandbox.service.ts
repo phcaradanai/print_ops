@@ -11,6 +11,7 @@ import type {
 } from '@printerops/domain';
 import { paperProfileForCell, resolvePaperProfileGeometry, snapshotPaperProfileGeometry } from '@printerops/domain';
 import { generateId, NotFoundError, ValidationError } from '@printerops/shared';
+import { composeDatamaxDplRows } from '../infra/template/datamax-dpl-renderer.js';
 import { CreatePrintJobService } from './create-print-job.service.js';
 import type { ExecuteJobService } from './execute-job.service.js';
 
@@ -214,7 +215,7 @@ export class SandboxService {
     const requestedPrinters = scenarios.map((scenario) => scenario.testPrint?.printerCode);
     const consolidatedPrinterCode = requestedPrinters[0];
     const consolidateTestPrint =
-      template.engine === 'HTML' &&
+      (template.engine === 'HTML' || template.engine === 'DPL') &&
       consolidatedPrinterCode != null &&
       requestedPrinters.every((printerCode) => printerCode === consolidatedPrinterCode);
 
@@ -246,9 +247,12 @@ export class SandboxService {
         const pageHeightMm = geometry.layout.columns > 1
           ? Math.max(paper.heightMm, geometry.layout.rowPitchMm + paper.marginTopMm + paper.marginBottomMm)
           : paper.heightMm;
-        const renderedPrintPayload = geometry.layout.columns > 1
-          ? composeGridHtml(runs.map((run) => run.renderedPayload), paper)
-          : composeMultipageHtml(runs.map((run) => run.renderedPayload), paper);
+        const nativeDpl = template.engine === 'DPL';
+        const renderedPrintPayload = nativeDpl
+          ? composeDatamaxDplRows(runs.map((run) => run.renderedPayload), paper)
+          : geometry.layout.columns > 1
+            ? composeGridHtml(runs.map((run) => run.renderedPayload), paper)
+            : composeMultipageHtml(runs.map((run) => run.renderedPayload), paper);
         const job = await this.createJob.execute(
           {
             printerId: '',
@@ -258,7 +262,7 @@ export class SandboxService {
             paperProfileId: paper.id,
             renderedPrintPayload,
             createdBy: 'sandbox',
-            mimeType: 'text/html',
+            mimeType: nativeDpl ? 'application/dpl' : 'text/html',
             copies: 1,
             duplex: false,
             colorMode: 'auto',
