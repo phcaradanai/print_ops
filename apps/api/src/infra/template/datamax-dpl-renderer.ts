@@ -11,7 +11,6 @@ const STX = '\x02';
 const DEFAULT_BARCODE_WIDTH_MM = 26;
 const DEFAULT_BARCODE_HEIGHT_MM = 8;
 const SAFE_PADDING_MM = 1;
-const HRI_HEIGHT_MM = 2;
 const MAX_DPL_COORDINATE = 9999;
 
 /** DPL positions and barcode heights are expressed in tenths of a millimetre
@@ -84,9 +83,8 @@ function code128ModuleCount(value: string): number {
   // symbol is 11 modules; the stop symbol is 13 modules. An odd final digit
   // causes the printer to switch to subset B for that digit.
   const pairs = Math.floor(value.length / 2);
-  const symbolCount = value.length % 2 === 0
-    ? 1 + pairs + 1 // start C + pairs + checksum
-    : 1 + pairs + 1 + 1; // start C + pairs + switch/data + checksum
+  const dataSymbols = pairs + (value.length % 2 === 0 ? 0 : 2);
+  const symbolCount = 1 + dataSymbols + 1; // start + data/switch symbols + checksum
   return symbolCount * 11 + 13;
 }
 
@@ -108,6 +106,33 @@ function fitBarcodeWidth(
   return { narrowBarDots, actualWidthDots: narrowBarDots * moduleCount };
 }
 
+interface DatamaxHriMetrics {
+  heightDots: number;
+  widthDots: number;
+  spacingDots: number;
+}
+
+/**
+ * Uppercase DPL barcode IDs print HRI with the printer's resident font 0.
+ * I-4208's 203-DPI table is 7x5 dots with 1 dot of character spacing; scale
+ * the same native metrics for profiles targeting another Datamax head.
+ */
+function datamaxHriMetrics(dpi: number): DatamaxHriMetrics {
+  const scale = dpi / 203;
+  return {
+    heightDots: Math.max(1, Math.round(7 * scale)),
+    widthDots: Math.max(1, Math.round(5 * scale)),
+    spacingDots: Math.max(1, Math.round(scale)),
+  };
+}
+
+function datamaxHriWidthDots(value: string, dpi: number): number {
+  const metrics = datamaxHriMetrics(dpi);
+  return Math.max(
+    metrics.widthDots,
+    value.length * metrics.widthDots + Math.max(0, value.length - 1) * metrics.spacingDots,
+  );
+}
 function fieldKeys(content: string, profile: PaperProfile): string[] {
   const keys: string[] = [];
   for (const match of content.matchAll(TOKEN_PATTERN)) {
@@ -163,42 +188,6 @@ function rotateBox(
 }
 
 
-function sourceBoxForRotatedBox(
-  rotatedX: number,
-  rotatedY: number,
-  rotatedWidth: number,
-  rotatedHeight: number,
-  cellWidthDots: number,
-  cellHeightDots: number,
-  rotation: number,
-): { xDots: number; yDots: number; widthDots: number; heightDots: number } {
-  switch (rotation) {
-    case 90:
-      return {
-        xDots: rotatedY,
-        yDots: cellWidthDots - rotatedX - rotatedWidth,
-        widthDots: rotatedHeight,
-        heightDots: rotatedWidth,
-      };
-    case 180:
-      return {
-        xDots: cellWidthDots - rotatedX - rotatedWidth,
-        yDots: cellHeightDots - rotatedY - rotatedHeight,
-        widthDots: rotatedWidth,
-        heightDots: rotatedHeight,
-      };
-    case 270:
-      return {
-        xDots: cellHeightDots - rotatedY - rotatedHeight,
-        yDots: rotatedX,
-        widthDots: rotatedHeight,
-        heightDots: rotatedWidth,
-      };
-    default:
-      return { xDots: rotatedX, yDots: rotatedY, widthDots: rotatedWidth, heightDots: rotatedHeight };
-  }
-}
-
 function dplPivotForRotatedBox(
   rotation: number,
   rotatedX: number,
@@ -206,19 +195,21 @@ function dplPivotForRotatedBox(
   rotatedWidth: number,
   rotatedHeight: number,
   cellHeightDots: number,
-  sourceWidthDots: number,
-  sourceHeightDots: number,
 ): { rowDots: number; columnDots: number } {
-  const targetBottomDots = cellHeightDots - rotatedTop - rotatedHeight;
+  // DPL coordinates use a lower-left home position and rotate around the
+  // object's lower-left pivot. Convert the final top-origin footprint back to
+  // that pivot instead of treating row as the top of the rotated box.
+  const targetTopRowDots = cellHeightDots - rotatedTop;
+  const targetBottomRowDots = targetTopRowDots - rotatedHeight;
   switch (rotation) {
-    case 90:
-      return { rowDots: targetBottomDots, columnDots: rotatedX + sourceHeightDots };
+    case 90: // pivot is the final top-left corner
+      return { rowDots: targetTopRowDots, columnDots: rotatedX };
     case 180:
-      return { rowDots: targetBottomDots + sourceHeightDots, columnDots: rotatedX + sourceWidthDots };
-    case 270:
-      return { rowDots: targetBottomDots + sourceWidthDots, columnDots: rotatedX };
+      return { rowDots: targetTopRowDots, columnDots: rotatedX + rotatedWidth };
+    case 270: // pivot is the final bottom-right corner
+      return { rowDots: targetBottomRowDots, columnDots: rotatedX + rotatedWidth };
     default:
-      return { rowDots: targetBottomDots, columnDots: rotatedX };
+      return { rowDots: targetBottomRowDots, columnDots: rotatedX };
   }
 }
 
@@ -249,71 +240,76 @@ function barcodeRecord(
 
   const boxWidthDots = Math.min(requestedWidthDots, availableWidthDots);
   const boxHeightDots = Math.min(requestedHeightDots, availableHeightDots);
-  const barsHeightDots = Math.max(1, boxHeightDots - millimetersToRoundedDots(HRI_HEIGHT_MM, profile.dpi));
+  const hriMetrics = datamaxHriMetrics(profile.dpi);
+  const hriHeightDots = hriMetrics.heightDots + 1;
+  const hriWidthDots = datamaxHriWidthDots(value, profile.dpi);
+  const barsHeightDots = boxHeightDots - hriHeightDots;
+  if (barsHeightDots < 1) {
+    throw new RangeError(`Datamax cell ${cellWidthDots}x${cellHeightDots} dots has no safe area for barcode HRI`);
+  }
+  // barcodeHeightMm is the configured complete barcode/HRI footprint. Reserve
+  // the measured native HRI inside that box so existing field sizing remains
+  // stable while the complete block is centered and cannot clip.
   const { narrowBarDots, actualWidthDots } = fitBarcodeWidth(boxWidthDots, code128ModuleCount(value));
+  const blockWidthDots = Math.max(actualWidthDots, hriWidthDots);
+  const blockHeightDots = boxHeightDots;
+  if (blockWidthDots > availableWidthDots) {
+    throw new RangeError(
+      `Datamax barcode block width ${blockWidthDots} dots does not fit the cell safe area ${availableWidthDots} dots`,
+    );
+  }
 
   const contentRotation = normalizeQuarterTurn(
     (profile.rotation ?? 0) + (renderOptions.rotate ?? 0),
   );
   const anchorX = millimetersToIntegerDots(field.xMm, profile.dpi);
   const anchorY = millimetersToIntegerDots(field.yMm, profile.dpi);
-  const rotatedBoxWidth = contentRotation === 90 || contentRotation === 270 ? boxHeightDots : boxWidthDots;
-  const rotatedBoxHeight = contentRotation === 90 || contentRotation === 270 ? boxWidthDots : boxHeightDots;
-  const centeredSourceBox = sourceBoxForRotatedBox(
-    Math.floor((cellWidthDots - rotatedBoxWidth) / 2),
-    Math.floor((cellHeightDots - rotatedBoxHeight) / 2),
-    rotatedBoxWidth,
-    rotatedBoxHeight,
-    cellWidthDots,
-    cellHeightDots,
-    contentRotation,
-  );
-  const alignedX = field.align === 'right' ? anchorX - boxWidthDots : anchorX;
-  const localX = field.align === 'center'
-    ? centeredSourceBox.xDots
-    : clamp(alignedX, safeDots, cellWidthDots - safeDots - boxWidthDots);
-  const localY = field.align === 'center'
-    ? centeredSourceBox.yDots
-    : clamp(anchorY, safeDots, cellHeightDots - safeDots - boxHeightDots);
-  const symbolHeightDots = barsHeightDots + millimetersToRoundedDots(HRI_HEIGHT_MM, profile.dpi);
-  const symbolX = localX + Math.floor((boxWidthDots - actualWidthDots) / 2);
-  const symbolY = localY + Math.floor((boxHeightDots - symbolHeightDots) / 2);
-  const symbol = rotateBox(
-    symbolX,
-    symbolY,
-    actualWidthDots,
-    symbolHeightDots,
-    cellWidthDots,
-    cellHeightDots,
-    contentRotation,
-  );
+  const rotated = contentRotation === 90 || contentRotation === 270;
+  const rotatedBlockWidthDots = rotated ? blockHeightDots : blockWidthDots;
+  const rotatedBlockHeightDots = rotated ? blockWidthDots : blockHeightDots;
+  const footprint = field.align === 'center'
+    ? {
+        xDots: Math.floor((cellWidthDots - rotatedBlockWidthDots) / 2),
+        yDots: Math.floor((cellHeightDots - rotatedBlockHeightDots) / 2),
+        widthDots: rotatedBlockWidthDots,
+        heightDots: rotatedBlockHeightDots,
+      }
+    : rotateBox(
+        field.align === 'right'
+          ? clamp(anchorX - blockWidthDots, safeDots, cellWidthDots - safeDots - blockWidthDots)
+          : clamp(anchorX, safeDots, cellWidthDots - safeDots - blockWidthDots),
+        clamp(anchorY, safeDots, cellHeightDots - safeDots - blockHeightDots),
+        blockWidthDots,
+        blockHeightDots,
+        cellWidthDots,
+        cellHeightDots,
+        contentRotation,
+      );
   const safeRight = cellWidthDots - safeDots;
   const safeBottom = cellHeightDots - safeDots;
   if (
-    symbol.xDots < safeDots ||
-    symbol.yDots < safeDots ||
-    symbol.xDots + symbol.widthDots > safeRight ||
-    symbol.yDots + symbol.heightDots > safeBottom
+    footprint.xDots < safeDots ||
+    footprint.yDots < safeDots ||
+    footprint.xDots + footprint.widthDots > safeRight ||
+    footprint.yDots + footprint.heightDots > safeBottom
   ) {
     throw new RangeError(
-      `Datamax barcode footprint ${symbol.widthDots}x${symbol.heightDots} dots does not fit the rotated cell safe area ${safeRight - safeDots}x${safeBottom - safeDots}`,
+      `Datamax barcode footprint ${footprint.widthDots}x${footprint.heightDots} dots does not fit the rotated cell safe area ${safeRight - safeDots}x${safeBottom - safeDots}`,
     );
   }
   const pivot = dplPivotForRotatedBox(
     contentRotation,
-    symbol.xDots,
-    symbol.yDots,
-    symbol.widthDots,
-    symbol.heightDots,
+    footprint.xDots,
+    footprint.yDots,
+    footprint.widthDots,
+    footprint.heightDots,
     cellHeightDots,
-    actualWidthDots,
-    symbolHeightDots,
   );
   const heightUnits = millimetersToDplUnits((barsHeightDots * 25.4) / profile.dpi);
   const rowUnits = dotsToDplUnits(pivot.rowDots, profile.dpi);
   const columnUnits = dotsToDplUnits(pivot.columnDots, profile.dpi);
   const record = `${rotationCode(contentRotation)}E2${narrowBarDots}${pad(heightUnits, 3)}${pad(rowUnits, 4)}${pad(columnUnits, 4)}${dplData(value)}${CR}`;
-  return { record, rowDots: symbol.yDots, columnDots: symbol.xDots };
+  return { record, rowDots: footprint.yDots, columnDots: footprint.xDots };
 }
 
 function renderTextField(

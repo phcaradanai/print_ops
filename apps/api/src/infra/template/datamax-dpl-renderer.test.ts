@@ -46,16 +46,19 @@ function barcodeRecord(dpl: string): string {
 
 describe('Datamax native DPL renderer', () => {
   it('uses native Code 128 with integer module width and a cell safe area', () => {
-    const result = renderDatamaxDpl('{{barcode:barcode}}', { barcode: '000001' }, profile());
+    const result = renderDatamaxDpl('{{barcode:barcode}}', { barcode: '12345678' }, profile());
     const record = barcodeRecord(result.dpl);
 
     expect(result.dpl).toContain('\x02L\rm\rD11\r');
-    expect(record).toMatch(/^1E2[1-9]\d{3}\d{4}\d{4}C000001$/);
+    expect(record).toMatch(/^1E2[1-9]\d{3}\d{4}\d{4}C12345678$/);
     expect(result.dpl).not.toContain('<svg');
     expect(Number(record.slice(3, 4))).toBeGreaterThanOrEqual(1);
     expect(Number(record.slice(7, 11))).toBeGreaterThanOrEqual(10);
     expect(Number(record.slice(11, 15))).toBeGreaterThanOrEqual(10);
     expect(Number(record.slice(11, 15))).toBeLessThan(290);
+    expect(record.slice(4, 7)).toBe('070');
+    expect(record.slice(7, 11)).toBe('0015');
+    expect(record.slice(11, 15)).toBe('0051');
   });
 
   it('centers the rendered footprint after a quarter-turn and rejects an impossible fit', () => {
@@ -66,18 +69,47 @@ describe('Datamax native DPL renderer', () => {
     );
     const record = barcodeRecord(rotated.dpl);
     expect(record[0]).toBe('2');
-    expect(record.slice(7, 11)).toBe('0073');
-    expect(record.slice(11, 15)).toBe('0290');
+    expect(record.slice(7, 11)).toBe('0328');
+    expect(record.slice(11, 15)).toBe('0210');
     expect(Number(record.slice(7, 11))).toBeGreaterThan(10);
     expect(Number(record.slice(7, 11))).toBeLessThan(390);
     expect(Number(record.slice(11, 15))).toBeGreaterThan(10);
     expect(Number(record.slice(11, 15))).toBeLessThan(490);
+
+    const rotated270 = renderDatamaxDpl(
+      '{{barcode:barcode}}',
+      { barcode: '123456' },
+      profile({ widthMm: 50, heightMm: 40, rotation: 270 }),
+    );
+    const record270 = barcodeRecord(rotated270.dpl);
+    expect(record270[0]).toBe('4');
+    expect(record270.slice(7, 11)).toBe('0073');
+    expect(record270.slice(11, 15)).toBe('0290');
 
     expect(() => renderDatamaxDpl(
       '{{barcode:barcode}}',
       { barcode: '123456' },
       profile({ rotation: 90 }),
     )).toThrow(/does not fit the rotated cell safe area/);
+  });
+  it('keeps short, baseline, odd, and long values dynamic without clipping', () => {
+    const values = ['1234', '1234567', '12345678', '123456789012'];
+    const records = values.map((value) => barcodeRecord(
+      renderDatamaxDpl('{{barcode:barcode}}', { barcode: value }, profile()).dpl,
+    ));
+
+    records.forEach((record, index) => {
+      const value = values[index]!;
+      expect(record).toContain(`C${value}`);
+      if (value.length < 8) expect(record).not.toContain(`C${value.padStart(8, '0')}`);
+      expect(Number(record[3])).toBeGreaterThanOrEqual(1);
+      expect(Number(record.slice(7, 11))).toBe(15);
+      expect(Number(record.slice(11, 15))).toBeGreaterThanOrEqual(10);
+    });
+    expect(records[0]![3]).toBe('3');
+    expect(records[1]![3]).toBe('2');
+    expect(records[2]![3]).toBe('2');
+    expect(records[3]![3]).toBe('2');
   });
 
   it('places three labels in one physical row and starts the fourth on the next row', () => {
