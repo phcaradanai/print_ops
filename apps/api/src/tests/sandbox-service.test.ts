@@ -188,6 +188,16 @@ describe('SandboxService', () => {
       jobs[0]!.id,
     ]);
     expect(batch.runs.every((run) => run.testPrintSuccess)).toBe(true);
+    const metadata = jobs[0]!.metadata as {
+      sandboxInput?: {
+        mode?: string;
+        templateCode?: string;
+        printerCode?: string;
+        scenarios?: Array<{ samplePayload?: Record<string, unknown> }>;
+      };
+    };
+    expect(metadata.sandboxInput).toMatchObject({ mode: 'batch', templateCode: 'HTML_BATCH', printerCode: 'TEST_PRINTER' });
+    expect(metadata.sandboxInput?.scenarios).toHaveLength(3);
   });
 
   it('packs a 3-up HTML batch into rows without skipped labels', async () => {
@@ -292,7 +302,7 @@ describe('SandboxService', () => {
     const svc = makeService();
     const result = await svc.run({
       templateCode: 'TEST_LABEL',
-      samplePayload: { name: 'Test', barcode: 'X' },
+      samplePayload: { name: 'Test', barcode: 'X', apiToken: 'do-not-persist' },
       testPrint: { printerCode: 'TEST_PRINTER' },
     });
 
@@ -300,5 +310,22 @@ describe('SandboxService', () => {
     expect(result.testPrintSuccess).toBe(true);
     expect(result.testPrintStatus).toBe('SUCCESS');
     expect(result.testPrintError).toBeUndefined();
+    const job = await jobRepo.findById(result.testJobId!);
+    expect(job?.payloadSnapshot).toContain('"apiToken": "[REDACTED]"');
+    expect(job?.payloadSnapshot).not.toContain('do-not-persist');
+    expect(job?.metadata).toMatchObject({
+      sandbox: true,
+      templateSnapshot: {
+        templateCode: 'TEST_LABEL',
+        name: 'Test Label',
+        paperProfileId: expect.any(String),
+      },
+      sandboxInput: {
+        mode: 'single',
+        templateCode: 'TEST_LABEL',
+        printerCode: 'TEST_PRINTER',
+        samplePayload: { apiToken: '[REDACTED]' },
+      },
+    });
   });
 });

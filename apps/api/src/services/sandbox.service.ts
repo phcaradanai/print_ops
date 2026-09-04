@@ -36,6 +36,63 @@ function valueAt(payload: Record<string, unknown>, field: string): unknown {
   }, payload);
 }
 
+const SENSITIVE_PAYLOAD_KEY = /secret|token|password|api.?key/i;
+
+/**
+ * Sandbox input is useful evidence for reproducing a print, but it must not
+ * turn an accidental credential in a test payload into a persisted secret.
+ * Keep the shape and all ordinary values while replacing sensitive keys.
+ */
+function snapshotSandboxPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const visit = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(visit);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, nested]) => [
+          key,
+          SENSITIVE_PAYLOAD_KEY.test(key) ? '[REDACTED]' : visit(nested),
+        ]),
+      );
+    }
+    return value;
+  };
+
+  return visit(payload) as Record<string, unknown>;
+}
+
+function serializeSandboxPayload(payload: Record<string, unknown>): string {
+  return JSON.stringify(snapshotSandboxPayload(payload), null, 2);
+}
+
+function snapshotTemplate(template: PrintTemplate, paper: PaperProfile): Record<string, unknown> {
+  return {
+    templateId: template.id,
+    templateCode: template.templateCode,
+    name: template.name,
+    engine: template.engine,
+    status: template.status,
+    paperProfileId: paper.id,
+  };
+}
+
+function snapshotPaperProfile(paper: PaperProfile): Record<string, unknown> {
+  return {
+    paperProfileId: paper.id,
+    code: paper.code,
+    name: paper.name,
+    widthMm: paper.widthMm,
+    gapMm: paper.gapMm ?? 0,
+    heightMm: paper.heightMm,
+    marginTopMm: paper.marginTopMm,
+    marginRightMm: paper.marginRightMm,
+    marginBottomMm: paper.marginBottomMm,
+    marginLeftMm: paper.marginLeftMm,
+    orientation: paper.orientation,
+    dpi: paper.dpi,
+    geometry: snapshotPaperProfileGeometry(paper),
+  };
+}
+
 function composeMultipageHtml(renderedPages: string[], paper: PaperProfile): string {
   const printableWidthMm = Math.max(
     0.1,
@@ -122,6 +179,7 @@ export class SandboxService {
             resolvedTemplateCode: template.templateCode,
             paperProfileId: paper.id,
             renderedPrintPayload: rendered.renderedPrintPayload,
+            payloadSnapshot: serializeSandboxPayload(input.samplePayload),
             createdBy: 'sandbox',
             mimeType:
               template.engine === 'HTML' ? 'text/html' :
@@ -134,8 +192,23 @@ export class SandboxService {
             metadata: {
               sandbox: true,
               runId,
+              templateSnapshot: snapshotTemplate(template, paper),
+              sandboxInput: {
+                schemaVersion: 1,
+                mode: 'single',
+                templateId: template.id,
+                templateCode: template.templateCode,
+                paperProfileId: paper.id,
+                printerCode: input.testPrint.printerCode,
+                copies: 1,
+                duplex: false,
+                colorMode: 'auto',
+                samplePayload: snapshotSandboxPayload(input.samplePayload),
+              },
               paperProfile: {
                 paperProfileId: paper.id,
+                code: paper.code,
+                name: paper.name,
                 widthMm: paper.widthMm,
                 gapMm: paper.gapMm ?? 0,
                 heightMm: paper.heightMm,
@@ -261,6 +334,10 @@ export class SandboxService {
             resolvedTemplateCode: template.templateCode,
             paperProfileId: paper.id,
             renderedPrintPayload,
+            payloadSnapshot: JSON.stringify({
+              mode: 'batch',
+              scenarios: scenarios.map((scenario, index) => ({ label: scenario.label ?? `scenario-${index + 1}`, samplePayload: snapshotSandboxPayload(scenario.samplePayload) })),
+            }, null, 2),
             createdBy: 'sandbox',
             mimeType: nativeDpl ? 'application/dpl' : 'text/html',
             copies: 1,
@@ -273,8 +350,28 @@ export class SandboxService {
               itemCount: runs.length,
               pageHeightMm,
               pageCount: geometry.layout.columns > 1 ? Math.ceil(runs.length / geometry.layout.columns) : runs.length,
+              templateSnapshot: snapshotTemplate(template, paper),
+              sandboxInput: {
+                schemaVersion: 1,
+                mode: 'batch',
+                batchId,
+                templateId: template.id,
+                templateCode: template.templateCode,
+                paperProfileId: paper.id,
+                printerCode: consolidatedPrinterCode,
+                copies: 1,
+                duplex: false,
+                colorMode: 'auto',
+                scenarios: scenarios.map((scenario, index) => ({
+                  label: scenario.label ?? `scenario-${index + 1}`,
+                  runId: runs[index]?.runId,
+                  samplePayload: snapshotSandboxPayload(scenario.samplePayload),
+                })),
+              },
               paperProfile: {
                 paperProfileId: paper.id,
+                code: paper.code,
+                name: paper.name,
                 widthMm: paper.widthMm,
                 gapMm: paper.gapMm ?? 0,
                 heightMm: paper.heightMm,

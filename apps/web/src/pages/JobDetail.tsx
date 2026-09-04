@@ -28,6 +28,7 @@ import {
   ErrorState,
   CardDetailItem,
   CardDetail,
+  CodeBlock,
   Freshness,
   Grid,
   Inline,
@@ -154,6 +155,16 @@ interface CallbackDelivery {
 interface Job {
   id: string;
   status: string;
+  createdBy?: string;
+  priority?: number;
+  traceId?: string;
+  correlationId?: string;
+  rotate?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
+  retryCount?: number;
+  maxRetries?: number;
+  adapterUsed?: string;
   copies: number;
   priorityLabel?: string;
   printerId: string;
@@ -173,6 +184,13 @@ interface Job {
   payloadSnapshot?: string;
   spoolerSentAt?: string;
   printerAckAt?: string;
+  validatedAt?: string;
+  queuedAt?: string;
+  dispatchedAt?: string;
+  runnerReceivedAt?: string;
+  startedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
   receivedAt?: string;
   finishedAt?: string;
   /** Needed by the reprint safety gate — the server refuses without it. */
@@ -182,6 +200,16 @@ interface Job {
     printEvidence?: PrintEvidence;
     code_profile?: string;
     nats?: { clientId?: string; subject?: string; streamSequence?: number };
+    sandbox?: boolean;
+    batchId?: string;
+    runIds?: string[];
+    itemCount?: number;
+    pageHeightMm?: number;
+    pageCount?: number;
+    templateSnapshot?: TemplateSnapshot;
+    paperProfile?: PaperProfileSnapshot;
+    printerCalibration?: CalibrationSnapshot;
+    sandboxInput?: SandboxInputSnapshot;
     /**
      * Written by `ReprintJobService` when this job was created as a reprint.
      *
@@ -212,6 +240,90 @@ interface Job {
     printerAckMs?: number;
   };
 }
+
+interface TemplateSnapshot {
+  templateId?: string;
+  templateCode?: string;
+  name?: string;
+  engine?: string;
+  status?: string;
+  paperProfileId?: string;
+}
+
+interface GeometryLayoutSnapshot {
+  columns?: number;
+  cellWidthMm?: number;
+  cellHeightMm?: number;
+  columnGapMm?: number;
+  rowPitchMm?: number;
+}
+
+interface GeometrySnapshot {
+  widthMm?: number;
+  heightMm?: number;
+  dpi?: number;
+  widthDots?: number;
+  heightDots?: number;
+  printableWidthMm?: number;
+  printableHeightMm?: number;
+  layout?: GeometryLayoutSnapshot;
+  cells?: Array<{
+    column?: number;
+    row?: number;
+    xMm?: number;
+    yMm?: number;
+    xDots?: number;
+    yDots?: number;
+  }>;
+}
+
+interface PaperProfileSnapshot {
+  paperProfileId?: string;
+  code?: string;
+  name?: string;
+  widthMm?: number;
+  heightMm?: number;
+  gapMm?: number;
+  marginTopMm?: number;
+  marginRightMm?: number;
+  marginBottomMm?: number;
+  marginLeftMm?: number;
+  orientation?: string;
+  dpi?: number;
+  geometry?: GeometrySnapshot;
+}
+
+interface CalibrationSnapshot {
+  printerId?: string;
+  paperProfileId?: string;
+  dpi?: number;
+  xOffsetDots?: number;
+  yOffsetDots?: number;
+}
+
+interface SandboxScenarioSnapshot {
+  label?: string;
+  runId?: string;
+  samplePayload?: Record<string, unknown>;
+}
+
+interface SandboxInputSnapshot {
+  schemaVersion?: number;
+  mode?: string;
+  batchId?: string;
+  templateId?: string;
+  templateCode?: string;
+  paperProfileId?: string;
+  printerId?: string;
+  printerCode?: string;
+  copies?: number;
+  duplex?: boolean;
+  colorMode?: string;
+  priority?: string;
+  samplePayload?: Record<string, unknown>;
+  scenarios?: SandboxScenarioSnapshot[];
+}
+
 
 const STEP_TONE: Record<string, string> = {
   success: 'success',
@@ -249,6 +361,70 @@ function fmtTime(s?: string): string {
  * meaning the adjacent text did not already carry. The badge keeps the two
  * channels the rule actually requires: a literal label plus a contrast-safe tone.
  */
+function parsePayloadSnapshot(snapshot?: string): unknown {
+  if (!snapshot) return undefined;
+  try {
+    return JSON.parse(snapshot) as unknown;
+  } catch {
+    return snapshot;
+  }
+}
+
+function jsonSnapshot(value: unknown): string {
+  if (value === undefined) return '—';
+  if (typeof value === 'string') return value;
+  return JSON.stringify(value, null, 2) ?? String(value);
+}
+
+function sandboxPayloadFromJob(job: Job): unknown {
+  const input = job.metadata?.sandboxInput;
+  if (input?.samplePayload) return input.samplePayload;
+  const firstScenario = input?.scenarios?.find((scenario) => scenario.samplePayload != null);
+  if (firstScenario?.samplePayload) return firstScenario.samplePayload;
+
+  const parsed = parsePayloadSnapshot(job.payloadSnapshot);
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    const record = parsed as Record<string, unknown>;
+    if (record.samplePayload && typeof record.samplePayload === 'object') {
+      return record.samplePayload;
+    }
+    if (Array.isArray(record.scenarios)) {
+      const scenario = record.scenarios.find(
+        (candidate) => candidate && typeof candidate === 'object'
+          && 'samplePayload' in (candidate as Record<string, unknown>),
+      ) as Record<string, unknown> | undefined;
+      if (scenario?.samplePayload && typeof scenario.samplePayload === 'object') {
+        return scenario.samplePayload;
+      }
+    }
+  }
+  return parsed;
+}
+
+export function buildSandboxRecipe(job: Job): Record<string, unknown> {
+  const input = job.metadata?.sandboxInput;
+  const template = job.metadata?.templateSnapshot;
+  const profile = job.metadata?.paperProfile;
+  const recipe: Record<string, unknown> = {
+    schemaVersion: input?.schemaVersion ?? 1,
+    sourceJobId: job.id,
+    mode: input?.mode ?? (job.metadata?.batchId ? 'batch' : 'single'),
+    templateId: input?.templateId ?? template?.templateId,
+    templateCode: input?.templateCode ?? job.resolvedTemplateCode ?? job.templateCode,
+    paperProfileId: input?.paperProfileId ?? job.paperProfileId ?? profile?.paperProfileId,
+    printerId: input?.printerId ?? job.printerId,
+    printerCode: input?.printerCode ?? job.printerCode,
+    copies: input?.copies ?? job.copies,
+    duplex: input?.duplex ?? job.duplex,
+    colorMode: input?.colorMode ?? job.colorMode,
+    priority: input?.priority ?? job.priorityLabel,
+  };
+  const payload = sandboxPayloadFromJob(job);
+  if (input?.scenarios) recipe.scenarios = input.scenarios;
+  else if (payload !== undefined) recipe.samplePayload = payload;
+  return recipe;
+}
+
 const DELIVERY_TONE: Record<CallbackDelivery['deliveryStatus'], BadgeTone> = {
   PENDING: 'neutral',
   DELIVERING: 'info',
@@ -496,6 +672,203 @@ const JOB_POLL_MS = 1_000;
  * A `job` that has not loaded yields no print status, which the policy reads as
  * "still live" — an unknown job is never treated as finished.
  */
+function displayMetric(value: number | undefined, suffix = ''): string {
+  return value == null ? '—' : String(value) + suffix;
+}
+
+function displayFlag(value: boolean | undefined): string {
+  return value == null ? '—' : value ? 'yes' : 'no';
+}
+
+interface JobConfigurationPanelProps {
+  job: Job;
+  t: (key: string) => string;
+  copied: boolean;
+  onCopy: () => void;
+}
+
+export function JobConfigurationPanel({ job, t, copied, onCopy }: JobConfigurationPanelProps) {
+  const metadata = job.metadata;
+  const templateSnapshot = metadata?.templateSnapshot;
+  const paperProfile = metadata?.paperProfile;
+  const geometry = paperProfile?.geometry;
+  const layout = geometry?.layout;
+  const calibration = metadata?.printerCalibration;
+  const sandboxInput = metadata?.sandboxInput;
+  const templateCode = sandboxInput?.templateCode
+    ?? templateSnapshot?.templateCode
+    ?? job.resolvedTemplateCode
+    ?? job.templateCode;
+  const paperProfileLabel = [paperProfile?.code, paperProfile?.name].filter(Boolean).join(' — ')
+    || metadata?.code_profile
+    || job.paperProfileId
+    || '—';
+  const paperProfileDetails = [
+    paperProfile?.orientation,
+    paperProfile?.gapMm != null ? 'gap ' + String(paperProfile.gapMm) + ' mm' : undefined,
+  ].filter(Boolean).join(' / ') || '—';
+  const mediaWidth = geometry?.widthMm ?? paperProfile?.widthMm;
+  const mediaHeight = geometry?.heightMm ?? paperProfile?.heightMm;
+  const mediaDpi = geometry?.dpi ?? paperProfile?.dpi;
+  const mediaDotSize = geometry?.widthDots != null || geometry?.heightDots != null
+    ? displayMetric(geometry?.widthDots) + ' × ' + displayMetric(geometry?.heightDots) + ' dots'
+    : undefined;
+  const printableSize = geometry?.printableWidthMm != null || geometry?.printableHeightMm != null
+    ? displayMetric(geometry?.printableWidthMm) + ' × ' + displayMetric(geometry?.printableHeightMm) + ' mm'
+    : undefined;
+  const cellOrigins = geometry?.cells?.length
+    ? geometry.cells.map((cell) => 'c' + String((cell.column ?? 0) + 1) + '@' + displayMetric(cell.xDots) + ',' + displayMetric(cell.yDots) + ' dots').join(' / ')
+    : undefined;
+  const mediaGeometry = mediaWidth != null || mediaHeight != null
+    ? displayMetric(mediaWidth) + ' × ' + displayMetric(mediaHeight) + ' mm'
+      + (mediaDpi != null ? ' / ' + mediaDpi + ' DPI' : '')
+    : '—';
+  const cellLayout = layout
+    ? [
+        layout.columns != null ? String(layout.columns) + ' columns' : undefined,
+        layout.cellWidthMm != null && layout.cellHeightMm != null
+          ? String(layout.cellWidthMm) + ' × ' + String(layout.cellHeightMm) + ' mm cells'
+          : undefined,
+        layout.columnGapMm != null ? 'gap ' + String(layout.columnGapMm) + ' mm' : undefined,
+        layout.rowPitchMm != null ? 'row pitch ' + String(layout.rowPitchMm) + ' mm' : undefined,
+      ].filter(Boolean).join(' / ')
+    : '—';
+  const safeMargins = paperProfile
+    ? [
+        paperProfile.marginTopMm != null ? 'T ' + String(paperProfile.marginTopMm) : undefined,
+        paperProfile.marginRightMm != null ? 'R ' + String(paperProfile.marginRightMm) : undefined,
+        paperProfile.marginBottomMm != null ? 'B ' + String(paperProfile.marginBottomMm) : undefined,
+        paperProfile.marginLeftMm != null ? 'L ' + String(paperProfile.marginLeftMm) : undefined,
+      ].filter(Boolean).join(' / ') + ' mm'
+    : '—';
+  const transform = [
+    job.rotate != null ? 'rotate ' + String(job.rotate) + '°' : undefined,
+    job.flipHorizontal ? 'flip H' : undefined,
+    job.flipVertical ? 'flip V' : undefined,
+  ].filter(Boolean).join(' / ') || 'none';
+  const calibrationText = calibration
+    ? 'x ' + displayMetric(calibration.xOffsetDots, ' dots') + ' / y ' + displayMetric(calibration.yOffsetDots, ' dots')
+      + (calibration.dpi != null ? ' / ' + String(calibration.dpi) + ' DPI' : '')
+    : '—';
+  const printOptions = [
+    'copies ' + String(job.copies),
+    'duplex ' + displayFlag(job.duplex),
+    'color ' + (job.colorMode ?? '—'),
+  ].join(' / ');
+  const cellOriginText = cellOrigins ?? '—';
+  const geometryText = [
+    mediaGeometry,
+    mediaDotSize,
+    printableSize ? 'printable ' + printableSize : undefined,
+  ].filter(Boolean).join(' / ');
+  const payloadSnapshot = parsePayloadSnapshot(job.payloadSnapshot);
+  const hasSandboxInput = sandboxInput?.samplePayload != null
+    || (sandboxInput?.scenarios?.length ?? 0) > 0
+    || payloadSnapshot !== undefined;
+  const scenarioCount = sandboxInput?.scenarios?.length ?? metadata?.itemCount;
+  const sandboxRecipe = buildSandboxRecipe(job);
+
+  return (
+    <Panel title={t('page.jobDetail.printConfiguration')}>
+      <Stack gap="lg">
+        <CardDetail>
+          <CardDetailItem label={t('page.jobDetail.template')}>
+            <Stack gap="xs">
+              <Mono wrap>{templateCode ?? '—'}</Mono>
+              {templateSnapshot?.name && <Text size="label" tone="muted">{t('page.jobDetail.templateName')}: {templateSnapshot.name}</Text>}
+              {templateSnapshot?.templateId && (
+                <Text size="label" tone="muted">{t('page.jobDetail.templateId')}: <Mono>{templateSnapshot.templateId}</Mono></Text>
+              )}
+              {templateSnapshot?.engine && <Badge>{t('page.jobDetail.engine')}: {templateSnapshot.engine}</Badge>}
+              {templateSnapshot?.status && <Badge>{templateSnapshot.status}</Badge>}
+            </Stack>
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.paperProfile')}>
+            <Stack gap="xs">
+              <Mono wrap>{paperProfileLabel}</Mono>
+              {paperProfileDetails !== '—' && <Text size="label" tone="muted">{paperProfileDetails}</Text>}
+              {(paperProfile?.paperProfileId ?? job.paperProfileId) && (
+                <Text size="label" tone="muted">{t('page.jobDetail.paperProfileId')}: <Mono>{paperProfile?.paperProfileId ?? job.paperProfileId}</Mono></Text>
+              )}
+            </Stack>
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.printer')}>
+            <Stack gap="xs">
+              <Link className="ui-link" to={'/printers/' + job.printerId}>
+                {job.printerCode ?? job.printerId.slice(0, 8)}
+              </Link>
+              <Text size="label" tone="muted">{t('page.jobDetail.printerId')}: <Mono>{job.printerId}</Mono></Text>
+            </Stack>
+          </CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.mimeType')}><Mono wrap>{job.mimeType ?? '—'}</Mono></CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.mediaGeometry')}><Mono wrap>{geometryText}</Mono></CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.layout')}><Mono wrap>{cellLayout}</Mono></CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.cellOrigins')}><Mono wrap>{cellOriginText}</Mono></CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.safeMargins')}><Mono wrap>{safeMargins}</Mono></CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.calibration')}><Mono wrap>{calibrationText}</Mono></CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.transform')}><Mono wrap>{transform}</Mono></CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.printOptions')}><Mono wrap>{printOptions}</Mono></CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.routePolicyId')}><Mono wrap>{job.routePolicyId ?? '—'}</Mono></CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.requestId')}><Mono wrap>{job.requestId ?? '—'}</Mono></CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.traceId')}><Mono wrap>{job.traceId ?? '—'}</Mono></CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.correlationId')}><Mono wrap>{job.correlationId ?? '—'}</Mono></CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.pageCount')}>{metadata?.pageCount ?? '—'}</CardDetailItem>
+          <CardDetailItem label={t('page.jobDetail.itemCount')}>{scenarioCount ?? '—'}</CardDetailItem>
+        </CardDetail>
+
+        {metadata?.sandbox && (
+          <Stack gap="sm">
+            <Inline gap="sm">
+              <Text weight="semibold">{t('page.jobDetail.sandboxReproduction')}</Text>
+              <Link
+                className="ui-link"
+                to={'/sandbox?jobId=' + encodeURIComponent(job.id)}
+              >
+                {t('page.jobDetail.openSandbox')}
+              </Link>
+              <Button variant="secondary" size="sm" onClick={onCopy}>
+                {copied ? t('page.jobDetail.sandboxRecipeCopied') : t('page.jobDetail.copySandboxRecipe')}
+              </Button>
+            </Inline>
+            <Text size="label" tone="muted">{t('page.jobDetail.sandboxInputNote')}</Text>
+            {scenarioCount != null && (
+              <Text size="label" tone="muted">
+                {t('page.jobDetail.scenarioCount')}: {scenarioCount}
+                {metadata.pageCount != null ? ' / ' + t('page.jobDetail.pageCount') + ': ' + metadata.pageCount : ''}
+              </Text>
+            )}
+            {hasSandboxInput ? (
+              <details open>
+                <summary>{t('page.jobDetail.inputPayload')}</summary>
+                <CodeBlock label={t('page.jobDetail.inputPayload')}>
+                  {jsonSnapshot(payloadSnapshot ?? sandboxInput?.samplePayload ?? sandboxInput?.scenarios)}
+                </CodeBlock>
+              </details>
+            ) : (
+              <Text size="label" tone="muted">{t('page.jobDetail.inputUnavailable')}</Text>
+            )}
+            <details>
+              <summary>{t('page.jobDetail.sandboxRecipe')}</summary>
+              <CodeBlock label={t('page.jobDetail.sandboxRecipe')}>
+                {jsonSnapshot(sandboxRecipe)}
+              </CodeBlock>
+            </details>
+          </Stack>
+        )}
+
+        {!metadata?.sandbox && job.payloadSnapshot && (
+          <details>
+            <summary>{t('page.jobDetail.inputPayload')}</summary>
+            <CodeBlock label={t('page.jobDetail.inputPayload')}>
+              {job.payloadSnapshot}
+            </CodeBlock>
+          </details>
+        )}
+      </Stack>
+    </Panel>
+  );
+}
+
 export function jobDetailPollingInput(
   job: Pick<Job, 'status' | 'metadata'> | null,
   deliveries: Pick<CallbackDelivery, 'deliveryStatus'>[],
@@ -521,6 +894,7 @@ export default function JobDetail() {
 
   const [reprintOpen, setReprintOpen] = useState(false);
   const [copiedDebug, setCopiedDebug] = useState(false);
+  const [copiedSandboxRecipe, setCopiedSandboxRecipe] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
 
   const fetchJob = useCallback(() => apiFetch<Job>(`/jobs/${id}`), [id]);
@@ -592,6 +966,22 @@ export default function JobDetail() {
       errorMessage: job.errorMessage,
       printerId: job.printerId,
       printerCode: job.printerCode,
+      templateCode: job.templateCode,
+      resolvedTemplateCode: job.resolvedTemplateCode,
+      paperProfileId: job.paperProfileId,
+      mimeType: job.mimeType,
+      sourceSystem: job.sourceSystem,
+      sourceReference: job.sourceReference,
+      requestId: job.requestId,
+      priority: job.priorityLabel,
+      duplex: job.duplex,
+      colorMode: job.colorMode,
+      rotate: job.rotate,
+      flipHorizontal: job.flipHorizontal,
+      flipVertical: job.flipVertical,
+      adapterUsed: job.adapterUsed,
+      sandboxRecipe: buildSandboxRecipe(job),
+      payloadSnapshot: parsePayloadSnapshot(job.payloadSnapshot),
       copies: job.copies,
       latency: job.latency,
       metadata: job.metadata,
@@ -608,6 +998,12 @@ export default function JobDetail() {
     setTimeout(() => setCopiedDebug(false), 2500);
   }, [job, trace]);
 
+  const handleCopySandboxRecipe = useCallback(() => {
+    if (!job) return;
+    void navigator.clipboard.writeText(JSON.stringify(buildSandboxRecipe(job), null, 2));
+    setCopiedSandboxRecipe(true);
+    setTimeout(() => setCopiedSandboxRecipe(false), 2500);
+  }, [job]);
   // Depends on the `refresh` functions, not the resource objects: those are new
   // on every 1s snapshot, so an effect keyed on them would re-run continuously.
   const refreshAll = useCallback(() => {
@@ -755,9 +1151,18 @@ export default function JobDetail() {
         )}
 
         {/* ── Tier 0b: what was printed ── */}
+        <JobConfigurationPanel
+          job={job}
+          t={t}
+          copied={copiedSandboxRecipe}
+          onCopy={handleCopySandboxRecipe}
+        />
         <Panel title={t('page.jobDetail.documentInfo')}>
           <CardDetail>
+            <CardDetailItem label={t('page.jobDetail.jobId')}><Mono wrap>{job.id}</Mono></CardDetailItem>
             <CardDetailItem label={t('page.jobDetail.template')}><Mono wrap>{template ?? '—'}</Mono></CardDetailItem>
+            <CardDetailItem label={t('page.jobDetail.createdBy')}>{job.createdBy ?? '—'}</CardDetailItem>
+            <CardDetailItem label={t('page.jobDetail.adapter')}>{job.adapterUsed ?? '—'}</CardDetailItem>
             <CardDetailItem label={t('page.jobDetail.sourceReference')}><Mono wrap>{job.sourceReference ?? '—'}</Mono></CardDetailItem>
             <CardDetailItem label={t('page.jobDetail.sourceSystem')}>{job.sourceSystem ?? '—'}</CardDetailItem>
             <CardDetailItem label={t('page.jobDetail.copies')}>{job.copies}</CardDetailItem>
@@ -772,6 +1177,7 @@ export default function JobDetail() {
               </Link>
             </CardDetailItem>
             <CardDetailItem label={t('page.jobDetail.priority')}>{job.priorityLabel ?? '—'}</CardDetailItem>
+            <CardDetailItem label={t('page.jobDetail.retryCount')}>{job.retryCount != null ? String(job.retryCount) + '/' + String(job.maxRetries ?? '—') : '—'}</CardDetailItem>
             <CardDetailItem label={t('page.jobDetail.finished')}>{fmtTime(job.finishedAt)}</CardDetailItem>
           </CardDetail>
         </Panel>
@@ -833,9 +1239,16 @@ export default function JobDetail() {
                 </CardDetail>
                 <CardDetail>
                   <CardDetailItem label={t('page.jobDetail.received')}>{fmtTime(job.receivedAt)}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.validated')}>{fmtTime(job.validatedAt)}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.queued')}>{fmtTime(job.queuedAt)}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.dispatched')}>{fmtTime(job.dispatchedAt)}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.runnerReceived')}>{fmtTime(job.runnerReceivedAt)}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.started')}>{fmtTime(job.startedAt)}</CardDetailItem>
                   <CardDetailItem label={t('page.jobDetail.spooled')}>{fmtTime(job.spoolerSentAt)}</CardDetailItem>
                   <CardDetailItem label={t('page.jobDetail.printerAck')}>{fmtTime(job.printerAckAt)}</CardDetailItem>
                   <CardDetailItem label={t('page.jobDetail.finished')}>{fmtTime(job.finishedAt)}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.created')}>{fmtTime(job.createdAt)}</CardDetailItem>
+                  <CardDetailItem label={t('page.jobDetail.updated')}>{fmtTime(job.updatedAt)}</CardDetailItem>
                 </CardDetail>
               </Stack>
             </Panel>
