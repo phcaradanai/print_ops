@@ -57,6 +57,7 @@ const en: TranslationDict = {
   'common.close': 'Close',
   'common.yes': 'Enabled',
   'common.no': 'Disabled',
+  'app.version': 'Application version',
 
   // Status
   'status.never': 'never',
@@ -1513,6 +1514,7 @@ const th: TranslationDict = {
   'common.close': 'ปิด',
   'common.yes': 'เปิดใช้งาน',
   'common.no': 'ปิดใช้งาน',
+  'app.version': 'เวอร์ชันแอปพลิเคชัน',
 
   // Status
   'status.never': 'ไม่เคย',

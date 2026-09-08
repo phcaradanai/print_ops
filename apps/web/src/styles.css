@@ -209,6 +209,43 @@ body {
   padding-bottom: 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
+.app-nav-brand,
+.app-header-brand {
+  display: flex;
+  min-width: 0;
+}
+
+.app-nav-brand {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.app-header-brand {
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.app-brand-name {
+  min-width: 0;
+}
+
+.app-version {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.18rem 0.42rem;
+  border: 1px solid rgba(137, 180, 250, 0.42);
+  border-radius: var(--rounded-sm, 4px);
+  background: rgba(137, 180, 250, 0.12);
+  color: var(--nav-text);
+  font-family: var(--font-mono-family);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  white-space: nowrap;
+}
 
 /* Nav groups */
 

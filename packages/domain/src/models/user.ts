@@ -37,7 +37,9 @@ export type Permission =
   | 'sandbox:access'
   | 'sandbox:render-preview'
   | 'sandbox:send-test-print'
-  | 'sandbox:run';
+  | 'sandbox:run'
+  | 'ota:read'
+  | 'ota:manage';
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   OWNER: [
@@ -50,6 +52,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'paper-profile:read', 'paper-profile:create', 'paper-profile:update', 'paper-profile:delete',
     'webhook:read', 'webhook:create', 'webhook:update', 'webhook:test', 'webhook:disable',
     'sandbox:access', 'sandbox:render-preview', 'sandbox:send-test-print', 'sandbox:run',
+    'ota:read', 'ota:manage',
   ],
   ADMIN: [
     'printer:read', 'printer:create', 'printer:update', 'printer:control',
@@ -60,6 +63,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'paper-profile:read', 'paper-profile:create', 'paper-profile:update', 'paper-profile:delete',
     'webhook:read', 'webhook:create', 'webhook:update', 'webhook:test', 'webhook:disable',
     'sandbox:run',
+    'ota:read', 'ota:manage',
   ],
   OPERATOR: [
     'printer:read', 'printer:control',

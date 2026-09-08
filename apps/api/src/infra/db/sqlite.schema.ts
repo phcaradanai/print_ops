@@ -1,6 +1,6 @@
 import type { Database } from 'sql.js';
 
-export const CURRENT_SCHEMA_VERSION = 6;
+export const CURRENT_SCHEMA_VERSION = 7;
 
 export function schemaVersion(db: Database): number {
   const result = db.exec('PRAGMA user_version');
@@ -51,6 +51,7 @@ export function runSchemaMigration(db: Database): void {
     if (fromVersion < 4) migrateVersionThreeToFour(db);
     if (fromVersion < 5) migrateVersionFourToFive(db);
     if (fromVersion < 6) migrateVersionFiveToSix(db);
+    if (fromVersion < 7) migrateVersionSixToSeven(db);
     db.run(`PRAGMA user_version=${CURRENT_SCHEMA_VERSION}`);
     db.run('COMMIT');
   } catch (error) {
@@ -105,6 +106,58 @@ function migrateVersionFiveToSix(db: Database): void {
       UNIQUE(printer_id, paper_profile_id, dpi)
     )
   `);
+}
+
+/**
+ * OTA foundation: persistent update state machine + content history + ownership
+ * columns on content tables. See docs/ota/OTA-architecture-contracts.md §10.
+ */
+function migrateVersionSixToSeven(db: Database): void {
+  // Singleton row tracking the application OTA state machine.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS ota_update_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      state TEXT NOT NULL DEFAULT 'IDLE',
+      target_version TEXT,
+      started_at TEXT,
+      updated_at TEXT NOT NULL,
+      error_message TEXT,
+      retry_count INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  // Ensure the singleton row exists so reads never have to special-case NULL.
+  db.run(`
+    INSERT OR IGNORE INTO ota_update_state (id, state, updated_at)
+    VALUES (1, 'IDLE', datetime('now'))
+  `);
+
+  // Content manifest history — each row is one applied content manifest.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS content_history (
+      id TEXT PRIMARY KEY NOT NULL,
+      content_type TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      applied_at TEXT NOT NULL,
+      manifest_json TEXT NOT NULL
+    )
+  `);
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_content_history_type_version
+    ON content_history(content_type, version)
+  `);
+
+  // Ownership columns on content tables. Existing rows default to LOCAL
+  // (they were created by users, not by OTA) so OTA never overwrites them.
+  if (db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'paper_profiles'")[0]?.values.length === 1) {
+    ensureColumn(db, 'paper_profiles', 'ownership', "TEXT NOT NULL DEFAULT 'LOCAL'");
+    ensureColumn(db, 'paper_profiles', 'source_version', 'INTEGER');
+    ensureColumn(db, 'paper_profiles', 'content_hash', 'TEXT');
+  }
+  if (db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'print_templates'")[0]?.values.length === 1) {
+    ensureColumn(db, 'print_templates', 'ownership', "TEXT NOT NULL DEFAULT 'LOCAL'");
+    ensureColumn(db, 'print_templates', 'source_version', 'INTEGER');
+    ensureColumn(db, 'print_templates', 'content_hash', 'TEXT');
+  }
 }
 function migrateVersionZeroToOne(db: Database): void {
   db.run(`

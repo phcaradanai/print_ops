@@ -46,3 +46,6 @@ CLAUDE.md
 .agentsroom/handoff-transcript-*.txt
 .agentsroom/handoff-summary-*.md
 .agents/mcp_config.json
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+graft/

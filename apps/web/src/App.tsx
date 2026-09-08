@@ -18,6 +18,9 @@ import { NavIcon } from './components/NavIcon.js';
 import { ActionIcon } from './components/ActionIcon.js';
 import { errorMessage } from './api/errors.js';
 import { Input, Button, FormField } from './components/ui/index.js';
+import webPackage from '../package.json';
+
+export const APP_VERSION = webPackage.version;
 
 const Dashboard = lazy(() => import('./pages/Dashboard.js'));
 const Printers = lazy(() => import('./pages/Printers.js'));
@@ -51,6 +54,17 @@ function isMobileNavViewport() {
   return typeof window !== 'undefined'
     && typeof window.matchMedia === 'function'
     && window.matchMedia(MOBILE_NAV_QUERY).matches;
+}
+export function AppVersionBadge({ label }: { label: string }) {
+  return (
+    <span
+      className="app-version"
+      aria-label={label + ': ' + APP_VERSION}
+      title={label + ': ' + APP_VERSION}
+    >
+      v{APP_VERSION}
+    </span>
+  );
 }
 
 // ----- navigation definition -----
@@ -498,7 +512,10 @@ function AppNav({
 
   const navContent = (
     <>
-      <h2 className="app-nav-brand">PrintOps</h2>
+      <h2 className="app-nav-brand">
+        <span className="app-brand-name">PrintOps</span>
+        <AppVersionBadge label={t('app.version')} />
+      </h2>
 
       {/* Operations group — always visible */}
       {opsItems.length > 0 && (
@@ -589,7 +606,10 @@ function AppNav({
           <span className="nav-toggle-bar" />
           <span className="nav-toggle-bar" />
         </button>
-        <span className="app-header-brand">PrintOps</span>
+        <span className="app-header-brand">
+          <span className="app-brand-name">PrintOps</span>
+          <AppVersionBadge label={t('app.version')} />
+        </span>
       </header>
 
       {/* Overlay for mobile */}
