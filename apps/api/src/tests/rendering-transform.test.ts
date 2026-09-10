@@ -56,7 +56,7 @@ describe('HTML rendering transforms', () => {
       expect(output).toContain('Sample label');
       expect(output).toContain('data:image/svg+xml;base64,');
       expect(output).toContain('data:image/svg+xml;base64,');
-      expect(output).toContain('width:100mm;height:50mm;overflow:hidden');
+      expect(output).toContain('width:50mm;height:100mm;overflow:hidden');
     }
   });
 
@@ -70,7 +70,7 @@ describe('HTML rendering transforms', () => {
     expect(result.renderedPreview).toContain('transform:rotate(270deg) scaleX(1) scaleY(-1)');
     expect(result.renderedPrintPayload).not.toContain('rotate(15deg)');
     expect(result.renderedPreview).not.toContain('rotate(15deg)');
-    expect(result.renderedPrintPayload).toContain('width:100mm;height:50mm;overflow:hidden');
-    expect(result.renderedPreview).toContain('width:100mm;height:50mm;overflow:hidden');
+    expect(result.renderedPrintPayload).toContain('width:50mm;height:100mm;overflow:hidden');
+    expect(result.renderedPreview).toContain('width:50mm;height:100mm;overflow:hidden');
   });
 });

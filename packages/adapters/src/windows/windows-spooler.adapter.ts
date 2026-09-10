@@ -13,7 +13,14 @@ import type {
   PrintCommand,
 } from '@printerops/domain';
 import { evaluatePrinterReadiness } from '@printerops/domain';
-import { readRenderTransformOverrides, resolveRenderTransform, wrapHtmlWithRenderTransform } from '@printerops/shared';
+import {
+  getOrientedPaperGeometry,
+  readRenderTransformOverrides,
+  resolveRenderTransform,
+  resolveRenderTransformFrame,
+  wrapHtmlWithRenderTransform,
+} from '@printerops/shared';
+import type { RenderTransformOverrides } from '@printerops/shared';
 import {
   readDeviceState,
   readPageCount,
@@ -1640,8 +1647,9 @@ if ($null -eq $workOffline -and $null -ne $win32) { $workOffline = $win32.WorkOf
     const requestFile = join(session.dir, `request-${jobId}.json`);
     const resultFile = join(session.dir, `result-${jobId}.json`);
     try {
-      const page = resolveHtmlPageSettings(html, command.metadata);
-      const transformedHtml = applyHtmlRenderTransform(html, page, command);
+      const renderOverrides = resolveCommandRenderTransformOverrides(command);
+      const page = resolveHtmlPageSettings(html, command.metadata, renderOverrides);
+      const transformedHtml = applyHtmlRenderTransform(html, page, command, renderOverrides);
       const calibratedHtml = applyHtmlCalibration(transformedHtml, page, command);
       await writeFile(file, calibratedHtml, 'utf-8');
       const jobName = `PrintOps:${command.jobId ?? jobId}`;
@@ -2151,6 +2159,7 @@ export function applyHtmlRenderTransform(
   html: string,
   page: HtmlPageSettings,
   command: PrintCommand,
+  renderOverrides: RenderTransformOverrides = resolveCommandRenderTransformOverrides(command),
 ): string {
   // The API renderer already wraps HTML output. This guard keeps the adapter
   // safe for direct HTML commands and prevents a queued job from being
@@ -2160,14 +2169,34 @@ export function applyHtmlRenderTransform(
   const profileValues = profile && typeof profile === 'object' && !Array.isArray(profile)
     ? profile as Record<string, unknown>
     : command.metadata ?? {};
-  const metadataOverrides = readRenderTransformOverrides(command.metadata);
   const transform = resolveRenderTransform(profileValues, {
-    ...metadataOverrides,
-    ...(command.rotate !== undefined ? { rotate: command.rotate } : {}),
-    ...(command.flipHorizontal !== undefined ? { flipHorizontal: command.flipHorizontal } : {}),
-    ...(command.flipVertical !== undefined ? { flipVertical: command.flipVertical } : {}),
+    ...renderOverrides,
   });
-  return wrapHtmlWithRenderTransform(html, page.widthMm, page.heightMm, transform);
+  const sourcePage = resolveHtmlSourcePage(page, profileValues);
+  return wrapHtmlWithRenderTransform(html, sourcePage.widthMm, sourcePage.heightMm, transform);
+}
+
+function resolveHtmlSourcePage(
+  page: HtmlPageSettings,
+  profileValues: Record<string, unknown>,
+): Pick<HtmlPageSettings, 'widthMm' | 'heightMm'> {
+  const widthMm = metadataNumber(profileValues, 'widthMm');
+  const heightMm = metadataNumber(profileValues, 'heightMm');
+  if (widthMm === undefined || heightMm === undefined) return page;
+  const requestedOrientation = metadataString(profileValues, 'orientation')?.trim().toLowerCase();
+  const orientation = requestedOrientation === 'portrait' || requestedOrientation === 'landscape'
+    ? requestedOrientation
+    : widthMm > heightMm ? 'landscape' : 'portrait';
+  const geometry = getOrientedPaperGeometry({
+    widthMm,
+    heightMm,
+    marginTopMm: 0,
+    marginRightMm: 0,
+    marginBottomMm: 0,
+    marginLeftMm: 0,
+    orientation,
+  });
+  return { widthMm: geometry.widthMm, heightMm: geometry.heightMm };
 }
 
 function formatCalibrationMm(value: number): string {
@@ -2236,6 +2265,7 @@ export function applyHtmlCalibration(
 export function resolveHtmlPageSettings(
   html: string,
   metadata: Record<string, unknown> = {},
+  renderOverrides: RenderTransformOverrides = {},
 ): HtmlPageSettings {
   const widthMatch = html.match(/(?:^|[;"'])\s*width\s*:\s*([0-9]+(?:\.[0-9]+)?)mm/i);
   const heightMatch = html.match(/(?:^|[;"'])\s*height\s*:\s*([0-9]+(?:\.[0-9]+)?)mm/i);
@@ -2258,11 +2288,20 @@ export function resolveHtmlPageSettings(
   const marginBottomMm = Math.max(0, metadataNumber(metadata, 'marginBottomMm') ?? 0);
   const marginLeftMm = Math.max(0, metadataNumber(metadata, 'marginLeftMm') ?? 0);
 
+  const profileValues = readPaperProfileValues(metadata);
+  const hasTransform = profileValues.rotation !== undefined
+    || profileValues.rotate !== undefined
+    || profileValues.flipHorizontal !== undefined
+    || profileValues.flipVertical !== undefined
+    || renderOverrides.rotate !== undefined
+    || renderOverrides.flipHorizontal !== undefined
+    || renderOverrides.flipVertical !== undefined;
+
   // Match the paper-profile editor: imported/legacy data can store dimensions
   // whose natural orientation disagrees with the explicit orientation. Rotate
   // both the sheet and its directional margins before handing it to the driver.
   if (naturalOrientation !== orientation) {
-    return {
+    const oriented = {
       widthMm: heightMm,
       heightMm: widthMm,
       marginTopMm: marginLeftMm,
@@ -2271,8 +2310,11 @@ export function resolveHtmlPageSettings(
       marginLeftMm: marginBottomMm,
       orientation,
     };
+    return hasTransform
+      ? resolveTransformedHtmlPage(oriented, profileValues, renderOverrides)
+      : resolveWrappedHtmlPage(oriented, html);
   }
-  return {
+  const resolved = {
     widthMm,
     heightMm,
     marginTopMm,
@@ -2280,6 +2322,60 @@ export function resolveHtmlPageSettings(
     marginBottomMm,
     marginLeftMm,
     orientation,
+  };
+  return hasTransform
+    ? resolveTransformedHtmlPage(resolved, profileValues, renderOverrides)
+    : resolveWrappedHtmlPage(resolved, html);
+}
+
+function readPaperProfileValues(metadata: Record<string, unknown>): Record<string, unknown> {
+  const profile = metadata['paperProfile'];
+  return profile && typeof profile === 'object' && !Array.isArray(profile)
+    ? profile as Record<string, unknown>
+    : metadata;
+}
+
+function resolveTransformedHtmlPage(
+  page: HtmlPageSettings,
+  profileValues: Record<string, unknown>,
+  renderOverrides: RenderTransformOverrides = {},
+): HtmlPageSettings {
+  const frame = resolveRenderTransformFrame(
+    page.widthMm,
+    page.heightMm,
+    resolveRenderTransform(profileValues, renderOverrides),
+  );
+  return {
+    ...page,
+    widthMm: frame.width,
+    heightMm: frame.height,
+    orientation: frame.width > frame.height ? 'landscape' : 'portrait',
+  };
+}
+
+function resolveWrappedHtmlPage(page: HtmlPageSettings, html: string): HtmlPageSettings {
+  if (!html.includes('data-printops-transform-frame')) return page;
+  const frameMatch = html.match(
+    /data-printops-transform-frame="true"[^>]*style="[^\"]*width:([0-9]+(?:\.[0-9]+)?)mm;height:([0-9]+(?:\.[0-9]+)?)mm/i,
+  );
+  const widthMm = Number(frameMatch?.[1]);
+  const heightMm = Number(frameMatch?.[2]);
+  if (!Number.isFinite(widthMm) || !Number.isFinite(heightMm) || widthMm <= 0 || heightMm <= 0) return page;
+  return {
+    ...page,
+    widthMm,
+    heightMm,
+    orientation: widthMm > heightMm ? 'landscape' : 'portrait',
+  };
+}
+
+function resolveCommandRenderTransformOverrides(command: PrintCommand): RenderTransformOverrides {
+  const metadataOverrides = readRenderTransformOverrides(command.metadata);
+  return {
+    ...metadataOverrides,
+    ...(command.rotate !== undefined ? { rotate: command.rotate } : {}),
+    ...(command.flipHorizontal !== undefined ? { flipHorizontal: command.flipHorizontal } : {}),
+    ...(command.flipVertical !== undefined ? { flipVertical: command.flipVertical } : {}),
   };
 }
 

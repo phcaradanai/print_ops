@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
 import { DISPLAY_UNITS, DPI_OPTIONS } from '../model/defaults.js';
 import { displayValue, toMillimeters } from '../model/units.js';
 import type { PaperForm, PaperProfileLayout } from '../model/types.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
-import { FormField, Grid, Input, Select, Switch } from '../../../components/ui/index.js';
+import { FormField, Grid, Select, Switch } from '../../../components/ui/index.js';
 import { Section } from './editorPrimitives.js';
 import type { Translate } from './types.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
+import { DraftNumberInput } from './DraftNumberInput.js';
+import { normalizeRotation } from '@printerops/shared';
 
 export function DimensionInput({ editor, field, label, t }: {
   editor: PaperProfileEditor;
@@ -14,26 +15,16 @@ export function DimensionInput({ editor, field, label, t }: {
   label: string;
   t: Translate;
 }) {
-  // While the field has focus the raw string wins, so a half-typed "1." or a
-  // cleared box is not stomped by the millimetre round-trip on every keystroke.
-  const [raw, setRaw] = useState<string | null>(null);
   const { displayUnit } = editor.ux;
-  useEffect(() => setRaw(null), [displayUnit]);
   const valueMm = editor.form[field] ?? 0;
   return (
     <FormField label={`${t(label)} (${displayUnit})`}>
       {(control) => (
-        <Input
+        <DraftNumberInput
           {...control}
-          type="number"
           step="any"
-           value={raw ?? String(displayValue(valueMm, displayUnit, editor.form.dpi))}
-          onChange={(event) => {
-            setRaw(event.target.value);
-            const value = Number.parseFloat(event.target.value);
-            if (!Number.isNaN(value)) editor.patchForm(field, toMillimeters(value, displayUnit, editor.form.dpi));
-          }}
-          onBlur={() => setRaw(null)}
+          value={Number(displayValue(valueMm, displayUnit, editor.form.dpi))}
+          onValueChange={(value) => editor.patchForm(field, toMillimeters(value, displayUnit, editor.form.dpi))}
         />
       )}
     </FormField>
@@ -57,15 +48,13 @@ function LayoutInput({ editor, field, label, t }: {
   return (
     <FormField label={t(label)}>
       {(control) => (
-        <Input
+        <DraftNumberInput
           {...control}
-          type="number"
           min={field === 'columns' ? 1 : 0}
           step={field === 'columns' ? 1 : 'any'}
           value={value}
-          onChange={(event) => {
-            const next = Number.parseFloat(event.target.value);
-            if (!Number.isFinite(next)) return;
+          normalize={field === 'columns' ? (next) => Math.max(1, Math.round(next)) : undefined}
+          onValueChange={(next) => {
             const current = layout ?? {
               columns: 1,
               cellWidthMm: editor.form.widthMm - editor.form.marginLeftMm - editor.form.marginRightMm,
@@ -75,7 +64,7 @@ function LayoutInput({ editor, field, label, t }: {
             };
             editor.patchForm('layout', {
               ...current,
-              [field]: field === 'columns' ? Math.max(1, Math.round(next)) : next,
+              [field]: next,
             });
           }}
         />
@@ -178,20 +167,30 @@ export function DimensionsSection({ editor, t, anchorRef }: {
           </FormField>
           <FormField label={t('page.paperProfiles.rotation')}>
             {(control) => (
-              <Input
-                {...control}
-                type="number"
-                min={0}
-                max={359}
-                step="any"
-                value={form.rotation}
-                onChange={(event) => {
-                  const value = Number.parseFloat(event.target.value);
-                  if (Number.isFinite(value)) {
-                    editor.patchForm('rotation', Math.max(0, Math.min(359, value)));
-                  }
-                }}
-              />
+              <div className="pp-rotation-control">
+                <DraftNumberInput
+                  {...control}
+                  min={0}
+                  max={359.999}
+                  step="any"
+                  value={form.rotation ?? 0}
+                  normalize={normalizeRotation}
+                  onValueChange={(value) => editor.patchForm('rotation', value)}
+                />
+                <div className="pp-rotation-presets" role="group" aria-label={t('page.paperProfiles.rotationPresets')}>
+                  {[0, 90, 180, 270].map((angle) => (
+                    <button
+                      key={angle}
+                      type="button"
+                      className={`pp-rotation-preset${(form.rotation ?? 0) === angle ? ' is-active' : ''}`}
+                      aria-pressed={(form.rotation ?? 0) === angle}
+                      onClick={() => editor.patchForm('rotation', angle)}
+                    >
+                      {angle}°
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </FormField>
 

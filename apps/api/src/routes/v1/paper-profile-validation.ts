@@ -1,4 +1,12 @@
 import type { PaperProfile } from '@printerops/domain';
+import {
+  getOrientedPaperGeometry,
+  mapPrintablePointToVisual,
+  qrQuietZoneUpperBoundMm,
+  resolveRenderTransform,
+  resolveRenderTransformFrame,
+  transformedRectBounds,
+} from '@printerops/shared';
 
 export interface PaperProfileIssue {
   field: string;
@@ -152,6 +160,122 @@ function checkLayout(
   return issues;
 }
 
+function checkFields(body: Record<string, unknown>): PaperProfileIssue[] {
+  const rawFields = body['fields'];
+  if (rawFields === undefined) return [];
+  if (!Array.isArray(rawFields)) return [{ field: 'fields', message: 'fields must be an array' }];
+
+  const widthMm = body['widthMm'];
+  const heightMm = body['heightMm'];
+  const marginTopMm = body['marginTopMm'];
+  const marginRightMm = body['marginRightMm'];
+  const marginBottomMm = body['marginBottomMm'];
+  const marginLeftMm = body['marginLeftMm'];
+  if (!isFiniteNumber(widthMm) || !isFiniteNumber(heightMm) ||
+    !isFiniteNumber(marginTopMm) || !isFiniteNumber(marginRightMm) ||
+    !isFiniteNumber(marginBottomMm) || !isFiniteNumber(marginLeftMm)) return [];
+
+  const orientation = body['orientation'] === 'landscape'
+    ? 'landscape'
+    : body['orientation'] === 'portrait'
+      ? 'portrait'
+      : widthMm > heightMm ? 'landscape' : 'portrait';
+  const geometry = getOrientedPaperGeometry({
+    widthMm,
+    heightMm,
+    marginTopMm,
+    marginRightMm,
+    marginBottomMm,
+    marginLeftMm,
+    orientation,
+  });
+  const transform = resolveRenderTransform({
+    rotation: isFiniteNumber(body['rotation']) ? body['rotation'] : 0,
+    flipHorizontal: typeof body['flipHorizontal'] === 'boolean' ? body['flipHorizontal'] : false,
+    flipVertical: typeof body['flipVertical'] === 'boolean' ? body['flipVertical'] : false,
+  });
+  const frame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, transform);
+  const epsilon = 0.0001;
+  const issues: PaperProfileIssue[] = [];
+
+  rawFields.forEach((rawField, index) => {
+    if (!rawField || typeof rawField !== 'object' || Array.isArray(rawField)) {
+      issues.push({ field: `fields.${index}`, message: 'field must be an object' });
+      return;
+    }
+    const field = rawField as Record<string, unknown>;
+    const fieldId = typeof field['id'] === 'string' && field['id'].trim() ? field['id'] : String(index);
+    const xMm = field['xMm'];
+    const yMm = field['yMm'];
+    if (!isFiniteNumber(xMm) || !isFiniteNumber(yMm)) {
+      issues.push({ field: `fields.${fieldId}.position`, message: 'field position must be finite numbers' });
+      return;
+    }
+
+    const size = fieldSizeMm(field);
+    if (!size) {
+      issues.push({ field: `fields.${fieldId}.size`, message: 'field size must be finite and greater than zero' });
+      return;
+    }
+    const point = mapPrintablePointToVisual(xMm, yMm, geometry);
+    const anchorX = geometry.marginLeftMm + point.xMm;
+    const anchorY = geometry.marginTopMm + point.yMm;
+    const left = field['align'] === 'center' ? anchorX - size.widthMm / 2
+      : field['align'] === 'right' ? anchorX - size.widthMm
+        : anchorX;
+    const bounds = transformedRectBounds(
+      left,
+      anchorY,
+      size.widthMm,
+      size.heightMm,
+      geometry.widthMm,
+      geometry.heightMm,
+      transform,
+    );
+    const minX = bounds.minX + frame.offsetX;
+    const minY = bounds.minY + frame.offsetY;
+    const maxX = bounds.maxX + frame.offsetX;
+    const maxY = bounds.maxY + frame.offsetY;
+    if (minX < -epsilon || minY < -epsilon || maxX > frame.width + epsilon || maxY > frame.height + epsilon) {
+      issues.push({
+        field: `fields.${fieldId}`,
+        message: 'field extends beyond the transformed paper boundary',
+      });
+    }
+  });
+  return issues;
+}
+
+function fieldSizeMm(field: Record<string, unknown>): { widthMm: number; heightMm: number } | undefined {
+  if (field['type'] === 'qrcode') {
+    const sizeMm = field['qrSizeMm'] ?? 20;
+    if (!isFiniteNumber(sizeMm) || sizeMm <= 0) return undefined;
+    const quietZoneMm = qrQuietZoneUpperBoundMm(sizeMm);
+    return { widthMm: sizeMm + quietZoneMm * 2, heightMm: sizeMm + quietZoneMm * 2 };
+  }
+  if (field['type'] === 'barcode') {
+    const widthMm = field['barcodeWidthMm'] ?? 28;
+    const heightMm = field['barcodeHeightMm'] ?? 12;
+    return isFiniteNumber(widthMm) && widthMm > 0 && isFiniteNumber(heightMm) && heightMm > 0
+      ? { widthMm, heightMm }
+      : undefined;
+  }
+  const fontSize = field['fontSize'];
+  if (!isFiniteNumber(fontSize) || fontSize <= 0) return undefined;
+  const sample = typeof field['defaultValue'] === 'string' && field['defaultValue']
+    ? field['defaultValue']
+    : typeof field['label'] === 'string' && field['label']
+      ? field['label']
+      : typeof field['key'] === 'string' && field['key']
+        ? field['key']
+        : 'field';
+  const charWidthMm = fontSize * 25.4 * 0.6 / 72;
+  return {
+    widthMm: Math.max(charWidthMm, sample.length * charWidthMm),
+    heightMm: fontSize * 25.4 * 1.2 / 72,
+  };
+}
+
 /** Validates a complete profile body for creation. */
 export function validatePaperProfileCreate(body: Record<string, unknown>): PaperProfileIssue[] {
   const issues: PaperProfileIssue[] = [];
@@ -172,6 +296,7 @@ export function validatePaperProfileCreate(body: Record<string, unknown>): Paper
   issues.push(...checkGeometry(body as unknown as PaperProfileGeometry));
   if (issues.length === 0) {
     issues.push(...checkLayout(body, body as unknown as PaperProfileGeometry));
+    issues.push(...checkFields(body));
   }
   return issues;
 }
@@ -217,6 +342,12 @@ export function validatePaperProfileUpdate(
       layout: 'layout' in patch ? patch['layout'] : current.layout,
     };
     issues.push(...checkLayout(layoutBody, merged));
+    issues.push(...checkFields({
+      ...current,
+      ...patch,
+      fields: 'fields' in patch ? patch['fields'] : current.fields,
+      ...merged,
+    }));
   }
   return issues;
 }

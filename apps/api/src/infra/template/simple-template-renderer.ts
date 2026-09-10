@@ -7,7 +7,7 @@ import type {
   RenderTransformOverrides,
 } from '@printerops/domain';
 import { paperProfileForCell } from '@printerops/domain';
-import { getOrientedPaperGeometry, resolveRenderTransform, wrapHtmlWithRenderTransform } from '@printerops/shared';
+import { getOrientedPaperGeometry, resolveRenderTransform, resolveRenderTransformFrame, wrapHtmlWithRenderTransform } from '@printerops/shared';
 import { qrGeometry, renderBarcodeDataUri, renderZplQrGraphic } from './barcode-renderer.js';
 import { renderDatamaxDpl } from './datamax-dpl-renderer.js';
 
@@ -410,6 +410,11 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     }
 
     const geometry = getOrientedPaperGeometry(paperProfile);
+    const transformFrame = resolveRenderTransformFrame(
+      geometry.widthMm,
+      geometry.heightMm,
+      resolveRenderTransform(paperProfile, renderOptions),
+    );
     if (isHtml) {
       body = wrapHtmlWithRenderTransform(
         body,
@@ -433,7 +438,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     // manage their own spacing — adding padding here would just clip their
     // content instead of framing it.
     const frameStyle = isHtml
-      ? `width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;background:#fff;overflow:hidden;box-sizing:border-box`
+      ? `width:${transformFrame.width}mm;height:${transformFrame.height}mm;background:#fff;overflow:hidden;box-sizing:border-box`
       : `width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;border:1px solid #111;background:#fff;padding:4mm;font-family:monospace;white-space:pre-wrap;overflow:hidden;box-sizing:border-box`;
     return `<div style="${frameStyle}">${body}</div>`;
   }

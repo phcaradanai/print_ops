@@ -14,7 +14,7 @@ export { PageScaffold, type PageScaffoldProps } from '../organisms/PageScaffold/
 export { ResourceToolbar, type ResourceToolbarProps } from '../organisms/ResourceToolbar/index.js';
 export { EmptyState, ErrorBanner, ErrorState, Freshness, LoadingState } from '../PageState.js';
 export { StatusBadge, type StatusBadgeSize } from '../StatusBadge.js';
-export { Input, Select, Textarea, Checkbox, Switch, Chip, Label, type ChipProps, type ControlSize, type SwitchProps } from './inputs.js';
+export { Input, Select, Textarea, Checkbox, Switch, Chip, Label, type ChipProps, type ControlSize, type InputProps, type SwitchProps } from './inputs.js';
 export { Stack, Inline, Grid, Spacer, Divider, type Align, type Space, type StackProps, type GridProps } from './layout.js';
 export { Panel, Fieldset, Toolbar, type PanelProps, type FieldsetProps } from './surfaces.js';
 export { Card, type CardProps, type CardPadding, type CardTone } from './Card.js';

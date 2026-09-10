@@ -103,6 +103,36 @@ describe('resolveHtmlPageSettings', () => {
       orientation: 'landscape',
     });
   });
+
+  it('uses the effective per-job transform when resolving the driver frame', () => {
+    expect(resolveHtmlPageSettings('<main />', {
+      paperProfile: {
+        widthMm: 100,
+        heightMm: 50,
+        orientation: 'landscape',
+        rotation: 15,
+      },
+    }, { rotate: 270 })).toMatchObject({
+      widthMm: 50,
+      heightMm: 100,
+      orientation: 'portrait',
+    });
+  });
+
+  it('reads the transformed frame size when the renderer already wrapped HTML', () => {
+    const html = '<div data-printops-transform-frame="true" style="position:relative;width:50mm;height:100mm;overflow:hidden"><div /></div>';
+    expect(resolveHtmlPageSettings(html, {
+      paperProfile: {
+        widthMm: 100,
+        heightMm: 50,
+        orientation: 'landscape',
+      },
+    })).toMatchObject({
+      widthMm: 50,
+      heightMm: 100,
+      orientation: 'portrait',
+    });
+  });
 });
 
 describe('applyHtmlRenderTransform', () => {
@@ -139,7 +169,7 @@ describe('applyHtmlRenderTransform', () => {
     );
 
     expect(output).toContain('transform:rotate(90deg) scaleX(-1) scaleY(1)');
-    expect(output).toContain('width:100mm;height:50mm;overflow:hidden');
+    expect(output).toContain('width:50mm;height:100mm;overflow:hidden');
   });
 
   it('lets per-job values override profile values without changing the page frame', () => {
@@ -158,7 +188,7 @@ describe('applyHtmlRenderTransform', () => {
 
     expect(output).toContain('transform:rotate(270deg) scaleX(1) scaleY(-1)');
     expect(output).not.toContain('rotate(15deg)');
-    expect(output).toContain('width:100mm;height:50mm;overflow:hidden');
+    expect(output).toContain('width:50mm;height:100mm;overflow:hidden');
   });
 
   it('does not wrap output that the shared renderer already transformed', () => {
@@ -169,5 +199,16 @@ describe('applyHtmlRenderTransform', () => {
     );
 
     expect(output).toBe('<div data-printops-transform-frame="true">already transformed</div>');
+  });
+
+  it('uses direct HTML metadata dimensions as the source before a job rotation', () => {
+    const output = applyHtmlRenderTransform(
+      '<span>direct html</span>',
+      { widthMm: 100, heightMm: 50, marginTopMm: 0, marginRightMm: 0, marginBottomMm: 0, marginLeftMm: 0, orientation: 'landscape' },
+      command({ rotate: 90, metadata: { widthMm: 100, heightMm: 50 } }),
+    );
+
+    expect(output).toContain('width:50mm;height:100mm;overflow:hidden');
+    expect(output).toContain('left:-25mm;top:25mm;width:100mm;height:50mm');
   });
 });

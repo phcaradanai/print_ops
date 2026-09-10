@@ -6,6 +6,8 @@ import { FieldCard } from './FieldCard.js';
 import type { Translate } from './types.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
 import { Button, Drawer, FormField, Input, Select, Stack } from '../../../components/ui/index.js';
+import { DraftNumberInput } from './DraftNumberInput.js';
+import { clampFontSize } from '../model/geometry.js';
 
 export function EditorDrawer({ editor, popups, t }: {
   editor: PaperProfileEditor;
@@ -41,11 +43,11 @@ export function EditorDrawer({ editor, popups, t }: {
               </FormField>
               <FormField label={t('page.paperProfiles.fontSize')}>
                 {(control) => (
-                  <Input
+                  <DraftNumberInput
                     {...control}
-                    type="number"
                     value={editor.ux.fontSize}
-                    onChange={(event) => editor.patchUx('fontSize', Number(event.target.value))}
+                    normalize={clampFontSize}
+                    onValueChange={(value) => editor.patchUx('fontSize', value)}
                   />
                 )}
               </FormField>

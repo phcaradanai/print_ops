@@ -10,6 +10,7 @@ import type { Translate } from './types.js';
 import { TransferIcon } from '../../../components/TransferIcon.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
 import { Alert, Button, Drawer, FormField, Grid, Inline, Input, Select, Stack } from '../../../components/ui/index.js';
+import { DraftNumberInput } from './DraftNumberInput.js';
 
 export function ImportDesignDrawer({ controller, popups, t }: {
   controller: ImportDesignController;
@@ -135,14 +136,10 @@ function ImportNumber({ label, value, onChange }: { label: string; value: number
   return (
     <FormField label={label}>
       {(control) => (
-        <Input
+        <DraftNumberInput
           {...control}
-          type="number"
           value={value}
-          onChange={(event) => {
-            const next = Number(event.target.value);
-            if (!Number.isNaN(next)) onChange(next);
-          }}
+          onValueChange={onChange}
         />
       )}
     </FormField>

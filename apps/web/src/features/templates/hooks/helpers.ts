@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { qrQuietZoneMm, renderBarcodeSvg, type BarcodeKind, type BarcodeSymbology } from '../../../lib/barcode.js';
 import type { PaperProfileOption, SampleMode } from '../model/types.js';
-import { getOrientedPaperGeometry, resolveRenderTransform, wrapHtmlWithRenderTransform } from '@printerops/shared';
+import { getOrientedPaperGeometry, resolveRenderTransform, resolveRenderTransformFrame, wrapHtmlWithRenderTransform } from '@printerops/shared';
 
 export const ENGINES = ['RAW_TEXT', 'DPL', 'ZPL', 'HTML', 'JSON_LAYOUT', 'TSPL', 'EPL', 'PDF_LIKE_PREVIEW'] as const;
 
@@ -146,11 +146,13 @@ export function localPreview(
       marginLeftMm: profile.marginLeftMm ?? 0,
       orientation: profile.orientation ?? (profile.widthMm > profile.heightMm ? 'landscape' : 'portrait'),
     });
+    const transform = resolveRenderTransform(profile);
+    const transformFrame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, transform);
     const previewBody = isHtml
-      ? wrapHtmlWithRenderTransform(body, geometry.widthMm, geometry.heightMm, resolveRenderTransform(profile))
+      ? wrapHtmlWithRenderTransform(body, geometry.widthMm, geometry.heightMm, transform)
       : body;
     const frameStyle = isHtml
-      ? `width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;background:#fff;overflow:hidden;box-sizing:border-box`
+      ? `width:${transformFrame.width}mm;height:${transformFrame.height}mm;background:#fff;overflow:hidden;box-sizing:border-box`
       : `width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;border:1px solid #111;background:#fff;padding:4mm;overflow:hidden;box-sizing:border-box`;
     return `<div style="${frameStyle}">${previewBody}</div>`;
   }

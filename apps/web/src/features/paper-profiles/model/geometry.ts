@@ -1,3 +1,10 @@
+import {
+  getOrientedPaperGeometry,
+  mapPrintablePointToVisual as mapPrintablePointToVisualShared,
+  mapVisualPointToPrintable as mapVisualPointToPrintableShared,
+  resolveRenderTransform,
+  resolveRenderTransformFrame,
+} from '@printerops/shared';
 import type { PaperForm, VisualPaperGeometry } from './types.js';
 
 export function getVisualPaperGeometry(
@@ -12,29 +19,18 @@ export function getVisualPaperGeometry(
     | 'orientation'
   >,
 ): VisualPaperGeometry {
-  const natural = form.widthMm > form.heightMm ? 'landscape' : 'portrait';
-  const rotated = natural !== form.orientation;
-  const marginTopMm = rotated ? form.marginLeftMm : form.marginTopMm;
-  const marginRightMm = rotated ? form.marginTopMm : form.marginRightMm;
-  const marginBottomMm = rotated ? form.marginRightMm : form.marginBottomMm;
-  const marginLeftMm = rotated ? form.marginBottomMm : form.marginLeftMm;
-  const widthMm = rotated ? form.heightMm : form.widthMm;
-  const heightMm = rotated ? form.widthMm : form.heightMm;
-  const sourcePrintableWidthMm = Math.max(0, form.widthMm - form.marginLeftMm - form.marginRightMm);
-  const sourcePrintableHeightMm = Math.max(0, form.heightMm - form.marginTopMm - form.marginBottomMm);
-  return {
-    rotated,
-    widthMm,
-    heightMm,
-    marginTopMm,
-    marginRightMm,
-    marginBottomMm,
-    marginLeftMm,
-    sourcePrintableWidthMm,
-    sourcePrintableHeightMm,
-    printableWidthMm: Math.max(0, widthMm - marginLeftMm - marginRightMm),
-    printableHeightMm: Math.max(0, heightMm - marginTopMm - marginBottomMm),
-  };
+  return getOrientedPaperGeometry(form);
+}
+
+export function getVisualPaperTransformFrame(
+  form: Pick<PaperForm, 'widthMm' | 'heightMm' | 'marginTopMm' | 'marginRightMm' | 'marginBottomMm' | 'marginLeftMm' | 'orientation' | 'rotation' | 'flipHorizontal' | 'flipVertical'>,
+) {
+  const geometry = getVisualPaperGeometry(form);
+  return resolveRenderTransformFrame(
+    geometry.widthMm,
+    geometry.heightMm,
+    resolveRenderTransform(form),
+  );
 }
 
 export function mapPrintablePointToVisual(
@@ -42,8 +38,7 @@ export function mapPrintablePointToVisual(
   yMm: number,
   geometry: Pick<VisualPaperGeometry, 'rotated' | 'sourcePrintableHeightMm'>,
 ) {
-  if (!geometry.rotated) return { xMm, yMm };
-  return { xMm: geometry.sourcePrintableHeightMm - yMm, yMm: xMm };
+  return mapPrintablePointToVisualShared(xMm, yMm, geometry);
 }
 
 export function mapVisualPointToPrintable(
@@ -51,8 +46,7 @@ export function mapVisualPointToPrintable(
   yMm: number,
   geometry: Pick<VisualPaperGeometry, 'rotated' | 'sourcePrintableHeightMm'>,
 ) {
-  if (!geometry.rotated) return { xMm, yMm };
-  return { xMm: yMm, yMm: geometry.sourcePrintableHeightMm - xMm };
+  return mapVisualPointToPrintableShared(xMm, yMm, geometry);
 }
 
 export function nudgePrintablePoint(

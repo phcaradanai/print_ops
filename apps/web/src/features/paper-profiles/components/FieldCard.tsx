@@ -3,6 +3,7 @@ import type { DynamicField } from '../model/types.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import { Checkbox, IconButton, Input, Select } from '../../../components/ui/index.js';
 import { FieldBarcodePreview, FieldTypeControls } from './PaperCanvas.js';
+import { DraftNumberInput } from './DraftNumberInput.js';
 import type { Translate } from './types.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
 
@@ -79,8 +80,9 @@ export function FieldCard({ field, editor, t }: {
         <FieldNumber id={`pp-y-${field.id}`} label={t('page.paperProfiles.fieldYmm')} value={field.yMm}
           onChange={(yMm) => update({ yMm })} />
         <FieldNumber id={`pp-size-${field.id}`} label={t('page.paperProfiles.fieldFontSizePt')} value={field.fontSize}
-          disabled={isMachineReadable}
-          onChange={(fontSize) => update({ fontSize: clampFontSize(fontSize) })} />
+           disabled={isMachineReadable}
+           normalize={clampFontSize}
+           onChange={(fontSize) => update({ fontSize })} />
         <div className="pp-field-row__cell">
           <label htmlFor={`pp-align-${field.id}`}>{t('page.paperProfiles.align')}</label>
           <Select
@@ -116,28 +118,26 @@ export function FieldCard({ field, editor, t }: {
   );
 }
 
-function FieldNumber({ id, label, value, disabled, onChange }: {
+function FieldNumber({ id, label, value, disabled, normalize, onChange }: {
   id: string;
   label: string;
   value: number;
   disabled?: boolean;
+  normalize?: (value: number) => number;
   onChange: (value: number) => void;
 }) {
   return (
     <div className="pp-field-row__cell">
       <label htmlFor={id}>{label}</label>
-      <Input
+      <DraftNumberInput
         id={id}
         controlSize="sm"
         aria-label={label}
-        type="number"
         step="0.1"
         disabled={disabled}
         value={value}
-        onChange={(event) => {
-          const next = Number.parseFloat(event.target.value);
-          if (!Number.isNaN(next)) onChange(next);
-        }}
+        normalize={normalize}
+        onValueChange={onChange}
       />
     </div>
   );

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { useCanvasInteraction } from '../hooks/useCanvasInteraction.js';
-import { actualSizePercent, clampGridSpacing, CSS_PX_PER_MM, getVisualPaperGeometry, stepPreviewZoom } from '../model/geometry.js';
+import { actualSizePercent, clampGridSpacing, CSS_PX_PER_MM, getVisualPaperTransformFrame, stepPreviewZoom } from '../model/geometry.js';
+import { displayValue } from '../model/units.js';
 import { getFieldInspectorState } from '../state/selectors.js';
 import { type CanvasOptions } from './CanvasToolbar.js';
 import { FieldBarcodePreview, FieldTypeControls, PaperCanvas, RulerSheet } from './PaperCanvas.js';
@@ -10,6 +11,7 @@ import { Button, IconButton as SharedIconButton, Input } from '../../../componen
 import { IconButton } from './editorPrimitives.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
 import type { Translate } from './types.js';
+import { DraftNumberInput } from './DraftNumberInput.js';
 
 export function FullPreviewDialog({ editor, popups, interaction, options, setOptions, artwork, onNotice, t }: {
   editor: PaperProfileEditor;
@@ -25,7 +27,7 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const stageRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
-  const geometry = getVisualPaperGeometry(editor.form);
+  const transformFrame = getVisualPaperTransformFrame(editor.form);
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
@@ -40,9 +42,9 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
   // for close inspection.
   const fitScale = useMemo(() => Math.max(0.5, Math.min(
     CSS_PX_PER_MM,
-    Math.max(1, stageSize.width - 48) / geometry.widthMm,
-    Math.max(1, stageSize.height - 48) / geometry.heightMm,
-  )), [geometry.heightMm, geometry.widthMm, stageSize]);
+    Math.max(1, stageSize.width - 48) / transformFrame.width,
+    Math.max(1, stageSize.height - 48) / transformFrame.height,
+  )), [stageSize, transformFrame.height, transformFrame.width]);
   const scale = Math.max(0.25, Math.min(20, fitScale * zoom));
   const inspector = getFieldInspectorState(editor.ux.dynamicFields.length, Boolean(editor.selectedField));
   return (
@@ -70,9 +72,10 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
               onClick={() => setOptions({ alignmentGuides: !options.alignmentGuides })} active={options.alignmentGuides} />
             <label className="paper-preview-modal__spacing-label" title={t('page.paperProfiles.gridSpacing')}>
               <PaperProfileIcon name="grid" />
-              <Input type="number" controlSize="sm" className="paper-preview-modal__spacing-input"
+              <DraftNumberInput controlSize="sm" className="paper-preview-modal__spacing-input"
                 value={options.gridSpacingMm} min={1} max={100}
-                onChange={(event) => setOptions({ gridSpacingMm: clampGridSpacing(Number(event.target.value)) })}
+                normalize={clampGridSpacing}
+                onValueChange={(value) => setOptions({ gridSpacingMm: value })}
                 aria-label={t('page.paperProfiles.gridSpacing')} /><span>mm</span>
             </label>
           </div>
@@ -84,7 +87,7 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
           <section className="paper-preview-modal__canvas" aria-label={t('page.paperProfiles.previewCanvas')}>
             <div className="paper-preview-modal__canvas-label">
               <span>{t('page.paperProfiles.previewCanvas')}</span>
-              <span>{editor.form.widthMm} × {editor.form.heightMm} mm · {editor.form.dpi} DPI</span>
+              <span>{displayValue(transformFrame.width, editor.ux.displayUnit, editor.form.dpi)} × {displayValue(transformFrame.height, editor.ux.displayUnit, editor.form.dpi)} {editor.ux.displayUnit} · {editor.form.dpi} DPI</span>
             </div>
             <div ref={stageRef} className="paper-preview-modal__sheet-stage"
               onWheel={(event) => {

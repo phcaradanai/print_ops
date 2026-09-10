@@ -1,6 +1,6 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { qrQuietZoneMm, renderBarcodeSvg } from '../../../lib/barcode.js';
-import { inverseTransformVector, renderTransformCss, resolveRenderTransform } from '@printerops/shared';
+import { inverseTransformVector, renderTransformCss, resolveRenderTransform, resolveRenderTransformFrame } from '@printerops/shared';
 import { useLocale } from '../../../i18n/index.js';
 import { anchorTransform, anchorTransformOrigin } from '../model/fieldGeometry.js';
 import { fontPointSizeToPreviewPixels, getVisualPaperGeometry, mapPrintablePointToVisual } from '../model/geometry.js';
@@ -14,6 +14,7 @@ import type {
   PaperProfileUx as UxOptions,
 } from '../model/types.js';
 import { IconButton } from './editorPrimitives.js';
+import { DraftNumberInput } from './DraftNumberInput.js';
 
 export function RulerSheet({
   form,
@@ -31,8 +32,9 @@ export function RulerSheet({
   if (!showRulers) return <>{children}</>;
 
   const geometry = getVisualPaperGeometry(form);
-  const pvW = geometry.widthMm * scale;
-  const pvH = geometry.heightMm * scale;
+  const frame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, resolveRenderTransform(form));
+  const pvW = frame.width * scale;
+  const pvH = frame.height * scale;
   const rulerThickness = 24;
   const fontSize = Math.min(10, Math.max(7, scale * 2));
 
@@ -137,7 +139,7 @@ export function RulerSheet({
           background: '#f9fafb',
         }}>
           <div style={{ width: pvW, height: rulerThickness, position: 'relative' as const }}>
-            {renderTicks(geometry.widthMm, false)}
+            {renderTicks(frame.width, false)}
           </div>
         </div>
       </div>
@@ -153,7 +155,7 @@ export function RulerSheet({
           flexShrink: 0,
         }}>
           <div style={{ width: rulerThickness, height: pvH, position: 'relative' as const }}>
-            {renderTicks(geometry.heightMm, true)}
+            {renderTicks(frame.height, true)}
           </div>
         </div>
         {children}
@@ -218,49 +220,40 @@ export function FieldTypeControls({
             <option value="ean13">{t('page.paperProfiles.symbologyEan13')}</option>
             <option value="datamatrix">{t('page.paperProfiles.symbologyDatamatrix')}</option>
           </select>
-          <input
+          <DraftNumberInput
             aria-label={t('page.paperProfiles.barcodeHeightMm')}
             title={t('page.paperProfiles.barcodeHeightMm')}
-            type="number"
             min={4}
             max={60}
             step={0.5}
             value={field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              if (!isNaN(v)) onUpdate({ barcodeHeightMm: Math.max(4, Math.min(60, v)) });
-            }}
+            normalize={(value) => Math.max(4, Math.min(60, value))}
+            onValueChange={(value) => onUpdate({ barcodeHeightMm: value })}
             className={numberClassName}
           />
-          <input
+          <DraftNumberInput
             aria-label={t('page.paperProfiles.barcodeWidthMm')}
             title={t('page.paperProfiles.barcodeWidthMm')}
-            type="number"
             min={4}
             max={100}
             step={0.5}
             value={field.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              if (!isNaN(v)) onUpdate({ barcodeWidthMm: Math.max(4, Math.min(100, v)) });
-            }}
+            normalize={(value) => Math.max(4, Math.min(100, value))}
+            onValueChange={(value) => onUpdate({ barcodeWidthMm: value })}
             className={numberClassName}
           />
         </>
       )}
       {field.type === 'qrcode' && (
-        <input
+        <DraftNumberInput
           aria-label={t('page.paperProfiles.qrSizeMm')}
           title={t('page.paperProfiles.qrSizeMm')}
-          type="number"
           min={4}
           max={100}
           step={0.5}
           value={field.qrSizeMm ?? DEFAULT_QR_SIZE_MM}
-          onChange={(e) => {
-            const v = parseFloat(e.target.value);
-            if (!isNaN(v)) onUpdate({ qrSizeMm: Math.max(4, Math.min(100, v)) });
-          }}
+          normalize={(value) => Math.max(4, Math.min(100, value))}
+          onValueChange={(value) => onUpdate({ qrSizeMm: value })}
           className={numberClassName}
         />
       )}
@@ -383,8 +376,13 @@ export function PaperCanvas({
   const { t } = useLocale();
   const renderTransform = resolveRenderTransform(form);
   const geometry = getVisualPaperGeometry(form);
-  const pvW = geometry.widthMm * scale;
-  const pvH = geometry.heightMm * scale;
+  const transformFrame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, renderTransform);
+  const pvW = transformFrame.width * scale;
+  const pvH = transformFrame.height * scale;
+  const sourcePvW = geometry.widthMm * scale;
+  const sourcePvH = geometry.heightMm * scale;
+  const transformOffsetX = transformFrame.offsetX * scale;
+  const transformOffsetY = transformFrame.offsetY * scale;
   const pvMT = geometry.marginTopMm * scale;
   const pvMR = geometry.marginRightMm * scale;
   const pvMB = geometry.marginBottomMm * scale;
@@ -432,10 +430,10 @@ export function PaperCanvas({
         data-printops-transform-layer="true"
         style={{
           position: 'absolute',
-          left: 0,
-          top: 0,
-          width: pvW,
-          height: pvH,
+          left: transformOffsetX,
+          top: transformOffsetY,
+          width: sourcePvW,
+          height: sourcePvH,
           overflow: 'visible',
           transformOrigin: '50% 50%',
           transform: renderTransformCss(renderTransform),

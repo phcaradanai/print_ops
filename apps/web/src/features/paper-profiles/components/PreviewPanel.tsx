@@ -2,7 +2,7 @@ import type { RefObject } from 'react';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { useCanvasInteraction } from '../hooks/useCanvasInteraction.js';
-import { actualSizePercent, CSS_PX_PER_MM, getVisualPaperGeometry } from '../model/geometry.js';
+import { actualSizePercent, CSS_PX_PER_MM, getVisualPaperGeometry, getVisualPaperTransformFrame } from '../model/geometry.js';
 import { displayValue, toPixels } from '../model/units.js';
 import { CanvasToolbar, type CanvasOptions } from './CanvasToolbar.js';
 import { PaperCanvas, RulerSheet } from './PaperCanvas.js';
@@ -21,10 +21,11 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
 }) {
   const { form, ux } = editor;
   const geometry = getVisualPaperGeometry(form);
+  const transformFrame = getVisualPaperTransformFrame(form);
   // Fit within the panel's ~560px box, but never scale past true physical
   // size — see CSS_PX_PER_MM for why an uncapped auto-fit isn't safe to use
   // as a print-size reference.
-  const scale = Math.min(560 / geometry.widthMm, 560 / geometry.heightMm, CSS_PX_PER_MM);
+  const scale = Math.min(560 / transformFrame.width, 560 / transformFrame.height, CSS_PX_PER_MM);
   // Not a PageLayout `detail` region: this canvas is the surface the operator
   // edits against (drag, nudge, select a field), so it is half of the primary
   // task rather than supporting evidence. Kept as a plain div — a page's only
@@ -37,7 +38,7 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
           <div><span className="pp-preview-header__title">{t('page.paperProfiles.labelCanvas')}</span>
             <span className="pp-preview-header__subtitle">{t('page.paperProfiles.canvasDragHint')}</span></div>
           <span className="pp-preview-header__size">
-            {displayValue(geometry.widthMm, ux.displayUnit, form.dpi)} × {displayValue(geometry.heightMm, ux.displayUnit, form.dpi)} {ux.displayUnit}
+            {displayValue(transformFrame.width, ux.displayUnit, form.dpi)} × {displayValue(transformFrame.height, ux.displayUnit, form.dpi)} {ux.displayUnit}
           </span>
         </div>
         <CanvasToolbar options={options} setOptions={setOptions} onExpand={popups.openFullPreview} t={t} />

@@ -4,7 +4,9 @@ import {
   inverseTransformPoint,
   inverseTransformVector,
   isValidRotation,
+  qrQuietZoneUpperBoundMm,
   resolveRenderTransform,
+  resolveRenderTransformFrame,
   transformedBounds,
   transformPoint,
   wrapHtmlWithRenderTransform,
@@ -68,11 +70,12 @@ describe('rendering transform geometry', () => {
     )).toEqual({ rotation: 271, flipHorizontal: false, flipVertical: true });
   });
 
-  it('keeps the physical frame dimensions while clipping transformed content', () => {
+  it('normalizes transformed bounds without clipping or changing scale', () => {
     const wrapped = wrapHtmlWithRenderTransform('<span>all output</span>', 100, 50, noFlip(90));
 
     expect(wrapped).toContain('data-printops-transform-frame="true"');
-    expect(wrapped).toContain('width:100mm;height:50mm;overflow:hidden');
+    expect(wrapped).toContain('width:50mm;height:100mm;overflow:hidden');
+    expect(wrapped).toContain('left:-25mm;top:25mm;width:100mm;height:50mm');
     expect(wrapped).toContain('transform:rotate(90deg) scaleX(1) scaleY(1)');
     expect(transformedBounds(100, 50, noFlip(90))).toMatchObject({
       minX: 25,
@@ -80,6 +83,37 @@ describe('rendering transform geometry', () => {
       width: 50,
       height: 100,
     });
+  });
+
+  it.each([0, 90, 180, 270])('produces a positive frame for the %d° quarter turn', (rotation) => {
+    const frame = resolveRenderTransformFrame(100, 50, noFlip(rotation));
+    expect(frame.offsetX + frame.minX).toBeCloseTo(0, 10);
+    expect(frame.offsetY + frame.minY).toBeCloseTo(0, 10);
+    expect(frame.width).toBeGreaterThan(0);
+    expect(frame.height).toBeGreaterThan(0);
+    expect(frame.width).toBeCloseTo(rotation % 180 === 0 ? 100 : 50, 10);
+    expect(frame.height).toBeCloseTo(rotation % 180 === 0 ? 50 : 100, 10);
+  });
+
+  it('contains every corner for arbitrary rotation and flip combinations', () => {
+    for (const flipHorizontal of [false, true]) {
+      for (const flipVertical of [false, true]) {
+        const transform = { rotation: 37, flipHorizontal, flipVertical };
+        const frame = resolveRenderTransformFrame(100, 50, transform);
+        for (const point of [[0, 0], [100, 0], [100, 50], [0, 50]]) {
+          const transformed = transformPoint(point[0]!, point[1]!, 100, 50, transform);
+          expect(transformed.x + frame.offsetX).toBeGreaterThanOrEqual(-1e-9);
+          expect(transformed.x + frame.offsetX).toBeLessThanOrEqual(frame.width + 1e-9);
+          expect(transformed.y + frame.offsetY).toBeGreaterThanOrEqual(-1e-9);
+          expect(transformed.y + frame.offsetY).toBeLessThanOrEqual(frame.height + 1e-9);
+        }
+      }
+    }
+  });
+
+  it('reserves the maximum four-module QR quiet zone for bounds validation', () => {
+    expect(qrQuietZoneUpperBoundMm(20)).toBeCloseTo(80 / 21, 10);
+    expect(qrQuietZoneUpperBoundMm(0)).toBe(0);
   });
 
   it('accepts the inclusive lower and exclusive upper rotation range', () => {

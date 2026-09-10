@@ -58,6 +58,29 @@ export interface RenderTransformProfile {
   flipVertical?: boolean;
 }
 
+export interface RenderTransformBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The normalized output frame for a transformed rectangle.
+ *
+ * The source rectangle is always transformed around its own center. The
+ * offsets translate the resulting bounds back to a positive, top-left origin
+ * without changing scale or silently cropping the corners.
+ */
+export interface RenderTransformFrame extends RenderTransformBounds {
+  sourceWidth: number;
+  sourceHeight: number;
+  offsetX: number;
+  offsetY: number;
+}
+
 export const IDENTITY_RENDER_TRANSFORM: RenderTransform = Object.freeze({
   rotation: 0,
   flipHorizontal: false,
@@ -170,6 +193,87 @@ export function transformedBounds(width: number, height: number, transform: Rend
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
 }
 
+export function resolveRenderTransformFrame(
+  width: number,
+  height: number,
+  transform: RenderTransform,
+): RenderTransformFrame {
+  const bounds = transformedBounds(width, height, transform);
+  const minX = stabilizeTransformNumber(bounds.minX);
+  const minY = stabilizeTransformNumber(bounds.minY);
+  const maxX = stabilizeTransformNumber(bounds.maxX);
+  const maxY = stabilizeTransformNumber(bounds.maxY);
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: stabilizeTransformNumber(maxX - minX),
+    height: stabilizeTransformNumber(maxY - minY),
+    sourceWidth: width,
+    sourceHeight: height,
+    offsetX: -minX,
+    offsetY: -minY,
+  };
+}
+
+function stabilizeTransformNumber(value: number): number {
+  if (Math.abs(value) < 1e-10) return 0;
+  const nearestInteger = Math.round(value);
+  return Math.abs(value - nearestInteger) < 1e-10 ? nearestInteger : value;
+}
+
+export function mapPrintablePointToVisual(
+  xMm: number,
+  yMm: number,
+  geometry: Pick<ReturnType<typeof getOrientedPaperGeometry>, 'rotated' | 'sourcePrintableHeightMm'>,
+) {
+  if (!geometry.rotated) return { xMm, yMm };
+  return { xMm: geometry.sourcePrintableHeightMm - yMm, yMm: xMm };
+}
+
+export function mapVisualPointToPrintable(
+  xMm: number,
+  yMm: number,
+  geometry: Pick<ReturnType<typeof getOrientedPaperGeometry>, 'rotated' | 'sourcePrintableHeightMm'>,
+) {
+  if (!geometry.rotated) return { xMm, yMm };
+  return { xMm: yMm, yMm: geometry.sourcePrintableHeightMm - xMm };
+}
+
+export function transformedRectBounds(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  sourceWidth: number,
+  sourceHeight: number,
+  transform: RenderTransform,
+): RenderTransformBounds {
+  const points = [
+    transformPoint(x, y, sourceWidth, sourceHeight, transform),
+    transformPoint(x + width, y, sourceWidth, sourceHeight, transform),
+    transformPoint(x + width, y + height, sourceWidth, sourceHeight, transform),
+    transformPoint(x, y + height, sourceWidth, sourceHeight, transform),
+  ];
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxY = Math.max(...points.map((point) => point.y));
+  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+}
+
+/**
+ * Conservative per-side QR quiet-zone allowance. The smallest QR symbol is
+ * version 1 (21 modules), so four quiet-zone modules can never exceed this
+ * ratio of the configured dark-symbol side. Callers use it for validation;
+ * renderers can still use the exact module count for the final output.
+ */
+export function qrQuietZoneUpperBoundMm(symbolSizeMm: number): number {
+  if (!Number.isFinite(symbolSizeMm) || symbolSizeMm <= 0) return 0;
+  return (symbolSizeMm * 4) / 21;
+}
+
 export function wrapHtmlWithRenderTransform(
   html: string,
   widthMm: number,
@@ -177,10 +281,15 @@ export function wrapHtmlWithRenderTransform(
   transform: RenderTransform,
 ): string {
   if (renderTransformCss(transform) === 'none') return html;
+  const frame = resolveRenderTransformFrame(widthMm, heightMm, transform);
   const width = formatCssNumber(widthMm);
   const height = formatCssNumber(heightMm);
-  const frameStyle = `position:relative;width:${width}mm;height:${height}mm;overflow:hidden;box-sizing:border-box;`;
-  const layerStyle = `position:absolute;left:0;top:0;width:${width}mm;height:${height}mm;overflow:visible;box-sizing:border-box;transform-origin:50% 50%;transform:${renderTransformCss(transform)};`;
+  const frameWidth = formatCssNumber(frame.width);
+  const frameHeight = formatCssNumber(frame.height);
+  const offsetX = formatCssNumber(frame.offsetX);
+  const offsetY = formatCssNumber(frame.offsetY);
+  const frameStyle = `position:relative;width:${frameWidth}mm;height:${frameHeight}mm;overflow:hidden;box-sizing:border-box;`;
+  const layerStyle = `position:absolute;left:${offsetX}mm;top:${offsetY}mm;width:${width}mm;height:${height}mm;overflow:visible;box-sizing:border-box;transform-origin:50% 50%;transform:${renderTransformCss(transform)};`;
   return `<div data-printops-transform-frame="true" style="${frameStyle}"><div data-printops-transform-layer="true" style="${layerStyle}">${html}</div></div>`;
 }
 

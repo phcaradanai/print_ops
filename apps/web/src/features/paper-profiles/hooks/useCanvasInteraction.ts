@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { getVisualPaperGeometry, mapPrintablePointToVisual, mapVisualPointToPrintable } from '../model/geometry.js';
-import { inverseTransformPoint, resolveRenderTransform, transformPoint } from '@printerops/shared';
+import { inverseTransformPoint, resolveRenderTransform, resolveRenderTransformFrame, transformPoint } from '@printerops/shared';
 import type { PaperProfileEditor } from './usePaperProfileEditor.js';
 
 const SNAP_THRESHOLD_MM = 2;
@@ -46,11 +46,12 @@ export function useCanvasInteraction(editor: PaperProfileEditor) {
       const rect = sheet.getBoundingClientRect();
       const geometry = getVisualPaperGeometry(form);
       const transform = resolveRenderTransform(form);
+      const transformFrame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, transform);
       const pointerPageX = (event.clientX - rect.left) / activeScaleRef.current - dragOffsetRef.current.xMm;
       const pointerPageY = (event.clientY - rect.top) / activeScaleRef.current - dragOffsetRef.current.yMm;
       const contentPoint = inverseTransformPoint(
-        pointerPageX,
-        pointerPageY,
+        pointerPageX - transformFrame.offsetX,
+        pointerPageY - transformFrame.offsetY,
         geometry.widthMm,
         geometry.heightMm,
         transform,
@@ -101,6 +102,7 @@ export function useCanvasInteraction(editor: PaperProfileEditor) {
       const geometry = getVisualPaperGeometry(form);
       const rect = sheet.getBoundingClientRect();
       const transform = resolveRenderTransform(form);
+      const transformFrame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, transform);
       const point = mapPrintablePointToVisual(field.xMm, field.yMm, geometry);
       const transformedPoint = transformPoint(
         geometry.marginLeftMm + point.xMm,
@@ -110,8 +112,8 @@ export function useCanvasInteraction(editor: PaperProfileEditor) {
         transform,
       );
       dragOffsetRef.current = {
-        xMm: (event.clientX - rect.left) / scale - transformedPoint.x,
-        yMm: (event.clientY - rect.top) / scale - transformedPoint.y,
+        xMm: (event.clientX - rect.left) / scale - (transformedPoint.x + transformFrame.offsetX),
+        yMm: (event.clientY - rect.top) / scale - (transformedPoint.y + transformFrame.offsetY),
       };
     }
     activeSheetRef.current = sheet;

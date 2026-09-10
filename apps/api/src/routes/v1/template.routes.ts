@@ -8,6 +8,7 @@ import type {
   TemplateRendererPort,
   PrinterRepositoryPort,
 } from '@printerops/domain';
+import { getOrientedPaperGeometry, mapPrintablePointToVisual } from '@printerops/shared';
 import { actor, requirePermission } from './permission-guard.js';
 import {
   coerceImportNumber,
@@ -38,28 +39,30 @@ function escapeHtmlAttr(raw: string): string {
  * (and WindowsSpoolerAdapter's printHtml) already renders literally.
  */
 function buildFieldsTemplateHtml(profile: PaperProfile): string {
-  const naturalOrientation = profile.widthMm > profile.heightMm ? 'landscape' : 'portrait';
-  const rotated = naturalOrientation !== profile.orientation;
   const cellWidthMm = profile.layout && profile.layout.columns > 1
     ? profile.layout.cellWidthMm
     : profile.widthMm;
   const cellHeightMm = profile.layout && profile.layout.columns > 1
     ? profile.layout.cellHeightMm
     : profile.heightMm;
-  const widthMm = rotated ? cellHeightMm : cellWidthMm;
-  const heightMm = rotated ? cellWidthMm : cellHeightMm;
-  const sourcePrintableHeightMm = Math.max(
-    0,
-    cellHeightMm - profile.marginTopMm - profile.marginBottomMm,
-  );
+  const geometry = getOrientedPaperGeometry({
+    widthMm: cellWidthMm,
+    heightMm: cellHeightMm,
+    marginTopMm: profile.marginTopMm,
+    marginRightMm: profile.marginRightMm,
+    marginBottomMm: profile.marginBottomMm,
+    marginLeftMm: profile.marginLeftMm,
+    orientation: profile.orientation,
+  });
   const spans = (profile.fields ?? [])
     .map((f) => {
       const placeholderKey = f.key.trim() || f.id;
-      // Match mapPrintablePointToVisual() in the profile editor. Rotate only
-      // the stored coordinate system; keeping the span itself unrotated means
-      // text and barcodes stay upright exactly as they do in the preview.
-      const xMm = rotated ? sourcePrintableHeightMm - f.yMm : f.xMm;
-      const yMm = rotated ? f.xMm : f.yMm;
+      // Keep the stored printable-relative coordinate system in lockstep with
+      // the editor. The shared renderer applies the same page transform to the
+      // complete HTML output, including this field content.
+      const point = mapPrintablePointToVisual(f.xMm, f.yMm, geometry);
+      const xMm = geometry.marginLeftMm + point.xMm;
+      const yMm = geometry.marginTopMm + point.yMm;
       const isMachineReadable = f.type === 'barcode' || f.type === 'qrcode';
       const barcodeBoxStyle = f.type === 'barcode'
         ? `display:inline-block;width:${f.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM}mm;height:${f.barcodeHeightMm ?? 12}mm;overflow:hidden;`
@@ -74,7 +77,7 @@ function buildFieldsTemplateHtml(profile: PaperProfile): string {
       return `  <span style="${style}">{{${placeholderKey}}}</span>`;
     })
     .join('\n');
-  return `<div style="position:relative;width:${widthMm}mm;height:${heightMm}mm;">\n${spans}\n</div>`;
+  return `<div style="position:relative;width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;">\n${spans}\n</div>`;
 }
 
 export async function templateRoutes(
