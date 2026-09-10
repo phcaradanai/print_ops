@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -12,6 +12,7 @@ import {
   type OtaConfig,
 } from '../services/ota-update.service.js';
 import { PrintAdmissionGate } from '../services/print-admission-gate.js';
+import { FileOtaArtifactStateStore } from '../services/ota-artifact-state.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -45,6 +46,7 @@ function manifest(version: string, artifactBytes: Uint8Array = bytes('artifact')
           url: 'desktop.artifact',
           sha256: digest(artifactBytes),
           signature: '',
+          format: 'nsis-installer',
           size: artifactBytes.byteLength,
         },
       },
@@ -70,6 +72,8 @@ async function makeConfig(overrides: Partial<OtaConfig> = {}): Promise<OtaConfig
     manifestTimeoutMs: 1_000,
     downloadTimeoutMs: 1_000,
     maxArtifactBytes: 1_000_000,
+    requireSignature: false,
+    apiUrl: 'http://127.0.0.1:31415',
     ...overrides,
   };
 }
@@ -291,10 +295,183 @@ describe('OtaUpdateService', () => {
     await expect(service.getStatus()).resolves.toMatchObject({ state: { state: 'INSTALL_FAILED' } });
   });
 
+  it('recovers the verified staged artifact after an API restart without refetching the manifest', async () => {
+    const artifact = bytes('persisted ota artifact');
+    const config = await makeConfig();
+    const stateStore = new FileOtaArtifactStateStore(join(config.cacheDir, 'staged-artifact.json'));
+    const state = new InMemoryOtaUpdateStateRepository();
+    const fetchImpl = async (url: string) => url.endsWith('manifest.json')
+      ? jsonResponse(manifest('0.1.29', artifact))
+      : new Response(artifact, { status: 200, headers: { 'content-length': String(artifact.byteLength) } });
+    const first = new OtaUpdateService({ state, config, artifactState: stateStore, fetchImpl });
+    await first.downloadUpdate({ version: '0.1.29' });
+
+    const installer: OtaInstallerPort = {
+      install: vi.fn(async (input) => {
+        expect(input.artifactPath).toContain('desktop-windows-x64.artifact');
+      }),
+      healthCheck: vi.fn(async () => true),
+      rollback: vi.fn(async () => undefined),
+    };
+    const second = new OtaUpdateService({
+      state,
+      config,
+      artifactState: stateStore,
+      installer,
+      fetchImpl: async () => { throw new Error('manifest source should not be used for persisted install'); },
+    });
+
+    await expect(second.installUpdate({ version: '0.1.29' })).resolves.toMatchObject({ installed: true });
+    expect(installer.install).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a corrupted staged artifact before opening print maintenance', async () => {
+    const artifact = bytes('staged artifact that will be corrupted');
+    const config = await makeConfig();
+    const admission = new PrintAdmissionGate();
+    const installer: OtaInstallerPort = {
+      install: vi.fn(async () => undefined),
+      healthCheck: vi.fn(async () => true),
+      rollback: vi.fn(async () => undefined),
+    };
+    const service = new OtaUpdateService({
+      state: new InMemoryOtaUpdateStateRepository(),
+      config,
+      admission,
+      installer,
+      fetchImpl: async (url) => url.endsWith('manifest.json')
+        ? jsonResponse(manifest('0.1.29', artifact))
+        : new Response(artifact, { status: 200, headers: { 'content-length': String(artifact.byteLength) } }),
+    });
+
+    await service.downloadUpdate({ version: '0.1.29' });
+    await writeFile(join(config.cacheDir, '0.1.29', 'desktop-windows-x64.artifact'), 'tampered');
+    await expect(service.installUpdate({ version: '0.1.29' })).rejects.toMatchObject({ code: 'OTA_VERIFY_FAILED' });
+    expect(installer.install).not.toHaveBeenCalled();
+    expect(admission.isMaintenanceActive()).toBe(false);
+    await expect(service.getStatus()).resolves.toMatchObject({ state: { state: 'VERIFY_FAILED' } });
+  });
+
+  it('requires and verifies an Ed25519 signature when production trust is enabled', async () => {
+    const artifact = bytes('signed ota artifact');
+    const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+    const signed = manifest('0.1.29', artifact);
+    signed.artifacts.desktop['windows-x64'].signature = sign(
+      null,
+      Buffer.from(digest(artifact), 'hex'),
+      privateKey,
+    ).toString('base64');
+    const config = await makeConfig({
+      requireSignature: true,
+      publicKey: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+    });
+    const service = new OtaUpdateService({
+      state: new InMemoryOtaUpdateStateRepository(),
+      config,
+      fetchImpl: async (url) => url.endsWith('manifest.json')
+        ? jsonResponse(signed)
+        : new Response(artifact, { status: 200, headers: { 'content-length': String(artifact.byteLength) } }),
+    });
+
+    await expect(service.downloadUpdate({ version: '0.1.29' })).resolves.toMatchObject({
+      signatureVerification: 'verified',
+    });
+  });
+
+  it('rejects a release that targets an incompatible database schema before install', async () => {
+    const config = await makeConfig();
+    const incompatible = manifest('0.1.29');
+    incompatible.compatibility.schema_version = 8;
+    const service = new OtaUpdateService({
+      state: new InMemoryOtaUpdateStateRepository(),
+      config,
+      fetchImpl: async () => jsonResponse(incompatible),
+    });
+
+    await expect(service.checkForUpdate()).rejects.toMatchObject({
+      message: expect.stringContaining('database schema 8'),
+    });
+  });
+
+  it('hands a safe install to the external updater and keeps admission closed until outcome', async () => {
+    const artifact = bytes('external handoff artifact');
+    const config = await makeConfig();
+    const admission = new PrintAdmissionGate();
+    const installer: OtaInstallerPort = {
+      install: vi.fn(async () => ({ kind: 'external' as const, operationId: 'operation-1' })),
+      healthCheck: vi.fn(async () => true),
+      rollback: vi.fn(async () => undefined),
+    };
+    const service = new OtaUpdateService({
+      state: new InMemoryOtaUpdateStateRepository(),
+      config,
+      admission,
+      installer,
+      fetchImpl: async (url) => url.endsWith('manifest.json')
+        ? jsonResponse(manifest('0.1.29', artifact))
+        : new Response(artifact, { status: 200, headers: { 'content-length': String(artifact.byteLength) } }),
+    });
+
+    await service.downloadUpdate({ version: '0.1.29' });
+    await expect(service.installUpdate({ version: '0.1.29' })).resolves.toMatchObject({
+      installed: false,
+      restartRequired: true,
+      state: 'RESTART_PENDING',
+    });
+    expect(admission.isMaintenanceActive()).toBe(true);
+    expect(installer.healthCheck).not.toHaveBeenCalled();
+    await expect(admission.run(async () => 'must-not-print')).rejects.toMatchObject({
+      code: 'CONFLICT',
+    });
+
+    await service.recordExternalOutcome({ operationId: 'operation-1', version: '0.1.29', state: 'COMPLETED' });
+    expect(admission.isMaintenanceActive()).toBe(false);
+  });
+
   it('is disabled by default and validates OTA environment settings', async () => {
     const config = otaConfigFromEnv({ PRINTOPS_APP_VERSION: '0.1.28' });
     expect(config.enabled).toBe(false);
     expect(config.currentVersion).toBe('0.1.28');
     expect(() => otaConfigFromEnv({ PRINTOPS_OTA_ENABLED: 'true', PRINTOPS_OTA_CHANNEL: 'nightly' })).toThrow('CHANNEL');
+  });
+
+  it('keeps print admission available when every update source is unavailable', async () => {
+    const config = await makeConfig({ lanRelayUrl: 'http://lan.example/ota' });
+    const admission = new PrintAdmissionGate();
+    const service = new OtaUpdateService({
+      state: new InMemoryOtaUpdateStateRepository(),
+      config,
+      admission,
+      fetchImpl: async () => { throw new Error('source offline'); },
+    });
+
+    await expect(service.checkForUpdate()).rejects.toMatchObject({ code: 'OTA_SOURCE_UNAVAILABLE' });
+    await expect(admission.run(async () => 'print-admission-still-open')).resolves.toBe('print-admission-still-open');
+    expect(admission.isMaintenanceActive()).toBe(false);
+  });
+
+  it('fails closed when manual rollback cannot restore the previous version', async () => {
+    const artifact = bytes('manual rollback artifact');
+    const config = await makeConfig();
+    const admission = new PrintAdmissionGate();
+    const installer: OtaInstallerPort = {
+      install: vi.fn(async () => undefined),
+      healthCheck: vi.fn(async () => true),
+      rollback: vi.fn(async () => { throw new Error('rollback worker unavailable'); }),
+    };
+    const service = new OtaUpdateService({
+      state: new InMemoryOtaUpdateStateRepository(),
+      config,
+      admission,
+      installer,
+      fetchImpl: async (url) => url.endsWith('manifest.json')
+        ? jsonResponse(manifest('0.1.29', artifact))
+        : new Response(artifact, { status: 200, headers: { 'content-length': String(artifact.byteLength) } }),
+    });
+
+    await service.downloadUpdate({ version: '0.1.29' });
+    await expect(service.rollbackUpdate()).rejects.toMatchObject({ code: 'OTA_ROLLBACK_FAILED' });
+    expect(admission.isMaintenanceActive()).toBe(true);
+    await expect(service.getStatus()).resolves.toMatchObject({ state: { state: 'ROLLBACK_FAILED' } });
   });
 });

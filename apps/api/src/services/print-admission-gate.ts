@@ -12,6 +12,8 @@ export interface PrintAdmissionGatePort {
   run<T>(operation: () => Promise<T>): Promise<T>;
   beginMaintenance(): Promise<() => void>;
   isMaintenanceActive(): boolean;
+  pauseMaintenance(): void;
+  resumeMaintenance(): void;
 }
 
 export class PrintAdmissionGate implements PrintAdmissionGatePort {
@@ -55,5 +57,15 @@ export class PrintAdmissionGate implements PrintAdmissionGatePort {
 
   isMaintenanceActive(): boolean {
     return this.maintenance;
+  }
+
+  /** Fails closed when an API restart finds an unfinished OTA handoff. */
+  pauseMaintenance(): void {
+    this.maintenance = true;
+  }
+
+  /** Reopens admission after a persisted external updater outcome. */
+  resumeMaintenance(): void {
+    this.maintenance = false;
   }
 }

@@ -51,6 +51,8 @@
       "resources/static",
       "resources/sql-wasm.wasm",
       "resources/printops-runner.exe",
+      "resources/printops-updater.exe",
+      "resources/ota-public-key.txt",
       "resources/print-helper"
     ],
     "externalBin": []

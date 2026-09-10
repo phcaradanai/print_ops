@@ -16,7 +16,7 @@ import { getDb } from '../../infra/db/sqlite.js';
 import { schemaVersion } from '../../infra/db/sqlite.schema.js';
 import type { NatsRuntimeStatus } from '../../infra/nats/nats-connection-manager.js';
 import type { RuntimeArchitecture } from '../../infra/runtime-architecture.js';
-import { requirePermission } from './permission-guard.js';
+import { requirePermission, requirePermissionOrInternal } from './permission-guard.js';
 
 export type ReadinessState = 'READY' | 'DEGRADED' | 'NOT_CONFIGURED' | 'UNAVAILABLE';
 
@@ -59,6 +59,7 @@ interface ReadinessDependencies {
   callbackAttempts: WebhookCallbackAttemptRepositoryPort;
   callbackDeliveries: CallbackDeliveryRepositoryPort;
   audit: AuditRepositoryPort;
+  internalToken?: string;
 }
 
 function component(
@@ -277,7 +278,7 @@ function recentLogTail(filename: string): { filename: string; modifiedAt?: strin
 }
 
 export async function readinessRoutes(app: FastifyInstance, deps: ReadinessDependencies): Promise<void> {
-  app.get('/system/readiness', { onRequest: [requirePermission('template:read')] }, async (_req, reply) =>
+  app.get('/system/readiness', { onRequest: [requirePermissionOrInternal('template:read', deps.internalToken)] }, async (_req, reply) =>
     reply.header('Cache-Control', 'no-store').send(await createReadinessSnapshot(deps)));
 
   app.get('/system/support-bundle', { onRequest: [requirePermission('user:manage')] }, async (req, reply) => {

@@ -112,6 +112,8 @@ import { emitPrintJobTerminal } from './services/emit-terminal-event.js';
 import { LocalPrintScheduler } from './services/local-print-scheduler.js';
 import { OtaUpdateService, otaConfigFromEnv } from './services/ota-update.service.js';
 import { PrintAdmissionGate } from './services/print-admission-gate.js';
+import { FileOtaArtifactStateStore } from './services/ota-artifact-state.js';
+import { ExternalUpdaterInstaller, externalUpdaterConfigured, type ExternalUpdaterConfig } from './services/external-updater-installer.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -175,6 +177,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         paths: [
           'req.headers.authorization',
           'req.headers.x-api-key',
+          'req.headers.x-printops-ota-token',
           'req.body.password',
           'req.body.passwordConfirmation',
           'req.body.authorizationPassword',
@@ -315,16 +318,62 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     onHandlerError: (event, err) => app.log.error({ err, eventType: event.eventType }, 'event subscriber failed'),
   });
   const queue = new InMemoryJobQueue();
+  const initialOtaState = await otaStateRepo.get();
   const printAdmissionGate = new PrintAdmissionGate();
+  const otaMaintenanceStates = new Set([
+    'WAITING_FOR_IDLE',
+    'INSTALLING',
+    'INSTALLING_COMPLETE',
+    'HEALTH_CHECK',
+    'ROLLING_BACK',
+    'RESTART_PENDING',
+    'ROLLBACK_FAILED',
+  ]);
+  if (otaMaintenanceStates.has(initialOtaState.state)) {
+    // A process restart during an external handoff must fail closed: the new
+    // API cannot accept a print until the updater reports a terminal outcome.
+    printAdmissionGate.pauseMaintenance();
+  }
   let localPrintScheduler: LocalPrintScheduler | undefined;
+  const otaConfig = otaConfigFromEnv();
+  const externalUpdaterConfig: ExternalUpdaterConfig | undefined = otaConfig.updaterPath
+    && otaConfig.updaterRequestDirectory
+    && otaConfig.updaterStatePath
+    && otaConfig.installRoot
+    && otaConfig.desktopPath
+    && otaConfig.desktopPid
+    && otaConfig.healthToken
+    ? {
+        executablePath: otaConfig.updaterPath,
+        requestDirectory: otaConfig.updaterRequestDirectory,
+        statePath: otaConfig.updaterStatePath,
+        installRoot: otaConfig.installRoot,
+        desktopPath: otaConfig.desktopPath,
+        desktopPid: otaConfig.desktopPid,
+        apiUrl: otaConfig.apiUrl ?? 'http://127.0.0.1:31415',
+        healthToken: otaConfig.healthToken,
+        publicKey: otaConfig.publicKey,
+        requireSignature: otaConfig.requireSignature === true,
+        healthCheckTimeoutMs: otaConfig.healthCheckTimeoutMs ?? 20_000,
+        shutdownTimeoutMs: otaConfig.updaterShutdownTimeoutMs ?? 30_000,
+        handoffDelayMs: otaConfig.updaterHandoffDelayMs ?? 500,
+      }
+    : undefined;
+  const externalUpdater = externalUpdaterConfig && externalUpdaterConfigured(externalUpdaterConfig)
+    ? new ExternalUpdaterInstaller(externalUpdaterConfig)
+    : undefined;
   const otaUpdateService = new OtaUpdateService({
     state: otaStateRepo,
-    config: otaConfigFromEnv(),
+    config: otaConfig,
     queue,
     jobs: jobRepo,
     admission: printAdmissionGate,
     schedulerSettled: () => localPrintScheduler?.settled() ?? Promise.resolve(),
     eventBusSettled: () => eventBus.settled(),
+    artifactState: otaConfig.artifactStatePath
+      ? new FileOtaArtifactStateStore(otaConfig.artifactStatePath)
+      : undefined,
+    installer: externalUpdater,
   });
 
   // Bound the growth of jobs/traces/audit_logs on long-running installs (see
@@ -896,7 +945,11 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
 
   // Health check (no auth). /api is the canonical dashboard namespace; the
   // root alias remains for runner/deployment compatibility.
-  const health = async () => ({ status: 'ok', uptime: process.uptime() });
+  const health = async () => ({
+    status: 'ok',
+    uptime: process.uptime(),
+    version: process.env['PRINTOPS_APP_VERSION'] ?? 'development',
+  });
   app.get('/health', health);
   app.get('/api/health', health);
 
@@ -946,8 +999,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       callbackAttempts: webhookCallbackAttemptRepo,
       callbackDeliveries: callbackDeliveryRepo,
       audit: auditRepo,
+      internalToken: otaConfig.healthToken,
     });
-    await otaRoutes(v1, { service: otaUpdateService });
+    await otaRoutes(v1, { service: otaUpdateService, internalToken: otaConfig.healthToken });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
   if (printIntakeCfg) {

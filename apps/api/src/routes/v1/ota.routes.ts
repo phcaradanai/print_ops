@@ -3,13 +3,13 @@ import type {
   ArtifactComponent,
   ArtifactPlatform,
 } from '@printerops/domain';
-import type { OtaUpdateServicePort } from '../../services/ota-update.service.js';
+import type { OtaExternalOutcome, OtaUpdateServicePort } from '../../services/ota-update.service.js';
 import { AppError, ValidationError } from '@printerops/shared';
-import { requirePermission } from './permission-guard.js';
+import { requireInternalToken, requirePermission } from './permission-guard.js';
 
 export async function otaRoutes(
   app: FastifyInstance,
-  deps: { service: OtaUpdateServicePort },
+  deps: { service: OtaUpdateServicePort; internalToken?: string },
 ): Promise<void> {
   app.get('/ota/status', { onRequest: [requirePermission('ota:read')] }, async (_req, reply) => {
     try {
@@ -76,6 +76,37 @@ export async function otaRoutes(
   app.post('/ota/rollback', { onRequest: [requirePermission('ota:manage')] }, async (_req, reply) => {
     try {
       return reply.send(await deps.service.rollbackUpdate());
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // Local-only callback used by the external updater after it has restarted
+  // the application. It cannot be called with a dashboard JWT or from LAN;
+  // the per-installation token and loopback guard form a separate recovery
+  // boundary from operator-facing OTA controls.
+  app.post('/ota/recovery', { onRequest: [requireInternalToken(deps.internalToken)] }, async (req, reply) => {
+    try {
+      const body = req.body as Record<string, unknown> | undefined;
+      const operationId = typeof body?.['operation_id'] === 'string' ? body['operation_id'].trim() : '';
+      const version = typeof body?.['version'] === 'string' ? body['version'].trim() : '';
+      const state = body?.['state'];
+      const errorMessage = body?.['error_message'];
+      if (!operationId || operationId.length > 128) throw new ValidationError('operation_id is required');
+      if (!version) throw new ValidationError('version is required');
+      if (!['COMPLETED', 'ROLLED_BACK', 'INSTALL_FAILED', 'HEALTH_CHECK_FAILED', 'ROLLBACK_FAILED'].includes(String(state))) {
+        throw new ValidationError('state is not a supported external OTA outcome');
+      }
+      if (errorMessage !== undefined && typeof errorMessage !== 'string') {
+        throw new ValidationError('error_message must be a string');
+      }
+      await deps.service.recordExternalOutcome({
+        operationId,
+        version,
+        state: state as OtaExternalOutcome['state'],
+        ...(typeof errorMessage === 'string' ? { errorMessage: errorMessage.slice(0, 500) } : {}),
+      });
+      return reply.status(204).send();
     } catch (error) {
       return sendError(reply, error);
     }

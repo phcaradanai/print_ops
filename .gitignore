@@ -30,6 +30,11 @@ apps/runner-go/printops-runner.exe
 apps/runner-go/*.exe
 apps/runner-go/runner.env
 
+# External OTA updater artifacts
+apps/updater-go/printops-updater
+apps/updater-go/printops-updater.exe
+apps/updater-go/*.test.exe
+
 # .NET WebView2 print helper artifacts
 apps/windows-print-helper/bin/
 apps/windows-print-helper/obj/

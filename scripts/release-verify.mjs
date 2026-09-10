@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createPrivateKey, sign } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   existsSync,
@@ -175,12 +175,23 @@ function checkResources() {
   const required = [
     join(resourceRoot, 'server.exe'),
     join(resourceRoot, 'printops-runner.exe'),
+    join(resourceRoot, 'printops-updater.exe'),
+    join(resourceRoot, 'ota-public-key.txt'),
     join(resourceRoot, 'sql-wasm.wasm'),
     join(resourceRoot, 'static/index.html'),
     join(resourceRoot, 'print-helper/printops-html-print.exe'),
     join(resourceRoot, 'print-helper/WebView2Loader.dll'),
   ];
   required.forEach((path) => requireFile(path));
+  const publicKeyPath = join(resourceRoot, 'ota-public-key.txt');
+  if (process.env.PRINTOPS_OTA_REQUIRE_SIGNATURE !== 'false') {
+    const publicKey = readFileSync(publicKeyPath, 'utf8').trim();
+    if (!publicKey || publicKey === 'unconfigured') {
+      fail('ota:public-key', 'signed OTA is enabled but the bundled Ed25519 public key is unconfigured');
+    } else {
+      pass('ota:public-key', 'bundled Ed25519 verification key is configured');
+    }
+  }
 
   requireFresh(join(resourceRoot, 'server.exe'), [
     join(root, 'apps/api/src'),
@@ -194,6 +205,11 @@ function checkResources() {
     join(root, 'apps/runner-go/go.mod'),
     join(root, 'apps/runner-go/go.sum'),
   ], 'printops-runner.exe');
+  requireFresh(join(resourceRoot, 'printops-updater.exe'), [
+    join(root, 'apps/updater-go/cmd'),
+    join(root, 'apps/updater-go/internal'),
+    join(root, 'apps/updater-go/go.mod'),
+  ], 'printops-updater.exe');
   requireFresh(join(resourceRoot, 'static/index.html'), [
     join(root, 'apps/web/src'),
     join(root, 'apps/web/package.json'),
@@ -303,14 +319,32 @@ if (postBundle && failures.length === 0) {
     const rolloutPercentage = Number(process.env.PRINTOPS_OTA_ROLLOUT_PERCENTAGE ?? '100');
     const minSupportedVersion = process.env.PRINTOPS_OTA_MIN_SUPPORTED_VERSION ?? version;
     const schemaVersion = Number(process.env.PRINTOPS_DB_SCHEMA_VERSION ?? '7');
+    const requireSignature = process.env.PRINTOPS_OTA_REQUIRE_SIGNATURE !== 'false';
+    const signingKey = process.env.PRINTOPS_OTA_PRIVATE_KEY;
+    let signatures;
+    try {
+      if (requireSignature && !signingKey) throw new Error('PRINTOPS_OTA_PRIVATE_KEY is not configured');
+      const privateKey = signingKey ? createPrivateKey(signingKey) : undefined;
+      const signDigest = (path) => privateKey
+        ? sign(null, Buffer.from(sha256(path), 'hex'), privateKey).toString('base64')
+        : '';
+      signatures = {
+        desktop: signDigest(nsis.path),
+        runner: signDigest(join(root, 'apps/desktop/src-tauri/resources/printops-runner.exe')),
+      };
+    } catch (error) {
+      fail('ota:signing', error instanceof Error ? error.message : String(error));
+    }
     if (!['stable', 'beta', 'rc'].includes(channel)) {
       fail('ota:manifest-channel', `unsupported OTA channel ${channel}`);
     } else if (!Number.isInteger(rolloutPercentage) || rolloutPercentage < 0 || rolloutPercentage > 100) {
       fail('ota:manifest-rollout', 'PRINTOPS_OTA_ROLLOUT_PERCENTAGE must be an integer from 0 to 100');
-    } else if (!/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?$/.test(minSupportedVersion)) {
+    } else if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(minSupportedVersion)) {
       fail('ota:manifest-min-version', 'PRINTOPS_OTA_MIN_SUPPORTED_VERSION must be a semantic version');
     } else if (!Number.isSafeInteger(schemaVersion) || schemaVersion < 0) {
       fail('ota:manifest-schema-version', 'PRINTOPS_DB_SCHEMA_VERSION must be a non-negative integer');
+    } else if (!signatures) {
+      fail('ota:manifest-signing', 'unable to produce required Ed25519 artifact signatures');
     } else {
       const otaManifest = {
         schema_version: 1,
@@ -325,16 +359,18 @@ if (postBundle && failures.length === 0) {
             'windows-x64': {
               url: basename(nsis.path),
               sha256: nsis.sha256,
-              signature: '',
+              signature: signatures.desktop,
               size: nsis.bytes,
+              format: 'nsis-installer',
             },
           },
           runner: {
             'windows-x64': {
               url: basename(runner.path),
               sha256: runner.sha256,
-              signature: '',
+              signature: signatures.runner,
               size: runner.bytes,
+              format: 'binary',
             },
           },
         },

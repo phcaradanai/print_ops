@@ -5,7 +5,8 @@
  * manifests), the update agent (which consumes them), and the content sync
  * service (which tracks content ownership).
  *
- * Phase OTA-01: foundation only — no network, no download, no install.
+ * Application OTA contract shared by the API, release pipeline, and native
+ * external updater.
  */
 
 // ─── Update state machine ────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ export type UpdateState =
   | 'INSTALL_FAILED'
   | 'ROLLING_BACK'
   | 'ROLLED_BACK'
+  | 'ROLLBACK_FAILED'
   | 'HEALTH_CHECK_FAILED';
 
 export const TERMINAL_FAILURE_STATES: ReadonlySet<UpdateState> = new Set([
@@ -41,6 +43,7 @@ export const TERMINAL_FAILURE_STATES: ReadonlySet<UpdateState> = new Set([
   'VERIFY_FAILED',
   'INSTALL_FAILED',
   'ROLLED_BACK',
+  'ROLLBACK_FAILED',
   'HEALTH_CHECK_FAILED',
 ]);
 
@@ -66,19 +69,78 @@ export interface OtaUpdateStateRecord {
 
 // ─── Semver ──────────────────────────────────────────────────────────────────
 
+export interface ParsedVersion {
+  major: number;
+  minor: number;
+  patch: number;
+  pre: string | null;
+  build: string | null;
+}
+
 /**
- * Minimal semver parse for PrintOps versions: <major>.<minor>.<patch>[-<pre>].
- * Returns null when the input is not a valid PrintOps version string.
+ * Parse a SemVer 2.0 version used by the release channel.
+ *
+ * The old implementation compared the complete prerelease string as one
+ * lexicographic value, which made rc.10 sort before rc.2. Keep the parsed
+ * identifiers available to the comparator while retaining the small public
+ * shape consumed by the rest of PrintOps.
  */
-export function parseVersion(version: string): { major: number; minor: number; patch: number; pre: string | null } | null {
-  const match = /^(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z0-9.]+))?$/.exec(version.trim());
+export function parseVersion(version: string): ParsedVersion | null {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(version.trim());
   if (!match) return null;
+
+  const majorText = match[1]!;
+  const minorText = match[2]!;
+  const patchText = match[3]!;
+  const numeric = [majorText, minorText, patchText];
+  if (numeric.some((value) => (value.length > 1 && value.startsWith('0')) || !Number.isSafeInteger(Number(value)))) {
+    return null;
+  }
+
+  const prerelease = match[4]?.split('.') ?? [];
+  if (prerelease.some((identifier) => /^\d+$/.test(identifier) && (identifier.length > 1 && identifier.startsWith('0')))) {
+    return null;
+  }
+
   return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    patch: Number(match[3]),
+    major: Number(majorText),
+    minor: Number(minorText),
+    patch: Number(patchText),
     pre: match[4] ?? null,
+    build: match[5] ?? null,
   };
+}
+
+function compareNumericIdentifier(a: string, b: string): number {
+  const left = a.replace(/^0+(?=\d)/, '');
+  const right = b.replace(/^0+(?=\d)/, '');
+  if (left.length !== right.length) return left.length < right.length ? -1 : 1;
+  return left === right ? 0 : left < right ? -1 : 1;
+}
+
+function comparePrerelease(a: string | null, b: string | null): number {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+
+  const left = a.split('.');
+  const right = b.split('.');
+  const count = Math.min(left.length, right.length);
+  for (let index = 0; index < count; index += 1) {
+    const leftIdentifier = left[index]!;
+    const rightIdentifier = right[index]!;
+    const leftNumeric = /^\d+$/.test(leftIdentifier);
+    const rightNumeric = /^\d+$/.test(rightIdentifier);
+    if (leftNumeric && rightNumeric) {
+      const comparison = compareNumericIdentifier(leftIdentifier, rightIdentifier);
+      if (comparison !== 0) return comparison;
+    } else if (leftNumeric !== rightNumeric) {
+      return leftNumeric ? -1 : 1;
+    } else if (leftIdentifier !== rightIdentifier) {
+      return leftIdentifier < rightIdentifier ? -1 : 1;
+    }
+  }
+  return left.length === right.length ? 0 : left.length < right.length ? -1 : 1;
 }
 
 /**
@@ -93,19 +155,12 @@ export function compareVersions(a: string, b: string): number | null {
   const pb = parseVersion(b);
   if (!pa || !pb) return null;
 
-  const major = pa.major - pb.major;
-  if (major !== 0) return major;
-  const minor = pa.minor - pb.minor;
-  if (minor !== 0) return minor;
-  const patch = pa.patch - pb.patch;
-  if (patch !== 0) return patch;
+  if (pa.major !== pb.major) return pa.major < pb.major ? -1 : 1;
+  if (pa.minor !== pb.minor) return pa.minor < pb.minor ? -1 : 1;
+  if (pa.patch !== pb.patch) return pa.patch < pb.patch ? -1 : 1;
 
-  // Both same major.minor.patch — pre-release sorts before release.
-  if (pa.pre === null && pb.pre === null) return 0;
-  if (pa.pre === null) return 1; // a is release, b is pre → a > b
-  if (pb.pre === null) return -1;
-  // Both pre-release: lexicographic (good enough for our single-key use).
-  return pa.pre < pb.pre ? -1 : pa.pre > pb.pre ? 1 : 0;
+  // Build metadata is deliberately ignored by SemVer precedence.
+  return comparePrerelease(pa.pre, pb.pre);
 }
 
 /** True when `candidate` is a valid PrintOps version string. */
@@ -118,13 +173,16 @@ export function isValidVersion(candidate: string): boolean {
 export type ArtifactPlatform = 'windows-x64' | 'node-bundle';
 export type ArtifactComponent = 'desktop' | 'runner' | 'api';
 export type ReleaseChannel = 'stable' | 'beta' | 'rc';
+export type ArtifactFormat = 'nsis-installer' | 'binary' | 'archive';
 
 export interface ArtifactEntry {
   url: string;
   sha256: string;
-  /** Ed25519 signature over the artifact bytes (hex or base64). Empty until OTA-08. */
+  /** Ed25519 signature over the artifact SHA-256 digest (hex or base64). */
   signature: string;
   size: number;
+  /** Required by production install targets; omitted only for legacy manifests. */
+  format?: ArtifactFormat;
 }
 
 export interface ReleaseManifest {

@@ -15,13 +15,15 @@ import {
   parseVersion,
 } from '@printerops/domain';
 import { AppError, ConflictError, ValidationError } from '@printerops/shared';
-import { createHash } from 'node:crypto';
+import { createHash, createPublicKey, verify as verifySignature } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, rm, rename, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { PrintAdmissionGatePort } from './print-admission-gate.js';
+import type { OtaArtifactStateStorePort } from './ota-artifact-state.js';
+import { isExternalUpdaterTerminalPhase, readExternalUpdaterState } from './ota-updater-state.js';
 
 const ARTIFACT_COMPONENTS = ['desktop', 'runner', 'api'] as const;
 const ARTIFACT_PLATFORMS = ['windows-x64', 'node-bundle'] as const;
@@ -32,6 +34,8 @@ const DEFAULT_DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1_000;
 const DEFAULT_QUEUE_IDLE_TIMEOUT_MS = 60 * 60 * 1_000;
 const DEFAULT_QUEUE_POLL_MS = 5_000;
 const DEFAULT_HEALTH_CHECK_TIMEOUT_MS = 20_000;
+const DEFAULT_UPDATER_SHUTDOWN_TIMEOUT_MS = 30_000;
+const DEFAULT_UPDATER_HANDOFF_DELAY_MS = 500;
 const DEFAULT_SCHEMA_VERSION = 7;
 const NON_TERMINAL_JOB_STATUSES = ['ACCEPTED', 'VALIDATED', 'QUEUED', 'DISPATCHED', 'PRINTING'] as const;
 
@@ -55,6 +59,19 @@ export interface OtaConfig {
   queueIdleTimeoutMs?: number;
   queuePollMs?: number;
   healthCheckTimeoutMs?: number;
+  requireSignature?: boolean;
+  publicKey?: string;
+  updaterPath?: string;
+  updaterRequestDirectory?: string;
+  updaterStatePath?: string;
+  artifactStatePath?: string;
+  installRoot?: string;
+  desktopPath?: string;
+  desktopPid?: number;
+  apiUrl?: string;
+  healthToken?: string;
+  updaterShutdownTimeoutMs?: number;
+  updaterHandoffDelayMs?: number;
 }
 
 export interface OtaStatus {
@@ -63,7 +80,7 @@ export interface OtaStatus {
   currentVersion: string;
   currentSchemaVersion: number;
   channel: ReleaseChannel;
-  signatureVerification: 'deferred';
+  signatureVerification: 'required' | 'deferred' | 'unavailable';
   installerConfigured: boolean;
   state: OtaUpdateStateRecord;
   stagedArtifact: {
@@ -72,6 +89,8 @@ export interface OtaStatus {
     platform: ArtifactPlatform;
     bytes: number;
     sha256: string;
+    signature: string;
+    format?: string;
     source: OtaSource;
   } | null;
 }
@@ -109,7 +128,7 @@ export interface DownloadUpdateResult {
   bytes: number;
   sha256: string;
   source: OtaSource;
-  signatureVerification: 'deferred';
+  signatureVerification: 'verified' | 'deferred';
 }
 
 export interface OtaInstallRequest {
@@ -125,15 +144,23 @@ export interface OtaInstallInput {
   platform: ArtifactPlatform;
   sha256: string;
   bytes: number;
+  signature: string;
+  format?: string;
+  previousVersion?: string;
+}
+
+export interface OtaInstallLaunch {
+  kind: 'external';
+  operationId: string;
 }
 
 export interface OtaInstallerPort {
   /** Install/swap the already verified artifact and restart the target process. */
-  install(input: OtaInstallInput): Promise<void>;
+  install(input: OtaInstallInput): Promise<void | OtaInstallLaunch>;
   /** Probe the newly started target and return true only when it is healthy. */
   healthCheck(input: OtaInstallInput): Promise<boolean>;
   /** Restore the previous version after install or health-check failure. */
-  rollback(input: OtaInstallInput): Promise<void>;
+  rollback(input: OtaInstallInput): Promise<void | OtaInstallLaunch>;
 }
 
 export interface OtaInstallResult {
@@ -142,6 +169,8 @@ export interface OtaInstallResult {
   component: ArtifactComponent;
   platform: ArtifactPlatform;
   state: 'RESTART_PENDING' | 'ROLLED_BACK';
+  restartRequired?: boolean;
+  operationId?: string;
 }
 
 export interface OtaRollbackResult {
@@ -149,7 +178,9 @@ export interface OtaRollbackResult {
   version: string;
   component: ArtifactComponent;
   platform: ArtifactPlatform;
-  state: 'ROLLED_BACK';
+  state: 'ROLLED_BACK' | 'RESTART_PENDING';
+  restartRequired?: boolean;
+  operationId?: string;
 }
 
 export interface OtaUpdateServicePort {
@@ -158,6 +189,14 @@ export interface OtaUpdateServicePort {
   downloadUpdate(request: DownloadUpdateRequest): Promise<DownloadUpdateResult>;
   installUpdate(request: OtaInstallRequest): Promise<OtaInstallResult>;
   rollbackUpdate(): Promise<OtaRollbackResult>;
+  recordExternalOutcome(input: OtaExternalOutcome): Promise<void>;
+}
+
+export interface OtaExternalOutcome {
+  operationId: string;
+  version: string;
+  state: 'COMPLETED' | 'ROLLED_BACK' | 'INSTALL_FAILED' | 'HEALTH_CHECK_FAILED' | 'ROLLBACK_FAILED';
+  errorMessage?: string;
 }
 
 interface ResolvedManifest {
@@ -223,6 +262,10 @@ function isArtifactPlatform(value: unknown): value is ArtifactPlatform {
   return typeof value === 'string' && (ARTIFACT_PLATFORMS as readonly string[]).includes(value);
 }
 
+function isArtifactFormat(value: unknown): value is 'nsis-installer' | 'binary' | 'archive' {
+  return value === 'nsis-installer' || value === 'binary' || value === 'archive';
+}
+
 function parseArtifact(value: unknown, label: string): ArtifactEntry {
   const record = asRecord(value);
   if (!record) throw manifestError(`Manifest artifact '${label}' must be an object`);
@@ -238,6 +281,11 @@ function parseArtifact(value: unknown, label: string): ArtifactEntry {
     throw manifestError(`Manifest artifact '${label}.signature' must be a string`);
   }
 
+  const formatValue = valueAt(record, 'format');
+  if (formatValue !== undefined && !isArtifactFormat(formatValue)) {
+    throw manifestError(`Manifest artifact '${label}.format' must be nsis-installer, binary, or archive`);
+  }
+
   const size = requiredNumber(record, `${label}.size`, 'size');
   if (!Number.isSafeInteger(size) || size <= 0) {
     throw manifestError(`Manifest artifact '${label}.size' must be a positive integer`);
@@ -246,11 +294,9 @@ function parseArtifact(value: unknown, label: string): ArtifactEntry {
   return {
     url,
     sha256,
-    // Ed25519 verification is deliberately deferred to OTA-08. An empty
-    // signature is accepted in OTA-02, but the result makes that limitation
-    // visible to callers instead of implying a signed release.
     signature: typeof signatureValue === 'string' ? signatureValue : '',
     size,
+    ...(formatValue !== undefined ? { format: formatValue } : {}),
   };
 }
 
@@ -403,6 +449,9 @@ export function otaConfigFromEnv(env: NodeJS.ProcessEnv = process.env): OtaConfi
   const dataDir = env['PRINTOPS_OTA_DATA_DIR']
     ?? (dbPath ? dirname(dbPath) : join(process.cwd(), '.printops-data'));
   const cacheDir = env['PRINTOPS_OTA_CACHE_DIR']?.trim() || join(dataDir, 'ota', 'cache');
+  const desktopPid = env['PRINTOPS_DESKTOP_PID']?.trim()
+    ? integerFromEnv(env['PRINTOPS_DESKTOP_PID'], 0, 'PRINTOPS_DESKTOP_PID', 1)
+    : undefined;
 
   return {
     enabled,
@@ -459,6 +508,33 @@ export function otaConfigFromEnv(env: NodeJS.ProcessEnv = process.env): OtaConfi
       'PRINTOPS_OTA_HEALTH_CHECK_TIMEOUT_MS',
       1,
     ),
+    requireSignature: boolFromEnv(env['PRINTOPS_OTA_REQUIRE_SIGNATURE'], enabled),
+    publicKey: env['PRINTOPS_OTA_PUBLIC_KEY']?.trim() || undefined,
+    updaterPath: env['PRINTOPS_OTA_UPDATER_PATH']?.trim() || undefined,
+    updaterRequestDirectory: env['PRINTOPS_OTA_UPDATER_REQUEST_DIR']?.trim()
+      || join(dataDir, 'ota', 'requests'),
+    updaterStatePath: env['PRINTOPS_OTA_UPDATER_STATE_PATH']?.trim()
+      || join(dataDir, 'ota', 'updater-state.json'),
+    artifactStatePath: env['PRINTOPS_OTA_ARTIFACT_STATE_PATH']?.trim()
+      || join(dataDir, 'ota', 'staged-artifact.json'),
+    installRoot: env['PRINTOPS_OTA_INSTALL_ROOT']?.trim() || undefined,
+    desktopPath: env['PRINTOPS_OTA_DESKTOP_PATH']?.trim() || undefined,
+    desktopPid,
+    apiUrl: urlFromEnv(env['PRINTOPS_OTA_API_URL'], 'PRINTOPS_OTA_API_URL')
+      ?? 'http://127.0.0.1:31415',
+    healthToken: env['PRINTOPS_OTA_HEALTH_TOKEN']?.trim() || undefined,
+    updaterShutdownTimeoutMs: integerFromEnv(
+      env['PRINTOPS_OTA_UPDATER_SHUTDOWN_TIMEOUT_MS'],
+      DEFAULT_UPDATER_SHUTDOWN_TIMEOUT_MS,
+      'PRINTOPS_OTA_UPDATER_SHUTDOWN_TIMEOUT_MS',
+      1,
+    ),
+    updaterHandoffDelayMs: integerFromEnv(
+      env['PRINTOPS_OTA_UPDATER_HANDOFF_DELAY_MS'],
+      DEFAULT_UPDATER_HANDOFF_DELAY_MS,
+      'PRINTOPS_OTA_UPDATER_HANDOFF_DELAY_MS',
+      0,
+    ),
   };
 }
 
@@ -499,9 +575,45 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest('hex');
 }
 
+function signatureBytes(value: string): Buffer {
+  const trimmed = value.trim();
+  if (/^[0-9a-f]{128}$/i.test(trimmed)) return Buffer.from(trimmed, 'hex');
+  return Buffer.from(trimmed, 'base64');
+}
+
+function publicKeyObject(value: string): ReturnType<typeof createPublicKey> {
+  const trimmed = value.trim();
+  if (trimmed.includes('BEGIN PUBLIC KEY')) return createPublicKey(trimmed);
+
+  const raw = /^[0-9a-f]{64}$/i.test(trimmed)
+    ? Buffer.from(trimmed, 'hex')
+    : Buffer.from(trimmed, 'base64');
+  if (raw.length !== 32) throw new Error('Ed25519 public key must be PEM or 32 raw bytes');
+  // SubjectPublicKeyInfo prefix for an Ed25519 public key.
+  return createPublicKey({
+    key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), raw]),
+    format: 'der',
+    type: 'spki',
+  });
+}
+
+function verifyArtifactSignature(sha256: string, signature: string, publicKey: string | undefined): void {
+  if (!signature.trim()) throw new AppError('OTA_SIGNATURE_REQUIRED', 'Release artifact has no Ed25519 signature', 422);
+  if (!publicKey?.trim()) throw new AppError('OTA_SIGNATURE_UNAVAILABLE', 'No OTA Ed25519 public key is configured', 503);
+  let valid = false;
+  try {
+    const signatureValue = signatureBytes(signature);
+    valid = signatureValue.length === 64
+      && verifySignature(null, Buffer.from(sha256, 'hex'), publicKeyObject(publicKey), signatureValue);
+  } catch {
+    valid = false;
+  }
+  if (!valid) throw new AppError('OTA_SIGNATURE_INVALID', 'Release artifact signature is invalid', 422);
+}
+
 export class OtaUpdateService implements OtaUpdateServicePort {
   private operation: Promise<unknown> | undefined;
-  private stagedArtifact: OtaStatus['stagedArtifact'] = null;
+  private stagedArtifact: StagedInstallArtifact | null = null;
 
   constructor(
     private readonly deps: {
@@ -515,20 +627,36 @@ export class OtaUpdateService implements OtaUpdateServicePort {
       schedulerSettled?: () => Promise<void>;
       eventBusSettled?: () => Promise<void>;
       installer?: OtaInstallerPort;
+      artifactState?: OtaArtifactStateStorePort;
     },
   ) {}
 
   async getStatus(): Promise<OtaStatus> {
+    await this.reconcileExternalUpdaterState();
+    const staged = this.stagedArtifact ?? await this.loadPersistedArtifact();
     return {
       enabled: this.deps.config.enabled,
       configured: Boolean(this.deps.config.lanRelayUrl || this.deps.config.wanManifestUrl),
       currentVersion: this.deps.config.currentVersion,
       currentSchemaVersion: this.deps.config.currentSchemaVersion,
       channel: this.deps.config.channel,
-      signatureVerification: 'deferred',
+      signatureVerification: this.deps.config.requireSignature
+        ? (this.deps.config.publicKey ? 'required' : 'unavailable')
+        : 'deferred',
       installerConfigured: Boolean(this.deps.installer),
       state: await this.deps.state.get(),
-      stagedArtifact: this.stagedArtifact,
+      stagedArtifact: staged
+        ? {
+            version: staged.version,
+            component: staged.component,
+            platform: staged.platform,
+            bytes: staged.bytes,
+            sha256: staged.sha256,
+            signature: staged.signature,
+            ...(staged.format ? { format: staged.format } : {}),
+            source: staged.source,
+          }
+        : null,
     };
   }
 
@@ -599,6 +727,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           );
         }
         this.assertManifestCompatible(resolution.manifest);
+        this.assertManifestTrust(resolution.manifest);
         if (resolution.manifest.release.channel !== this.deps.config.channel) {
           throw new ConflictError(`Release channel ${resolution.manifest.release.channel} does not match configured channel ${this.deps.config.channel}`);
         }
@@ -607,6 +736,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
         }
 
         const entry = this.selectArtifact(resolution.manifest, component, platform);
+        this.assertArtifactCompatible(component, platform, entry.format);
         const url = artifactUrl(resolution.manifestUrl, entry.url);
         let source: OtaSource = resolution.source;
         let cached = false;
@@ -628,13 +758,30 @@ export class OtaUpdateService implements OtaUpdateServicePort {
         }
         const verified = await this.verifyArtifactFile(finalPath, entry);
         this.stagedArtifact = {
+          artifactPath: finalPath,
           version: request.version,
           component,
           platform,
           bytes: verified.bytes,
           sha256: verified.sha256,
+          signature: entry.signature,
+          ...(entry.format ? { format: entry.format } : {}),
+          previousVersion: currentVersion,
           source,
         };
+        await this.deps.artifactState?.save({
+          artifactPath: finalPath,
+          version: request.version,
+          component,
+          platform,
+          bytes: verified.bytes,
+          sha256: verified.sha256,
+          signature: entry.signature,
+          ...(entry.format ? { format: entry.format } : {}),
+          previousVersion: currentVersion,
+          source,
+          updatedAt: this.now().toISOString(),
+        });
         await this.deps.state.update({
           state: 'VERIFIED',
           errorMessage: null,
@@ -649,7 +796,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           bytes: verified.bytes,
           sha256: verified.sha256,
           source,
-          signatureVerification: 'deferred',
+          signatureVerification: this.deps.config.requireSignature ? 'verified' : 'deferred',
         };
       } catch (error) {
         await rm(partPath, { force: true }).catch(() => undefined);
@@ -683,10 +830,20 @@ export class OtaUpdateService implements OtaUpdateServicePort {
       if (comparison === null) throw new ValidationError('current application version is invalid');
       if (comparison <= 0) throw new ConflictError('OTA refuses to install the current or an older version');
 
-      const staged = await this.getStagedInstallArtifact(request.version, component, platform);
+      let staged: StagedInstallArtifact;
+      try {
+        staged = await this.getStagedInstallArtifact(request.version, component, platform);
+      } catch (error) {
+        if (error instanceof AppError && error.code === 'OTA_VERIFY_FAILED') {
+          await this.recordFailure('VERIFY_FAILED', error);
+          throw error;
+        }
+        throw this.asOtaError(error, 'OTA_INSTALL_FAILED');
+      }
       const startedAt = this.now();
       let releaseAdmission: (() => void) | undefined;
       let installStarted = false;
+      let maintenanceTransferred = false;
 
       try {
         await this.deps.state.update({
@@ -700,7 +857,23 @@ export class OtaUpdateService implements OtaUpdateServicePort {
 
         await this.deps.state.update({ state: 'INSTALLING' });
         installStarted = true;
-        await this.deps.installer!.install(staged);
+        const launch = await this.deps.installer!.install(staged);
+        if (launch && launch.kind === 'external') {
+          // The API must return the handoff response before the updater stops
+          // the Desktop process. The external bootstrapper owns the rest of
+          // INSTALL → HEALTH_CHECK → ROLLBACK and persists its outcome.
+          await this.deps.state.update({ state: 'RESTART_PENDING' });
+          maintenanceTransferred = true;
+          return {
+            installed: false,
+            version: request.version,
+            component,
+            platform,
+            state: 'RESTART_PENDING' as const,
+            restartRequired: true,
+            operationId: launch.operationId,
+          };
+        }
         await this.deps.state.update({ state: 'INSTALLING_COMPLETE' });
         await this.deps.state.update({ state: 'HEALTH_CHECK' });
 
@@ -734,16 +907,32 @@ export class OtaUpdateService implements OtaUpdateServicePort {
 
         await this.deps.state.update({ state: 'ROLLING_BACK', errorMessage: safeErrorMessage(error) });
         try {
-          await this.deps.installer!.rollback(staged);
+          const rollbackLaunch = await this.deps.installer!.rollback(staged);
+          if (rollbackLaunch && rollbackLaunch.kind === 'external') {
+            maintenanceTransferred = true;
+            await this.deps.state.update({
+              state: 'RESTART_PENDING',
+              errorMessage: `Update ${request.version} failed; external rollback is in progress`,
+            });
+            throw new AppError(
+              'OTA_ROLLBACK_PENDING',
+              `Update ${request.version} failed; external rollback is in progress`,
+              503,
+            );
+          }
           await this.deps.state.update({
             state: 'ROLLED_BACK',
             errorMessage: `Update ${request.version} failed and the previous version was restored: ${safeErrorMessage(error)}`,
           });
         } catch (rollbackError) {
+          if (rollbackError instanceof AppError && rollbackError.code === 'OTA_ROLLBACK_PENDING') {
+            throw rollbackError;
+          }
           const message =
             `Update ${request.version} failed (${safeErrorMessage(error)}); automatic rollback also failed: ` +
             safeErrorMessage(rollbackError);
-          await this.deps.state.update({ state: 'ROLLED_BACK', errorMessage: message });
+          maintenanceTransferred = true;
+          await this.deps.state.update({ state: 'ROLLBACK_FAILED', errorMessage: message });
           throw new AppError('OTA_ROLLBACK_FAILED', message, 500);
         }
         throw new AppError(
@@ -752,9 +941,35 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           502,
         );
       } finally {
-        releaseAdmission?.();
+        if (!maintenanceTransferred) releaseAdmission?.();
       }
     });
+  }
+
+  async recordExternalOutcome(input: OtaExternalOutcome): Promise<void> {
+    if (!input.operationId.trim()) throw new ValidationError('external OTA operation id is required');
+    if (!isValidVersion(input.version)) throw new ValidationError('version must be a valid semantic version');
+    if (this.deps.config.updaterStatePath) {
+      const snapshot = await readExternalUpdaterState(this.deps.config.updaterStatePath);
+      if (snapshot && (snapshot.operationId !== input.operationId || snapshot.version !== input.version)) {
+        throw new ConflictError('External OTA outcome does not match the persisted updater operation');
+      }
+    }
+    const current = await this.deps.state.get();
+    if (current.targetVersion && current.targetVersion !== input.version) {
+      throw new ConflictError(
+        `External OTA outcome for ${input.version} does not match active target ${current.targetVersion}`,
+      );
+    }
+    await this.deps.state.update({
+      state: input.state,
+      targetVersion: input.version,
+      errorMessage: input.errorMessage ?? null,
+      retryCount: input.state === 'COMPLETED' ? 0 : current.retryCount + 1,
+    });
+    if (input.state !== 'ROLLBACK_FAILED') {
+      this.deps.admission?.resumeMaintenance();
+    }
   }
 
   async rollbackUpdate(): Promise<OtaRollbackResult> {
@@ -768,7 +983,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     }
 
     return this.runExclusive(async () => {
-      const stagedDescriptor = this.stagedArtifact;
+      const stagedDescriptor = this.stagedArtifact ?? await this.loadPersistedArtifact();
       if (!stagedDescriptor) {
         throw new AppError('OTA_ROLLBACK_UNAVAILABLE', 'No verified update is available for rollback', 409);
       }
@@ -779,10 +994,24 @@ export class OtaUpdateService implements OtaUpdateServicePort {
       );
       await this.deps.state.update({ state: 'ROLLING_BACK', errorMessage: null });
       let releaseAdmission: (() => void) | undefined;
+      let maintenanceTransferred = false;
       try {
         if (this.deps.admission) releaseAdmission = await this.deps.admission.beginMaintenance();
         await this.waitForPrintIdle();
-        await this.deps.installer!.rollback(staged);
+        const launch = await this.deps.installer!.rollback(staged);
+        if (launch && launch.kind === 'external') {
+          maintenanceTransferred = true;
+          await this.deps.state.update({ state: 'RESTART_PENDING' });
+          return {
+            rolledBack: false,
+            version: staged.version,
+            component: staged.component,
+            platform: staged.platform,
+            state: 'RESTART_PENDING' as const,
+            restartRequired: true,
+            operationId: launch.operationId,
+          };
+        }
         await this.deps.state.update({ state: 'ROLLED_BACK', errorMessage: null });
         return {
           rolledBack: true,
@@ -793,10 +1022,11 @@ export class OtaUpdateService implements OtaUpdateServicePort {
         };
       } catch (error) {
         const message = `Manual rollback failed: ${safeErrorMessage(error)}`;
-        await this.deps.state.update({ state: 'ROLLED_BACK', errorMessage: message });
+        maintenanceTransferred = true;
+        await this.deps.state.update({ state: 'ROLLBACK_FAILED', errorMessage: message });
         throw new AppError('OTA_ROLLBACK_FAILED', message, 500);
       } finally {
-        releaseAdmission?.();
+        if (!maintenanceTransferred) releaseAdmission?.();
       }
     });
   }
@@ -813,6 +1043,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
       const resolution = await this.resolveManifest();
       const manifest = resolution.manifest;
       this.assertManifestCompatible(manifest);
+      this.assertManifestTrust(manifest);
       const comparison = compareVersions(manifest.release.version, this.deps.config.currentVersion);
       if (comparison === null) throw new ValidationError('current application version is invalid');
 
@@ -884,20 +1115,22 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     platform: ArtifactPlatform,
   ): Promise<StagedInstallArtifact> {
     const path = this.artifactPath(version, component, platform);
-    const inMemory = this.stagedArtifact;
+    const persisted = this.stagedArtifact ?? await this.loadPersistedArtifact();
     if (
-      inMemory &&
-      inMemory.version === version &&
-      inMemory.component === component &&
-      inMemory.platform === platform
+      persisted
+      && persisted.version === version
+      && persisted.component === component
+      && persisted.platform === platform
     ) {
+      this.assertArtifactCompatible(component, platform, persisted.format);
       const verified = await this.verifyArtifactFile(path, {
         url: '',
-        sha256: inMemory.sha256,
-        signature: '',
-        size: inMemory.bytes,
+        sha256: persisted.sha256,
+        signature: persisted.signature,
+        size: persisted.bytes,
+        ...(persisted.format ? { format: persisted.format as 'nsis-installer' | 'binary' | 'archive' } : {}),
       });
-      return { ...inMemory, bytes: verified.bytes, sha256: verified.sha256, artifactPath: path };
+      return { ...persisted, bytes: verified.bytes, sha256: verified.sha256, artifactPath: path };
     }
 
     // The staged path survives an API restart, while the in-memory descriptor
@@ -911,6 +1144,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     }
     this.assertManifestCompatible(resolution.manifest);
     const entry = this.selectArtifact(resolution.manifest, component, platform);
+    this.assertArtifactCompatible(component, platform, entry.format);
     const verified = await this.verifyArtifactFile(path, entry);
     const staged: StagedInstallArtifact = {
       artifactPath: path,
@@ -919,16 +1153,12 @@ export class OtaUpdateService implements OtaUpdateServicePort {
       platform,
       bytes: verified.bytes,
       sha256: verified.sha256,
+      signature: entry.signature,
+      ...(entry.format ? { format: entry.format } : {}),
+      previousVersion: this.deps.config.currentVersion,
       source: 'cache',
     };
-    this.stagedArtifact = {
-      version,
-      component,
-      platform,
-      bytes: verified.bytes,
-      sha256: verified.sha256,
-      source: 'cache',
-    };
+    this.stagedArtifact = staged;
     return staged;
   }
 
@@ -1061,10 +1291,56 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     return entry;
   }
 
+  private assertManifestTrust(manifest: ReleaseManifest): void {
+    if (!this.deps.config.requireSignature) return;
+    if (!this.deps.config.publicKey) {
+      throw new AppError(
+        'OTA_SIGNATURE_UNAVAILABLE',
+        'WAN/application OTA requires PRINTOPS_OTA_PUBLIC_KEY before a release can be trusted',
+        503,
+      );
+    }
+    const desktop = manifest.artifacts.desktop?.['windows-x64'];
+    if (!desktop?.signature.trim()) {
+      throw new AppError(
+        'OTA_SIGNATURE_REQUIRED',
+        'Release manifest does not contain a signature for the Windows application artifact',
+        422,
+      );
+    }
+  }
+
+  private assertArtifactCompatible(
+    component: ArtifactComponent,
+    platform: ArtifactPlatform,
+    format: string | undefined,
+  ): void {
+    if (component !== 'desktop' || platform !== 'windows-x64') {
+      throw new AppError(
+        'OTA_UNSUPPORTED_TARGET',
+        'This Windows Desktop updater accepts only the signed desktop/windows-x64 installer target',
+        422,
+      );
+    }
+    if (format !== 'nsis-installer') {
+      throw new AppError(
+        'OTA_INCOMPATIBLE_ARTIFACT',
+        'The selected desktop artifact is not a supported NSIS installer',
+        422,
+      );
+    }
+  }
+
   private assertManifestCompatible(manifest: ReleaseManifest): void {
     const current = parseVersion(this.deps.config.currentVersion);
     const minimum = parseVersion(manifest.compatibility.minSupportedVersion);
     if (!current || !minimum) throw new ValidationError('application version compatibility cannot be evaluated');
+    if (manifest.compatibility.schemaVersion !== this.deps.config.currentSchemaVersion) {
+      throw new ConflictError(
+        `Release requires database schema ${manifest.compatibility.schemaVersion}, `
+        + `but this application uses schema ${this.deps.config.currentSchemaVersion}`,
+      );
+    }
     const comparison = compareVersions(this.deps.config.currentVersion, manifest.compatibility.minSupportedVersion);
     if (comparison === null || comparison < 0) {
       throw new ConflictError(
@@ -1120,7 +1396,70 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     if (sha256 !== entry.sha256.toLowerCase()) {
       throw new AppError('OTA_VERIFY_FAILED', 'Staged artifact SHA-256 does not match the manifest', 422);
     }
+    if (this.deps.config.requireSignature) {
+      try {
+        verifyArtifactSignature(sha256, entry.signature, this.deps.config.publicKey);
+      } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError('OTA_SIGNATURE_INVALID', 'Release artifact signature is invalid', 422);
+      }
+    }
     return { bytes: info.size, sha256 };
+  }
+
+  private async loadPersistedArtifact(): Promise<StagedInstallArtifact | null> {
+    const value = await this.deps.artifactState?.load();
+    if (!value) return null;
+    if (
+      !isValidVersion(value.version)
+      || !isArtifactComponent(value.component)
+      || !isArtifactPlatform(value.platform)
+      || !value.artifactPath
+    ) return null;
+    const staged: StagedInstallArtifact = {
+      artifactPath: value.artifactPath,
+      version: value.version,
+      component: value.component,
+      platform: value.platform,
+      bytes: value.bytes,
+      sha256: value.sha256,
+      signature: value.signature,
+      ...(value.format ? { format: value.format } : {}),
+      previousVersion: value.previousVersion ?? this.deps.config.currentVersion,
+      source: value.source,
+    };
+    this.stagedArtifact = staged;
+    return staged;
+  }
+
+  private async reconcileExternalUpdaterState(): Promise<void> {
+    const path = this.deps.config.updaterStatePath;
+    if (!path) return;
+    const snapshot = await readExternalUpdaterState(path);
+    if (!snapshot || !isExternalUpdaterTerminalPhase(snapshot.phase)) return;
+    const current = await this.deps.state.get();
+    if (current.targetVersion && current.targetVersion !== snapshot.version) return;
+
+    const state = snapshot.phase === 'COMPLETED'
+      ? 'COMPLETED'
+      : snapshot.phase === 'ROLLED_BACK'
+        ? 'ROLLED_BACK'
+        : snapshot.phase === 'ROLLBACK_FAILED'
+          ? 'ROLLBACK_FAILED'
+          : 'INSTALL_FAILED';
+    const errorMessage = state === 'COMPLETED'
+      ? null
+      : snapshot.error ?? `External updater ended in ${snapshot.phase}`;
+    if (current.state === state && current.errorMessage === errorMessage) return;
+    await this.deps.state.update({
+      state,
+      targetVersion: snapshot.version,
+      errorMessage,
+      retryCount: state === 'COMPLETED' ? 0 : current.retryCount + 1,
+    });
+    if (state !== 'ROLLBACK_FAILED') {
+      this.deps.admission?.resumeMaintenance();
+    }
   }
 
   private now(): Date {

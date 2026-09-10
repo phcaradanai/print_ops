@@ -17,10 +17,12 @@ use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
     SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    JOB_OBJECT_LIMIT_BREAKAWAY_OK, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+#[cfg(windows)]
+const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
 #[cfg(windows)]
 struct SidecarJob(HANDLE);
@@ -52,7 +54,8 @@ fn sidecar_job() -> Result<&'static SidecarJob, String> {
                 ));
             }
             let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            info.BasicLimitInformation.LimitFlags =
+                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK;
             let configured = SetInformationJobObject(
                 handle,
                 JobObjectExtendedLimitInformation,
@@ -89,6 +92,11 @@ const DESKTOP_DISCOVERY_RUNNER_JOBS_ENABLED: bool = false;
 const NATS_SETTINGS_FILE: &str = "nats-settings.json";
 const JWT_SECRET_FILE: &str = "jwt-secret.txt";
 const RUNNER_BOOTSTRAP_SECRET_FILE: &str = "runner-bootstrap-secret.txt";
+const OTA_UPDATER_STATE_FILE: &str = "ota/updater-state.json";
+const OTA_ARTIFACT_STATE_FILE: &str = "ota/staged-artifact.json";
+const OTA_UPDATER_REQUEST_DIR: &str = "ota/requests";
+const OTA_UPDATER_BINARY_FILE: &str = "ota/printops-updater.exe";
+const OTA_HEALTH_TOKEN_FILE: &str = "ota-health-token.txt";
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -220,6 +228,24 @@ fn load_or_create_runner_bootstrap_secret(data_dir: &Path, log: &Path) -> String
     secret
 }
 
+fn load_or_create_ota_health_token(data_dir: &Path, log: &Path) -> String {
+    let path = data_dir.join(OTA_HEALTH_TOKEN_FILE);
+    if let Ok(existing) = fs::read_to_string(&path) {
+        let trimmed = existing.trim();
+        if trimmed.len() >= 32 {
+            return trimmed.to_string();
+        }
+    }
+    let token = generate_random_hex_secret();
+    let temporary = path.with_extension("txt.tmp");
+    if fs::write(&temporary, &token).and_then(|_| fs::rename(&temporary, &path)).is_err() {
+        log_line(log, "WARNING: could not persist the OTA local health token");
+    } else {
+        log_line(log, "Generated per-installation OTA local health token");
+    }
+    token
+}
+
 /// Everything `save_nats_settings` needs to rebuild the API server's launch
 /// command later, without redoing directory-resolution logic or drifting out
 /// of sync with the equivalent block in `setup()`.
@@ -231,6 +257,14 @@ struct ServerPaths {
     app_log: PathBuf,
     jwt_secret: String,
     runner_bootstrap_secret: String,
+    updater_path: PathBuf,
+    updater_state_path: PathBuf,
+    updater_request_dir: PathBuf,
+    artifact_state_path: PathBuf,
+    install_root: PathBuf,
+    desktop_path: PathBuf,
+    ota_health_token: String,
+    ota_public_key: Option<String>,
 }
 
 /// Builds the `server.exe` launch command for the given NATS settings. Used
@@ -256,9 +290,19 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
         .env("PRINTOPS_LOG_DIR", &paths.logs_dir)
         .env("PRINTOPS_APP_VERSION", env!("CARGO_PKG_VERSION"))
         .env("PRINTOPS_GIT_COMMIT", env!("PRINTOPS_GIT_COMMIT"))
+        .env("PRINTOPS_DB_SCHEMA_VERSION", "7")
         .env("SQL_WASM_PATH", &paths.wasm_path)
         .env("JWT_SECRET", &paths.jwt_secret)
         .env("PRINTOPS_RUNNER_BOOTSTRAP_SECRET", &paths.runner_bootstrap_secret)
+        .env("PRINTOPS_OTA_UPDATER_PATH", &paths.updater_path)
+        .env("PRINTOPS_OTA_UPDATER_STATE_PATH", &paths.updater_state_path)
+        .env("PRINTOPS_OTA_UPDATER_REQUEST_DIR", &paths.updater_request_dir)
+        .env("PRINTOPS_OTA_ARTIFACT_STATE_PATH", &paths.artifact_state_path)
+        .env("PRINTOPS_OTA_INSTALL_ROOT", &paths.install_root)
+        .env("PRINTOPS_OTA_DESKTOP_PATH", &paths.desktop_path)
+        .env("PRINTOPS_DESKTOP_PID", std::process::id().to_string())
+        .env("PRINTOPS_OTA_API_URL", SERVER_URL)
+        .env("PRINTOPS_OTA_HEALTH_TOKEN", &paths.ota_health_token)
         .env(
             "PRINTOPS_HTML_PRINT_HELPER",
             paths.res_dir.join("print-helper").join("printops-html-print.exe"),
@@ -277,6 +321,9 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
             .env_remove("PRINTOPS_NATS_CLIENT_ID")
             .env_remove("PRINTOPS_NATS_SUBJECT_PREFIX")
             .env_remove("PRINTOPS_NATS_DURABLE");
+    }
+    if let Some(public_key) = &paths.ota_public_key {
+        cmd.env("PRINTOPS_OTA_PUBLIC_KEY", public_key);
     }
     cmd
 }
@@ -434,6 +481,57 @@ fn resolve_resource_dir(resource_dir: &Path, exe_dir: &Path) -> PathBuf {
     resource_dir.join("resources")
 }
 
+/// Keep the running updater outside the install tree. The NSIS artifact may
+/// update the bundled `resources/printops-updater.exe` itself, so executing
+/// that resource directly would leave the file locked during replacement.
+fn prepare_ota_updater(source: &Path, destination: &Path, log: &Path) -> PathBuf {
+    if !source.exists() {
+        log_line(log, &format!("ERROR: OTA updater resource is missing: {}", source.display()));
+        return source.to_path_buf();
+    }
+    if let Some(parent) = destination.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let temporary = destination.with_extension("exe.tmp");
+    let _ = fs::remove_file(&temporary);
+    // On Windows rename does not replace an existing file. At normal startup
+    // no updater worker is using this copy; if removal is denied (for example,
+    // a recovery worker is still alive), the existing copy remains the safe
+    // fallback below.
+    if destination.exists() {
+        let _ = fs::remove_file(destination);
+    }
+    let copied = fs::copy(source, &temporary)
+        .and_then(|_| fs::rename(&temporary, destination));
+    match copied {
+        Ok(_) => {
+            log_line(log, &format!("Prepared external OTA updater outside install tree: {}", destination.display()));
+            destination.to_path_buf()
+        }
+        Err(error) => {
+            let _ = fs::remove_file(&temporary);
+            if destination.exists() {
+                log_line(
+                    log,
+                    &format!(
+                        "WARNING: could not refresh OTA updater copy ({error}); using existing {}",
+                        destination.display()
+                    ),
+                );
+                destination.to_path_buf()
+            } else {
+                log_line(
+                    log,
+                    &format!(
+                        "WARNING: could not copy OTA updater outside install tree ({error}); using bundled resource"
+                    ),
+                );
+                source.to_path_buf()
+            }
+        }
+    }
+}
+
 /// stdout/stderr sinks for a child process. Piped stdio with no reader deadlocks
 /// the child once the pipe buffer fills, so output goes to a log file instead.
 fn child_stdio(log_path: &Path) -> (Stdio, Stdio) {
@@ -470,6 +568,68 @@ fn spawn_child(mut cmd: Command, log: &Path, label: &str) -> Option<Child> {
         Err(e) => {
             log_line(log, &format!("ERROR: failed to start {label}: {e}"));
             None
+        }
+    }
+}
+
+fn ota_recovery_is_stale(state_path: &Path) -> bool {
+    let Ok(raw) = fs::read_to_string(state_path) else { return false };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else { return false };
+    let phase = value.get("phase").and_then(serde_json::Value::as_str).unwrap_or("");
+    if !matches!(
+        phase,
+        "RECEIVED"
+            | "VERIFYING"
+            | "WAITING_FOR_SHUTDOWN"
+            | "BACKING_UP"
+            | "INSTALLING"
+            | "STARTING"
+            | "HEALTH_CHECK"
+            | "ROLLING_BACK"
+    ) {
+        return false;
+    }
+    fs::metadata(state_path)
+        .and_then(|metadata| metadata.modified())
+        .and_then(|modified| modified.elapsed().map_err(std::io::Error::other))
+        .map(|age| age >= Duration::from_secs(30))
+        .unwrap_or(false)
+}
+
+/// Runs before sidecars are started so an updater that was interrupted while
+/// replacing the install tree can restore the last known-good tree. The
+/// updater is intentionally not assigned to the Desktop job object: it must
+/// outlive this process while it terminates and relaunches Desktop.
+fn launch_stale_ota_recovery(
+    updater_path: &Path,
+    state_path: &Path,
+    install_root: &Path,
+    log: &Path,
+) -> bool {
+    if !updater_path.exists() || !ota_recovery_is_stale(state_path) {
+        return false;
+    }
+    let mut command = Command::new(updater_path);
+    command
+        .arg("recover")
+        .arg("--state")
+        .arg(state_path)
+        .arg("--desktop-pid")
+        .arg(std::process::id().to_string())
+        .current_dir(install_root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB);
+    match command.spawn() {
+        Ok(child) => {
+            log_line(log, &format!("stale OTA recovery handed off to updater (pid: {})", child.id()));
+            true
+        }
+        Err(error) => {
+            log_line(log, &format!("ERROR: could not start stale OTA recovery: {error}"));
+            false
         }
     }
 }
@@ -585,6 +745,8 @@ pub fn run() {
                 .app_data_dir()
                 .unwrap_or_else(|_| res_dir.clone());
             let _ = fs::create_dir_all(&data_dir);
+            let ota_dir = data_dir.join("ota");
+            let _ = fs::create_dir_all(&ota_dir);
             let db_path = data_dir.join("printops.db");
             log_line(&app_log, &format!("db path: {}", db_path.display()));
             let nats_settings = load_nats_settings(&data_dir, &app_log);
@@ -607,6 +769,18 @@ pub fn run() {
             let jwt_secret = load_or_create_jwt_secret(&data_dir, &app_log);
             let runner_bootstrap_secret =
                 load_or_create_runner_bootstrap_secret(&data_dir, &app_log);
+            let ota_health_token = load_or_create_ota_health_token(&data_dir, &app_log);
+            let desktop_path = std::env::current_exe().unwrap_or_else(|_| exe_dir.join("printerops-desktop.exe"));
+            let bundled_updater_path = res_dir.join("printops-updater.exe");
+            let updater_path = prepare_ota_updater(
+                &bundled_updater_path,
+                &data_dir.join(OTA_UPDATER_BINARY_FILE),
+                &app_log,
+            );
+            let ota_public_key = fs::read_to_string(res_dir.join("ota-public-key.txt"))
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty() && value != "unconfigured");
 
             let server_paths = ServerPaths {
                 res_dir: res_dir.clone(),
@@ -616,7 +790,27 @@ pub fn run() {
                 app_log: app_log.clone(),
                 jwt_secret,
                 runner_bootstrap_secret,
+                updater_path,
+                updater_state_path: data_dir.join(OTA_UPDATER_STATE_FILE),
+                updater_request_dir: data_dir.join(OTA_UPDATER_REQUEST_DIR),
+                artifact_state_path: data_dir.join(OTA_ARTIFACT_STATE_FILE),
+                install_root: exe_dir.clone(),
+                desktop_path,
+                ota_health_token,
+                ota_public_key,
             };
+
+            if launch_stale_ota_recovery(
+                &server_paths.updater_path,
+                &server_paths.updater_state_path,
+                &server_paths.install_root,
+                &app_log,
+            ) {
+                // The recovery worker must replace/relaunch this Desktop
+                // process before any sidecar can open the partially updated
+                // resource tree.
+                std::process::exit(0);
+            }
 
             // ── Start API server ──
             let server_child = if server_exe.exists() {
