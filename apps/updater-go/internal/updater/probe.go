@@ -64,15 +64,43 @@ func probeEndpoint(client *http.Client, endpoint, token, expectedVersion string,
 		return fmt.Errorf("%s returned HTTP %d", endpoint, response.StatusCode)
 	}
 	var body struct {
-		Status  string `json:"status"`
-		Version string `json:"version"`
+		Status             string `json:"status"`
+		Version            string `json:"version"`
+		ApplicationVersion string `json:"application_version"`
+		OTA                struct {
+			Contract           string `json:"contract"`
+			Status             string `json:"status"`
+			RequiredComponents struct {
+				LocalAPI struct {
+					State string `json:"state"`
+				} `json:"localApi"`
+				Database struct {
+					State string `json:"state"`
+				} `json:"database"`
+				LocalPrintWorker struct {
+					State string `json:"state"`
+				} `json:"localPrintWorker"`
+			} `json:"requiredComponents"`
+		} `json:"ota"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 256*1024)).Decode(&body); err != nil {
 		return fmt.Errorf("health response is not JSON: %w", err)
 	}
 	if readiness {
-		if body.Status != "READY" && body.Status != "DEGRADED" {
-			return fmt.Errorf("readiness response has no valid status")
+		if body.OTA.Contract != "printops-ota-v1" || body.OTA.Status != "READY" {
+			return fmt.Errorf("OTA readiness contract is not READY")
+		}
+		for name, state := range map[string]string{
+			"localApi":         body.OTA.RequiredComponents.LocalAPI.State,
+			"database":         body.OTA.RequiredComponents.Database.State,
+			"localPrintWorker": body.OTA.RequiredComponents.LocalPrintWorker.State,
+		} {
+			if state != "READY" {
+				return fmt.Errorf("OTA readiness component %s is %q", name, state)
+			}
+		}
+		if expectedVersion != "" && body.ApplicationVersion != expectedVersion {
+			return fmt.Errorf("readiness application version %q does not match expected %q", body.ApplicationVersion, expectedVersion)
 		}
 	} else if body.Status != "ok" {
 		return fmt.Errorf("health response has no valid status")

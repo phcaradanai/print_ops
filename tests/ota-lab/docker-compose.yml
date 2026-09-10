@@ -1,0 +1,15 @@
+services:
+  ota-wan:
+    build: .
+    environment:
+      PORT: 8080
+      ROLE: wan
+    ports:
+      - "18080:8080"
+  ota-lan:
+    build: .
+    environment:
+      PORT: 8080
+      ROLE: lan
+    ports:
+      - "18081:8080"

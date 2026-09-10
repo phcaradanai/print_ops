@@ -165,6 +165,49 @@ func TestApplyHealthFailureRestoresPreviousVersion(t *testing.T) {
 	}
 }
 
+func TestApplySchemaFailureRestoresDatabaseWithPreviousVersion(t *testing.T) {
+	request, directory, installRoot := newRequest(t)
+	databasePath := filepath.Join(directory, "data", "printops.db")
+	if err := os.MkdirAll(filepath.Dir(databasePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(databasePath, []byte("schema-7:A"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	request.DatabasePath = databasePath
+	request.DatabaseSchemaVersion = 7
+	request.TargetSchemaVersion = 8
+	runtime := &fakeRuntime{
+		install: func(root string) error {
+			if err := os.WriteFile(filepath.Join(root, "version.txt"), []byte("B"), 0o644); err != nil {
+				return err
+			}
+			return os.WriteFile(databasePath, []byte("schema-8:B"), 0o644)
+		},
+	}
+	probe := &fakeProbe{errOn: map[int]error{1: errors.New("new schema is unhealthy")}}
+	worker := &Updater{Runtime: runtime, Probe: probe, Report: noNetworkReport}
+
+	if err := worker.Apply(context.Background(), request); err == nil {
+		t.Fatal("expected the schema-changing update to roll back")
+	}
+	version, err := os.ReadFile(filepath.Join(installRoot, "version.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	database, err := os.ReadFile(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(version) != "A" || string(database) != "schema-7:A" {
+		t.Fatalf("rollback restored version=%q database=%q, want A/schema-7:A", version, database)
+	}
+	state := readState(t, request.StatePath)
+	if state.Phase != PhaseRolledBack || state.DatabaseBackupPath == "" {
+		t.Fatalf("state = %+v, want rolled back with database backup metadata", state)
+	}
+}
+
 func TestRecoverInterruptedUpdateFromPersistedBackup(t *testing.T) {
 	request, directory, installRoot := newRequest(t)
 	backup := filepath.Join(directory, "ota", "backups", request.OperationID)
@@ -263,6 +306,14 @@ func TestValidateRequestRejectsRemoteCallbackURL(t *testing.T) {
 	request.APIURL = "https://updates.example.invalid/printops"
 	if err := validateRequest(request); err == nil {
 		t.Fatal("expected a remote callback URL to be rejected")
+	}
+}
+
+func TestValidateRequestRejectsDowngrade(t *testing.T) {
+	request, _, _ := newRequest(t)
+	request.Version = "0.1.27"
+	if err := validateRequest(request); err == nil {
+		t.Fatal("expected a downgrade to be rejected by the native updater")
 	}
 }
 

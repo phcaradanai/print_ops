@@ -378,7 +378,7 @@ describe('OtaUpdateService', () => {
     });
   });
 
-  it('rejects a release that targets an incompatible database schema before install', async () => {
+  it('rejects a schema-changing release when no rollback database path is configured', async () => {
     const config = await makeConfig();
     const incompatible = manifest('0.1.29');
     incompatible.compatibility.schema_version = 8;
@@ -389,7 +389,7 @@ describe('OtaUpdateService', () => {
     });
 
     await expect(service.checkForUpdate()).rejects.toMatchObject({
-      message: expect.stringContaining('database schema 8'),
+      code: 'OTA_DB_BACKUP_UNAVAILABLE',
     });
   });
 

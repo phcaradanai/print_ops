@@ -28,6 +28,88 @@ func createBackup(source, backup string) error {
 	return nil
 }
 
+// createDatabaseBackup snapshots the persistent DB separately from the
+// install tree. Packaged PrintOps keeps the DB in per-user app data, so an
+// application rollback must restore both trees when the candidate migrates it.
+func createDatabaseBackup(source, backup string) error {
+	info, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("database path is not a regular file")
+	}
+	if err := os.MkdirAll(filepath.Dir(backup), 0o755); err != nil {
+		return err
+	}
+	part := backup + ".part"
+	if err := os.Remove(part); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	entry := fileInfoDirEntry{info: info}
+	if err := copyFile(source, part, entry); err != nil {
+		_ = os.Remove(part)
+		return err
+	}
+	if err := os.Remove(backup); err != nil && !os.IsNotExist(err) {
+		_ = os.Remove(part)
+		return err
+	}
+	if err := os.Rename(part, backup); err != nil {
+		_ = os.Remove(part)
+		return err
+	}
+	return nil
+}
+
+// restoreDatabaseBackup prepares the old DB completely before replacing the
+// candidate DB. The previous file is kept until the replacement is in place.
+func restoreDatabaseBackup(backup, target string) error {
+	info, err := os.Stat(backup)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("database backup is not a regular file")
+	}
+	part := target + ".restore.part"
+	if err := os.Remove(part); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	entry := fileInfoDirEntry{info: info}
+	if err := copyFile(backup, part, entry); err != nil {
+		_ = os.Remove(part)
+		return err
+	}
+	previous := target + ".failed-restore"
+	_ = os.Remove(previous)
+	if _, err := os.Stat(target); err == nil {
+		if err := os.Rename(target, previous); err != nil {
+			_ = os.Remove(part)
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		_ = os.Remove(part)
+		return err
+	}
+	if err := os.Rename(part, target); err != nil {
+		if _, restoreErr := os.Stat(previous); restoreErr == nil {
+			_ = os.Rename(previous, target)
+		}
+		_ = os.Remove(part)
+		return err
+	}
+	_ = os.Remove(previous)
+	return nil
+}
+
+type fileInfoDirEntry struct{ info os.FileInfo }
+
+func (entry fileInfoDirEntry) Name() string               { return entry.info.Name() }
+func (entry fileInfoDirEntry) IsDir() bool                { return entry.info.IsDir() }
+func (entry fileInfoDirEntry) Type() fs.FileMode          { return entry.info.Mode().Type() }
+func (entry fileInfoDirEntry) Info() (fs.FileInfo, error) { return entry.info, nil }
+
 func copyDirectory(source, destination string) error {
 	info, err := os.Stat(source)
 	if err != nil {

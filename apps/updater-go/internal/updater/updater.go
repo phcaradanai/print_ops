@@ -67,11 +67,22 @@ func (u *Updater) Apply(ctx context.Context, request Request) error {
 	if withinRoot(state.BackupPath, request.InstallRoot) {
 		return u.fail(request, &state, PhaseFailed, fmt.Errorf("computed backup path is inside install root"))
 	}
+	if request.TargetSchemaVersion > request.DatabaseSchemaVersion {
+		state.DatabaseBackupPath = state.BackupPath + ".db"
+		if withinRoot(state.DatabaseBackupPath, request.InstallRoot) {
+			return u.fail(request, &state, PhaseFailed, fmt.Errorf("computed database backup path is inside install root"))
+		}
+	}
 	if err := u.transition(request.StatePath, &state, PhaseBackingUp, ""); err != nil {
 		return err
 	}
 	if err := createBackup(request.InstallRoot, state.BackupPath); err != nil {
 		return u.rollbackBeforeInstall(request, &state, fmt.Errorf("backup install tree: %w", err))
+	}
+	if state.DatabaseBackupPath != "" {
+		if err := createDatabaseBackup(request.DatabasePath, state.DatabaseBackupPath); err != nil {
+			return u.rollbackBeforeInstall(request, &state, fmt.Errorf("backup database: %w", err))
+		}
 	}
 
 	if err := u.transition(request.StatePath, &state, PhaseInstalling, ""); err != nil {
@@ -114,7 +125,7 @@ func (u *Updater) Recover(ctx context.Context, statePath string, currentDesktopP
 	if state.Phase == PhaseCompleted || state.Phase == PhaseRolledBack || state.Phase == PhaseRollbackFailed {
 		return nil
 	}
-	if err := validateRecoveryRequest(state.Request, state.BackupPath); err != nil {
+	if err := validateRecoveryRequest(state.Request, state.BackupPath, state.DatabaseBackupPath); err != nil {
 		return err
 	}
 	if u.Runtime == nil {
@@ -167,6 +178,9 @@ func (u *Updater) Recover(ctx context.Context, statePath string, currentDesktopP
 	if err := restoreBackup(request.InstallRoot, state.BackupPath); err != nil {
 		return u.rollbackFailed(request, &state, err)
 	}
+	if err := restoreDatabaseIfNeeded(request, &state); err != nil {
+		return u.rollbackFailed(request, &state, err)
+	}
 	if _, err := u.Runtime.StartDesktop(request.DesktopPath, request.InstallRoot); err != nil {
 		return u.rollbackFailed(request, &state, err)
 	}
@@ -195,7 +209,7 @@ func (u *Updater) Rollback(ctx context.Context, statePath string, currentDesktop
 	if state.Phase != PhaseCompleted {
 		return fmt.Errorf("cannot manually rollback updater phase %s", state.Phase)
 	}
-	if err := validateRecoveryRequest(state.Request, state.BackupPath); err != nil {
+	if err := validateRecoveryRequest(state.Request, state.BackupPath, state.DatabaseBackupPath); err != nil {
 		return err
 	}
 	if u.Runtime == nil {
@@ -219,6 +233,9 @@ func (u *Updater) Rollback(ctx context.Context, statePath string, currentDesktop
 		return err
 	}
 	if err := restoreBackup(request.InstallRoot, state.BackupPath); err != nil {
+		return u.rollbackFailed(request, &state, err)
+	}
+	if err := restoreDatabaseIfNeeded(request, &state); err != nil {
 		return u.rollbackFailed(request, &state, err)
 	}
 	if _, err := u.Runtime.StartDesktop(request.DesktopPath, request.InstallRoot); err != nil {
@@ -254,6 +271,9 @@ func (u *Updater) rollbackAfterFailure(ctx context.Context, request Request, sta
 	if err := restoreBackup(request.InstallRoot, state.BackupPath); err != nil {
 		return u.rollbackFailed(request, state, fmt.Errorf("%v; restore failed: %w", cause, err))
 	}
+	if err := restoreDatabaseIfNeeded(request, state); err != nil {
+		return u.rollbackFailed(request, state, fmt.Errorf("%v; database restore failed: %w", cause, err))
+	}
 	if _, err := u.Runtime.StartDesktop(request.DesktopPath, request.InstallRoot); err != nil {
 		return u.rollbackFailed(request, state, fmt.Errorf("%v; previous version did not start: %w", cause, err))
 	}
@@ -266,6 +286,16 @@ func (u *Updater) rollbackAfterFailure(ctx context.Context, request Request, sta
 	_ = u.report(request, "ROLLED_BACK", cause.Error())
 	_ = ctx
 	return fmt.Errorf("update failed and was rolled back: %w", cause)
+}
+
+func restoreDatabaseIfNeeded(request Request, state *State) error {
+	if state.DatabaseBackupPath == "" {
+		return nil
+	}
+	if request.DatabasePath == "" {
+		return fmt.Errorf("database rollback path is missing")
+	}
+	return restoreDatabaseBackup(state.DatabaseBackupPath, request.DatabasePath)
 }
 
 // rollbackBeforeInstall handles failures after the desktop may have been

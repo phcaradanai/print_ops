@@ -144,7 +144,18 @@ export interface ReadinessComponent {
   details?: Record<string, unknown>;
 }
 export interface ReadinessSnapshot {
+  contractVersion: 1;
+  applicationVersion: string;
   status: 'READY' | 'DEGRADED';
+  ota: {
+    contract: 'printops-ota-v1';
+    status: 'READY' | 'NOT_READY';
+    requiredComponents: {
+      localApi: ReadinessComponent;
+      database: ReadinessComponent;
+      localPrintWorker: ReadinessComponent;
+    };
+  };
   checkedAt: string;
   components: Record<string, ReadinessComponent>;
 }

@@ -21,39 +21,43 @@ const (
 // contains no manifest or networking policy: the API has already selected and
 // verified the artifact before writing this file.
 type Request struct {
-	Mode              string `json:"mode"`
-	OperationID       string `json:"operation_id"`
-	ArtifactPath      string `json:"artifact_path"`
-	ArtifactSHA256    string `json:"artifact_sha256"`
-	ArtifactSignature string `json:"artifact_signature"`
-	ArtifactFormat    string `json:"artifact_format"`
-	RequireSignature  bool   `json:"require_signature"`
-	PublicKey         string `json:"public_key"`
-	Version           string `json:"version"`
-	PreviousVersion   string `json:"previous_version"`
-	InstallRoot       string `json:"install_root"`
-	DesktopPath       string `json:"desktop_path"`
-	DesktopPID        int    `json:"desktop_pid"`
-	APIURL            string `json:"api_url"`
-	HealthToken       string `json:"health_token"`
-	StatePath         string `json:"state_path"`
-	HealthTimeoutMs   int    `json:"health_check_timeout_ms"`
-	ShutdownTimeoutMs int    `json:"shutdown_timeout_ms"`
-	HandoffDelayMs    int    `json:"handoff_delay_ms"`
+	Mode                  string `json:"mode"`
+	OperationID           string `json:"operation_id"`
+	ArtifactPath          string `json:"artifact_path"`
+	ArtifactSHA256        string `json:"artifact_sha256"`
+	ArtifactSignature     string `json:"artifact_signature"`
+	ArtifactFormat        string `json:"artifact_format"`
+	RequireSignature      bool   `json:"require_signature"`
+	PublicKey             string `json:"public_key"`
+	Version               string `json:"version"`
+	PreviousVersion       string `json:"previous_version"`
+	InstallRoot           string `json:"install_root"`
+	DesktopPath           string `json:"desktop_path"`
+	DesktopPID            int    `json:"desktop_pid"`
+	APIURL                string `json:"api_url"`
+	HealthToken           string `json:"health_token"`
+	DatabasePath          string `json:"database_path"`
+	DatabaseSchemaVersion int    `json:"database_schema_version"`
+	TargetSchemaVersion   int    `json:"target_schema_version"`
+	StatePath             string `json:"state_path"`
+	HealthTimeoutMs       int    `json:"health_check_timeout_ms"`
+	ShutdownTimeoutMs     int    `json:"shutdown_timeout_ms"`
+	HandoffDelayMs        int    `json:"handoff_delay_ms"`
 }
 
 // State is deliberately written before every irreversible lifecycle step.
 // Request is embedded so a restart can recover without relying on the old API
 // process or an in-memory staged-artifact descriptor.
 type State struct {
-	OperationID string    `json:"operation_id"`
-	Version     string    `json:"version"`
-	Phase       string    `json:"phase"`
-	BackupPath  string    `json:"backup_path,omitempty"`
-	StartedAt   time.Time `json:"started_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	Error       string    `json:"error,omitempty"`
-	Request     Request   `json:"request"`
+	OperationID        string    `json:"operation_id"`
+	Version            string    `json:"version"`
+	Phase              string    `json:"phase"`
+	BackupPath         string    `json:"backup_path,omitempty"`
+	DatabaseBackupPath string    `json:"database_backup_path,omitempty"`
+	StartedAt          time.Time `json:"started_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	Error              string    `json:"error,omitempty"`
+	Request            Request   `json:"request"`
 }
 
 type Runtime interface {

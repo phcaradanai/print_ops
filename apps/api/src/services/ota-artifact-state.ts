@@ -19,6 +19,7 @@ export interface PersistedStagedArtifact {
   signature: string;
   format?: string;
   previousVersion?: string;
+  targetSchemaVersion?: number;
   source: OtaSource;
   updatedAt: string;
 }
@@ -68,6 +69,10 @@ function isPersistedStagedArtifact(value: unknown): value is PersistedStagedArti
     && typeof record['sha256'] === 'string'
     && /^[0-9a-f]{64}$/i.test(record['sha256'] as string)
     && typeof record['signature'] === 'string'
+    && (record['targetSchemaVersion'] === undefined
+      || (typeof record['targetSchemaVersion'] === 'number'
+        && Number.isSafeInteger(record['targetSchemaVersion'])
+        && record['targetSchemaVersion'] >= 0))
     && (record['source'] === 'lan' || record['source'] === 'wan' || record['source'] === 'cache')
     && typeof record['updatedAt'] === 'string';
 }

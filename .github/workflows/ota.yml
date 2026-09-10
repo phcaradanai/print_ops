@@ -1,0 +1,98 @@
+name: Application OTA gate
+
+on:
+  pull_request:
+    branches: [mvp_nippon]
+    paths:
+      - 'apps/api/**'
+      - 'apps/desktop/**'
+      - 'apps/updater-go/**'
+      - 'apps/runner-go/**'
+      - 'packages/**'
+      - 'scripts/**'
+      - 'tests/ota-lab/**'
+      - 'docs/ota/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ota.yml'
+  push:
+    branches: [mvp_nippon]
+    paths:
+      - 'apps/api/**'
+      - 'apps/desktop/**'
+      - 'apps/updater-go/**'
+      - 'apps/runner-go/**'
+      - 'packages/**'
+      - 'scripts/**'
+      - 'tests/ota-lab/**'
+      - 'docs/ota/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ota.yml'
+  workflow_dispatch:
+    inputs:
+      run_native_windows_e2e:
+        description: 'Run the real signed NSIS A -> B -> broken-B rollback test (requires runner secrets/artifacts)'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ota-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: OTA TypeScript, Go, manifest, and Docker matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/updater-go/go.mod
+      - run: npm ci
+      - run: npm run build:packages
+      - run: npm run typecheck -w @printerops/api
+      - run: npm run test -w @printerops/domain
+      - run: npm run test -w @printerops/api -- --run src/tests/ota-update.service.test.ts src/tests/ota-update-policy.test.ts src/tests/readiness-support-bundle.test.ts
+      - run: npm run test:updater-go
+      - run: npm run test:runner-go
+      - run: npm run test:release-verifier
+      - run: npm run test:ota-docker
+
+  windows:
+    name: Windows packaged build and updater checks
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/updater-go/go.mod
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: npm ci
+      - run: npm run build:packages
+      - run: npm run test:updater-go
+      - run: npm run test:runner-go
+      - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - run: npm run test:packaged-sidecars
+        env:
+          PRINTOPS_OTA_REQUIRE_SIGNATURE: 'false'
+      - name: Real native Windows OTA acceptance
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_native_windows_e2e }}
+        shell: pwsh
+        run: ./scripts/ota-native-e2e.ps1

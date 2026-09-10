@@ -114,6 +114,7 @@ import { OtaUpdateService, otaConfigFromEnv } from './services/ota-update.servic
 import { PrintAdmissionGate } from './services/print-admission-gate.js';
 import { FileOtaArtifactStateStore } from './services/ota-artifact-state.js';
 import { ExternalUpdaterInstaller, externalUpdaterConfigured, type ExternalUpdaterConfig } from './services/external-updater-installer.js';
+import { FileOtaPolicyStateStore, OtaUpdatePolicyWorker } from './services/ota-update-policy.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -354,10 +355,12 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         healthToken: otaConfig.healthToken,
         publicKey: otaConfig.publicKey,
         requireSignature: otaConfig.requireSignature === true,
-        healthCheckTimeoutMs: otaConfig.healthCheckTimeoutMs ?? 20_000,
-        shutdownTimeoutMs: otaConfig.updaterShutdownTimeoutMs ?? 30_000,
-        handoffDelayMs: otaConfig.updaterHandoffDelayMs ?? 500,
-      }
+         healthCheckTimeoutMs: otaConfig.healthCheckTimeoutMs ?? 20_000,
+         shutdownTimeoutMs: otaConfig.updaterShutdownTimeoutMs ?? 30_000,
+         handoffDelayMs: otaConfig.updaterHandoffDelayMs ?? 500,
+         databasePath: otaConfig.databasePath,
+         currentSchemaVersion: otaConfig.currentSchemaVersion,
+       }
     : undefined;
   const externalUpdater = externalUpdaterConfig && externalUpdaterConfigured(externalUpdaterConfig)
     ? new ExternalUpdaterInstaller(externalUpdaterConfig)
@@ -374,6 +377,25 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       ? new FileOtaArtifactStateStore(otaConfig.artifactStatePath)
       : undefined,
     installer: externalUpdater,
+  });
+  const otaPolicyWorker = new OtaUpdatePolicyWorker({
+    service: otaUpdateService,
+    config: {
+      enabled: otaConfig.enabled && otaConfig.autoUpdateEnabled === true && Boolean(externalUpdater),
+      checkIntervalMs: otaConfig.autoUpdateCheckIntervalMs ?? 6 * 60 * 60 * 1_000,
+      jitterMs: otaConfig.autoUpdateJitterMs ?? 5 * 60 * 1_000,
+      retryBaseMs: otaConfig.autoUpdateRetryBaseMs ?? 60 * 1_000,
+      retryMaxMs: otaConfig.autoUpdateRetryMaxMs ?? 6 * 60 * 60 * 1_000,
+      maxFailures: otaConfig.autoUpdateMaxFailures ?? 5,
+    },
+    stateStore: otaConfig.policyStatePath
+      ? new FileOtaPolicyStateStore(otaConfig.policyStatePath)
+      : undefined,
+    logger: {
+      info: (context, message) => app.log.info(context, message),
+      warn: (context, message) => app.log.warn(context, message),
+      error: (context, message) => app.log.error(context, message),
+    },
   });
 
   // Bound the growth of jobs/traces/audit_logs on long-running installs (see
@@ -1026,6 +1048,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   }
   natsManager.start();
   app.addHook('onClose', async () => { await natsManager.stop(); });
+  otaPolicyWorker.start();
+  app.addHook('onClose', async () => { otaPolicyWorker.stop(); });
 
   // Landing page — serve Vite index.html if available, otherwise inline UI
   app.get('/', async (_req, reply) => {

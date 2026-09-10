@@ -20,6 +20,8 @@ export interface ExternalUpdaterConfig {
   healthCheckTimeoutMs: number;
   shutdownTimeoutMs: number;
   handoffDelayMs: number;
+  databasePath?: string;
+  currentSchemaVersion: number;
 }
 
 export interface ExternalInstallLaunch {
@@ -77,6 +79,9 @@ export class ExternalUpdaterInstaller implements OtaInstallerPort {
       desktop_pid: this.config.desktopPid,
       api_url: this.config.apiUrl,
       health_token: this.config.healthToken,
+      database_path: input.databasePath ?? this.config.databasePath ?? '',
+      database_schema_version: input.databaseSchemaVersion ?? this.config.currentSchemaVersion,
+      target_schema_version: input.targetSchemaVersion ?? this.config.currentSchemaVersion,
       state_path: this.config.statePath,
       health_check_timeout_ms: this.config.healthCheckTimeoutMs,
       shutdown_timeout_ms: this.config.shutdownTimeoutMs,

@@ -19,6 +19,7 @@
     "test:e2e:nats": "node scripts/run-real-nats-e2e.mjs",
     "test:packaged-sidecars": "node scripts/packaged-sidecar-smoke.mjs",
     "test:packaged-desktop": "node scripts/packaged-desktop-supervision-smoke.mjs",
+    "test:ota-docker": "node scripts/ota-docker-integration.mjs",
     "test:release-verifier": "node --test scripts/release-verify.test.mjs",
     "typecheck:runner-go": "cd apps/runner-go && go test ./...",
     "typecheck:updater-go": "cd apps/updater-go && go test ./...",

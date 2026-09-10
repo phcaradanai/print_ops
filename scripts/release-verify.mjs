@@ -317,7 +317,10 @@ if (postBundle && failures.length === 0) {
   } else {
     const channel = process.env.PRINTOPS_OTA_CHANNEL ?? 'stable';
     const rolloutPercentage = Number(process.env.PRINTOPS_OTA_ROLLOUT_PERCENTAGE ?? '100');
-    const minSupportedVersion = process.env.PRINTOPS_OTA_MIN_SUPPORTED_VERSION ?? version;
+    // A release must declare the compatibility floor explicitly. Falling back
+    // to the target version makes every ordinary A -> B upgrade reject itself
+    // because the running A version is below B.
+    const minSupportedVersion = process.env.PRINTOPS_OTA_MIN_SUPPORTED_VERSION?.trim();
     const schemaVersion = Number(process.env.PRINTOPS_DB_SCHEMA_VERSION ?? '7');
     const requireSignature = process.env.PRINTOPS_OTA_REQUIRE_SIGNATURE !== 'false';
     const signingKey = process.env.PRINTOPS_OTA_PRIVATE_KEY;
@@ -339,6 +342,8 @@ if (postBundle && failures.length === 0) {
       fail('ota:manifest-channel', `unsupported OTA channel ${channel}`);
     } else if (!Number.isInteger(rolloutPercentage) || rolloutPercentage < 0 || rolloutPercentage > 100) {
       fail('ota:manifest-rollout', 'PRINTOPS_OTA_ROLLOUT_PERCENTAGE must be an integer from 0 to 100');
+    } else if (!minSupportedVersion) {
+      fail('ota:manifest-min-version', 'PRINTOPS_OTA_MIN_SUPPORTED_VERSION must be explicitly configured; refusing to default it to the target release');
     } else if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(minSupportedVersion)) {
       fail('ota:manifest-min-version', 'PRINTOPS_OTA_MIN_SUPPORTED_VERSION must be a semantic version');
     } else if (!Number.isSafeInteger(schemaVersion) || schemaVersion < 0) {

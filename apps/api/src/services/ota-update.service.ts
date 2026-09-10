@@ -18,7 +18,7 @@ import { AppError, ConflictError, ValidationError } from '@printerops/shared';
 import { createHash, createPublicKey, verify as verifySignature } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, rm, rename, stat } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { PrintAdmissionGatePort } from './print-admission-gate.js';
@@ -37,6 +37,11 @@ const DEFAULT_HEALTH_CHECK_TIMEOUT_MS = 20_000;
 const DEFAULT_UPDATER_SHUTDOWN_TIMEOUT_MS = 30_000;
 const DEFAULT_UPDATER_HANDOFF_DELAY_MS = 500;
 const DEFAULT_SCHEMA_VERSION = 7;
+const DEFAULT_AUTO_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+const DEFAULT_AUTO_UPDATE_JITTER_MS = 5 * 60 * 1_000;
+const DEFAULT_AUTO_UPDATE_RETRY_BASE_MS = 60 * 1_000;
+const DEFAULT_AUTO_UPDATE_RETRY_MAX_MS = 6 * 60 * 60 * 1_000;
+const DEFAULT_AUTO_UPDATE_MAX_FAILURES = 5;
 const NON_TERMINAL_JOB_STATUSES = ['ACCEPTED', 'VALIDATED', 'QUEUED', 'DISPATCHED', 'PRINTING'] as const;
 
 export type OtaSource = 'lan' | 'wan' | 'cache';
@@ -72,6 +77,14 @@ export interface OtaConfig {
   healthToken?: string;
   updaterShutdownTimeoutMs?: number;
   updaterHandoffDelayMs?: number;
+  databasePath?: string;
+  policyStatePath?: string;
+  autoUpdateEnabled?: boolean;
+  autoUpdateCheckIntervalMs?: number;
+  autoUpdateJitterMs?: number;
+  autoUpdateRetryBaseMs?: number;
+  autoUpdateRetryMaxMs?: number;
+  autoUpdateMaxFailures?: number;
 }
 
 export interface OtaStatus {
@@ -147,6 +160,9 @@ export interface OtaInstallInput {
   signature: string;
   format?: string;
   previousVersion?: string;
+  databasePath?: string;
+  databaseSchemaVersion?: number;
+  targetSchemaVersion?: number;
 }
 
 export interface OtaInstallLaunch {
@@ -445,7 +461,8 @@ export function otaConfigFromEnv(env: NodeJS.ProcessEnv = process.env): OtaConfi
     throw new ValidationError('PRINTOPS_OTA_CHANNEL must be stable, beta, or rc');
   }
 
-  const dbPath = env['PRINTOPS_DB_PATH'];
+  const dbPath = env['PRINTOPS_DB_PATH']?.trim();
+  const databasePath = dbPath || (env['DB_MODE'] === 'sqlite' ? resolve(process.cwd(), 'printops.db') : undefined);
   const dataDir = env['PRINTOPS_OTA_DATA_DIR']
     ?? (dbPath ? dirname(dbPath) : join(process.cwd(), '.printops-data'));
   const cacheDir = env['PRINTOPS_OTA_CACHE_DIR']?.trim() || join(dataDir, 'ota', 'cache');
@@ -534,6 +551,42 @@ export function otaConfigFromEnv(env: NodeJS.ProcessEnv = process.env): OtaConfi
       DEFAULT_UPDATER_HANDOFF_DELAY_MS,
       'PRINTOPS_OTA_UPDATER_HANDOFF_DELAY_MS',
       0,
+    ),
+    databasePath,
+    policyStatePath: env['PRINTOPS_OTA_POLICY_STATE_PATH']?.trim()
+      || join(dataDir, 'ota', 'auto-policy-state.json'),
+    // Automatic installation is an explicit operator opt-in even when the
+    // signed/manual OTA engine itself is enabled.
+    autoUpdateEnabled: boolFromEnv(env['PRINTOPS_OTA_AUTO_UPDATE_ENABLED'], false),
+    autoUpdateCheckIntervalMs: integerFromEnv(
+      env['PRINTOPS_OTA_AUTO_UPDATE_CHECK_INTERVAL_MS'],
+      DEFAULT_AUTO_UPDATE_CHECK_INTERVAL_MS,
+      'PRINTOPS_OTA_AUTO_UPDATE_CHECK_INTERVAL_MS',
+      1_000,
+    ),
+    autoUpdateJitterMs: integerFromEnv(
+      env['PRINTOPS_OTA_AUTO_UPDATE_JITTER_MS'],
+      DEFAULT_AUTO_UPDATE_JITTER_MS,
+      'PRINTOPS_OTA_AUTO_UPDATE_JITTER_MS',
+      0,
+    ),
+    autoUpdateRetryBaseMs: integerFromEnv(
+      env['PRINTOPS_OTA_AUTO_UPDATE_RETRY_BASE_MS'],
+      DEFAULT_AUTO_UPDATE_RETRY_BASE_MS,
+      'PRINTOPS_OTA_AUTO_UPDATE_RETRY_BASE_MS',
+      1_000,
+    ),
+    autoUpdateRetryMaxMs: integerFromEnv(
+      env['PRINTOPS_OTA_AUTO_UPDATE_RETRY_MAX_MS'],
+      DEFAULT_AUTO_UPDATE_RETRY_MAX_MS,
+      'PRINTOPS_OTA_AUTO_UPDATE_RETRY_MAX_MS',
+      1_000,
+    ),
+    autoUpdateMaxFailures: integerFromEnv(
+      env['PRINTOPS_OTA_AUTO_UPDATE_MAX_FAILURES'],
+      DEFAULT_AUTO_UPDATE_MAX_FAILURES,
+      'PRINTOPS_OTA_AUTO_UPDATE_MAX_FAILURES',
+      1,
     ),
   };
 }
@@ -764,11 +817,14 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           platform,
           bytes: verified.bytes,
           sha256: verified.sha256,
-          signature: entry.signature,
-          ...(entry.format ? { format: entry.format } : {}),
-          previousVersion: currentVersion,
-          source,
-        };
+           signature: entry.signature,
+           ...(entry.format ? { format: entry.format } : {}),
+           previousVersion: currentVersion,
+           databasePath: this.deps.config.databasePath,
+           databaseSchemaVersion: this.deps.config.currentSchemaVersion,
+           targetSchemaVersion: resolution.manifest.compatibility.schemaVersion,
+           source,
+         };
         await this.deps.artifactState?.save({
           artifactPath: finalPath,
           version: request.version,
@@ -776,11 +832,12 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           platform,
           bytes: verified.bytes,
           sha256: verified.sha256,
-          signature: entry.signature,
-          ...(entry.format ? { format: entry.format } : {}),
-          previousVersion: currentVersion,
-          source,
-          updatedAt: this.now().toISOString(),
+           signature: entry.signature,
+           ...(entry.format ? { format: entry.format } : {}),
+           previousVersion: currentVersion,
+           targetSchemaVersion: resolution.manifest.compatibility.schemaVersion,
+           source,
+           updatedAt: this.now().toISOString(),
         });
         await this.deps.state.update({
           state: 'VERIFIED',
@@ -1130,7 +1187,15 @@ export class OtaUpdateService implements OtaUpdateServicePort {
         size: persisted.bytes,
         ...(persisted.format ? { format: persisted.format as 'nsis-installer' | 'binary' | 'archive' } : {}),
       });
-      return { ...persisted, bytes: verified.bytes, sha256: verified.sha256, artifactPath: path };
+      return {
+        ...persisted,
+        bytes: verified.bytes,
+        sha256: verified.sha256,
+        artifactPath: path,
+        databasePath: this.deps.config.databasePath,
+        databaseSchemaVersion: this.deps.config.currentSchemaVersion,
+        targetSchemaVersion: persisted.targetSchemaVersion ?? this.deps.config.currentSchemaVersion,
+      };
     }
 
     // The staged path survives an API restart, while the in-memory descriptor
@@ -1153,11 +1218,14 @@ export class OtaUpdateService implements OtaUpdateServicePort {
       platform,
       bytes: verified.bytes,
       sha256: verified.sha256,
-      signature: entry.signature,
-      ...(entry.format ? { format: entry.format } : {}),
-      previousVersion: this.deps.config.currentVersion,
-      source: 'cache',
-    };
+       signature: entry.signature,
+       ...(entry.format ? { format: entry.format } : {}),
+       previousVersion: this.deps.config.currentVersion,
+       databasePath: this.deps.config.databasePath,
+       databaseSchemaVersion: this.deps.config.currentSchemaVersion,
+       targetSchemaVersion: resolution.manifest.compatibility.schemaVersion,
+       source: 'cache',
+     };
     this.stagedArtifact = staged;
     return staged;
   }
@@ -1335,10 +1403,18 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     const current = parseVersion(this.deps.config.currentVersion);
     const minimum = parseVersion(manifest.compatibility.minSupportedVersion);
     if (!current || !minimum) throw new ValidationError('application version compatibility cannot be evaluated');
-    if (manifest.compatibility.schemaVersion !== this.deps.config.currentSchemaVersion) {
+    if (manifest.compatibility.schemaVersion < this.deps.config.currentSchemaVersion) {
       throw new ConflictError(
         `Release requires database schema ${manifest.compatibility.schemaVersion}, `
         + `but this application uses schema ${this.deps.config.currentSchemaVersion}`,
+      );
+    }
+    if (manifest.compatibility.schemaVersion > this.deps.config.currentSchemaVersion
+      && !this.deps.config.databasePath) {
+      throw new AppError(
+        'OTA_DB_BACKUP_UNAVAILABLE',
+        'Schema-changing OTA requires a configured SQLite database path for rollback backup',
+        503,
       );
     }
     const comparison = compareVersions(this.deps.config.currentVersion, manifest.compatibility.minSupportedVersion);
@@ -1423,11 +1499,14 @@ export class OtaUpdateService implements OtaUpdateServicePort {
       platform: value.platform,
       bytes: value.bytes,
       sha256: value.sha256,
-      signature: value.signature,
-      ...(value.format ? { format: value.format } : {}),
-      previousVersion: value.previousVersion ?? this.deps.config.currentVersion,
-      source: value.source,
-    };
+       signature: value.signature,
+       ...(value.format ? { format: value.format } : {}),
+       previousVersion: value.previousVersion ?? this.deps.config.currentVersion,
+       databasePath: this.deps.config.databasePath,
+       databaseSchemaVersion: this.deps.config.currentSchemaVersion,
+       targetSchemaVersion: value.targetSchemaVersion ?? this.deps.config.currentSchemaVersion,
+       source: value.source,
+     };
     this.stagedArtifact = staged;
     return staged;
   }

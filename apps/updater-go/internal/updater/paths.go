@@ -24,6 +24,13 @@ func validateRequest(request Request) error {
 	if strings.TrimSpace(request.PreviousVersion) == "" {
 		return fmt.Errorf("previous_version is required for rollback health verification")
 	}
+	comparison, err := compareNativeVersions(request.Version, request.PreviousVersion)
+	if err != nil {
+		return err
+	}
+	if comparison <= 0 {
+		return fmt.Errorf("updater refuses a downgrade or same-version install")
+	}
 	if request.ArtifactFormat != "nsis-installer" {
 		return fmt.Errorf("artifact format %q is not supported", request.ArtifactFormat)
 	}
@@ -62,6 +69,20 @@ func validateRequest(request Request) error {
 	if request.HealthToken == "" {
 		return fmt.Errorf("local API URL and health token are required")
 	}
+	if request.TargetSchemaVersion < request.DatabaseSchemaVersion {
+		return fmt.Errorf("target database schema cannot be older than the current schema")
+	}
+	if request.TargetSchemaVersion > request.DatabaseSchemaVersion {
+		if strings.TrimSpace(request.DatabasePath) == "" {
+			return fmt.Errorf("schema-changing update requires database_path")
+		}
+		if !filepath.IsAbs(request.DatabasePath) || withinRoot(request.DatabasePath, installRoot) {
+			return fmt.Errorf("database_path must be absolute and outside install_root")
+		}
+		if info, err := os.Stat(request.DatabasePath); err != nil || !info.Mode().IsRegular() {
+			return fmt.Errorf("database_path is unavailable")
+		}
+	}
 	if request.HealthTimeoutMs <= 0 || request.ShutdownTimeoutMs <= 0 || request.HandoffDelayMs < 0 {
 		return fmt.Errorf("updater timeouts are invalid")
 	}
@@ -71,7 +92,7 @@ func validateRequest(request Request) error {
 	return nil
 }
 
-func validateRecoveryRequest(request Request, backupPath string) error {
+func validateRecoveryRequest(request Request, backupPath, databaseBackupPath string) error {
 	if request.Mode != "apply" {
 		return fmt.Errorf("unsupported updater recovery mode %q", request.Mode)
 	}
@@ -86,6 +107,9 @@ func validateRecoveryRequest(request Request, backupPath string) error {
 	if backupPath != "" {
 		paths["backup_path"] = backupPath
 	}
+	if databaseBackupPath != "" {
+		paths["database_backup_path"] = databaseBackupPath
+	}
 	for name, path := range paths {
 		if !filepath.IsAbs(path) {
 			return fmt.Errorf("%s must be absolute", name)
@@ -98,8 +122,26 @@ func validateRecoveryRequest(request Request, backupPath string) error {
 	if !withinRoot(request.DesktopPath, installRoot) {
 		return fmt.Errorf("desktop_path must be inside install_root")
 	}
-	if withinRoot(request.StatePath, installRoot) || (backupPath != "" && withinRoot(backupPath, installRoot)) {
+	if withinRoot(request.StatePath, installRoot) || (backupPath != "" && withinRoot(backupPath, installRoot)) || (databaseBackupPath != "" && withinRoot(databaseBackupPath, installRoot)) {
 		return fmt.Errorf("recovery state and backup must be outside install_root")
+	}
+	if request.TargetSchemaVersion < request.DatabaseSchemaVersion {
+		return fmt.Errorf("target database schema cannot be older than the current schema")
+	}
+	if request.TargetSchemaVersion > request.DatabaseSchemaVersion {
+		if strings.TrimSpace(request.DatabasePath) == "" {
+			return fmt.Errorf("schema-changing recovery is missing database path")
+		}
+		// A crash before the backup path was assigned leaves the original
+		// application and DB untouched; the pre-install recovery branch can
+		// safely restart them without a snapshot. Once an install-tree backup
+		// exists, a DB snapshot is mandatory before restoring the tree.
+		if backupPath != "" && databaseBackupPath == "" {
+			return fmt.Errorf("schema-changing recovery is missing database backup metadata")
+		}
+		if !filepath.IsAbs(request.DatabasePath) || withinRoot(request.DatabasePath, installRoot) {
+			return fmt.Errorf("database_path must be absolute and outside install_root")
+		}
 	}
 	if err := validateLocalAPIURL(request.APIURL); err != nil {
 		return err

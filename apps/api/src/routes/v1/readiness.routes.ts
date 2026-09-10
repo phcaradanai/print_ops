@@ -28,8 +28,20 @@ export interface ReadinessComponent {
 }
 
 export interface ReadinessSnapshot {
+  /** Versioned contract consumed by the native OTA updater. */
+  contractVersion: 1;
+  applicationVersion: string;
   status: 'READY' | 'DEGRADED';
   checkedAt: string;
+  ota: {
+    contract: 'printops-ota-v1';
+    status: 'READY' | 'NOT_READY';
+    requiredComponents: {
+      localApi: ReadinessComponent;
+      database: ReadinessComponent;
+      localPrintWorker: ReadinessComponent;
+    };
+  };
   components: {
     desktopShell: ReadinessComponent;
     localApi: ReadinessComponent;
@@ -215,9 +227,25 @@ export async function createReadinessSnapshot(deps: ReadinessDependencies): Prom
     components.callbackRetryQueue,
     ...(nats.enabled ? [components.natsCore, components.jetStream, components.stream, components.durableConsumer] : []),
   ];
+  const otaRequired = [
+    components.localApi,
+    components.database,
+    components.localPrintWorker,
+  ];
   return {
+    contractVersion: 1,
+    applicationVersion: process.env['PRINTOPS_APP_VERSION'] ?? 'development',
     status: required.every((item) => item.state === 'READY') ? 'READY' : 'DEGRADED',
     checkedAt: new Date().toISOString(),
+    ota: {
+      contract: 'printops-ota-v1',
+      status: otaRequired.every((item) => item.state === 'READY') ? 'READY' : 'NOT_READY',
+      requiredComponents: {
+        localApi: components.localApi,
+        database: components.database,
+        localPrintWorker: components.localPrintWorker,
+      },
+    },
     components,
   };
 }

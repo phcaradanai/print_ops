@@ -1,6 +1,6 @@
 # OTA Architecture Contracts
 
-Date: 2026-09-08 · Phase: OTA-00 · Status: DRAFT FOR APPROVAL
+Date: 2026-09-10 · Phase: OTA-03 / Final Gate · Status: DRAFT FOR APPROVAL; implementation evidence pending independent review
 
 This document defines the contracts, state machines, and interfaces for the PrintOps OTA system. Implementation may not proceed until the Lead approves these contracts.
 
@@ -49,7 +49,8 @@ Content manifests reference application version compatibility:
 
 - Application update: new app version must be >= current version (no downgrade)
 - Content update: content manifest specifies `min_app_version` and `max_app_version`; reject if app version outside range
-- Schema migration: app version specifies `schema_version`; content manifest may specify required `schema_version`; reject if incompatible
+- Schema migration: an application release may keep the current schema or move it forward; a forward move requires a persistent DB snapshot before install and restores the compatible snapshot on rollback. A release requiring an older schema is rejected.
+- `min_supported_version` is an explicit release-pipeline input. It is never defaulted to the target release version.
 
 ---
 
@@ -206,7 +207,7 @@ HEALTH_CHECK → HEALTH_CHECK_FAILED → ROLLING_BACK → ROLLED_BACK
 | INSTALLING | INSTALLING_COMPLETE | files staged, process restarted | — |
 | INSTALLING | INSTALL_FAILED | file write error, process restart error | — |
 | INSTALLING_COMPLETE | HEALTH_CHECK | install complete | — |
-| HEALTH_CHECK | COMPLETED | /health returns 200, /system/readiness READY | — |
+| HEALTH_CHECK | COMPLETED | /health returns 200 and the versioned OTA readiness contract is READY for the expected version | — |
 | HEALTH_CHECK | HEALTH_CHECK_FAILED | health check timeout or failure | — |
 | COMPLETED | RESTART_PENDING | user notification | — |
 | INSTALL_FAILED | ROLLING_BACK | automatic | — |
@@ -229,6 +230,47 @@ CREATE TABLE ota_update_state (
   retry_count INTEGER DEFAULT 0
 );
 ```
+
+The native updater also persists its lifecycle state outside the install tree.
+For a schema-changing release it stores an install-tree backup plus a separate
+database snapshot. Recovery restores both before starting the previous
+application, so an old binary never opens a newer schema.
+
+### 3.4 OTA readiness contract
+
+`GET /api/v1/system/readiness` contains an explicit, versioned OTA contract:
+
+```json
+{
+  "contractVersion": 1,
+  "applicationVersion": "0.1.29",
+  "ota": {
+    "contract": "printops-ota-v1",
+    "status": "READY",
+    "requiredComponents": {
+      "localApi": { "state": "READY" },
+      "database": { "state": "READY" },
+      "localPrintWorker": { "state": "READY" }
+    }
+  }
+}
+```
+
+The dashboard's overall status may be `DEGRADED` because discovery, printer
+availability, NATS, or callbacks are optional for local OTA. The native updater
+does not accept that aggregate status; it accepts only the OTA contract above.
+
+### 3.5 Automatic local policy
+
+`OtaUpdatePolicyWorker` is a local, persisted scheduler around the public OTA
+service. It is opt-in with `PRINTOPS_OTA_AUTO_UPDATE_ENABLED=true`, uses the
+stable channel by default, applies startup/check jitter, downloads without
+closing print admission, and delegates installation to the existing idle gate.
+Network and verification failures use bounded exponential backoff. Once the
+same target reaches the configured failure cap, that target is persisted as
+blocked so it cannot cause an infinite install/restart loop; a newer release
+or an operator action is required. If the policy state cannot be loaded or
+persisted, automatic installation fails closed until persistence is restored.
 
 ---
 
@@ -489,7 +531,7 @@ async fn request_self_update() -> Result<(), String>;
 | Repeated update request | Idempotent; if already at target version, return success |
 | Already-current version | Return success, no download |
 | Downgrade attempt | Reject (version < min_supported_version) |
-| Schema migration incompatibility | Content manifest specifies required schema version; reject if app schema < required |
+| Schema migration incompatibility | Reject a lower target schema; for a forward schema, require a separate database snapshot and restore it with the install tree on rollback |
 
 ---
 
@@ -505,6 +547,7 @@ async fn request_self_update() -> Result<(), String>;
 - [ ] Rollback works (automatic on failure, manual on demand)
 - [ ] Offline printing remains functional (cached artifacts)
 - [ ] Security verification works (SHA-256, Ed25519 signature)
+- [ ] OTA readiness contract rejects generic `DEGRADED` and requires database + local worker readiness
 
 ### 9.2 Content OTA
 
@@ -523,6 +566,25 @@ async fn request_self_update() -> Result<(), String>;
 - [ ] Automated tests pass (unit, integration)
 - [ ] Existing print execution behavior unchanged
 - [ ] No regressions in callback/NATS/API behavior
+
+### 9.5 Local Docker lab
+
+`npm run test:ota-docker` builds `tests/ota-lab` and starts independent LAN and
+WAN HTTP sources. The control endpoint can produce unavailable/slow/dropped
+connections, 404/500, invalid JSON/manifests, wrong checksums/signatures,
+truncated/corrupt artifacts, old releases, prereleases, and incompatible
+schemas. The script always tears the compose project down in `finally`, so a
+failed matrix does not require manual cleanup.
+
+### 9.6 Native Windows acceptance
+
+The final gate must still be run with two real signed NSIS installers and the
+packaged Tauri supervisor. The required evidence is: install A, host signed B
+on the local lab, observe A download/verify/idle handoff, observe the external
+updater stop the process tree and install B, then capture B health/readiness,
+reported version, persisted `COMPLETED` state, and the broken-B rollback path.
+This repository does not treat Docker or fake installers as a substitute for
+that evidence.
 
 ---
 
@@ -568,9 +630,15 @@ New environment variables:
 PRINTOPS_OTA_ENABLED=true
 PRINTOPS_OTA_CHANNEL=stable
 PRINTOPS_OTA_LAN_RELAY_URL=
-PRINTOPS_OTA_AUTO_CHECK=true
-PRINTOPS_OTA_AUTO_CHECK_INTERVAL_HOURS=24
-PRINTOPS_OTA_AUTO_UPDATE=false
+PRINTOPS_OTA_WAN_MANIFEST_URL=
+PRINTOPS_OTA_REQUIRE_SIGNATURE=true
+PRINTOPS_OTA_AUTO_UPDATE_ENABLED=false
+PRINTOPS_OTA_AUTO_UPDATE_CHECK_INTERVAL_MS=21600000
+PRINTOPS_OTA_AUTO_UPDATE_JITTER_MS=300000
+PRINTOPS_OTA_AUTO_UPDATE_RETRY_BASE_MS=60000
+PRINTOPS_OTA_AUTO_UPDATE_RETRY_MAX_MS=21600000
+PRINTOPS_OTA_AUTO_UPDATE_MAX_FAILURES=5
+PRINTOPS_OTA_POLICY_STATE_PATH=
 ```
 
 ### 10.3 Permissions
