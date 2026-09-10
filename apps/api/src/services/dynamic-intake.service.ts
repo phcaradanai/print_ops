@@ -21,6 +21,7 @@ import { buildCallbackIntentSafe, wantsAcceptanceCallback } from './callback-int
 import { CreatePrintJobService } from './create-print-job.service.js';
 import { RoutePolicyResolverService } from './route-policy-resolver.service.js';
 import type { WebhookCallbackService, WebhookCallbackLogger } from './webhook-callback.service.js';
+import type { PrintAdmissionGatePort } from './print-admission-gate.js';
 
 export interface IntakeRequest {
   endpointCode: string;
@@ -109,8 +110,19 @@ export class DynamicIntakeService {
     callbacks?: WebhookCallbackService,
     callbackLogger?: WebhookCallbackLogger,
     calibrations?: PrinterPaperCalibrationRepositoryPort,
+    private admission?: PrintAdmissionGatePort,
   ) {
-    this.createJob = new CreatePrintJobService(jobs, printers, queue, traces, audit, events, calibrations, papers);
+    this.createJob = new CreatePrintJobService(
+      jobs,
+      printers,
+      queue,
+      traces,
+      audit,
+      events,
+      calibrations,
+      papers,
+      admission,
+    );
     this.callbacks = callbacks;
     if (callbackLogger) this.callbackLogger = callbackLogger;
   }

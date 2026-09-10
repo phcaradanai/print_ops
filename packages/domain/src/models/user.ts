@@ -72,6 +72,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'trace:read',
     'template:read',
     'paper-profile:read',
+    'ota:read',
   ],
   VIEWER: [
     'printer:read',
@@ -80,6 +81,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'trace:read',
     'template:read',
     'paper-profile:read',
+    'ota:read',
   ],
 };
 

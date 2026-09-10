@@ -18,6 +18,7 @@ import { InMemoryImportedDesignRepository } from './infra/repos/in-memory-import
 import { InMemoryIntakeAttemptRepository } from './infra/repos/in-memory-intake-attempt.repo.js';
 import { InMemoryWebhookCallbackAttemptRepository } from './infra/repos/in-memory-webhook-callback-attempt.repo.js';
 import { InMemoryPrinterPaperCalibrationRepository } from './infra/repos/in-memory-printer-paper-calibration.repo.js';
+import { InMemoryOtaUpdateStateRepository } from './infra/repos/in-memory-ota-state.repo.js';
 
 import { SqlitePrinterRepository } from './infra/repos/sqlite/sqlite-printer.repo.js';
 import { SqliteJobRepository } from './infra/repos/sqlite/sqlite-job.repo.js';
@@ -34,6 +35,7 @@ import { SqliteWebhookEndpointRepository } from './infra/repos/sqlite/sqlite-web
 import { SqliteWebhookRoutePolicyRepository } from './infra/repos/sqlite/sqlite-webhook-route-policy.repo.js';
 import { SqliteImportedDesignRepository } from './infra/repos/sqlite/sqlite-imported-design.repo.js';
 import { SqlitePrinterPaperCalibrationRepository } from './infra/repos/sqlite/sqlite-printer-paper-calibration.repo.js';
+import { SqliteOtaUpdateStateRepository } from './infra/repos/sqlite/sqlite-ota-state.repo.js';
 
 import { InMemoryEventBus } from './infra/eventbus/in-memory-eventbus.js';
 import { InMemoryJobQueue } from './infra/queue/in-memory-queue.js';
@@ -105,8 +107,11 @@ import { hashPassword } from './infra/auth/password.js';
 import { serviceAccountRoutes } from './routes/v1/service-accounts.routes.js';
 import { databaseBackupRoutes } from './routes/v1/database-backup.routes.js';
 import { readinessRoutes } from './routes/v1/readiness.routes.js';
+import { otaRoutes } from './routes/v1/ota.routes.js';
 import { emitPrintJobTerminal } from './services/emit-terminal-event.js';
 import { LocalPrintScheduler } from './services/local-print-scheduler.js';
+import { OtaUpdateService, otaConfigFromEnv } from './services/ota-update.service.js';
+import { PrintAdmissionGate } from './services/print-admission-gate.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -288,6 +293,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const webhookEndpointRepo = useSqlite ? new SqliteWebhookEndpointRepository() : new InMemoryWebhookEndpointRepository();
   const webhookPolicyRepo = useSqlite ? new SqliteWebhookRoutePolicyRepository() : new InMemoryWebhookRoutePolicyRepository();
   const importedDesignRepo = useSqlite ? new SqliteImportedDesignRepository() : new InMemoryImportedDesignRepository();
+  const otaStateRepo = useSqlite
+    ? new SqliteOtaUpdateStateRepository()
+    : new InMemoryOtaUpdateStateRepository();
   // Diagnostic ring buffer of print-flow intake attempts (NATS + HTTP), capped
   // at 500 entries — deliberately in-memory only in both DB modes, since this
   // is an operational log for "what just happened", not durable business data.
@@ -307,6 +315,17 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     onHandlerError: (event, err) => app.log.error({ err, eventType: event.eventType }, 'event subscriber failed'),
   });
   const queue = new InMemoryJobQueue();
+  const printAdmissionGate = new PrintAdmissionGate();
+  let localPrintScheduler: LocalPrintScheduler | undefined;
+  const otaUpdateService = new OtaUpdateService({
+    state: otaStateRepo,
+    config: otaConfigFromEnv(),
+    queue,
+    jobs: jobRepo,
+    admission: printAdmissionGate,
+    schedulerSettled: () => localPrintScheduler?.settled() ?? Promise.resolve(),
+    eventBusSettled: () => eventBus.settled(),
+  });
 
   // Bound the growth of jobs/traces/audit_logs on long-running installs (see
   // infra/db/retention.ts) — this gateway is not the system of record for
@@ -370,7 +389,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // Services
   const createPrinter = new CreatePrinterService(printerRepo, eventBus, auditRepo);
   const getPrinterStatus = new GetPrinterStatusService(printerRepo, registry);
-  const createJob = new CreatePrintJobService(jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus, calibrationRepo, paperRepo);
+  const createJob = new CreatePrintJobService(jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus, calibrationRepo, paperRepo, printAdmissionGate);
   const reprintJob = new ReprintJobService(
     jobRepo,
     createJob,
@@ -391,6 +410,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     // snapshot that endpoint's callback configuration onto the job.
     webhookEndpointRepo,
     calibrationRepo,
+    printAdmissionGate,
   );
   // Dynamic printing (the template/profile HTTP route and NATS intake) is a
   // rendered-document flow. Keep its service separate from the legacy
@@ -402,6 +422,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     templateRepo, paperRepo, templateRenderer, intakeAttemptRepo,
     webhookEndpointRepo,
     calibrationRepo,
+    printAdmissionGate,
   );
   const cancelJob = new CancelJobService(jobRepo, traceRepo, auditRepo, eventBus);
   const executeJob = new ExecuteJobService(jobRepo, printerRepo, traceRepo, auditRepo, queue, eventBus, registry);
@@ -433,6 +454,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     new WebhookCallbackService(app.log, httpCallbackSender, undefined, webhookCallbackAttemptRepo),
     app.log,
     calibrationRepo,
+    printAdmissionGate,
   );
 
   const resolvePrinterBinding = new ResolvePrinterBindingService(paperRepo, bindingRepo, templateRepo);
@@ -496,7 +518,6 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // Desktop mode owns a local, in-process worker so every queued job uses the
   // same driver-rendered Windows adapter as Sandbox. The Go runner remains the
   // discovery agent; it must not RAW-send HTML/JSON to an IPP office printer.
-  let localPrintScheduler: LocalPrintScheduler | undefined;
   if (process.env['PRINTOPS_LOCAL_WORKER'] === 'true') {
     // ACCEPTED/VALIDATED are pre-dispatch states. A crash in job creation can
     // leave them behind before the durable QUEUED transition; no page can have
@@ -926,6 +947,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       callbackDeliveries: callbackDeliveryRepo,
       audit: auditRepo,
     });
+    await otaRoutes(v1, { service: otaUpdateService });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
   if (printIntakeCfg) {

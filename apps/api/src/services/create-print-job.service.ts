@@ -20,6 +20,7 @@ import {
   isValidRotation,
   withRenderTransformOverrides,
 } from '@printerops/shared';
+import type { PrintAdmissionGatePort } from './print-admission-gate.js';
 
 const PRIORITY_MAP: Record<JobPriority, number> = {
   urgent: 100, high: 75, normal: 50, low: 25,
@@ -35,9 +36,17 @@ export class CreatePrintJobService {
     private events: EventBusPort,
     private calibrations?: PrinterPaperCalibrationRepositoryPort,
     private papers?: PaperProfileRepositoryPort,
+    private admission?: PrintAdmissionGatePort,
   ) {}
 
   async execute(input: CreateJobInput, actorId: string): Promise<Job> {
+    if (this.admission) {
+      return this.admission.run(() => this.executeInternal(input, actorId));
+    }
+    return this.executeInternal(input, actorId);
+  }
+
+  private async executeInternal(input: CreateJobInput, actorId: string): Promise<Job> {
     const receivedAt = new Date();
 
     // Resolve printer (by id or code)

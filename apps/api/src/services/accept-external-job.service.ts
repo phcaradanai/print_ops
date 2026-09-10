@@ -19,6 +19,7 @@ import { CALLBACK_INTENT_METADATA_KEY, paperProfileForCell, snapshotPaperProfile
 import { AppError, isValidRotation, ValidationError } from '@printerops/shared';
 import { CreatePrintJobService } from './create-print-job.service.js';
 import { resolveEndpointCallbackIntent } from './callback-intent.service.js';
+import type { PrintAdmissionGatePort } from './print-admission-gate.js';
 
 export interface ExternalPrintJobRequest {
   request_id: string;
@@ -75,8 +76,19 @@ export class AcceptExternalJobService {
     private intakeLog?: IntakeAttemptRepositoryPort,
     private endpoints?: WebhookEndpointRepositoryPort,
     private calibrations?: PrinterPaperCalibrationRepositoryPort,
+    private admission?: PrintAdmissionGatePort,
   ) {
-    this.createJob = new CreatePrintJobService(jobs, printers, queue, traces, audit, events, calibrations, papers);
+    this.createJob = new CreatePrintJobService(
+      jobs,
+      printers,
+      queue,
+      traces,
+      audit,
+      events,
+      calibrations,
+      papers,
+      admission,
+    );
   }
 
   async execute(

@@ -12,6 +12,13 @@ const ownerCtx: PermissionContext = { userId: 'u3', role: 'OWNER' };
 describe('RbacPermissionPolicy', () => {
   const policy = new RbacPermissionPolicy();
 
+  it('allows read-only OTA status for VIEWER and reserves mutations for ADMIN+', () => {
+    expect(policy.can(viewerCtx, 'ota:read')).toBe(true);
+    expect(policy.can(viewerCtx, 'ota:manage')).toBe(false);
+    expect(policy.can(adminCtx, 'ota:read')).toBe(true);
+    expect(policy.can(adminCtx, 'ota:manage')).toBe(true);
+  });
+
   it('denies VIEWER for job:create', () => {
     expect(policy.can(viewerCtx, 'job:create')).toBe(false);
   });

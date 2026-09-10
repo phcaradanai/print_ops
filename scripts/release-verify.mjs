@@ -288,6 +288,72 @@ for (const installer of installerManifest) {
   console.log(`[SHA-256] ${installer.sha256}`);
 }
 
+// The diagnostic resource/release manifests above describe this verifier's
+// checks. A separate OTA manifest follows the client wire contract and points
+// at the publishable artifacts by basename. The distribution step is expected
+// to publish those files beside ota-manifest.json (or rewrite the URLs for its
+// CDN/relay layout).
+if (postBundle && failures.length === 0) {
+  const nsis = installerManifest.find((item) => item.path.includes('/nsis/'));
+  const runner = resources.find((item) => item.path === 'printops-runner.exe');
+  if (!nsis || !runner) {
+    fail('ota:manifest', 'cannot emit OTA manifest without NSIS installer and runner artifact');
+  } else {
+    const channel = process.env.PRINTOPS_OTA_CHANNEL ?? 'stable';
+    const rolloutPercentage = Number(process.env.PRINTOPS_OTA_ROLLOUT_PERCENTAGE ?? '100');
+    const minSupportedVersion = process.env.PRINTOPS_OTA_MIN_SUPPORTED_VERSION ?? version;
+    const schemaVersion = Number(process.env.PRINTOPS_DB_SCHEMA_VERSION ?? '7');
+    if (!['stable', 'beta', 'rc'].includes(channel)) {
+      fail('ota:manifest-channel', `unsupported OTA channel ${channel}`);
+    } else if (!Number.isInteger(rolloutPercentage) || rolloutPercentage < 0 || rolloutPercentage > 100) {
+      fail('ota:manifest-rollout', 'PRINTOPS_OTA_ROLLOUT_PERCENTAGE must be an integer from 0 to 100');
+    } else if (!/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?$/.test(minSupportedVersion)) {
+      fail('ota:manifest-min-version', 'PRINTOPS_OTA_MIN_SUPPORTED_VERSION must be a semantic version');
+    } else if (!Number.isSafeInteger(schemaVersion) || schemaVersion < 0) {
+      fail('ota:manifest-schema-version', 'PRINTOPS_DB_SCHEMA_VERSION must be a non-negative integer');
+    } else {
+      const otaManifest = {
+        schema_version: 1,
+        release: {
+          version,
+          channel,
+          release_date: new Date().toISOString(),
+          notes: process.env.PRINTOPS_OTA_RELEASE_NOTES ?? '',
+        },
+        artifacts: {
+          desktop: {
+            'windows-x64': {
+              url: basename(nsis.path),
+              sha256: nsis.sha256,
+              signature: '',
+              size: nsis.bytes,
+            },
+          },
+          runner: {
+            'windows-x64': {
+              url: basename(runner.path),
+              sha256: runner.sha256,
+              signature: '',
+              size: runner.bytes,
+            },
+          },
+        },
+        compatibility: {
+          min_supported_version: minSupportedVersion,
+          schema_version: schemaVersion,
+        },
+        rollout: {
+          staged: rolloutPercentage < 100,
+          rollout_percentage: rolloutPercentage,
+        },
+      };
+      const otaManifestPath = join(outputDir, 'ota-manifest.json');
+      writeFileSync(otaManifestPath, `${JSON.stringify(otaManifest, null, 2)}\n`);
+      console.log(`[INFO] OTA manifest: ${relative(root, otaManifestPath)}`);
+    }
+  }
+}
+
 if (failures.length) {
   console.error(`\nRelease verification failed with ${failures.length} error(s).`);
   process.exit(1);

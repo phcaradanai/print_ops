@@ -9,13 +9,16 @@
  * Run:  node src-tauri/scripts/build-all.js
  * Or via Tauri:  npm run tauri:build
  */
-const { execSync } = require('child_process');
+const { execFileSync, execSync } = require('child_process');
 const f = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 const RUNNER_DIR = path.join(ROOT, 'apps', 'runner-go');
 const PRINT_HELPER_DIR = path.join(ROOT, 'apps', 'windows-print-helper');
+const RELEASE_VERSION = JSON.parse(
+  f.readFileSync(path.join(ROOT, 'package.json'), 'utf8'),
+).version;
 
 function run(cmd, opts = {}) {
   console.log(`\n  > ${cmd}`);
@@ -57,10 +60,15 @@ step('Building Go runner (printops-runner.exe)', () => {
   const goVer = execSync('go version', { encoding: 'utf8' }).trim();
   console.log(`[BUILD] ${goVer}`);
 
-  execSync('go build -trimpath -o printops-runner.exe ./cmd/printops-runner/', {
-    stdio: 'inherit',
-    cwd: RUNNER_DIR,
-  });
+  execFileSync('go', [
+    'build',
+    '-trimpath',
+    '-ldflags',
+    `-X github.com/phcaradanai/print_ops/apps/runner-go/internal/config.Version=${RELEASE_VERSION}`,
+    '-o',
+    'printops-runner.exe',
+    './cmd/printops-runner/',
+  ], { stdio: 'inherit', cwd: RUNNER_DIR });
   console.log('[BUILD] OK: printops-runner.exe built');
 });
 
