@@ -206,6 +206,17 @@ export interface ReleaseManifest {
   };
 }
 
+/**
+ * Wire envelope for application release manifests. The signature covers the
+ * canonical JSON representation of `manifest`, including all release,
+ * compatibility, artifact, and rollout metadata.
+ */
+export interface ReleaseManifestEnvelope {
+  envelopeVersion: 1;
+  manifest: ReleaseManifest;
+  signature: string;
+}
+
 // ─── Content manifest (Content OTA) ──────────────────────────────────────────
 
 export type ContentType = 'profiles' | 'templates';

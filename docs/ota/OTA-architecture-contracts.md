@@ -58,7 +58,8 @@ Content manifests reference application version compatibility:
 
 ### 2.1 Release Manifest (Application OTA)
 
-File: `manifest.json` in release artifact directory
+File: `manifest.json` in the release artifact directory. The release payload
+shown below is wrapped in the signed envelope described in §2.3.
 
 ```json
 {
@@ -145,10 +146,26 @@ Actions:
 
 ### 2.3 Manifest Verification
 
-- All manifests signed with Ed25519 private key (release signing key)
-- Signature covers entire manifest JSON (canonical form, sorted keys)
-- Client verifies signature using embedded public key before processing
-- SHA-256 checksums verify individual artifacts
+- Application manifests use this wire envelope:
+
+```json
+{
+  "envelope_version": 1,
+  "manifest": { "schema_version": 1, "release": {}, "artifacts": {}, "compatibility": {}, "rollout": {} },
+  "signature": "base64-ed25519-signature"
+}
+```
+
+- The Ed25519 signature covers the complete canonical `manifest` payload,
+  including channel, compatibility floor, schema version, artifact URLs,
+  hashes, sizes, signatures, and rollout metadata.
+- The client verifies that signature with the exact bundled public key before
+  processing any release fields.
+- Each artifact is independently SHA-256 checked and, when signatures are
+  required, independently Ed25519 verified over its raw SHA-256 digest.
+- The release pipeline self-verifies both the payload signature and artifact
+  signatures with the bundled public key; private signing material is never
+  bundled.
 
 ---
 
@@ -168,9 +185,9 @@ DOWNLOADING
 DOWNLOADED
   ↓ (verify checksum + signature)
 VERIFIED
-  ↓ (wait for queue idle)
+  ↓ (automatic preflight may defer while printing is busy)
 WAITING_FOR_IDLE
-  ↓ (queue idle)
+  ↓ (gate acquired and idle rechecked)
 INSTALLING
   ↓ (install complete)
 INSTALLING_COMPLETE
@@ -178,8 +195,10 @@ INSTALLING_COMPLETE
 HEALTH_CHECK
   ↓ (health check passes)
 COMPLETED
-  ↓ (restart required)
-RESTART_PENDING
+
+RESTART_PENDING (external updater handoff only; not success)
+  ↓ (restart reconciliation)
+COMPLETED | ROLLED_BACK | INSTALL_FAILED | HEALTH_CHECK_FAILED | ROLLBACK_FAILED
 
 Failure paths:
 CHECKING → CHECK_FAILED
@@ -202,6 +221,7 @@ HEALTH_CHECK → HEALTH_CHECK_FAILED → ROLLING_BACK → ROLLED_BACK
 | DOWNLOADING | DOWNLOAD_FAILED | network error, disk full | — |
 | DOWNLOADED | VERIFIED | checksum + signature valid | sha256 matches, signature valid |
 | DOWNLOADED | VERIFY_FAILED | checksum mismatch, invalid signature | — |
+| VERIFIED | WAITING_FOR_IDLE | automatic preflight observes printing activity | print admission remains open |
 | VERIFIED | WAITING_FOR_IDLE | install initiated | — |
 | WAITING_FOR_IDLE | INSTALLING | queue idle (size=0, inflight=0, scheduler.settled) | — |
 | INSTALLING | INSTALLING_COMPLETE | files staged, process restarted | — |
@@ -209,7 +229,10 @@ HEALTH_CHECK → HEALTH_CHECK_FAILED → ROLLING_BACK → ROLLED_BACK
 | INSTALLING_COMPLETE | HEALTH_CHECK | install complete | — |
 | HEALTH_CHECK | COMPLETED | /health returns 200 and the versioned OTA readiness contract is READY for the expected version | — |
 | HEALTH_CHECK | HEALTH_CHECK_FAILED | health check timeout or failure | — |
-| COMPLETED | RESTART_PENDING | user notification | — |
+| INSTALLING | RESTART_PENDING | external updater accepts the handoff | handoff accepted is not success |
+| RESTART_PENDING | COMPLETED | persisted updater outcome is COMPLETED after restart | target version matches |
+| RESTART_PENDING | ROLLED_BACK | persisted updater outcome is ROLLED_BACK after restart | target version matches |
+| RESTART_PENDING | INSTALL_FAILED / HEALTH_CHECK_FAILED / ROLLBACK_FAILED | persisted terminal failure after restart | target version matches |
 | INSTALL_FAILED | ROLLING_BACK | automatic | — |
 | HEALTH_CHECK_FAILED | ROLLING_BACK | automatic | — |
 | ROLLING_BACK | ROLLED_BACK | previous version restored | — |
@@ -570,11 +593,14 @@ async fn request_self_update() -> Result<(), String>;
 ### 9.5 Local Docker lab
 
 `npm run test:ota-docker` builds `tests/ota-lab` and starts independent LAN and
-WAN HTTP sources. The control endpoint can produce unavailable/slow/dropped
-connections, 404/500, invalid JSON/manifests, wrong checksums/signatures,
-truncated/corrupt artifacts, old releases, prereleases, and incompatible
-schemas. The script always tears the compose project down in `finally`, so a
-failed matrix does not require manual cleanup.
+WAN HTTP sources. A real TypeScript OTA client and the production
+`OtaUpdateService` exercise source fallback, signed-envelope verification,
+download/install state persistence, and the failure matrix. The control
+endpoint can produce unavailable/slow/dropped connections, 404/500, invalid
+JSON/manifests, wrong keys/checksums/signatures, truncated/corrupt artifacts,
+old releases, prereleases, and incompatible schemas. The script always tears
+the compose project down in `finally`, so a failed matrix does not require
+manual cleanup.
 
 ### 9.6 Native Windows acceptance
 
@@ -653,7 +679,8 @@ New RBAC permissions:
 ### 10.4 Build Pipeline
 
 - `release-verify.mjs` emits `manifest.json` with checksums
-- Signing step added (Ed25519 over manifest)
+- Signing step emits the versioned manifest envelope and self-verifies the
+  payload plus independent artifact signatures with the exact bundled key
 - Runner version injected via ldflags
 
 ---

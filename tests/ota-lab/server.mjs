@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 
@@ -6,6 +6,8 @@ const port = Number(process.env.PORT ?? 8080);
 const role = process.env.ROLE ?? 'ota-source';
 const manifestPath = process.env.MANIFEST_PATH;
 const artifactPath = process.env.ARTIFACT_PATH;
+const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
 const state = {
   manifestMode: 'healthy',
   artifactMode: 'healthy',
@@ -16,10 +18,27 @@ const state = {
   artifact: Buffer.from('printops-ota-lab-artifact-v0.1.29'),
 };
 
+function canonicalJson(value) {
+  if (value === null) return 'null';
+  if (typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
+  if (typeof value === 'number') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  throw new Error(`cannot canonicalize ${typeof value}`);
+}
+
+function signedDigest(digest, invalid) {
+  return invalid
+    ? 'not-a-signature'
+    : sign(null, Buffer.from(digest, 'hex'), privateKey).toString('base64');
+}
+
 function manifest() {
   const digest = createHash('sha256').update(state.artifact).digest('hex');
   const mode = state.manifestMode;
-  return {
+  const payload = {
     schema_version: 1,
     release: {
       version: mode === 'old-release'
@@ -36,7 +55,7 @@ function manifest() {
         'windows-x64': {
           url: 'desktop.artifact',
           sha256: mode === 'wrong-checksum' ? '0'.repeat(64) : digest,
-          signature: mode === 'wrong-signature' ? 'not-a-signature' : '',
+          signature: signedDigest(digest, mode === 'wrong-signature'),
           size: state.artifact.byteLength,
           format: 'nsis-installer',
         },
@@ -48,6 +67,12 @@ function manifest() {
     },
     rollout: { staged: false, rollout_percentage: 100 },
   };
+  const manifestSignature = mode === 'wrong-manifest-signature'
+    ? 'not-a-signature'
+    : mode === 'missing-signature'
+      ? ''
+      : sign(null, Buffer.from(canonicalJson(payload), 'utf8'), privateKey).toString('base64');
+  return { envelope_version: 1, manifest: payload, signature: manifestSignature };
 }
 
 function modeFor(request, type) {
@@ -59,6 +84,10 @@ function writeJson(response, status, value) {
   const body = JSON.stringify(value);
   response.writeHead(status, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) });
   response.end(body);
+}
+
+function controlState() {
+  return { role, publicKey: publicKeyPem, ...state, artifact: undefined };
 }
 
 async function applyFailureMode(request, response, type) {
@@ -81,7 +110,7 @@ async function applyFailureMode(request, response, type) {
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`);
   if (url.pathname === '/__control' && request.method === 'GET') {
-    return writeJson(response, 200, { role, ...state, artifact: undefined });
+    return writeJson(response, 200, controlState());
   }
   if (url.pathname === '/__control' && request.method === 'POST') {
     let raw = '';
@@ -94,7 +123,7 @@ const server = createServer(async (request, response) => {
       if (Number.isSafeInteger(input.delayMs) && input.delayMs >= 0) state.delayMs = input.delayMs;
       if (Number.isSafeInteger(input.schemaVersion) && input.schemaVersion >= 0) state.schemaVersion = input.schemaVersion;
       if (typeof input.artifact === 'string') state.artifact = Buffer.from(input.artifact);
-      return writeJson(response, 200, { ok: true, role, ...state, artifact: undefined });
+      return writeJson(response, 200, { ok: true, ...controlState() });
     } catch {
       return writeJson(response, 400, { error: 'invalid control JSON' });
     }
@@ -117,7 +146,7 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) });
     return response.end(body);
   }
-  if (url.pathname === '/desktop.artifact') {
+  if (url.pathname === '/desktop.artifact' || (artifactPath && /\.(?:artifact|exe|msi)$/i.test(url.pathname))) {
     const failed = await applyFailureMode(request, response, 'artifact');
     if (failed === true) return;
     let body = artifactPath ? readFileSync(artifactPath) : state.artifact;

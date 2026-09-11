@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InMemoryOtaUpdateStateRepository } from '../infra/repos/in-memory-ota-state.repo.js';
 import {
   OtaUpdateService,
+  canonicalJson,
   otaConfigFromEnv,
   parseReleaseManifest,
   type OtaInstallerPort,
@@ -193,7 +194,7 @@ describe('OtaUpdateService', () => {
     });
   });
 
-  it('pauses print admission, waits for queue idle, and installs only after the drain settles', async () => {
+  it('manually pauses print admission, waits for queue idle, and installs only after the drain settles', async () => {
     const artifact = bytes('queue-safe ota artifact');
     const config = await makeConfig({ queuePollMs: 1, queueIdleTimeoutMs: 100, healthCheckTimeoutMs: 100 });
     let queueReads = 0;
@@ -231,14 +232,97 @@ describe('OtaUpdateService', () => {
     await service.downloadUpdate({ version: '0.1.29' });
     await expect(service.installUpdate({ version: '0.1.29' })).resolves.toMatchObject({
       installed: true,
-      state: 'RESTART_PENDING',
+      state: 'COMPLETED',
     });
 
     expect(queueReads).toBeGreaterThanOrEqual(3);
     expect(settled).toHaveBeenCalledTimes(2);
     expect(installSawMaintenance).toBe(true);
     expect(admission.isMaintenanceActive()).toBe(false);
-    await expect(service.getStatus()).resolves.toMatchObject({ state: { state: 'RESTART_PENDING' } });
+    await expect(service.getStatus()).resolves.toMatchObject({ state: { state: 'COMPLETED' } });
+  });
+
+  it('automatically defers while busy without closing print admission', async () => {
+    const artifact = bytes('automatic defer artifact');
+    const config = await makeConfig({ queuePollMs: 1, queueIdleTimeoutMs: 5 });
+    const admission = new PrintAdmissionGate();
+    const installer: OtaInstallerPort = {
+      install: vi.fn(async () => undefined),
+      healthCheck: vi.fn(async () => true),
+      rollback: vi.fn(async () => undefined),
+    };
+    const service = new OtaUpdateService({
+      state: new InMemoryOtaUpdateStateRepository(),
+      config,
+      queue: {
+        getMetrics: vi.fn(async () => ({
+          size: 0,
+          inflight: 1,
+          oldestEnqueuedAt: null,
+          oldestPriority: null,
+          avgWaitMs: null,
+        })),
+      } as never,
+      admission,
+      installer,
+      fetchImpl: async (url) => url.endsWith('manifest.json')
+        ? jsonResponse(manifest('0.1.29', artifact))
+        : new Response(artifact, { status: 200, headers: { 'content-length': String(artifact.byteLength) } }),
+    });
+
+    await service.downloadUpdate({ version: '0.1.29' });
+    await expect(service.installUpdate({ version: '0.1.29', mode: 'automatic' })).resolves.toMatchObject({
+      installed: false,
+      deferred: true,
+      state: 'WAITING_FOR_IDLE',
+    });
+    expect(installer.install).not.toHaveBeenCalled();
+    expect(admission.isMaintenanceActive()).toBe(false);
+    await expect(admission.run(async () => 'printing remains available')).resolves.toBe('printing remains available');
+  });
+
+  it('releases the automatic gate immediately when a job wins the final idle race', async () => {
+    const artifact = bytes('automatic race artifact');
+    const config = await makeConfig({ queuePollMs: 1, queueIdleTimeoutMs: 100 });
+    const admission = new PrintAdmissionGate();
+    let queueRead = 0;
+    const queue = {
+      getMetrics: vi.fn(async () => {
+        queueRead += 1;
+        return {
+          size: 0,
+          inflight: queueRead >= 3 ? 1 : 0,
+          oldestEnqueuedAt: null,
+          oldestPriority: null,
+          avgWaitMs: null,
+        };
+      }),
+    } as never;
+    const installer: OtaInstallerPort = {
+      install: vi.fn(async () => undefined),
+      healthCheck: vi.fn(async () => true),
+      rollback: vi.fn(async () => undefined),
+    };
+    const service = new OtaUpdateService({
+      state: new InMemoryOtaUpdateStateRepository(),
+      config,
+      queue,
+      admission,
+      installer,
+      schedulerSettled: vi.fn(async () => undefined),
+      eventBusSettled: vi.fn(async () => undefined),
+      fetchImpl: async (url) => url.endsWith('manifest.json')
+        ? jsonResponse(manifest('0.1.29', artifact))
+        : new Response(artifact, { status: 200, headers: { 'content-length': String(artifact.byteLength) } }),
+    });
+
+    await service.downloadUpdate({ version: '0.1.29' });
+    await expect(service.installUpdate({ version: '0.1.29', mode: 'automatic' })).resolves.toMatchObject({
+      deferred: true,
+      state: 'WAITING_FOR_IDLE',
+    });
+    expect(installer.install).not.toHaveBeenCalled();
+    expect(admission.isMaintenanceActive()).toBe(false);
   });
 
   it('rolls back automatically when the post-install health check fails', async () => {
@@ -361,6 +445,15 @@ describe('OtaUpdateService', () => {
       Buffer.from(digest(artifact), 'hex'),
       privateKey,
     ).toString('base64');
+    const signedEnvelope = {
+      envelope_version: 1,
+      manifest: signed,
+      signature: sign(
+        null,
+        Buffer.from(canonicalJson(signed), 'utf8'),
+        privateKey,
+      ).toString('base64'),
+    };
     const config = await makeConfig({
       requireSignature: true,
       publicKey: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
@@ -369,7 +462,7 @@ describe('OtaUpdateService', () => {
       state: new InMemoryOtaUpdateStateRepository(),
       config,
       fetchImpl: async (url) => url.endsWith('manifest.json')
-        ? jsonResponse(signed)
+        ? jsonResponse(signedEnvelope)
         : new Response(artifact, { status: 200, headers: { 'content-length': String(artifact.byteLength) } }),
     });
 
@@ -426,6 +519,29 @@ describe('OtaUpdateService', () => {
 
     await service.recordExternalOutcome({ operationId: 'operation-1', version: '0.1.29', state: 'COMPLETED' });
     expect(admission.isMaintenanceActive()).toBe(false);
+  });
+
+  it('reconciles a persisted terminal updater outcome only for the active target', async () => {
+    const config = await makeConfig();
+    config.updaterStatePath = join(config.cacheDir, 'updater-state.json');
+    const state = new InMemoryOtaUpdateStateRepository();
+    const admission = new PrintAdmissionGate();
+    await state.update({ state: 'RESTART_PENDING', targetVersion: '0.1.29' });
+    await writeFile(config.updaterStatePath!, JSON.stringify({
+      operation_id: 'operation-restart',
+      version: '0.1.29',
+      phase: 'COMPLETED',
+    }));
+    admission.pauseMaintenance();
+    const service = new OtaUpdateService({ state, config, admission });
+
+    await expect(service.getStatus()).resolves.toMatchObject({ state: { state: 'COMPLETED', targetVersion: '0.1.29' } });
+    expect(admission.isMaintenanceActive()).toBe(false);
+
+    await state.update({ state: 'IDLE', targetVersion: null });
+    admission.pauseMaintenance();
+    await expect(service.getStatus()).resolves.toMatchObject({ state: { state: 'IDLE', targetVersion: null } });
+    expect(admission.isMaintenanceActive()).toBe(true);
   });
 
   it('is disabled by default and validates OTA environment settings', async () => {

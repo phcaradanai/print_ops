@@ -1,4 +1,4 @@
-import { createHash, createPrivateKey, sign } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   existsSync,
@@ -66,6 +66,44 @@ function json(path) {
 
 function sha256(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
+}
+
+function canonicalJson(value) {
+  if (value === null) return 'null';
+  if (typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('cannot canonicalize a non-finite number');
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  throw new Error(`cannot canonicalize ${typeof value}`);
+}
+
+function publicKeyObject(value) {
+  const trimmed = value.trim();
+  if (trimmed.includes('BEGIN PUBLIC KEY')) return createPublicKey(trimmed);
+  const raw = /^[0-9a-f]{64}$/i.test(trimmed)
+    ? Buffer.from(trimmed, 'hex')
+    : Buffer.from(trimmed, 'base64');
+  if (raw.length !== 32) throw new Error('bundled OTA public key is not a 32-byte Ed25519 key');
+  return createPublicKey({
+    key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), raw]),
+    format: 'der',
+    type: 'spki',
+  });
+}
+
+function publicKeyBytes(value) {
+  return Buffer.from(publicKeyObject(value).export({ type: 'spki', format: 'der' }));
+}
+
+function signatureBytes(value) {
+  const trimmed = value.trim();
+  if (/^[0-9a-f]{128}$/i.test(trimmed)) return Buffer.from(trimmed, 'hex');
+  return Buffer.from(trimmed, 'base64');
 }
 
 function filesUnder(path, excluded = new Set()) {
@@ -324,10 +362,28 @@ if (postBundle && failures.length === 0) {
     const schemaVersion = Number(process.env.PRINTOPS_DB_SCHEMA_VERSION ?? '7');
     const requireSignature = process.env.PRINTOPS_OTA_REQUIRE_SIGNATURE !== 'false';
     const signingKey = process.env.PRINTOPS_OTA_PRIVATE_KEY;
+    const bundledPublicKeyPath = join(root, 'apps/desktop/src-tauri/resources/ota-public-key.txt');
+    const bundledPublicKey = existsSync(bundledPublicKeyPath)
+      ? readFileSync(bundledPublicKeyPath, 'utf8').trim()
+      : '';
     let signatures;
+    let privateKey;
+    let verificationKey;
     try {
       if (requireSignature && !signingKey) throw new Error('PRINTOPS_OTA_PRIVATE_KEY is not configured');
-      const privateKey = signingKey ? createPrivateKey(signingKey) : undefined;
+      privateKey = signingKey ? createPrivateKey(signingKey) : undefined;
+      if (requireSignature && (!bundledPublicKey || bundledPublicKey === 'unconfigured')) {
+        throw new Error('the Desktop bundle does not contain a configured OTA public key');
+      }
+      if (bundledPublicKey && bundledPublicKey !== 'unconfigured') {
+        verificationKey = publicKeyObject(bundledPublicKey);
+      }
+      if (requireSignature && privateKey && verificationKey) {
+        const derived = Buffer.from(createPublicKey(privateKey).export({ type: 'spki', format: 'der' }));
+        if (!derived.equals(publicKeyBytes(bundledPublicKey))) {
+          throw new Error('the bundled OTA public key does not match PRINTOPS_OTA_PRIVATE_KEY');
+        }
+      }
       const signDigest = (path) => privateKey
         ? sign(null, Buffer.from(sha256(path), 'hex'), privateKey).toString('base64')
         : '';
@@ -348,10 +404,10 @@ if (postBundle && failures.length === 0) {
       fail('ota:manifest-min-version', 'PRINTOPS_OTA_MIN_SUPPORTED_VERSION must be a semantic version');
     } else if (!Number.isSafeInteger(schemaVersion) || schemaVersion < 0) {
       fail('ota:manifest-schema-version', 'PRINTOPS_DB_SCHEMA_VERSION must be a non-negative integer');
-    } else if (!signatures) {
-      fail('ota:manifest-signing', 'unable to produce required Ed25519 artifact signatures');
-    } else {
-      const otaManifest = {
+      } else if (!signatures) {
+        fail('ota:manifest-signing', 'unable to produce required Ed25519 artifact signatures');
+      } else {
+      const otaManifestPayload = {
         schema_version: 1,
         release: {
           version,
@@ -387,6 +443,34 @@ if (postBundle && failures.length === 0) {
           staged: rolloutPercentage < 100,
           rollout_percentage: rolloutPercentage,
         },
+      };
+      const manifestSignature = privateKey
+        ? sign(null, Buffer.from(canonicalJson(otaManifestPayload), 'utf8'), privateKey).toString('base64')
+        : '';
+      if (requireSignature) {
+        const valid = verificationKey
+          && verify(
+            null,
+            Buffer.from(canonicalJson(otaManifestPayload), 'utf8'),
+            verificationKey,
+            signatureBytes(manifestSignature),
+          );
+        if (!valid) {
+          fail('ota:manifest-signing', 'release manifest signature failed self-verification with the bundled public key');
+        }
+        for (const [label, path, signature] of [
+          ['desktop', nsis.path, signatures.desktop],
+          ['runner', join(root, 'apps/desktop/src-tauri/resources/printops-runner.exe'), signatures.runner],
+        ]) {
+          const artifactValid = verificationKey
+            && verify(null, Buffer.from(sha256(path), 'hex'), verificationKey, signatureBytes(signature));
+          if (!artifactValid) fail(`ota:${label}-signature`, `artifact signature failed self-verification with the bundled public key`);
+        }
+      }
+      const otaManifest = {
+        envelope_version: 1,
+        manifest: otaManifestPayload,
+        signature: manifestSignature,
       };
       const otaManifestPath = join(outputDir, 'ota-manifest.json');
       writeFileSync(otaManifestPath, `${JSON.stringify(otaManifest, null, 2)}\n`);

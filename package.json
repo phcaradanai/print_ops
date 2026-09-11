@@ -14,6 +14,7 @@
     "dev:runner-go": "cd apps/runner-go && go run ./cmd/printops-runner run",
     "build:runner-go": "cd apps/runner-go && go build -o printops-runner ./cmd/printops-runner",
     "build:updater-go": "cd apps/updater-go && go build -o printops-updater ./cmd/printops-updater",
+    "build:resources": "node apps/desktop/src-tauri/scripts/build-all.js",
     "test:runner-go": "cd apps/runner-go && go test ./...",
     "test:updater-go": "cd apps/updater-go && go test ./...",
     "test:e2e:nats": "node scripts/run-real-nats-e2e.mjs",

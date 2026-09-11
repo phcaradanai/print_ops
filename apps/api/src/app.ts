@@ -322,7 +322,6 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const initialOtaState = await otaStateRepo.get();
   const printAdmissionGate = new PrintAdmissionGate();
   const otaMaintenanceStates = new Set([
-    'WAITING_FOR_IDLE',
     'INSTALLING',
     'INSTALLING_COMPLETE',
     'HEALTH_CHECK',
@@ -397,6 +396,16 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       error: (context, message) => app.log.error(context, message),
     },
   });
+
+  // Reconcile a terminal native-updater result before the first request can
+  // arrive. The gate is initially fail-closed for an interrupted handoff;
+  // a successful/rolled-back callback may have been delivered while the API
+  // was restarting, so startup must consume the persisted outcome itself too.
+  try {
+    await otaUpdateService.getStatus();
+  } catch (error) {
+    app.log.warn({ error }, 'OTA startup reconciliation could not complete');
+  }
 
   // Bound the growth of jobs/traces/audit_logs on long-running installs (see
   // infra/db/retention.ts) — this gateway is not the system of record for

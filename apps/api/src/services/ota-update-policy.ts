@@ -4,8 +4,12 @@ import type { OtaUpdateServicePort } from './ota-update.service.js';
 
 export interface OtaPolicyState {
   failureCount: number;
+  /** Candidate release to which failureCount belongs. */
+  failureVersion: string | null;
   blockedVersion: string | null;
   nextAttemptAt: string | null;
+  /** External handoff whose terminal outcome is still to be observed. */
+  pendingVersion: string | null;
   updatedAt: string;
 }
 
@@ -52,13 +56,15 @@ export interface OtaUpdatePolicyConfig {
 
 export type OtaPolicyRunResult =
   | { kind: 'disabled' | 'persistence-unavailable' | 'waiting' | 'blocked' | 'duplicate'; nextDelayMs?: number; version?: string }
-  | { kind: 'no-update' | 'installed'; nextDelayMs: number; version?: string }
+  | { kind: 'no-update' | 'installed' | 'deferred'; nextDelayMs: number; version?: string }
   | { kind: 'failed'; nextDelayMs: number; version?: string; blocked: boolean };
 
 const EMPTY_STATE = (): OtaPolicyState => ({
   failureCount: 0,
+  failureVersion: null,
   blockedVersion: null,
   nextAttemptAt: null,
+  pendingVersion: null,
   updatedAt: new Date(0).toISOString(),
 });
 
@@ -108,18 +114,20 @@ export class OtaUpdatePolicyWorker {
       return { kind: 'persistence-unavailable' };
     }
     if (this.running) return { kind: 'duplicate' };
-
-    const now = this.now();
-    if (this.state.nextAttemptAt && Date.parse(this.state.nextAttemptAt) > now.getTime()) {
-      return {
-        kind: 'waiting',
-        nextDelayMs: Math.max(1, Date.parse(this.state.nextAttemptAt) - now.getTime()),
-      };
-    }
-
     this.running = true;
     let targetVersion: string | undefined;
     try {
+      const pendingOutcome = await this.observePendingHandoff();
+      if (pendingOutcome) return pendingOutcome;
+
+      const now = this.now();
+      if (this.state.nextAttemptAt && Date.parse(this.state.nextAttemptAt) > now.getTime()) {
+        return {
+          kind: 'waiting',
+          nextDelayMs: Math.max(1, Date.parse(this.state.nextAttemptAt) - now.getTime()),
+        };
+      }
+
       const check = await this.deps.service.checkForUpdate();
       targetVersion = check.latestVersion;
       if (!check.available || !check.latestVersion) {
@@ -130,8 +138,14 @@ export class OtaUpdatePolicyWorker {
       if (this.state.blockedVersion && this.state.blockedVersion === check.latestVersion) {
         return { kind: 'blocked', version: check.latestVersion };
       }
-      if (this.state.blockedVersion && this.state.blockedVersion !== check.latestVersion) {
-        this.state = EMPTY_STATE();
+      if (this.state.failureVersion !== check.latestVersion || this.state.blockedVersion !== null && this.state.blockedVersion !== check.latestVersion) {
+        this.state = {
+          ...this.state,
+          failureCount: 0,
+          failureVersion: check.latestVersion,
+          blockedVersion: null,
+          nextAttemptAt: null,
+        };
         await this.saveState();
       }
 
@@ -144,9 +158,25 @@ export class OtaUpdatePolicyWorker {
         version: check.latestVersion,
         component: 'desktop',
         platform: 'windows-x64',
+        mode: 'automatic',
       });
+      if (install.deferred || install.state === 'WAITING_FOR_IDLE') {
+        return {
+          kind: 'deferred',
+          nextDelayMs: this.nextInterval(),
+          version: check.latestVersion,
+        };
+      }
+      if (install.state === 'RESTART_PENDING') {
+        // Handoff acceptance is not update success. Persist the candidate so
+        // the next process can reconcile the external updater outcome and
+        // count a rollback against this exact release.
+        this.state = { ...this.state, pendingVersion: check.latestVersion, nextAttemptAt: null };
+        await this.saveState();
+        this.stop();
+        return { kind: 'waiting', version: check.latestVersion };
+      }
       await this.recordSuccess();
-      if (install.state === 'RESTART_PENDING') this.stop();
       return { kind: 'installed', nextDelayMs: this.nextInterval(), version: check.latestVersion };
     } catch (error) {
       const result = await this.recordFailure(targetVersion, error);
@@ -173,7 +203,16 @@ export class OtaUpdatePolicyWorker {
     if (!this.stateLoaded) {
       this.stateLoaded = (async () => {
         const loaded = await this.deps.stateStore?.load();
-        if (loaded) this.state = loaded;
+        if (loaded) {
+          // Accept policy files written before failureVersion/pendingVersion
+          // existed, but make the in-memory contract complete immediately.
+          this.state = {
+            ...EMPTY_STATE(),
+            ...loaded,
+            failureVersion: loaded.failureVersion ?? null,
+            pendingVersion: loaded.pendingVersion ?? null,
+          };
+        }
         if (this.deps.stateStore) await this.deps.stateStore.save(this.state);
       })().catch((error) => {
         this.persistenceUnavailable = true;
@@ -186,8 +225,10 @@ export class OtaUpdatePolicyWorker {
   private async recordSuccess(): Promise<void> {
     this.state = {
       failureCount: 0,
+      failureVersion: null,
       blockedVersion: null,
       nextAttemptAt: null,
+      pendingVersion: null,
       updatedAt: this.now().toISOString(),
     };
     await this.saveState();
@@ -197,15 +238,20 @@ export class OtaUpdatePolicyWorker {
     nextDelayMs: number;
     blocked: boolean;
   }> {
-    const failureCount = this.state.failureCount + 1;
+    const sameVersion = version !== undefined && version === this.state.failureVersion;
+    const failureCount = version === undefined
+      ? (this.state.failureVersion === null ? this.state.failureCount + 1 : 1)
+      : (sameVersion ? this.state.failureCount + 1 : 1);
     const blocked = Boolean(version && failureCount >= this.deps.config.maxFailures);
     const nextAttemptAt = blocked
       ? null
       : new Date(this.now().getTime() + this.backoff(failureCount)).toISOString();
     this.state = {
       failureCount,
-      blockedVersion: blocked ? version ?? null : this.state.blockedVersion,
+      failureVersion: version ?? null,
+      blockedVersion: blocked ? version ?? null : null,
       nextAttemptAt,
+      pendingVersion: null,
       updatedAt: this.now().toISOString(),
     };
     await this.saveState();
@@ -250,6 +296,40 @@ export class OtaUpdatePolicyWorker {
   private now(): Date {
     return (this.deps.now ?? (() => new Date()))();
   }
+
+  /** Reconcile a handoff before allowing the policy to start another cycle. */
+  private async observePendingHandoff(): Promise<OtaPolicyRunResult | null> {
+    const version = this.state.pendingVersion;
+    if (!version) return null;
+
+    const status = await this.deps.service.getStatus();
+    const state = status?.state;
+    if (!state || state.targetVersion !== version) {
+      return { kind: 'waiting', version, nextDelayMs: this.nextInterval() };
+    }
+    if (state.state === 'RESTART_PENDING'
+      || state.state === 'INSTALLING'
+      || state.state === 'INSTALLING_COMPLETE'
+      || state.state === 'HEALTH_CHECK'
+      || state.state === 'ROLLING_BACK') {
+      return { kind: 'waiting', version, nextDelayMs: this.nextInterval() };
+    }
+    if (state.state === 'COMPLETED') {
+      await this.recordSuccess();
+      return { kind: 'no-update', nextDelayMs: this.nextInterval(), version };
+    }
+    if (state.state === 'ROLLED_BACK'
+      || state.state === 'INSTALL_FAILED'
+      || state.state === 'HEALTH_CHECK_FAILED'
+      || state.state === 'ROLLBACK_FAILED') {
+      return {
+        kind: 'failed',
+        ...(await this.recordFailure(version, state.errorMessage ?? `external updater ended in ${state.state}`)),
+        version,
+      };
+    }
+    return { kind: 'waiting', version, nextDelayMs: this.nextInterval() };
+  }
 }
 
 function isPolicyState(value: unknown): value is OtaPolicyState {
@@ -257,7 +337,9 @@ function isPolicyState(value: unknown): value is OtaPolicyState {
   const record = value as Record<string, unknown>;
   return Number.isSafeInteger(record['failureCount'])
     && (record['failureCount'] as number) >= 0
+    && (record['failureVersion'] === undefined || record['failureVersion'] === null || typeof record['failureVersion'] === 'string')
     && (record['blockedVersion'] === null || typeof record['blockedVersion'] === 'string')
     && (record['nextAttemptAt'] === null || typeof record['nextAttemptAt'] === 'string')
+    && (record['pendingVersion'] === undefined || record['pendingVersion'] === null || typeof record['pendingVersion'] === 'string')
     && typeof record['updatedAt'] === 'string';
 }

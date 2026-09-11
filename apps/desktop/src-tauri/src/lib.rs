@@ -439,14 +439,32 @@ impl ShutdownGuard {
     }
 }
 
-/// Directory used for diagnostic logs. Falls back to the exe directory when the
-/// preferred location cannot be created.
+/// Directory used for diagnostic logs. Logs are mutable application data too,
+/// so never fall back to the immutable install directory.
 fn log_dir(exe_dir: &Path) -> PathBuf {
-    let dir = exe_dir.join("logs");
-    if fs::create_dir_all(&dir).is_ok() {
-        return dir;
+    let mut candidates = Vec::new();
+    if let Some(base) = std::env::var_os("LOCALAPPDATA") {
+        candidates.push(PathBuf::from(base).join("PrintOps").join("logs"));
     }
-    exe_dir.to_path_buf()
+    if let Some(base) = std::env::var_os("APPDATA") {
+        candidates.push(PathBuf::from(base).join("PrintOps").join("logs"));
+    }
+    candidates.push(std::env::temp_dir().join("PrintOps").join("logs"));
+
+    for dir in candidates {
+        let absolute_dir = fs::canonicalize(&dir).unwrap_or_else(|_| dir.clone());
+        let absolute_exe = fs::canonicalize(exe_dir).unwrap_or_else(|_| exe_dir.to_path_buf());
+        if absolute_dir == absolute_exe || absolute_dir.starts_with(&absolute_exe) {
+            continue;
+        }
+        if fs::create_dir_all(&dir).is_ok() {
+            return dir;
+        }
+    }
+
+    // The system temp directory is the last-resort location and is still
+    // outside the application install root.
+    std::env::temp_dir()
 }
 
 fn log_line(log_path: &Path, msg: &str) {
@@ -740,10 +758,24 @@ pub fn run() {
 
             // Database lives in the per-user app data dir so the app still works
             // when installed to a read-only location.
-            let data_dir = app
-                .path()
-                .app_data_dir()
-                .unwrap_or_else(|_| res_dir.clone());
+            let data_dir = match app.path().app_data_dir() {
+                Ok(path) => path,
+                Err(error) => {
+                    log_line(
+                        &app_log,
+                        &format!("ERROR: cannot resolve the per-user app-data directory: {error}"),
+                    );
+                    return Err(Box::new(error));
+                }
+            };
+            if data_dir == exe_dir || data_dir.starts_with(&exe_dir) {
+                let error = format!(
+                    "refusing to use an app-data directory inside the install root: {}",
+                    data_dir.display(),
+                );
+                log_line(&app_log, &format!("ERROR: {error}"));
+                return Err(error.into());
+            }
             let _ = fs::create_dir_all(&data_dir);
             let ota_dir = data_dir.join("ota");
             let _ = fs::create_dir_all(&ota_dir);

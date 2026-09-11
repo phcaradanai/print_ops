@@ -112,7 +112,8 @@ export type UpdateCheckReason =
   | 'DISABLED'
   | 'CURRENT'
   | 'CHANNEL_MISMATCH'
-  | 'PRERELEASE_NOT_AUTO_UPDATED';
+  | 'PRERELEASE_NOT_AUTO_UPDATED'
+  | 'IN_PROGRESS';
 
 export interface UpdateCheckResult {
   enabled: boolean;
@@ -148,6 +149,8 @@ export interface OtaInstallRequest {
   version: string;
   component?: ArtifactComponent;
   platform?: ArtifactPlatform;
+  /** Automatic policy uses a non-blocking idle/defer protocol. */
+  mode?: 'manual' | 'automatic';
 }
 
 export interface OtaInstallInput {
@@ -184,7 +187,8 @@ export interface OtaInstallResult {
   version: string;
   component: ArtifactComponent;
   platform: ArtifactPlatform;
-  state: 'RESTART_PENDING' | 'ROLLED_BACK';
+  state: 'COMPLETED' | 'RESTART_PENDING' | 'ROLLED_BACK' | 'WAITING_FOR_IDLE';
+  deferred?: boolean;
   restartRequired?: boolean;
   operationId?: string;
 }
@@ -217,6 +221,8 @@ export interface OtaExternalOutcome {
 
 interface ResolvedManifest {
   manifest: ReleaseManifest;
+  payload: unknown;
+  manifestSignature: string;
   source: Exclude<OtaSource, 'cache'>;
   manifestUrl: string;
 }
@@ -413,6 +419,53 @@ export function parseReleaseManifest(input: unknown): ReleaseManifest {
       rolloutPercentage,
     },
   };
+}
+
+/** Parse a signed release envelope while retaining the exact payload input. */
+export function parseReleaseManifestEnvelope(input: unknown): {
+  manifest: ReleaseManifest;
+  payload: unknown;
+  signature: string;
+} {
+  const root = asRecord(input);
+  if (!root) throw manifestError('Release manifest envelope must be a JSON object');
+
+  const envelopeVersion = valueAt(root, 'envelope_version', 'envelopeVersion');
+  // Development/test manifests may remain flat when signature verification is
+  // explicitly disabled. Production trust is enforced by the service below.
+  if (envelopeVersion === undefined) {
+    return { manifest: parseReleaseManifest(input), payload: input, signature: '' };
+  }
+  if (envelopeVersion !== 1) {
+    throw manifestError(`Unsupported release manifest envelope version: ${String(envelopeVersion)}`);
+  }
+  const payload = valueAt(root, 'manifest', 'payload');
+  if (payload === undefined) throw manifestError("Manifest envelope field 'manifest' is required");
+  const signatureValue = valueAt(root, 'signature');
+  if (signatureValue !== undefined && typeof signatureValue !== 'string') {
+    throw manifestError("Manifest envelope field 'signature' must be a string");
+  }
+  return {
+    manifest: parseReleaseManifest(payload),
+    payload,
+    signature: typeof signatureValue === 'string' ? signatureValue.trim() : '',
+  };
+}
+
+/** Deterministic JSON form used by the Ed25519 release-manifest contract. */
+export function canonicalJson(value: unknown): string {
+  if (value === null) return 'null';
+  if (typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('Cannot canonicalize a non-finite number');
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item)).join(',')}]`;
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
+  }
+  throw new Error(`Cannot canonicalize ${typeof value}`);
 }
 
 function boolFromEnv(raw: string | undefined, fallback: boolean): boolean {
@@ -664,6 +717,24 @@ function verifyArtifactSignature(sha256: string, signature: string, publicKey: s
   if (!valid) throw new AppError('OTA_SIGNATURE_INVALID', 'Release artifact signature is invalid', 422);
 }
 
+function verifyManifestSignature(payload: unknown, signature: string, publicKey: string | undefined): void {
+  if (!signature.trim()) {
+    throw new AppError('OTA_SIGNATURE_REQUIRED', 'Release manifest has no Ed25519 signature', 422);
+  }
+  if (!publicKey?.trim()) {
+    throw new AppError('OTA_SIGNATURE_UNAVAILABLE', 'No OTA Ed25519 public key is configured', 503);
+  }
+  let valid = false;
+  try {
+    const signatureValue = signatureBytes(signature);
+    valid = signatureValue.length === 64
+      && verifySignature(null, Buffer.from(canonicalJson(payload), 'utf8'), publicKeyObject(publicKey), signatureValue);
+  } catch {
+    valid = false;
+  }
+  if (!valid) throw new AppError('OTA_SIGNATURE_INVALID', 'Release manifest signature is invalid', 422);
+}
+
 export class OtaUpdateService implements OtaUpdateServicePort {
   private operation: Promise<unknown> | undefined;
   private stagedArtifact: StagedInstallArtifact | null = null;
@@ -724,7 +795,24 @@ export class OtaUpdateService implements OtaUpdateServicePort {
       };
     }
 
-    return this.runExclusive(async () => this.checkForUpdateInternal());
+    return this.runExclusive(async () => {
+      await this.reconcileExternalUpdaterState();
+      const current = await this.deps.state.get();
+      if (current.state === 'RESTART_PENDING'
+        || current.state === 'INSTALLING'
+        || current.state === 'INSTALLING_COMPLETE'
+        || current.state === 'HEALTH_CHECK'
+        || current.state === 'ROLLING_BACK') {
+        return {
+          enabled: true,
+          available: false,
+          currentVersion: this.deps.config.currentVersion,
+          channel: this.deps.config.channel,
+          reason: 'IN_PROGRESS' as const,
+        };
+      }
+      return this.checkForUpdateInternal();
+    });
   }
 
   async downloadUpdate(request: DownloadUpdateRequest): Promise<DownloadUpdateResult> {
@@ -901,6 +989,16 @@ export class OtaUpdateService implements OtaUpdateServicePort {
       let releaseAdmission: (() => void) | undefined;
       let installStarted = false;
       let maintenanceTransferred = false;
+      const automatic = request.mode === 'automatic';
+
+      const deferred = (): OtaInstallResult => ({
+        installed: false,
+        version: request.version,
+        component,
+        platform,
+        state: 'WAITING_FOR_IDLE',
+        deferred: true,
+      });
 
       try {
         await this.deps.state.update({
@@ -909,8 +1007,26 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           startedAt,
           errorMessage: null,
         });
-        if (this.deps.admission) releaseAdmission = await this.deps.admission.beginMaintenance();
-        await this.waitForPrintIdle();
+        if (automatic && !(await this.printSystemIsIdle())) return deferred();
+
+        if (this.deps.admission) {
+          releaseAdmission = await this.deps.admission.beginMaintenance();
+          if (automatic) {
+            // beginMaintenance closes admission and waits for creators already
+            // inside it. This is the atomic second check: a job admitted after
+            // the first probe is either fully admitted before closure or is
+            // observed here and the gate opens again immediately.
+            if (!(await this.printSystemIsIdle())) {
+              releaseAdmission();
+              releaseAdmission = undefined;
+              return deferred();
+            }
+          } else {
+            await this.waitForPrintIdle();
+          }
+        } else {
+          await this.waitForPrintIdle();
+        }
 
         await this.deps.state.update({ state: 'INSTALLING' });
         installStarted = true;
@@ -943,13 +1059,12 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           errorMessage: null,
           retryCount: 0,
         });
-        await this.deps.state.update({ state: 'RESTART_PENDING' });
         return {
           installed: true,
           version: request.version,
           component,
           platform,
-          state: 'RESTART_PENDING' as const,
+          state: 'COMPLETED' as const,
         };
       } catch (error) {
         const failureState = error instanceof AppError && error.code === 'OTA_HEALTH_CHECK_FAILED'
@@ -1013,15 +1128,17 @@ export class OtaUpdateService implements OtaUpdateServicePort {
       }
     }
     const current = await this.deps.state.get();
-    if (current.targetVersion && current.targetVersion !== input.version) {
+    if (!current.targetVersion || current.targetVersion !== input.version) {
       throw new ConflictError(
         `External OTA outcome for ${input.version} does not match active target ${current.targetVersion}`,
       );
     }
+    const nextErrorMessage = input.errorMessage ?? null;
+    if (current.state === input.state && current.errorMessage === nextErrorMessage) return;
     await this.deps.state.update({
       state: input.state,
       targetVersion: input.version,
-      errorMessage: input.errorMessage ?? null,
+      errorMessage: nextErrorMessage,
       retryCount: input.state === 'COMPLETED' ? 0 : current.retryCount + 1,
     });
     if (input.state !== 'ROLLBACK_FAILED') {
@@ -1269,6 +1386,18 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     return activeJobs.every((jobs) => jobs.length === 0);
   }
 
+  /**
+   * Perform a bounded idle observation without holding the maintenance gate.
+   * Automatic OTA uses this for both the preflight and the final post-gate
+   * check; a busy result is a deferral, not an install failure.
+   */
+  private async printSystemIsIdle(): Promise<boolean> {
+    if (!(await this.printQueueIsIdle())) return false;
+    await this.deps.schedulerSettled?.();
+    await this.deps.eventBusSettled?.();
+    return this.printQueueIsIdle();
+  }
+
   private async waitForHealth(input: OtaInstallInput): Promise<boolean> {
     const installer = this.deps.installer;
     if (!installer) return false;
@@ -1318,13 +1447,26 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           lastError = manifestError('Release manifest is not valid JSON');
           continue;
         }
-        return { manifest: parseReleaseManifest(parsed), source: candidate.kind, manifestUrl: candidate.url };
+        const envelope = parseReleaseManifestEnvelope(parsed);
+        if (this.deps.config.requireSignature) {
+          verifyManifestSignature(envelope.payload, envelope.signature, this.deps.config.publicKey);
+        }
+        return {
+          manifest: envelope.manifest,
+          payload: envelope.payload,
+          manifestSignature: envelope.signature,
+          source: candidate.kind,
+          manifestUrl: candidate.url,
+        };
       } catch (error) {
         lastError = error;
       }
     }
 
-    if (lastError instanceof AppError && lastError.code === 'OTA_INVALID_MANIFEST') throw lastError;
+    if (lastError instanceof AppError
+      && (lastError.code === 'OTA_INVALID_MANIFEST' || lastError.code.startsWith('OTA_SIGNATURE_'))) {
+      throw lastError;
+    }
     throw new AppError('OTA_SOURCE_UNAVAILABLE', 'No configured OTA manifest source is reachable', 503);
   }
 
@@ -1517,7 +1659,10 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     const snapshot = await readExternalUpdaterState(path);
     if (!snapshot || !isExternalUpdaterTerminalPhase(snapshot.phase)) return;
     const current = await this.deps.state.get();
-    if (current.targetVersion && current.targetVersion !== snapshot.version) return;
+    // A terminal updater file is retained for manual rollback/audit. It is
+    // not a command to resurrect a completed state after the API has already
+    // advanced to another operation (or reset to IDLE).
+    if (!current.targetVersion || current.targetVersion !== snapshot.version) return;
 
     const state = snapshot.phase === 'COMPLETED'
       ? 'COMPLETED'

@@ -8,9 +8,11 @@ $required = @(
   'PRINTOPS_OTA_NATIVE_A_INSTALLER',
   'PRINTOPS_OTA_NATIVE_B_MANIFEST',
   'PRINTOPS_OTA_NATIVE_B_INSTALLER',
-  'PRINTOPS_OTA_NATIVE_A_VERSION',
-  'PRINTOPS_OTA_NATIVE_B_VERSION',
-  'PRINTOPS_OTA_NATIVE_BROKEN_MANIFEST',
+   'PRINTOPS_OTA_NATIVE_A_VERSION',
+   'PRINTOPS_OTA_NATIVE_B_VERSION',
+   'PRINTOPS_OTA_NATIVE_A_SCHEMA_VERSION',
+   'PRINTOPS_OTA_NATIVE_B_SCHEMA_VERSION',
+   'PRINTOPS_OTA_NATIVE_BROKEN_MANIFEST',
   'PRINTOPS_OTA_NATIVE_BROKEN_INSTALLER',
   'PRINTOPS_OTA_NATIVE_BROKEN_VERSION',
   'PRINTOPS_OTA_NATIVE_PUBLIC_KEY'
@@ -27,15 +29,36 @@ $desktopExeRelative = if ($env:PRINTOPS_OTA_NATIVE_DESKTOP_RELATIVE_PATH) {
 } else {
   'printerops-desktop.exe'
 }
-$installRoot = Join-Path ([System.IO.Path]::GetTempPath()) "printops-ota-native-$PID"
-$appData = Join-Path $installRoot 'appdata'
-$localAppData = Join-Path $installRoot 'localappdata'
+$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "printops-ota-native-$PID"
+$installRoot = Join-Path $tempRoot 'installation\PrintOps'
+$dataRoot = Join-Path $tempRoot 'data'
+$appData = Join-Path $dataRoot 'appdata'
+$localAppData = Join-Path $dataRoot 'localappdata'
 $sourcePort = if ($env:PRINTOPS_OTA_NATIVE_SOURCE_PORT) { [int]$env:PRINTOPS_OTA_NATIVE_SOURCE_PORT } else { 18082 }
 $desktopProcess = $null
 $labProcess = $null
 
 function Assert-File([string]$path, [string]$label) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "$label is missing: $path" }
+}
+
+function Get-ManifestPayload([string]$path) {
+  $value = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+  if ($value.envelope_version -eq 1) { return $value.manifest }
+  return $value
+}
+
+function Assert-SchemaChangingRelease {
+  $aPayload = Get-ManifestPayload $env:PRINTOPS_OTA_NATIVE_B_MANIFEST
+  $brokenPayload = Get-ManifestPayload $env:PRINTOPS_OTA_NATIVE_BROKEN_MANIFEST
+  $expectedA = [int]$env:PRINTOPS_OTA_NATIVE_A_SCHEMA_VERSION
+  $expectedB = [int]$env:PRINTOPS_OTA_NATIVE_B_SCHEMA_VERSION
+  $manifestB = [int]$aPayload.compatibility.schema_version
+  $manifestBroken = [int]$brokenPayload.compatibility.schema_version
+  if ($expectedB -le $expectedA) { throw "native acceptance requires a schema-changing B release ($expectedA -> $expectedB)" }
+  if ($manifestB -ne $expectedB -or $manifestBroken -ne $expectedB) {
+    throw "B and broken-B manifests must declare schema version $expectedB"
+  }
 }
 
 function Start-Lab([string]$manifest, [string]$artifact) {
@@ -113,6 +136,57 @@ function Get-HealthToken {
   return (Get-Content -LiteralPath $file.FullName -Raw).Trim()
 }
 
+function Get-ApiToken {
+  $bootstrap = Invoke-RestMethod -Uri 'http://127.0.0.1:31415/auth/bootstrap' -TimeoutSec 3
+  if ($bootstrap.state -eq 'REQUIRED_NEW') {
+    $email = "ota-native-$PID@example.invalid"
+    $password = "Native-OTA-$PID-Password!"
+    $body = @{
+      name = 'OTA Native E2E'
+      email = $email
+      password = $password
+      passwordConfirmation = $password
+    } | ConvertTo-Json
+    $created = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:31415/auth/bootstrap' -ContentType 'application/json' -Body $body -TimeoutSec 3
+    return [string]$created.token
+  }
+  if ($bootstrap.state -eq 'MIGRATION_REQUIRED') { throw 'native e2e data directory requires an unsupported owner migration' }
+  $loginBody = @{
+    email = "ota-native-$PID@example.invalid"
+    password = "Native-OTA-$PID-Password!"
+  } | ConvertTo-Json
+  $login = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:31415/auth/login' -ContentType 'application/json' -Body $loginBody -TimeoutSec 3
+  return [string]$login.token
+}
+
+function Get-OtaStatus([string]$token) {
+  if ([string]::IsNullOrWhiteSpace($token)) { throw 'API JWT was not created' }
+  return Invoke-RestMethod -Uri 'http://127.0.0.1:31415/api/v1/ota/status' -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 3
+}
+
+function Assert-DataSeparated {
+  $installFull = [System.IO.Path]::GetFullPath($installRoot).TrimEnd('\')
+  $dataFull = [System.IO.Path]::GetFullPath($dataRoot).TrimEnd('\')
+  if ($dataFull.StartsWith("$installFull\", [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "test data directory is nested under the installation root: $dataFull"
+  }
+  $forbidden = @(
+    (Join-Path $installRoot 'appdata'),
+    (Join-Path $installRoot 'localappdata'),
+    (Join-Path $installRoot 'logs'),
+    (Join-Path $installRoot 'printops.db'),
+    (Join-Path $installRoot 'ota\updater-state.json'),
+    (Join-Path $installRoot 'ota\backups'),
+    (Join-Path $installRoot 'ota-health-token.txt')
+  )
+  foreach ($path in $forbidden) {
+    if (Test-Path -LiteralPath $path) { throw "installation root contains forbidden mutable data: $path" }
+  }
+  $forbiddenFiles = Get-ChildItem -LiteralPath $installRoot -Recurse -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -in @('updater-state.json', 'ota-health-token.txt', 'printops.db', 'desktop.log') }
+  if ($forbiddenFiles) { throw "installation root contains mutable OTA/application data: $($forbiddenFiles[0].FullName)" }
+}
+
 function Configure-OTAEnvironment {
   $env:APPDATA = $appData
   $env:LOCALAPPDATA = $localAppData
@@ -129,12 +203,14 @@ function Configure-OTAEnvironment {
 }
 
 try {
-  New-Item -ItemType Directory -Force -Path $installRoot, $appData, $localAppData | Out-Null
+  Assert-SchemaChangingRelease
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $installRoot), $dataRoot, $appData, $localAppData | Out-Null
   Configure-OTAEnvironment
 
   # Successful real update: A is installed and launched, then the local lab
   # serves the signed B manifest and the actual B NSIS artifact.
   Install-NSIS $env:PRINTOPS_OTA_NATIVE_A_INSTALLER
+  Assert-DataSeparated
   Start-Lab $env:PRINTOPS_OTA_NATIVE_B_MANIFEST $env:PRINTOPS_OTA_NATIVE_B_INSTALLER
   Start-Desktop
   Wait-Until 'version A health' { (Get-Health).status -eq 'ok' -and (Get-Health).version -eq $env:PRINTOPS_OTA_NATIVE_A_VERSION }
@@ -144,6 +220,13 @@ try {
   if ((Get-Health).version -ne $env:PRINTOPS_OTA_NATIVE_B_VERSION) { throw 'reported version is not B' }
   $readiness = Invoke-RestMethod -Uri 'http://127.0.0.1:31415/api/v1/system/readiness' -Headers @{ 'x-printops-ota-token' = (Get-HealthToken) }
   if ($readiness.ota.status -ne 'READY') { throw 'B OTA readiness contract did not become READY' }
+  if ([int]$readiness.database.schemaVersion -ne [int]$env:PRINTOPS_OTA_NATIVE_B_SCHEMA_VERSION) {
+    throw "B database schema is $($readiness.database.schemaVersion), expected $($env:PRINTOPS_OTA_NATIVE_B_SCHEMA_VERSION)"
+  }
+  $apiToken = Get-ApiToken
+  $completedApi = Wait-Until 'API COMPLETED OTA state' { (Get-OtaStatus $apiToken).state -eq 'COMPLETED' }
+  if ([string]$completedApi.currentVersion -ne $env:PRINTOPS_OTA_NATIVE_B_VERSION) { throw 'API COMPLETED state does not report B as current' }
+  Assert-DataSeparated
   Write-Host '[PASS] real signed NSIS A -> B update and OTA readiness'
 
   # Rollback run: reinstall A in a fresh disposable data directory, then
@@ -152,8 +235,10 @@ try {
   Stop-Desktop
   Stop-Lab
   if (Test-Path -LiteralPath $installRoot) { Remove-Item -LiteralPath $installRoot -Recurse -Force }
-  New-Item -ItemType Directory -Force -Path $installRoot, $appData, $localAppData | Out-Null
+  if (Test-Path -LiteralPath $dataRoot) { Remove-Item -LiteralPath $dataRoot -Recurse -Force }
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $installRoot), $dataRoot, $appData, $localAppData | Out-Null
   Install-NSIS $env:PRINTOPS_OTA_NATIVE_A_INSTALLER
+  Assert-DataSeparated
   Start-Lab $env:PRINTOPS_OTA_NATIVE_BROKEN_MANIFEST $env:PRINTOPS_OTA_NATIVE_BROKEN_INSTALLER
   Start-Desktop
   $rolledBack = Wait-Until 'broken B rollback to A' {
@@ -162,9 +247,20 @@ try {
   }
   Wait-Until 'version A health after rollback' { (Get-Health).version -eq $env:PRINTOPS_OTA_NATIVE_A_VERSION } | Out-Null
   if ([string]$rolledBack.version -ne $env:PRINTOPS_OTA_NATIVE_BROKEN_VERSION) { throw 'rollback state does not identify the broken candidate version' }
+  $rollbackReadiness = Invoke-RestMethod -Uri 'http://127.0.0.1:31415/api/v1/system/readiness' -Headers @{ 'x-printops-ota-token' = (Get-HealthToken) }
+  if ([int]$rollbackReadiness.database.schemaVersion -ne [int]$env:PRINTOPS_OTA_NATIVE_A_SCHEMA_VERSION) {
+    throw "rollback database schema is $($rollbackReadiness.database.schemaVersion), expected $($env:PRINTOPS_OTA_NATIVE_A_SCHEMA_VERSION)"
+  }
+  $rollbackToken = Get-ApiToken
+  $rolledBackApi = Wait-Until 'API ROLLED_BACK OTA state' { (Get-OtaStatus $rollbackToken).state -eq 'ROLLED_BACK' }
+  if ([string]$rolledBackApi.targetVersion -ne $env:PRINTOPS_OTA_NATIVE_BROKEN_VERSION) { throw 'API ROLLED_BACK state does not identify the broken candidate' }
+  if ([int]$rolledBackApi.currentSchemaVersion -ne [int]$env:PRINTOPS_OTA_NATIVE_A_SCHEMA_VERSION) {
+    throw "API rollback state reports schema $($rolledBackApi.currentSchemaVersion), expected $($env:PRINTOPS_OTA_NATIVE_A_SCHEMA_VERSION)"
+  }
+  Assert-DataSeparated
   Write-Host '[PASS] broken B rollback restored A and persisted ROLLED_BACK'
 } finally {
   Stop-Desktop
   Stop-Lab
-  if (Test-Path -LiteralPath $installRoot) { Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue }
+  if (Test-Path -LiteralPath $tempRoot) { Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue }
 }

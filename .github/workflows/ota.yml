@@ -86,13 +86,39 @@ jobs:
           dotnet-version: '8.0.x'
       - run: npm ci
       - run: npm run build:packages
+      - name: Generate Tauri resources before packaged checks
+        run: npm run build:resources
+        env:
+          PRINTOPS_OTA_REQUIRE_SIGNATURE: 'false'
       - run: npm run test:updater-go
       - run: npm run test:runner-go
-      - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Validate Tauri application
+        run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
       - run: npm run test:packaged-sidecars
+        env:
+          PRINTOPS_OTA_REQUIRE_SIGNATURE: 'false'
+      - name: Prepare real Windows MSI and NSIS packages
+        run: npm run tauri:build -w @printerops/desktop
+        env:
+          PRINTOPS_OTA_REQUIRE_SIGNATURE: 'false'
+      - name: Verify packaged Desktop supervision
+        run: npm run test:packaged-desktop
         env:
           PRINTOPS_OTA_REQUIRE_SIGNATURE: 'false'
       - name: Real native Windows OTA acceptance
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_native_windows_e2e }}
         shell: pwsh
         run: ./scripts/ota-native-e2e.ps1
+        env:
+          PRINTOPS_OTA_NATIVE_E2E: '1'
+          PRINTOPS_OTA_NATIVE_A_INSTALLER: ${{ vars.PRINTOPS_OTA_NATIVE_A_INSTALLER }}
+          PRINTOPS_OTA_NATIVE_B_MANIFEST: ${{ vars.PRINTOPS_OTA_NATIVE_B_MANIFEST }}
+          PRINTOPS_OTA_NATIVE_B_INSTALLER: ${{ vars.PRINTOPS_OTA_NATIVE_B_INSTALLER }}
+          PRINTOPS_OTA_NATIVE_A_VERSION: ${{ vars.PRINTOPS_OTA_NATIVE_A_VERSION }}
+          PRINTOPS_OTA_NATIVE_B_VERSION: ${{ vars.PRINTOPS_OTA_NATIVE_B_VERSION }}
+          PRINTOPS_OTA_NATIVE_A_SCHEMA_VERSION: ${{ vars.PRINTOPS_OTA_NATIVE_A_SCHEMA_VERSION }}
+          PRINTOPS_OTA_NATIVE_B_SCHEMA_VERSION: ${{ vars.PRINTOPS_OTA_NATIVE_B_SCHEMA_VERSION }}
+          PRINTOPS_OTA_NATIVE_BROKEN_MANIFEST: ${{ vars.PRINTOPS_OTA_NATIVE_BROKEN_MANIFEST }}
+          PRINTOPS_OTA_NATIVE_BROKEN_INSTALLER: ${{ vars.PRINTOPS_OTA_NATIVE_BROKEN_INSTALLER }}
+          PRINTOPS_OTA_NATIVE_BROKEN_VERSION: ${{ vars.PRINTOPS_OTA_NATIVE_BROKEN_VERSION }}
+          PRINTOPS_OTA_NATIVE_PUBLIC_KEY: ${{ secrets.PRINTOPS_OTA_NATIVE_PUBLIC_KEY }}

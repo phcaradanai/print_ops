@@ -8,6 +8,32 @@ const compose = (args) => execFileSync('docker', ['compose', '-f', composeFile, 
   stdio: 'inherit',
 });
 
+function runClientMatrix(wan, lan) {
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const args = [
+    'run',
+    'test',
+    '-w',
+    '@printerops/api',
+    '--',
+    '--run',
+    'src/tests/ota-docker-client.test.ts',
+  ];
+  const executable = process.platform === 'win32' ? (process.env.ComSpec || 'cmd.exe') : npm;
+  const executableArgs = process.platform === 'win32' ? ['/d', '/c', npm, ...args] : args;
+  execFileSync(executable, executableArgs, {
+    cwd: root,
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      NODE_ENV: 'test',
+      PRINTOPS_OTA_DOCKER_WAN_URL: wan,
+      PRINTOPS_OTA_DOCKER_LAN_URL: lan,
+      PRINTOPS_OTA_DOCKER_REPORT_DIR: `${root}/artifacts/prod-01`,
+    },
+  });
+}
+
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function request(base, path, init) {
   for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -45,7 +71,7 @@ try {
   await expectStatus(wan, '/manifest.json', 200);
   await expectStatus(wan, '/desktop.artifact', 200);
 
-  for (const mode of ['http-404', 'http-500', 'invalid-json', 'invalid-manifest', 'old-release', 'prerelease', 'incompatible-schema', 'wrong-checksum', 'wrong-signature']) {
+  for (const mode of ['http-404', 'http-500', 'invalid-json', 'invalid-manifest', 'old-release', 'prerelease', 'incompatible-schema', 'wrong-checksum', 'wrong-signature', 'wrong-manifest-signature', 'missing-signature']) {
     await control(wan, { manifestMode: mode });
     const expected = mode.startsWith('http-') ? Number(mode.slice(5)) : 200;
     await expectStatus(wan, '/manifest.json', expected);
@@ -69,7 +95,8 @@ try {
   await control(lan, { manifestMode: 'http-500' });
   await control(wan, { manifestMode: 'healthy', artifactMode: 'healthy' });
   await expectStatus(wan, '/manifest.json', 200);
-  console.log('[ota-docker] deterministic WAN/LAN failure matrix passed');
+  runClientMatrix(wan, lan);
+  console.log('[ota-docker] real client/service WAN/LAN failure matrix passed');
 } finally {
   try {
     compose(['down', '--volumes', '--remove-orphans']);
