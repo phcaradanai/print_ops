@@ -132,7 +132,10 @@ export class ExternalUpdaterInstaller implements OtaInstallerPort {
 
   private async launch(args: string[]): Promise<void> {
     const child = spawn(this.config.executablePath, args, {
-      cwd: this.config.installRoot,
+      // The updater must be able to rename the install root during rollback.
+      // Keeping its own working directory in the install tree can make
+      // Windows hold that directory open while restoreBackup runs.
+      cwd: dirname(this.config.statePath),
       detached: true,
       stdio: 'ignore',
       windowsHide: true,

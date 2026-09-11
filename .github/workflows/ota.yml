@@ -32,7 +32,7 @@ on:
   workflow_dispatch:
     inputs:
       run_native_windows_e2e:
-        description: 'Run the real signed NSIS A -> B -> broken-B rollback test (requires runner secrets/artifacts)'
+        description: 'Build and run the real signed NSIS A -> B -> broken-B rollback test'
         required: true
         default: false
         type: boolean
@@ -71,7 +71,7 @@ jobs:
   windows:
     name: Windows packaged build and updater checks
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -105,20 +105,28 @@ jobs:
         run: npm run test:packaged-desktop
         env:
           PRINTOPS_OTA_REQUIRE_SIGNATURE: 'false'
+      - name: Build reproducible signed native OTA acceptance artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_native_windows_e2e }}
+        shell: pwsh
+        env:
+          PRINTOPS_OTA_NATIVE_SIGNING_KEY: ${{ secrets.PRINTOPS_OTA_NATIVE_ACCEPTANCE_PRIVATE_KEY }}
+          PRINTOPS_OTA_NATIVE_OUTPUT_DIR: ${{ github.workspace }}\artifacts\ota-native
+        run: node scripts/ota-native-acceptance-build.mjs
+      - name: Export native OTA acceptance paths
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_native_windows_e2e }}
+        shell: pwsh
+        run: Get-Content -LiteralPath artifacts/ota-native/native-e2e.env | Add-Content -LiteralPath $env:GITHUB_ENV
       - name: Real native Windows OTA acceptance
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_native_windows_e2e }}
         shell: pwsh
         run: ./scripts/ota-native-e2e.ps1
         env:
           PRINTOPS_OTA_NATIVE_E2E: '1'
-          PRINTOPS_OTA_NATIVE_A_INSTALLER: ${{ vars.PRINTOPS_OTA_NATIVE_A_INSTALLER }}
-          PRINTOPS_OTA_NATIVE_B_MANIFEST: ${{ vars.PRINTOPS_OTA_NATIVE_B_MANIFEST }}
-          PRINTOPS_OTA_NATIVE_B_INSTALLER: ${{ vars.PRINTOPS_OTA_NATIVE_B_INSTALLER }}
-          PRINTOPS_OTA_NATIVE_A_VERSION: ${{ vars.PRINTOPS_OTA_NATIVE_A_VERSION }}
-          PRINTOPS_OTA_NATIVE_B_VERSION: ${{ vars.PRINTOPS_OTA_NATIVE_B_VERSION }}
-          PRINTOPS_OTA_NATIVE_A_SCHEMA_VERSION: ${{ vars.PRINTOPS_OTA_NATIVE_A_SCHEMA_VERSION }}
-          PRINTOPS_OTA_NATIVE_B_SCHEMA_VERSION: ${{ vars.PRINTOPS_OTA_NATIVE_B_SCHEMA_VERSION }}
-          PRINTOPS_OTA_NATIVE_BROKEN_MANIFEST: ${{ vars.PRINTOPS_OTA_NATIVE_BROKEN_MANIFEST }}
-          PRINTOPS_OTA_NATIVE_BROKEN_INSTALLER: ${{ vars.PRINTOPS_OTA_NATIVE_BROKEN_INSTALLER }}
-          PRINTOPS_OTA_NATIVE_BROKEN_VERSION: ${{ vars.PRINTOPS_OTA_NATIVE_BROKEN_VERSION }}
-          PRINTOPS_OTA_NATIVE_PUBLIC_KEY: ${{ secrets.PRINTOPS_OTA_NATIVE_PUBLIC_KEY }}
+          PRINTOPS_OTA_NATIVE_EVIDENCE_DIR: ${{ github.workspace }}\artifacts\ota-native\evidence
+      - name: Upload native OTA acceptance evidence
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run_native_windows_e2e }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: printops-native-ota-evidence-${{ github.run_id }}
+          path: artifacts/ota-native
+          if-no-files-found: warn

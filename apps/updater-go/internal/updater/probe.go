@@ -66,7 +66,7 @@ func probeEndpoint(client *http.Client, endpoint, token, expectedVersion string,
 	var body struct {
 		Status             string `json:"status"`
 		Version            string `json:"version"`
-		ApplicationVersion string `json:"application_version"`
+		ApplicationVersion string `json:"applicationVersion"`
 		OTA                struct {
 			Contract           string `json:"contract"`
 			Status             string `json:"status"`

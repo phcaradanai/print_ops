@@ -105,14 +105,28 @@ func processTreeExcluding(root, excludedRoot int) ([]int, error) {
 	if err != nil {
 		return nil, err
 	}
+	return processTreeFromRecords(root, excludedRoot, records), nil
+}
+
+func processTreeFromRecords(root, excludedRoot int, records []processRecord) []int {
 	children := make(map[int][]int, len(records))
+	parents := make(map[int]int, len(records))
 	for _, record := range records {
 		children[record.parent] = append(children[record.parent], record.pid)
+		parents[record.pid] = record.parent
 	}
 	for parent := range children {
 		sort.Ints(children[parent])
 	}
-	excluded := collectProcessIDs(excludedRoot, children)
+	excluded := make(map[int]bool)
+	// The updater must remain alive while it stops the old Desktop, because
+	// the updater is a descendant of that process. The new Desktop has the
+	// opposite relationship: it is a child of the updater and must be stopped
+	// before the install tree can be restored. Only exclude the updater subtree
+	// when it is actually below the process being stopped.
+	if processIsDescendant(root, excludedRoot, parents) {
+		excluded = collectProcessIDs(excludedRoot, children)
+	}
 	visited := make(map[int]bool)
 	ordered := make([]int, 0, len(records))
 	var visit func(int)
@@ -127,7 +141,21 @@ func processTreeExcluding(root, excludedRoot int) ([]int, error) {
 		ordered = append(ordered, current)
 	}
 	visit(root)
-	return ordered, nil
+	return ordered
+}
+
+func processIsDescendant(root, candidate int, parents map[int]int) bool {
+	visited := make(map[int]bool)
+	for current := candidate; current != 0 && !visited[current]; current = parents[current] {
+		if current == root {
+			return true
+		}
+		visited[current] = true
+		if _, ok := parents[current]; !ok {
+			return false
+		}
+	}
+	return false
 }
 
 func collectProcessIDs(root int, children map[int][]int) map[int]bool {

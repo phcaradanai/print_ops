@@ -98,6 +98,31 @@ const OTA_UPDATER_REQUEST_DIR: &str = "ota/requests";
 const OTA_UPDATER_BINARY_FILE: &str = "ota/printops-updater.exe";
 const OTA_HEALTH_TOKEN_FILE: &str = "ota-health-token.txt";
 
+// These are compile-time build metadata overrides used only by the isolated
+// scripts/ota-native-acceptance-build.mjs profile. Normal production builds
+// inherit the Cargo version and schema 7 exactly as before; no runtime
+// environment variable can change either value.
+const DESKTOP_APP_VERSION: &str =
+    match option_env!("PRINTOPS_BUILD_VERSION") {
+        Some(value) => value,
+        None => env!("CARGO_PKG_VERSION"),
+    };
+const DESKTOP_DB_SCHEMA_VERSION: &str =
+    match option_env!("PRINTOPS_BUILD_DB_SCHEMA_VERSION") {
+        Some(value) => value,
+        None => "7",
+    };
+const NATIVE_ACCEPTANCE_BUILD: bool = option_env!("PRINTOPS_OTA_NATIVE_ACCEPTANCE_BUILD").is_some();
+
+fn native_acceptance_data_root() -> Option<PathBuf> {
+    if !NATIVE_ACCEPTANCE_BUILD {
+        return None;
+    }
+    std::env::var_os("PRINTOPS_OTA_NATIVE_DATA_ROOT")
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NatsSettings {
@@ -282,15 +307,19 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
         .env("DB_MODE", "sqlite")
         .env("PRINTOPS_RUNTIME_MODE", "packaged-windows-desktop")
         .env("PRINTOPS_LOCAL_WORKER", "true")
+        // pkg sets this marker on children it launches. The API server is
+        // itself a pkg executable, so do not leak the old server's marker
+        // through the updater into the newly installed server.
+        .env_remove("PKG_EXECPATH")
         .env(
             "PRINTOPS_DISCOVERY_RUNNER_JOBS_ENABLED",
             DESKTOP_DISCOVERY_RUNNER_JOBS_ENABLED.to_string(),
         )
         .env("PRINTOPS_DB_PATH", &paths.db_path)
         .env("PRINTOPS_LOG_DIR", &paths.logs_dir)
-        .env("PRINTOPS_APP_VERSION", env!("CARGO_PKG_VERSION"))
+        .env("PRINTOPS_APP_VERSION", DESKTOP_APP_VERSION)
         .env("PRINTOPS_GIT_COMMIT", env!("PRINTOPS_GIT_COMMIT"))
-        .env("PRINTOPS_DB_SCHEMA_VERSION", "7")
+        .env("PRINTOPS_DB_SCHEMA_VERSION", DESKTOP_DB_SCHEMA_VERSION)
         .env("SQL_WASM_PATH", &paths.wasm_path)
         .env("JWT_SECRET", &paths.jwt_secret)
         .env("PRINTOPS_RUNNER_BOOTSTRAP_SECRET", &paths.runner_bootstrap_secret)
@@ -337,6 +366,7 @@ fn build_runner_command(paths: &ServerPaths) -> Command {
         .env("PRINTOPS_RUNNER_NAME", "desktop-runner")
         .env("PRINTOPS_DISCOVERY_MODE", "windows")
         .env("PRINTOPS_EXECUTOR_MODE", "windows-spooler")
+        .env_remove("PKG_EXECPATH")
         .env("PRINTOPS_POLL_INTERVAL_MS", "2000")
         .env(
             "PRINTOPS_JOBS_ENABLED",
@@ -758,14 +788,30 @@ pub fn run() {
 
             // Database lives in the per-user app data dir so the app still works
             // when installed to a read-only location.
-            let data_dir = match app.path().app_data_dir() {
-                Ok(path) => path,
-                Err(error) => {
-                    log_line(
-                        &app_log,
-                        &format!("ERROR: cannot resolve the per-user app-data directory: {error}"),
+            let data_dir = if let Some(path) = native_acceptance_data_root() {
+                if !path.is_absolute() {
+                    let error = format!(
+                        "native acceptance data root must be absolute: {}",
+                        path.display(),
                     );
-                    return Err(Box::new(error));
+                    log_line(&app_log, &format!("ERROR: {error}"));
+                    return Err(error.into());
+                }
+                log_line(
+                    &app_log,
+                    &format!("using isolated native acceptance data root: {}", path.display()),
+                );
+                path
+            } else {
+                match app.path().app_data_dir() {
+                    Ok(path) => path,
+                    Err(error) => {
+                        log_line(
+                            &app_log,
+                            &format!("ERROR: cannot resolve the per-user app-data directory: {error}"),
+                        );
+                        return Err(Box::new(error));
+                    }
                 }
             };
             if data_dir == exe_dir || data_dir.starts_with(&exe_dir) {

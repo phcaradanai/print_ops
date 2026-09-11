@@ -18,7 +18,7 @@ func TestHTTPHealthProbeRequiresTargetVersionAndReadiness(t *testing.T) {
 		case "/health":
 			_, _ = response.Write([]byte(`{"status":"ok","version":"0.1.29"}`))
 		case "/api/v1/system/readiness":
-			_, _ = response.Write([]byte(`{"contractVersion":1,"application_version":"0.1.29","ota":{"contract":"printops-ota-v1","status":"READY","requiredComponents":{"localApi":{"state":"READY"},"database":{"state":"READY"},"localPrintWorker":{"state":"READY"}}},"status":"DEGRADED"}`))
+			_, _ = response.Write([]byte(`{"contractVersion":1,"applicationVersion":"0.1.29","ota":{"contract":"printops-ota-v1","status":"READY","requiredComponents":{"localApi":{"state":"READY"},"database":{"state":"READY"},"localPrintWorker":{"state":"READY"}}},"status":"DEGRADED"}`))
 		default:
 			response.WriteHeader(http.StatusNotFound)
 		}
@@ -41,7 +41,7 @@ func TestHTTPHealthProbeRejectsDegradedOTAContract(t *testing.T) {
 			_, _ = response.Write([]byte(`{"status":"ok","version":"0.1.29"}`))
 			return
 		}
-		_, _ = response.Write([]byte(`{"contractVersion":1,"application_version":"0.1.29","ota":{"contract":"printops-ota-v1","status":"NOT_READY","requiredComponents":{"localApi":{"state":"READY"},"database":{"state":"READY"},"localPrintWorker":{"state":"UNAVAILABLE"}}},"status":"DEGRADED"}`))
+		_, _ = response.Write([]byte(`{"contractVersion":1,"applicationVersion":"0.1.29","ota":{"contract":"printops-ota-v1","status":"NOT_READY","requiredComponents":{"localApi":{"state":"READY"},"database":{"state":"READY"},"localPrintWorker":{"state":"UNAVAILABLE"}}},"status":"DEGRADED"}`))
 	}))
 	defer server.Close()
 
