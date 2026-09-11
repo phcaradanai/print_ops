@@ -9,7 +9,9 @@ import type {
   PaperProfile,
   JobStatus,
 } from '@printerops/domain';
+import { paperProfileForCell, resolvePaperProfileGeometry, snapshotPaperProfileGeometry } from '@printerops/domain';
 import { generateId, NotFoundError, ValidationError } from '@printerops/shared';
+import { composeDatamaxDplRows } from '../infra/template/datamax-dpl-renderer.js';
 import { CreatePrintJobService } from './create-print-job.service.js';
 import type { ExecuteJobService } from './execute-job.service.js';
 
@@ -34,6 +36,81 @@ function valueAt(payload: Record<string, unknown>, field: string): unknown {
   }, payload);
 }
 
+const SENSITIVE_PAYLOAD_KEY = /secret|token|password|api.?key/i;
+
+/**
+ * Sandbox input is useful evidence for reproducing a print, but it must not
+ * turn an accidental credential in a test payload into a persisted secret.
+ * Keep the shape and all ordinary values while replacing sensitive keys.
+ */
+function snapshotSandboxPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const visit = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(visit);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, nested]) => [
+          key,
+          SENSITIVE_PAYLOAD_KEY.test(key) ? '[REDACTED]' : visit(nested),
+        ]),
+      );
+    }
+    return value;
+  };
+
+  return visit(payload) as Record<string, unknown>;
+}
+
+function serializeSandboxPayload(payload: Record<string, unknown>): string {
+  return JSON.stringify(snapshotSandboxPayload(payload), null, 2);
+}
+
+function snapshotTemplate(template: PrintTemplate, paper: PaperProfile): Record<string, unknown> {
+  return {
+    templateId: template.id,
+    templateCode: template.templateCode,
+    name: template.name,
+    engine: template.engine,
+    status: template.status,
+    paperProfileId: paper.id,
+  };
+}
+
+function snapshotPaperProfile(paper: PaperProfile): Record<string, unknown> {
+  return {
+    paperProfileId: paper.id,
+    code: paper.code,
+    name: paper.name,
+    widthMm: paper.widthMm,
+    gapMm: paper.gapMm ?? 0,
+    heightMm: paper.heightMm,
+    marginTopMm: paper.marginTopMm,
+    marginRightMm: paper.marginRightMm,
+    marginBottomMm: paper.marginBottomMm,
+    marginLeftMm: paper.marginLeftMm,
+    orientation: paper.orientation,
+    dpi: paper.dpi,
+    geometry: snapshotPaperProfileGeometry(paper),
+  };
+}
+
+function composeMultipageHtml(renderedPages: string[], paper: PaperProfile): string {
+  const printableWidthMm = Math.max(
+    0.1,
+    paper.widthMm - paper.marginLeftMm - paper.marginRightMm,
+  );
+  const printableHeightMm = Math.max(
+    0.1,
+    paper.heightMm - paper.marginTopMm - paper.marginBottomMm,
+  );
+
+  return renderedPages.map((renderedPage, index) => {
+    const breakStyle = index < renderedPages.length - 1
+      ? 'break-after:page;page-break-after:always;'
+      : '';
+    return '<section data-printops-page="' + (index + 1) + '" style="position:relative;display:block;width:' + printableWidthMm + 'mm;height:' + printableHeightMm + 'mm;margin:0;padding:0;overflow:hidden;box-sizing:border-box;break-inside:avoid;page-break-inside:avoid;' + breakStyle + '">' + renderedPage + '</section>';
+  }).join('');
+}
+
 export class SandboxService {
   constructor(
     private templates: PrintTemplateRepositoryPort,
@@ -53,6 +130,7 @@ export class SandboxService {
     if (!template) throw new NotFoundError('PrintTemplate', input.templateCode);
 
     const paper = await this.resolvePaper(template, input.paperProfileId);
+    const renderPaper = paperProfileForCell(paper);
 
     // Validate template structure
     const validation = await this.renderer.validateTemplate(template);
@@ -62,7 +140,7 @@ export class SandboxService {
     const rendered = await this.renderer.renderPrintPayload(
       template,
       input.samplePayload,
-      paper,
+      renderPaper,
     );
 
     const preview = await this.renderer.renderPreview(
@@ -101,6 +179,7 @@ export class SandboxService {
             resolvedTemplateCode: template.templateCode,
             paperProfileId: paper.id,
             renderedPrintPayload: rendered.renderedPrintPayload,
+            payloadSnapshot: serializeSandboxPayload(input.samplePayload),
             createdBy: 'sandbox',
             mimeType:
               template.engine === 'HTML' ? 'text/html' :
@@ -113,8 +192,25 @@ export class SandboxService {
             metadata: {
               sandbox: true,
               runId,
+              templateSnapshot: snapshotTemplate(template, paper),
+              sandboxInput: {
+                schemaVersion: 1,
+                mode: 'single',
+                templateId: template.id,
+                templateCode: template.templateCode,
+                paperProfileId: paper.id,
+                printerCode: input.testPrint.printerCode,
+                copies: 1,
+                duplex: false,
+                colorMode: 'auto',
+                samplePayload: snapshotSandboxPayload(input.samplePayload),
+              },
               paperProfile: {
+                paperProfileId: paper.id,
+                code: paper.code,
+                name: paper.name,
                 widthMm: paper.widthMm,
+                gapMm: paper.gapMm ?? 0,
                 heightMm: paper.heightMm,
                 marginTopMm: paper.marginTopMm,
                 marginRightMm: paper.marginRightMm,
@@ -122,6 +218,7 @@ export class SandboxService {
                 marginLeftMm: paper.marginLeftMm,
                 orientation: paper.orientation,
                 dpi: paper.dpi,
+                geometry: snapshotPaperProfileGeometry(paper),
               },
             },
           },
@@ -186,13 +283,21 @@ export class SandboxService {
 
     const batchId = generateId();
     const runs: SandboxRunResult[] = [];
+    const template = await this.templates.findByCode(templateCode);
+    if (!template) throw new NotFoundError('PrintTemplate', templateCode);
+    const requestedPrinters = scenarios.map((scenario) => scenario.testPrint?.printerCode);
+    const consolidatedPrinterCode = requestedPrinters[0];
+    const consolidateTestPrint =
+      (template.engine === 'HTML' || template.engine === 'DPL') &&
+      consolidatedPrinterCode != null &&
+      requestedPrinters.every((printerCode) => printerCode === consolidatedPrinterCode);
 
     for (const scenario of scenarios) {
       const result = await this.run({
         templateCode,
         paperProfileId,
         samplePayload: scenario.samplePayload,
-        testPrint: scenario.testPrint,
+        testPrint: consolidateTestPrint ? undefined : scenario.testPrint,
       });
       runs.push(result);
     }
@@ -200,6 +305,112 @@ export class SandboxService {
     const passed = runs.filter((r) => r.allFieldsResolved && r.templateValid);
     const failed = runs.filter((r) => !r.allFieldsResolved || !r.templateValid);
     const totalRenderTimeMs = runs.reduce((sum, r) => sum + r.renderTimeMs, 0);
+
+    // A same-printer HTML batch must be one spool document. Submitting every
+    // scenario as an independent Windows job makes a label driver re-acquire
+    // top-of-form between jobs and can consume a blank label between run
+    // numbers. One paginated document keeps 000001..00000N on adjacent stock.
+    if (consolidateTestPrint) {
+      try {
+        if (!this.createJob) {
+          throw new Error('CreatePrintJobService not provided for test-print');
+        }
+        const paper = await this.resolvePaper(template, paperProfileId);
+        const geometry = resolvePaperProfileGeometry(paper);
+        const pageHeightMm = geometry.layout.columns > 1
+          ? Math.max(paper.heightMm, geometry.layout.rowPitchMm + paper.marginTopMm + paper.marginBottomMm)
+          : paper.heightMm;
+        const nativeDpl = template.engine === 'DPL';
+        const renderedPrintPayload = nativeDpl
+          ? composeDatamaxDplRows(runs.map((run) => run.renderedPayload), paper)
+          : geometry.layout.columns > 1
+            ? composeGridHtml(runs.map((run) => run.renderedPayload), paper)
+            : composeMultipageHtml(runs.map((run) => run.renderedPayload), paper);
+        const job = await this.createJob.execute(
+          {
+            printerId: '',
+            printerCode: consolidatedPrinterCode,
+            templateCode: template.templateCode,
+            resolvedTemplateCode: template.templateCode,
+            paperProfileId: paper.id,
+            renderedPrintPayload,
+            payloadSnapshot: JSON.stringify({
+              mode: 'batch',
+              scenarios: scenarios.map((scenario, index) => ({ label: scenario.label ?? `scenario-${index + 1}`, samplePayload: snapshotSandboxPayload(scenario.samplePayload) })),
+            }, null, 2),
+            createdBy: 'sandbox',
+            mimeType: nativeDpl ? 'application/dpl' : 'text/html',
+            copies: 1,
+            duplex: false,
+            colorMode: 'auto',
+            metadata: {
+              sandbox: true,
+              batchId,
+              runIds: runs.map((run) => run.runId),
+              itemCount: runs.length,
+              pageHeightMm,
+              pageCount: geometry.layout.columns > 1 ? Math.ceil(runs.length / geometry.layout.columns) : runs.length,
+              templateSnapshot: snapshotTemplate(template, paper),
+              sandboxInput: {
+                schemaVersion: 1,
+                mode: 'batch',
+                batchId,
+                templateId: template.id,
+                templateCode: template.templateCode,
+                paperProfileId: paper.id,
+                printerCode: consolidatedPrinterCode,
+                copies: 1,
+                duplex: false,
+                colorMode: 'auto',
+                scenarios: scenarios.map((scenario, index) => ({
+                  label: scenario.label ?? `scenario-${index + 1}`,
+                  runId: runs[index]?.runId,
+                  samplePayload: snapshotSandboxPayload(scenario.samplePayload),
+                })),
+              },
+              paperProfile: {
+                paperProfileId: paper.id,
+                code: paper.code,
+                name: paper.name,
+                widthMm: paper.widthMm,
+                gapMm: paper.gapMm ?? 0,
+                heightMm: paper.heightMm,
+                marginTopMm: paper.marginTopMm,
+                marginRightMm: paper.marginRightMm,
+                marginBottomMm: paper.marginBottomMm,
+                marginLeftMm: paper.marginLeftMm,
+                orientation: paper.orientation,
+                dpi: paper.dpi,
+                geometry: snapshotPaperProfileGeometry(paper),
+              },
+            },
+          },
+          'sandbox',
+        );
+
+        const executedJob = this.executeJob
+          ? await this.executeJob.execute(job.id, 'sandbox')
+          : job;
+        const status = executedJob.status;
+        const success = this.executeJob != null && status === 'SUCCESS';
+        const error = this.executeJob
+          ? executedJob.errorMessage
+          : 'Runner not available - job queued but not executed';
+        for (const run of runs) {
+          run.testJobId = job.id;
+          run.testPrintStatus = status;
+          run.testPrintSuccess = success;
+          run.testPrintError = error;
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        for (const run of runs) {
+          run.testPrintSuccess = false;
+          run.testPrintStatus = 'FAILED';
+          run.testPrintError = message;
+        }
+      }
+    }
 
     return {
       batchId,
@@ -225,4 +436,39 @@ export class SandboxService {
     if (!paper) throw new NotFoundError('PaperProfile', paperId);
     return paper;
   }
+}
+
+/** Place one rendered template instance in each physical cell of a row. */
+function composeGridHtml(renderedPages: string[], paper: PaperProfile): string {
+  const geometry = resolvePaperProfileGeometry(paper);
+  const columns = geometry.layout.columns;
+  if (columns <= 1) return composeMultipageHtml(renderedPages, paper);
+  const pageHeightMm = Math.max(
+    paper.heightMm,
+    geometry.layout.rowPitchMm + paper.marginTopMm + paper.marginBottomMm,
+  );
+  const rowCount = Math.ceil(renderedPages.length / columns);
+
+  return Array.from({ length: rowCount }, (_, row) => {
+    const rowPages = renderedPages.slice(row * columns, (row + 1) * columns);
+    const cells = rowPages.map((renderedPage, column) => {
+      const cell = geometry.cells[column]!;
+      const style = [
+        'position:absolute',
+        `left:${cell.xMm}mm`,
+        `top:${paper.marginTopMm}mm`,
+        `width:${geometry.layout.cellWidthMm}mm`,
+        `height:${geometry.layout.cellHeightMm}mm`,
+        'overflow:hidden',
+        'box-sizing:border-box',
+        'break-inside:avoid',
+        'page-break-inside:avoid',
+      ].join(';') + ';';
+      return `<div data-printops-cell-column="${column + 1}" style="${style}">${renderedPage}</div>`;
+    });
+    const breakStyle = row < rowCount - 1
+      ? 'break-after:page;page-break-after:always;'
+      : '';
+    return `<section data-printops-row="${row + 1}" style="position:relative;display:block;width:${paper.widthMm}mm;height:${pageHeightMm}mm;margin:0;padding:0;overflow:hidden;box-sizing:border-box;break-inside:avoid;page-break-inside:avoid;${breakStyle}">${cells.join('')}</section>`;
+  }).join('');
 }

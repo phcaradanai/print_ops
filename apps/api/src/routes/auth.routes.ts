@@ -14,12 +14,18 @@ export async function authRoutes(
     return `${local.slice(0, 1)}${'*'.repeat(Math.max(3, local.length - 1))}@${domain}`;
   };
 
+  // Pre-hardening builds stored a placeholder hash ("123456") that
+  // verifyPassword can never accept; for ownership purposes such an account
+  // is as unusable as a passwordless one and must go through migration.
+  const hasUsableOwnerPassword = (user: { passwordHash?: string | null }) =>
+    !!user.passwordHash?.startsWith('scrypt$');
+
   const bootstrapState = async () => {
     const users = await deps.users.findAll();
-    const owner = users.find((user) => user.role === 'OWNER' && user.isActive && user.passwordHash?.startsWith('scrypt$'));
+    const owner = users.find((user) => user.role === 'OWNER' && user.isActive && hasUsableOwnerPassword(user));
     const state = owner ? 'READY' as const : users.length > 0 ? 'MIGRATION_REQUIRED' as const : 'REQUIRED_NEW' as const;
     const ownerEmailHints = state === 'MIGRATION_REQUIRED'
-      ? users.filter((user) => user.role === 'OWNER' && user.isActive && !user.passwordHash).map((user) => maskEmail(user.email))
+      ? users.filter((user) => user.role === 'OWNER' && user.isActive && !hasUsableOwnerPassword(user)).map((user) => maskEmail(user.email))
       : [];
     return { state, ownerEmailHints };
   };
@@ -31,24 +37,47 @@ export async function authRoutes(
       await bootstrapInFlight;
       return reply.status(409).send({ error: 'Owner setup has already completed' });
     }
-    const body = (req.body ?? {}) as { name?: string; email?: string; password?: string; passwordConfirmation?: string };
+    const body = (req.body ?? {}) as {
+      name?: string;
+      email?: string;
+      password?: string;
+      passwordConfirmation?: string;
+      authorizationEmail?: string;
+      authorizationPassword?: string;
+    };
     const name = body.name?.trim();
     const email = body.email?.trim().toLowerCase();
     const password = body.password ?? '';
+    const authorizationEmail = body.authorizationEmail?.trim().toLowerCase();
+    const authorizationPassword = body.authorizationPassword ?? '';
     if (!name || !email || !email.includes('@')) return reply.status(400).send({ error: 'A valid name and email are required' });
     if (password !== body.passwordConfirmation) return reply.status(400).send({ error: 'Passwords do not match' });
     const validation = validatePassword(password);
     if (!validation.valid) return reply.status(400).send({ error: validation.error });
 
     const operation = (async () => {
-      if ((await bootstrapState()).state === 'READY') throw Object.assign(new Error('Owner setup has already completed'), { statusCode: 409 });
+      const state = (await bootstrapState()).state;
       const users = await deps.users.findAll();
-      const existingLegacyOwners = users.filter((user) => user.role === 'OWNER' && !user.passwordHash);
+      if (state === 'READY') {
+        const authorizingOwner = users.find((user) =>
+          user.role === 'OWNER'
+          && user.isActive
+          && user.email.toLowerCase() === authorizationEmail,
+        );
+        if (!authorizingOwner || !(await verifyPassword(authorizationPassword, authorizingOwner.passwordHash))) {
+          throw Object.assign(new Error('An active OWNER credential is required to create another owner'), { statusCode: 403 });
+        }
+      }
+      const existingLegacyOwners = users.filter((user) => user.role === 'OWNER' && !hasUsableOwnerPassword(user));
       if (existingLegacyOwners.length > 0 && !existingLegacyOwners.some((owner) => owner.email.toLowerCase() === email)) {
         const hints = existingLegacyOwners.map((owner) => maskEmail(owner.email)).join(', ');
         throw Object.assign(new Error(`Use the email address of an existing owner to migrate this installation (${hints})`), { statusCode: 409 });
       }
-      const legacyOwner = users.find((user) => user.role === 'OWNER' && user.email.toLowerCase() === email);
+      const existingAccount = users.find((user) => user.email.toLowerCase() === email);
+      if (existingAccount && (state === 'READY' || existingAccount.role !== 'OWNER')) {
+        throw Object.assign(new Error('An account with this email already exists'), { statusCode: 409 });
+      }
+      const legacyOwner = existingAccount?.role === 'OWNER' ? existingAccount : undefined;
       const passwordHash = await hashPassword(password);
       const owner = legacyOwner
         ? await deps.users.update(legacyOwner.id, { name, passwordHash, isActive: true })

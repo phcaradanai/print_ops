@@ -41,7 +41,7 @@ describe('IntakeOutcomeCallbackService', () => {
     const expected = expect.objectContaining({
       event_type: 'print.job.rejected',
       request_id: 'REQ-1',
-      print_status: 'REJECTED',
+      status: 'REJECTED',
       failure_stage: 'VALIDATION',
       error: { code: 'TEMPLATE_NOT_FOUND', message: 'missing template' },
     });

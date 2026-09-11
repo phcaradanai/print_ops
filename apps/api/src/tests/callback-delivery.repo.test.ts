@@ -22,7 +22,7 @@ function input(over: Partial<CreateCallbackDeliveryInput> = {}): CreateCallbackD
     deliveryStatus: 'PENDING',
     maxAttempts: 5,
     printStatus: 'SUCCESS',
-    payload: { event_id: 'evt-1', print_status: 'SUCCESS' },
+    payload: { event_id: 'evt-1', status: 'SUCCESS' },
     endpointId: 'ep-1',
     endpointCode: 'medisync-results',
     ...over,
@@ -121,7 +121,7 @@ function contractSuite(name: string, make: () => CallbackDeliveryRepositoryPort)
       expect(found?.lastHttpStatus).toBe(503);
       expect(found?.lastErrorCode).toBe('HTTP_503');
       expect(found?.lastAttemptAt?.toISOString()).toBe(at.toISOString());
-      expect(found?.payload).toEqual({ event_id: 'evt-1', print_status: 'SUCCESS' });
+      expect(found?.payload).toEqual({ event_id: 'evt-1', status: 'SUCCESS' });
     });
   });
 }
@@ -163,6 +163,6 @@ describe('SQLite-backed deliveries', () => {
     const due = await reopened.findDue(new Date('2026-07-27T06:00:06.000Z'));
     expect(due).toHaveLength(1);
     expect(due[0]?.attemptCount).toBe(1);
-    expect(due[0]?.payload).toEqual({ event_id: 'evt-1', print_status: 'SUCCESS' });
+    expect(due[0]?.payload).toEqual({ event_id: 'evt-1', status: 'SUCCESS' });
   });
 });

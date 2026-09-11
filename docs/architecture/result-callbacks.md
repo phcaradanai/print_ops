@@ -11,16 +11,22 @@ There are **two** different callbacks, and conflating them was the original defe
 | | `print.job.accepted` | `print.job.completed` |
 |---|---|---|
 | Fired when | the job is queued | the print reaches a terminal state |
-| Carries | `status: "QUEUED"` | `print_status: SUCCESS \| FAILED \| UNVERIFIED \| TIMEOUT \| CANCELLED` |
-| Sent by | `DynamicIntakeService` via `WebhookCallbackService` | `ResultCallbackDispatcher` |
+| Carries | `status: "QUEUED"` (+ `occurred_at` / `timeline` so the receiver knows when the print was ordered) | `status: SUCCESS \| FAILED \| UNVERIFIED \| TIMEOUT \| CANCELLED` |
+| Sent by | `DynamicIntakeService` / `DynamicPrintService` via `WebhookCallbackService` | `ResultCallbackDispatcher` |
 | Retries | no (best-effort, single shot) | yes (bounded, persisted) |
 | Delivery record | attempt log only | durable `CallbackDelivery` |
 
-A single endpoint sends **one or the other**, never both, selected by
-`callbackOnPrintResult`:
+Both events share the **same key vocabulary** (v2 envelope — see §5): only
+`status`, `timeline` entries and `event_type` differ.
 
-- `callbackOnPrintResult = false` → acceptance notification only. The print
-  outcome is never reported.
+**Every job with a resolvable callback destination receives `print.job.completed`**
+with its real final status — the terminal result is never optional once a
+destination was configured. `callbackOnPrintResult` only decides whether the
+`print.job.accepted` notification *also* fires:
+
+- `callbackOnPrintResult = false` (default) → acceptance notification AND the
+  terminal result. The caller hears about the print twice: once when it is
+  queued, once when it terminates.
 - `callbackOnPrintResult = true` → terminal result only. No acceptance
   notification.
 
@@ -28,6 +34,17 @@ The one exception is a **duplicate** submission: it creates no new print, so it
 can never produce a terminal result. Duplicates always get the acceptance
 notification, whatever the toggle says, so the caller is not left waiting on a
 result that cannot arrive.
+
+The toggle is read in exactly one place — `wantsAcceptanceCallback()` /
+`wantsTerminalCallback()` in `callback-intent.service.ts` — so no intake path
+can develop its own interpretation of it. The terminal-result intent is enabled
+whenever a destination resolved, regardless of the toggle; `callbackOnPrintResult`
+only ever silences the acceptance callback.
+
+Acceptance callbacks fire for `POST /api/v1/intake/:endpointCode`, for
+`POST /api/v1/printer/:code_template/:code_profile`, and for the NATS
+print-intake envelope — the latter two identified by an optional
+`endpoint_code`. `POST /api/v1/print-jobs` gets terminal callbacks only.
 
 ## 2. Flow
 
@@ -74,8 +91,25 @@ subscriber reads the job back to resolve its intent.
 "could not confirm ≠ did not print": a page may physically exist, and telling an
 integrator it failed invites a duplicate reprint of a patient or specimen label.
 
+`TIMEOUT` belongs to the same may-have-printed family as `UNVERIFIED`, and the
+two are distinguished by *what came back*, not by how long it took:
+
+| Status | Meaning |
+|---|---|
+| `UNVERIFIED` | The device answered, but no evidence could be tied to **this** job. |
+| `TIMEOUT` | The document reached the spooler and **nothing came back at all** before the execution watchdog expired (`PRINTOPS_EXECUTE_TIMEOUT_MS`, default 180 s). |
+
+A receiver must treat both identically: a page may exist, so an automatic
+reprint is unsafe. PrintOps enforces the same rule internally — both statuses
+are non-executable, so re-running the job is refused and a reprint has to be a
+deliberate new job.
+
 `DUPLICATE_RETURNED` is not in this list — it is an acceptance outcome, not a
 print outcome.
+
+`CANCELLED` only ever means the job was stopped **before dispatch**. A cancel
+requested after dispatch is best-effort and does not produce this status by
+itself; see §5.1.
 
 ## 3. Callback intent (why it is persisted)
 
@@ -153,9 +187,20 @@ rather than retrying a poison envelope.
 
 ## 5. Payload contract
 
+**One key vocabulary across every status (v2, 2026-08-05).** The QUEUED
+acceptance (`print.job.accepted`), the terminal result
+(`print.job.completed`) and the reject notice (`print.job.rejected`) all use
+the same keys — only the values differ. Fields that do not apply to a phase
+are explicit `null` / `[]`, never absent. v2 breaking changes from v1:
+`status` → `status`; the acceptance now carries `occurred_at` +
+`timeline` (so a receiver knows when the print was ordered); the envelope
+always uses `job_id` (the acceptance previously sent `print_job_id`).
+
+Terminal result (`print.job.completed`):
+
 ```json
 {
-  "version": 1,
+  "version": 2,
   "event_id": "4a64b91e-…",
   "event_type": "print.job.completed",
   "occurred_at": "2026-07-27T06:42:45.347Z",
@@ -163,14 +208,63 @@ rather than retrying a poison envelope.
   "request_id": "req-001",
   "job_id": "131a33aa-…",
   "source_system": "medisync",
+  "client_id": "pharmacy-counter-01 | null",
 
-  "print_status": "SUCCESS",
+  "status": "SUCCESS",
+  "data_quality": "OK",
+  "missing_fields": [],
+  "render_warnings": [],
 
   "printer_code": "OFFICE_LASER_01",
   "runner_id": "desktop-local-worker",
 
-  "error": null,
   "trace_id": "trace_1c3bb5c3-…",
+  "duplicate": false,
+  "error": null,
+
+  "timeline": {
+    "accepted_at": "2026-07-27T06:42:45.100Z",
+    "queued_at":   "2026-07-27T06:42:45.110Z",
+    "started_at":  "2026-07-27T06:42:45.180Z",
+    "terminal_at": "2026-07-27T06:42:45.347Z"
+  },
+
+  "delivery": { "transports": ["HTTP"], "nats_mode": null }
+}
+```
+
+Acceptance (`print.job.accepted`, status QUEUED) — same keys; the timestamps
+are already filled because this is when the print was ordered:
+
+```json
+{
+  "version": 2,
+  "event_id": "d81f2a3c-…",
+  "event_type": "print.job.accepted",
+  "occurred_at": "2026-07-27T06:42:45.110Z",
+
+  "request_id": "req-001",
+  "job_id": "131a33aa-…",
+  "source_system": "medisync",
+  "client_id": "pharmacy-counter-01 | null",
+
+  "status": "QUEUED",
+  "data_quality": null,
+  "missing_fields": [],
+  "render_warnings": [],
+
+  "printer_code": "OFFICE_LASER_01",
+  "runner_id": null,
+  "trace_id": "trace_1c3bb5c3-…",
+  "duplicate": false,
+  "error": null,
+
+  "timeline": {
+    "accepted_at": "2026-07-27T06:42:45.100Z",
+    "queued_at":   "2026-07-27T06:42:45.110Z",
+    "started_at":  null,
+    "terminal_at": null
+  },
 
   "delivery": { "transports": ["HTTP"], "nats_mode": null }
 }
@@ -180,7 +274,7 @@ Failure:
 
 ```json
 {
-  "print_status": "FAILED",
+  "status": "FAILED",
   "error": { "code": "PRINTER_OFFLINE", "message": "The selected printer was offline." }
 }
 ```
@@ -191,18 +285,70 @@ Failure:
   `X-PrintOps-Event-Type`.
 - **`event_id` is stable across retries** — dedupe on it.
 
-### `callbackPayloadTemplate` does not apply here
+### 5.1 Data completeness — `data_quality`
 
-The endpoint's `callbackPayloadTemplate` shapes the **acceptance** callback only.
-Terminal result callbacks always use the fixed envelope above.
+A print can succeed physically while the data on it was incomplete. Reporting
+that as a bare `SUCCESS` tells the caller their data was fine, which is a lie
+the caller then builds on. Three fields carry the truth alongside the status:
 
-That is deliberate: a result callback is a contract every receiver parses the
-same way, and a per-endpoint template would make `print_status` optional in
-practice. The Webhooks page warns about it when result callbacks are enabled, so
-an operator does not configure a template that is then quietly ignored.
+| Field | Values |
+|---|---|
+| `data_quality` | `"OK"` — every template field resolved. `"WITH_WARNINGS"` — the document rendered, but the renderer reported at least one problem. |
+| `missing_fields` | Field keys the payload did not supply, e.g. `["hn", "barcode"]`. They printed as blanks. |
+| `render_warnings` | Every raw render warning, including non-missing-field ones such as an unrenderable barcode value. |
 
-If a receiver needs extra fields, add them to the versioned envelope and bump
-`version` — do not reintroduce per-endpoint shaping.
+```json
+{
+  "status": "SUCCESS",
+  "data_quality": "WITH_WARNINGS",
+  "missing_fields": ["hn"],
+  "render_warnings": ["Missing field: hn"]
+}
+```
+
+This is deliberately **two orthogonal fields, not a `SUCCESS_WITH_WARNING`
+status** (decision 2026-08-03). `status` is the canonical vocabulary that
+the database, the queue filter, the dashboard badges and every integrator
+already switch on; adding members to it to express a second dimension would
+break all of them. `SUCCESS` + `WITH_WARNINGS` and `UNVERIFIED` + `WITH_WARNINGS`
+compose naturally.
+
+**A caller that treats `data_quality: "WITH_WARNINGS"` as a plain success is
+choosing to ignore it.** Both fields are always present, so the check is
+`status === 'SUCCESS' && data_quality === 'OK'`.
+
+What does *not* reach a callback at all: a template that cannot render **at
+all**. A renderer exception or a template whose paper profile is missing is
+rejected at intake (`422 RENDER_FAILED` / `422 TEMPLATE_PROFILE_MISSING`), no
+job is created, and nothing prints — printing the raw payload and calling it a
+success is exactly the failure this prevents. Missing *fields* print; a missing
+*document* does not.
+
+### `callbackPayloadTemplate` shapes BOTH callbacks
+
+The endpoint's `callbackPayloadTemplate` shapes the **acceptance** callback
+AND the **terminal** result callback — one template, same keys, resolved
+against real values at each phase:
+
+- Acceptance: `$$.field` resolves against the intake response (`status:
+  "QUEUED"`), `$.field` against the caller's intake payload.
+- Terminal: `$$.field` resolves against the v2 envelope, so `$$.status` is
+  the real final status, `$$.timeline.*` the real timestamps, `$$.error` the
+  real failure, and `$.field` still reads the intake payload stored on the
+  job. Without a template the fixed v2 envelope is sent.
+
+**The two rounds resolve the same `$$.field` vocabulary — nothing drops.**
+The terminal envelope lacks the intake-response-only keys
+(`print_job_id`, `created_at`, `queued_at`, `resolved_printer_code`,
+`resolved_template_code`), so the terminal resolver merges a job-derived
+intake-shaped view under the envelope: `print_job_id` = the job id,
+`created_at` / `queued_at` = the job's real timestamps (the same instants the
+acceptance response carried), `resolved_printer_code` = the printer,
+`resolved_template_code` = the resolved template. The envelope is spread
+last, so where both define a key (`status`, `occurred_at`, `timeline.*`,
+`error`, …) the real final value wins. A template using `$$.print_job_id`
+therefore delivers the job id in BOTH callbacks; before this fix the key
+silently vanished from the terminal round.
 
 ## 6. Delivery model
 
@@ -223,8 +369,9 @@ SKIPPED
 Indexed on `(print_job_id, transport, target)` (UNIQUE), `print_job_id`,
 `request_id`, `event_id`, `delivery_status`, `next_attempt_at`.
 
-Terminal deliveries are pruned alongside the jobs they belong to by the existing
-retention sweep.
+Terminal deliveries are pruned alongside the jobs they belong to by the
+retention sweep (default 14-day hot window), which archives every row it prunes
+to `<db dir>/archive` as timestamped JSON before deleting it.
 
 ### Print status vs delivery status
 
@@ -266,25 +413,48 @@ Nothing sleeps. The policy computes a `next_attempt_at` and a 5-second sweep
 picks deliveries up when they come due, which is what makes retry exhaustion and
 restart recovery testable in milliseconds.
 
-## 8. NATS delivery guarantee — `BEST_EFFORT`
+## 8. NATS delivery guarantee — JetStream at-least-once
 
-Result callbacks over NATS use **Core NATS publish**, and the delivery record
-says so: `guarantee: "BEST_EFFORT"`, never `ACKNOWLEDGED`.
+Result callbacks over NATS are published to **JetStream and wait for a PubAck**
+(decision 2026-08-03). The delivery record reports what was actually obtained:
 
-This is a deliberate compatibility-mode decision, not an omission. The
-print-intake connection explicitly does **not** own its JetStream stream (the
-publisher's environment does — in this deployment, medisync-core ensures
-`MEDISYNC`). PrintOps therefore cannot guarantee that a stream exists for an
-arbitrary caller-supplied reply subject, and creating one on the caller's behalf
-would silently take over retention policy for someone else's namespace.
+| `guarantee` | Meaning |
+|---|---|
+| `ACKNOWLEDGED` | A JetStream PubAck came back — the broker persisted the message. |
+| `BEST_EFFORT` | A Core publish left this process. Nothing more is proven. |
 
-**A successful Core NATS publish proves the bytes left this process. It does not
-prove any subscriber received them.** Publish failures are persisted and retried
-on the same schedule as HTTP; subscriber receipt is not, and never claimed to
-be, confirmed.
+Every publish carries `Nats-Msg-Id: <event_id>`. Retries re-send the identical
+id, so the broker's duplicate window collapses them into one stored message and
+agrees with the receiver's own `event_id` dedupe. **At-least-once with dedupe,
+not exactly-once**: a receiver must still be idempotent.
 
-An integrator who needs confirmed delivery should use the HTTP transport, whose
-2xx is a real acknowledgement (`guarantee: "ACKNOWLEDGED"`).
+### PrintOps does not create the stream
+
+The receiving environment owns the stream that captures the callback subject,
+exactly as it owns the intake stream (`MEDISYNC`, ensured by medisync-core).
+Creating one on a caller's behalf would silently take over retention policy for
+someone else's namespace.
+
+If no stream captures the subject, the delivery fails with **`NATS_NO_STREAM`**
+and is **retried** — that failure mode is usually "the receiver has not
+provisioned its stream yet", which an operator fixes without restarting
+PrintOps. It is deliberately *not* downgraded to a Core publish: at-least-once
+that quietly becomes best-effort is the kind of false guarantee this codebase
+refuses to report.
+
+### Choosing the mode
+
+`PRINTOPS_CALLBACK_NATS_MODE` — `JETSTREAM` (default) or `CORE`. Set `CORE`
+where a stream genuinely cannot be provisioned and best-effort is accepted with
+open eyes.
+
+The mode is **snapshotted onto the job's callback intent at accept time**, like
+every other destination detail, so changing the deployment setting never alters
+the contract of a print already on the wire.
+
+Acceptance notifications (§1) remain Core publish regardless: they are
+single-shot and best-effort by design, with no delivery record or retry worker
+that a PubAck could inform.
 
 ## 9. Outbound safety (SSRF)
 
@@ -339,6 +509,7 @@ because it is re-sent verbatim on every retry.
 | process crash mid-attempt | `recoverInFlight()` at boot re-arms `DELIVERING` / `PENDING` rows |
 | process restart with a scheduled retry | SQLite mode: row survives, sweep picks it up. Memory mode: lost with the process (see limits) |
 | NATS not connected | delivery retried; error `NATS_NOT_CONNECTED` |
+| adapter wedged, no verdict | the execution watchdog ends the job as `TIMEOUT` (or `FAILED` if the spooler never accepted it) and emits the terminal event, so the caller is never left waiting forever |
 
 ## 12. Query API
 
@@ -373,11 +544,25 @@ retried on purpose. Check the URL and the receiver's expectations.
 **`FAILED` with `CALLBACK_URL_*`** — the SSRF guard refused the destination. See
 §9; the code names the exact rule.
 
-**`DELIVERED` but the other system claims nothing arrived, over NATS** — expected
-and documented: `BEST_EFFORT` means published, not received. Check the
-subscriber and the subject.
+**`DELIVERED` but the other system claims nothing arrived, over NATS** — read
+the `guarantee`. `ACKNOWLEDGED` means the broker stored the message, so the gap
+is downstream: check the receiver's consumer, its filter subject, and whether it
+acked and discarded. `BEST_EFFORT` means published, not received — check the
+subscriber and the subject, and consider whether this endpoint should be on
+JetStream (§8).
 
-**Nothing at all, and the job is `UNVERIFIED`** — the job IS terminal and a
-callback WAS sent, carrying `print_status: "UNVERIFIED"`. A receiver that only
+**`RETRY_SCHEDULED` with `NATS_NO_STREAM`** — no JetStream stream captures the
+callback subject. PrintOps will not create it; the receiving environment must,
+after which the pending retries deliver on their own. To accept best-effort
+delivery instead, set `PRINTOPS_CALLBACK_NATS_MODE=CORE` (this applies to newly
+accepted jobs — in-flight ones keep the mode they were accepted with).
+
+**Nothing at all, and the job is `UNVERIFIED` or `TIMEOUT`** — the job IS
+terminal and a callback WAS sent, carrying that status. A receiver that only
 switches on `SUCCESS`/`FAILED` will drop it. That is a receiver-side bug; the
-status is deliberate.
+status is deliberate. Both mean a page may exist: do not auto-reprint.
+
+**The receiver says the data was fine, but the label came out with blanks** —
+check `data_quality` and `missing_fields` on the delivered payload (§5.1). If
+they say `WITH_WARNINGS`, PrintOps reported the gap and the receiver ignored it;
+the missing values were absent from the intake payload, upstream of PrintOps.

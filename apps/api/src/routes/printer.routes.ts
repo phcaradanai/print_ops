@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { CreatePrinterService } from '../services/create-printer.service.js';
 import type { GetPrinterStatusService } from '../services/get-printer-status.service.js';
-import type { PrinterRepositoryPort } from '@printerops/domain';
+import { evaluatePrinterReadiness, type PrinterRepositoryPort } from '@printerops/domain';
 import type { AdapterRegistry } from '@printerops/adapters';
 import { NotFoundError } from '@printerops/shared';
 import { requirePermission } from './v1/permission-guard.js';
@@ -44,10 +44,31 @@ export async function printerRoutes(
     return deps.getPrinterStatus.execute(id);
   });
 
-  app.post('/printers/:id/test-print', control, async (req) => {
+  app.post('/printers/:id/test-print', control, async (req, reply) => {
     const { id } = req.params as { id: string };
     const printer = await deps.printers.findById(id);
     if (!printer) throw new NotFoundError('Printer', id);
+
+    // Keep the server-side physical-output gate aligned with the UI. Windows
+    // USB queues may report UNKNOWN while WorkOffline=false; the shared policy
+    // permits that with a warning, but still rejects explicit Offline, Error,
+    // and Paused evidence. Adapter/device verification remains unchanged.
+    const status = await deps.getPrinterStatus.execute(id);
+    const readiness = evaluatePrinterReadiness({
+      detected: status.detected,
+      statusCode: status.code,
+      rawStatus: status.rawStatus,
+      rawState: status.rawState,
+      workOffline: status.workOffline,
+    });
+    if (!readiness.ready) {
+      return reply.status(409).send({
+        error: 'PRINTER_NOT_READY',
+        message: `Printer is not ready: ${readiness.blockedBy ?? 'explicit printer fault'}`,
+        status,
+      });
+    }
+
     const adapter = deps.registry.getAdapterForPrinter(printer);
     return adapter.printTestPage(printer.connectionUri, printer.id);
   });

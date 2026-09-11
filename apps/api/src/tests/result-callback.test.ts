@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { PrintJobTerminal, WebhookEndpoint } from '@printerops/domain';
-import { readCallbackIntent } from '@printerops/domain';
+import { ACCEPTANCE_CALLBACK_SYSTEM_FIELDS, readCallbackIntent } from '@printerops/domain';
 
 import { InMemoryPrinterRepository } from '../infra/repos/in-memory-printer.repo.js';
 import { InMemoryJobRepository } from '../infra/repos/in-memory-job.repo.js';
@@ -52,7 +52,9 @@ interface Harness {
   cancelJob: CancelJobService;
   endpoints: InMemoryWebhookEndpointRepository;
   httpCalls: Array<{ url: string; body: Record<string, unknown>; headers: Record<string, string> }>;
-  natsCalls: Array<{ subject: string; body: Record<string, unknown> }>;
+  natsCalls: Array<{ subject: string; body: Record<string, unknown>; msgId?: string; mode?: string }>;
+  /** When false the fake transport behaves like a Core publish (no PubAck). */
+  natsAcknowledges: boolean;
   /** Status the fake receiver answers with, per attempt (last value repeats). */
   httpStatuses: number[];
   /** When true the HTTP sender throws (connection failure) instead of replying. */
@@ -134,6 +136,7 @@ async function buildHarness(): Promise<Harness> {
     dynamicPrint, dynamicIntake, executeJob, cancelJob,
     httpCalls: [] as Harness['httpCalls'],
     natsCalls: [] as Harness['natsCalls'],
+    natsAcknowledges: true,
     httpStatuses: [200],
     httpThrows: undefined as Harness['httpThrows'],
     natsThrows: false,
@@ -157,9 +160,12 @@ async function buildHarness(): Promise<Harness> {
     jobs: jobRepo,
     deliveries,
     http,
-    nats: (subject, body) => {
+    nats: async (subject, body, opts) => {
       if (harness.natsThrows) throw new Error('nats publish failed');
-      harness.natsCalls.push({ subject, body });
+      harness.natsCalls.push({ subject, body, msgId: opts.msgId, mode: opts.mode });
+      return harness.natsAcknowledges
+        ? { acknowledged: true, stream: 'RESULTS', sequence: harness.natsCalls.length }
+        : { acknowledged: false };
     },
     logger: silentLogger,
     policy: DEFAULT_RETRY_POLICY,
@@ -276,7 +282,12 @@ describe('callback intent persistence', () => {
     expect(intent?.transports).toEqual(['HTTP']);
   });
 
-  it('still sends the final result when the legacy callbackOnPrintResult flag is off', async () => {
+  it('delivers the terminal result even when callbackOnPrintResult is off (acceptance mode)', async () => {
+    // The toggle no longer silences the terminal result: every job with a
+    // resolvable destination must report its REAL final status (SUCCESS,
+    // FAILED, UNVERIFIED, TIMEOUT, CANCELLED). Acceptance mode only means the
+    // QUEUED acceptance callback also fires — the terminal one is never
+    // optional once a destination was configured.
     await makeEndpoint(h, {
       endpointCode: 'off', callbackTransport: 'HTTP',
       callbackUrl: 'https://receiver.example/r', callbackOnPrintResult: false,
@@ -288,9 +299,12 @@ describe('callback intent persistence', () => {
     const job = await h.jobRepo.findById(accepted.print_job_id);
     const intent = readCallbackIntent(job?.metadata);
     expect(intent?.enabled).toBe(true);
+    expect(intent?.httpUrl).toBe('https://receiver.example/r');
+    expect(intent?.disabledReason).toBeUndefined();
 
     await printAndSettle(h, accepted.print_job_id);
     expect(h.httpCalls).toHaveLength(1);
+    expect(h.httpCalls[0]?.body).toMatchObject({ event_type: 'print.job.completed' });
     expect(await h.deliveries.findAll({ printJobId: accepted.print_job_id })).toHaveLength(1);
   });
 
@@ -382,11 +396,11 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
     const body = h.httpCalls[0]!.body;
     // The defect this replaces: the old callback said QUEUED regardless of the
     // eventual outcome.
-    expect(body['print_status']).toBe('SUCCESS');
+    expect(body['status']).toBe('SUCCESS');
     expect(body['event_type']).toBe(RESULT_EVENT_TYPE);
     expect(body['request_id']).toBe('M1');
     expect(body['job_id']).toBe(accepted.print_job_id);
-    expect(body['version']).toBe(1);
+    expect(body['version']).toBe(2);
 
     const [delivery] = await h.deliveries.findAll({ printJobId: accepted.print_job_id });
     expect(delivery?.deliveryStatus).toBe('DELIVERED');
@@ -394,7 +408,7 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
     expect(delivery?.attemptCount).toBe(1);
   });
 
-  it('API intake -> print -> NATS publishes a TERMINAL result, labelled BEST_EFFORT', async () => {
+  it('API intake -> print -> NATS publishes a TERMINAL result, ACKNOWLEDGED on a JetStream ack', async () => {
     await makeEndpoint(h, { endpointCode: 'api-nats', callbackTransport: 'NATS', callbackNatsSubject: 'results.medisync' });
     const accepted = await h.dynamicPrint.submit(
       { request_id: 'M2', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE, payload: { label: 'M2' }, endpoint_code: 'api-nats' },
@@ -404,10 +418,28 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
 
     expect(h.natsCalls).toHaveLength(1);
     expect(h.natsCalls[0]!.subject).toBe('results.medisync');
-    expect(h.natsCalls[0]!.body['print_status']).toBe('SUCCESS');
+    expect(h.natsCalls[0]!.body['status']).toBe('SUCCESS');
+    expect(h.natsCalls[0]!.mode).toBe('JETSTREAM');
+    // Nats-Msg-Id is the event id, so broker-side dedupe and the receiver's own
+    // idempotency check agree on what "the same notification" means.
+    expect(h.natsCalls[0]!.msgId).toBe(h.natsCalls[0]!.body['event_id']);
 
     const [delivery] = await h.deliveries.findAll({ printJobId: accepted.print_job_id });
-    // A Core publish that did not throw proves the bytes left this process and
+    expect(delivery?.guarantee).toBe('ACKNOWLEDGED');
+    expect(delivery?.deliveryStatus).toBe('DELIVERED');
+  });
+
+  it('reports BEST_EFFORT when the transport returns no ack (Core publish)', async () => {
+    h.natsAcknowledges = false;
+    await makeEndpoint(h, { endpointCode: 'api-nats-core', callbackTransport: 'NATS', callbackNatsSubject: 'results.core' });
+    const accepted = await h.dynamicPrint.submit(
+      { request_id: 'M2-core', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE, payload: { label: 'M2c' }, endpoint_code: 'api-nats-core' },
+      'actor',
+    );
+    await printAndSettle(h, accepted.print_job_id);
+
+    const [delivery] = await h.deliveries.findAll({ printJobId: accepted.print_job_id });
+    // A publish that did not throw proves the bytes left this process and
     // nothing more. Reporting ACKNOWLEDGED here would be a lie.
     expect(delivery?.guarantee).toBe('BEST_EFFORT');
     expect(delivery?.deliveryStatus).toBe('DELIVERED');
@@ -425,7 +457,7 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
     );
     await printAndSettle(h, accepted.print_job_id);
     expect(h.httpCalls).toHaveLength(1);
-    expect(h.httpCalls[0]!.body['print_status']).toBe('SUCCESS');
+    expect(h.httpCalls[0]!.body['status']).toBe('SUCCESS');
   });
 
   it('NATS intake -> print -> NATS callback', async () => {
@@ -440,7 +472,7 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
     );
     await printAndSettle(h, accepted.print_job_id);
     expect(h.natsCalls.map((c) => c.subject)).toEqual(['medisync.results.c1']);
-    expect(h.natsCalls[0]!.body['print_status']).toBe('SUCCESS');
+    expect(h.natsCalls[0]!.body['status']).toBe('SUCCESS');
   });
 
   it('fans out to BOTH transports from one endpoint', async () => {
@@ -477,7 +509,7 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
 
     expect(h.httpCalls).toHaveLength(1);
     const body = h.httpCalls[0]!.body;
-    expect(body['print_status']).toBe('FAILED');
+    expect(body['status']).toBe('FAILED');
     expect(body['error']).toMatchObject({ code: 'EXECUTION_ERROR' });
 
     const [delivery] = await h.deliveries.findAll({ printJobId: accepted.print_job_id });
@@ -496,7 +528,7 @@ describe('E2E matrix: {API, NATS} intake x {HTTP, NATS} callback', () => {
     await h.eventBus.settled();
 
     expect(h.httpCalls).toHaveLength(1);
-    expect(h.httpCalls[0]!.body['print_status']).toBe('CANCELLED');
+    expect(h.httpCalls[0]!.body['status']).toBe('CANCELLED');
     expect(h.httpCalls[0]!.body['error']).toMatchObject({ code: 'JOB_CANCELLED' });
   });
 
@@ -779,7 +811,7 @@ describe('result callback payload', () => {
         { id: 'job-status', metadata: {} } as never,
         { enabled: true, trigger: 'PRINT_RESULT', transports: ['HTTP'] },
       );
-      expect(payload['print_status']).toBe(status);
+      expect(payload['status']).toBe(status);
     },
   );
 
@@ -795,7 +827,7 @@ describe('result callback payload', () => {
       { id: 'job-1', requestId: 'R', sourceSystem: SOURCE, printerCode: PRINTER, metadata: {} } as never,
       { enabled: true, trigger: 'PRINT_RESULT', transports: ['HTTP'] },
     );
-    expect(payload['print_status']).toBe('UNVERIFIED');
+    expect(payload['status']).toBe('UNVERIFIED');
     expect(payload['error']).toEqual({ code: 'PRINT_NOT_VERIFIABLE', message: 'no device confirmation' });
   });
 
@@ -808,7 +840,7 @@ describe('result callback payload', () => {
       { id: 'job-2', requestId: 'R2', sourceSystem: SOURCE, printerCode: PRINTER, metadata: {} } as never,
       { enabled: true, trigger: 'PRINT_RESULT', transports: ['NATS'], natsMode: 'CORE' },
     );
-    expect(payload['version']).toBe(1);
+    expect(payload['version']).toBe(2);
     expect(payload['event_type']).toBe('print.job.completed');
     expect(payload['error']).toBeNull();
     expect(payload['trace_id']).toBe('trace-1');
@@ -822,6 +854,49 @@ describe('result callback payload', () => {
     // No print payload: a callback is a notification, not a copy of the label.
     expect(Object.keys(payload)).not.toContain('payload');
     expect(Object.keys(payload)).not.toContain('rendered_print_payload');
+  });
+
+  it('shapes the terminal callback with the endpoint template (same keys as acceptance, real final values)', () => {
+    const payload = buildResultCallbackPayload(
+      {
+        eventId: 'evt-3', eventType: 'PrintJobTerminal', traceId: 'trace-3', correlationId: 'c',
+        occurredAt: new Date('2026-07-27T06:00:00Z'), jobId: 'job-3', status: 'FAILED',
+        printerCode: PRINTER, runnerId: 'runner-x', errorCode: 'PRINTER_OFFLINE',
+        errorMessage: 'The selected printer was offline.', requestId: 'R3', sourceSystem: SOURCE,
+      },
+      {
+        id: 'job-3', requestId: 'R3', sourceSystem: SOURCE, printerCode: PRINTER,
+        receivedAt: new Date('2026-07-27T05:59:59Z'), queuedAt: new Date('2026-07-27T06:00:00Z'),
+        startedAt: new Date('2026-07-27T06:00:01Z'),
+        metadata: {
+          payload: { label: 'M3', barcode: '123' },
+        },
+      } as never,
+      {
+        enabled: true, trigger: 'PRINT_RESULT', transports: ['HTTP'],
+        payloadTemplate: {
+          event_type: '$$.event_type',
+          request_id: '$$.request_id',
+          job_id: '$$.job_id',
+          status: '$$.status',
+          occurred_at: '$$.occurred_at',
+          label: '$.label',
+          error_code: '$$.error.code',
+          terminal_at: '$$.timeline.terminal_at',
+        },
+      },
+    );
+    expect(payload).toEqual({
+      event_type: 'print.job.completed',
+      request_id: 'R3',
+      job_id: 'job-3',
+      // The template's $$.status is the REAL final status, not QUEUED.
+      status: 'FAILED',
+      occurred_at: '2026-07-27T06:00:00.000Z',
+      label: 'M3',
+      error_code: 'PRINTER_OFFLINE',
+      terminal_at: '2026-07-27T06:00:00.000Z',
+    });
   });
 });
 
@@ -913,15 +988,135 @@ describe('NATS callback delivery mode', () => {
     await h.dispatcher.sweep();
     [delivery] = await h.deliveries.findAll({ printJobId: accepted.print_job_id });
     expect(delivery?.deliveryStatus).toBe('DELIVERED');
-    // Even on success the guarantee stays BEST_EFFORT — Core NATS cannot prove
-    // a subscriber received anything.
-    expect(delivery?.guarantee).toBe('BEST_EFFORT');
+    // The recovered attempt got a real JetStream ack, so the guarantee reflects
+    // that rather than the failure that preceded it.
+    expect(delivery?.guarantee).toBe('ACKNOWLEDGED');
+    // Same event id on the retry: the broker collapses the duplicate instead of
+    // storing a second copy of one logical result.
+    expect(h.natsCalls[0]!.msgId).toBe(delivery?.eventId);
   });
 });
 
 /* ------------------------------------------------------------------ */
 /* Phase 13 — the DynamicIntake (webhook) path                         */
 /* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* Acceptance callbacks on the shared dynamic-print path                */
+/*                                                                      */
+/* Both the NATS print-intake consumer and POST /printer/:tpl/:profile  */
+/* submit through DynamicPrintService. Until this landed, `endpoint_code`*/
+/* on that path bought a TERMINAL callback and nothing else: those jobs  */
+/* could never receive an acceptance notification of any kind.          */
+/* ------------------------------------------------------------------ */
+
+describe('dynamic print acceptance callback', () => {
+  let h: Harness;
+  let sent: Array<{ result: Record<string, unknown>; intakePayload: Record<string, unknown> }>;
+
+  beforeEach(async () => {
+    h = await buildHarness();
+    sent = [];
+    h.dynamicPrint.setCallbackService({
+      send: async (ctx: { result: Record<string, unknown>; intakePayload: Record<string, unknown> }) => {
+        sent.push({ result: ctx.result, intakePayload: ctx.intakePayload });
+        return { transport: 'HTTP' };
+      },
+    } as never);
+  });
+
+  it('fires for a NATS-submitted job, carrying all seven system fields', async () => {
+    await makeEndpoint(h, {
+      endpointCode: 'nats-accept', callbackUrl: 'https://receiver.example/r',
+      callbackOnPrintResult: false,
+    });
+    const accepted = await h.dynamicPrint.submit(
+      {
+        request_id: 'R-NATS-1', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE,
+        payload: { label: 'A' }, endpoint_code: 'nats-accept',
+      },
+      'nats:medisync',
+      { source: 'nats' },
+    );
+
+    expect(sent).toHaveLength(1);
+    // `$$.field` must mean the same thing regardless of entry point, so every
+    // key the Webhooks page offers has to be present here too.
+    for (const field of ACCEPTANCE_CALLBACK_SYSTEM_FIELDS) {
+      expect(sent[0]!.result).toHaveProperty(field);
+    }
+    expect(sent[0]!.result).toMatchObject({
+      print_job_id: accepted.print_job_id,
+      request_id: 'R-NATS-1',
+      trace_id: accepted.trace_id,
+      resolved_printer_code: PRINTER,
+      resolved_template_code: TEMPLATE,
+      duplicate: false,
+    });
+    // The caller's payload, so `$.field` resolves the same way too.
+    expect(sent[0]!.intakePayload).toEqual({ label: 'A' });
+  });
+
+  it('fires for the /printer/:template/:profile HTTP path', async () => {
+    await makeEndpoint(h, {
+      endpointCode: 'http-accept', callbackUrl: 'https://receiver.example/r',
+      callbackOnPrintResult: false,
+    });
+    await h.dynamicPrint.submit(
+      {
+        request_id: 'R-HTTP-1', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE,
+        payload: { label: 'B' }, endpoint_code: 'http-accept',
+      },
+      'actor',
+    );
+    expect(sent).toHaveLength(1);
+  });
+
+  it('respects the same toggle as every other entry point', async () => {
+    await makeEndpoint(h, {
+      endpointCode: 'nats-result', callbackUrl: 'https://receiver.example/r',
+      callbackOnPrintResult: true,
+    });
+    await h.dynamicPrint.submit(
+      {
+        request_id: 'R-NATS-2', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE,
+        payload: {}, endpoint_code: 'nats-result',
+      },
+      'nats:medisync',
+      { source: 'nats' },
+    );
+    expect(sent).toHaveLength(0);
+  });
+
+  it('notifies a duplicate at acceptance even in result mode', async () => {
+    await makeEndpoint(h, {
+      endpointCode: 'nats-dupe', callbackUrl: 'https://receiver.example/r',
+      callbackOnPrintResult: true,
+    });
+    const req = {
+      request_id: 'R-NATS-3', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE,
+      payload: {}, endpoint_code: 'nats-dupe',
+    };
+    await h.dynamicPrint.submit(req, 'nats:medisync', { source: 'nats' });
+    expect(sent).toHaveLength(0);
+
+    await h.dynamicPrint.submit(req, 'nats:medisync', { source: 'nats' });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.result).toMatchObject({ duplicate: true, status: 'DUPLICATE_RETURNED' });
+  });
+
+  it('stays silent when no endpoint_code was supplied', async () => {
+    await h.dynamicPrint.submit(
+      {
+        request_id: 'R-NATS-4', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE,
+        payload: {},
+      },
+      'nats:medisync',
+      { source: 'nats' },
+    );
+    expect(sent).toHaveLength(0);
+  });
+});
 
 describe('webhook intake path', () => {
   let h: Harness;
@@ -945,10 +1140,13 @@ describe('webhook intake path', () => {
 
     await printAndSettle(h, res.print_job_id);
     expect(h.httpCalls).toHaveLength(1);
-    expect(h.httpCalls[0]!.body['print_status']).toBe('SUCCESS');
+    expect(h.httpCalls[0]!.body['status']).toBe('SUCCESS');
   });
 
-  it('sends one final result when the legacy callbackOnPrintResult flag is off', async () => {
+  it('sends the acceptance notification AND the terminal result when callbackOnPrintResult is off', async () => {
+    // Acceptance mode is not "no result": the toggle only adds the QUEUED
+    // acceptance notification; the terminal result is delivered for every
+    // job with a configured destination.
     const sent: Array<Record<string, unknown>> = [];
     h.dynamicIntake.setCallbackService({
       send: async (ctx: { result: Record<string, unknown> }) => { sent.push(ctx.result); return { transport: 'HTTP' }; },
@@ -962,10 +1160,39 @@ describe('webhook intake path', () => {
       headers: {},
       body: { request_id: 'WI-2', type: 'test_label', label: 'A' },
     });
-    expect(sent).toHaveLength(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ print_job_id: res.print_job_id, request_id: 'WI-2' });
+    expect(sent[0]!['duplicate']).toBeFalsy();
 
+    // The terminal result must also arrive — with the REAL final status.
     await printAndSettle(h, res.print_job_id);
     expect(h.httpCalls).toHaveLength(1);
-    expect(h.httpCalls[0]!.body['print_status']).toBe('SUCCESS');
+    expect(h.httpCalls[0]!.body['event_type']).toBe('print.job.completed');
+    expect(h.httpCalls[0]!.body['status']).toBe('SUCCESS');
+  });
+
+  it('notifies a duplicate at acceptance even when the endpoint is in result mode', async () => {
+    // A duplicate creates no new print, so it can never reach a terminal state.
+    // Suppressing its acceptance notification would leave the caller with
+    // nothing at all.
+    const sent: Array<Record<string, unknown>> = [];
+    h.dynamicIntake.setCallbackService({
+      send: async (ctx: { result: Record<string, unknown> }) => { sent.push(ctx.result); return { transport: 'HTTP' }; },
+    } as never);
+    await makeEndpoint(h, { endpointCode: 'intake-dupe', callbackUrl: 'https://receiver.example/results' });
+
+    const first = await h.dynamicIntake.execute({
+      endpointCode: 'intake-dupe', headers: {},
+      body: { request_id: 'WI-3', type: 'test_label', label: 'A' },
+    });
+    expect(sent).toHaveLength(0); // result mode: nothing at acceptance
+
+    const second = await h.dynamicIntake.execute({
+      endpointCode: 'intake-dupe', headers: {},
+      body: { request_id: 'WI-3', type: 'test_label', label: 'A' },
+    });
+    expect(second.print_job_id).toBe(first.print_job_id);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ duplicate: true, status: 'DUPLICATE_RETURNED' });
   });
 });

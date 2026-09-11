@@ -183,9 +183,9 @@ npm install
 # Terminal 1: API server (port 3001)
 npm run dev -w apps/api
 
-# Terminal 2: Local runner (polls every 2s)
-npm run dev -w apps/runner
-# Runner auto-logins with dev credentials if RUNNER_API_TOKEN not set
+# Terminal 2: Local runner (Go — the only runner)
+cd apps/runner-go && go run ./cmd/printops-runner run
+# Auto-logins with dev credentials if PRINTOPS_RUNNER_TOKEN is not set
 
 # Terminal 3: Dashboard (port 3000)
 npm run dev -w apps/web
@@ -218,13 +218,30 @@ curl http://localhost:3001/api/v1/print-jobs/<JOB_ID>/trace \
 
 ---
 
-## What Is NOT Yet Real
+## Status of this document
 
-| Component | Current State | Next Step |
-|-----------|--------------|-----------|
-| Storage | In-memory (lost on restart) | PostgreSQL via postgres.js |
-| Printer adapters | FakePrinterAdapter only | RawTcp9100Adapter, WindowsSpoolerAdapter |
-| Queue | In-memory priority queue | BullMQ + Redis |
-| Runner execution | Delegated to API server | Runner executes adapter locally |
-| Password hashing | Any password accepted | argon2id |
-| RBAC enforcement | Permission logic exists, not wired to routes | Wire `requirePermission()` to all routes |
+The flow above is still accurate in shape. The gaps this section used to list
+have since been closed — as of 2026-08-03:
+
+| Component | Then | Now |
+|-----------|------|-----|
+| Storage | In-memory only | SQLite (`sql.js`) with an exclusive lock, atomic saves, versioned migrations, and archive-before-prune retention. In-memory remains the test default. |
+| Printer adapters | Fake only | Windows spooler adapter with SNMP/IPP verification is the production executor; a WebView2 helper renders HTML through the real driver. |
+| Queue | In-memory priority queue | Still in-memory **by design** — but `QUEUED` jobs are persisted and re-enqueued at boot. No Redis/BullMQ. |
+| Runner execution | Delegated to the API | The API's in-process local worker is the sole executor in the packaged desktop; the Go runner does discovery and heartbeat only. |
+| Password hashing | Any password accepted | Salted scrypt, with first-run OWNER bootstrap. |
+| RBAC enforcement | Not wired to routes | `requirePermission()` guards the dashboard routes; service accounts carry printer/template allowlists. |
+
+Two things this document still describes optimistically:
+
+- **The status flow diagram omits `UNVERIFIED` and `TIMEOUT`.** Both are real
+  terminal states meaning a page may physically exist. See
+  [job-lifecycle.md](job-lifecycle.md) for the state machine that is actually
+  implemented.
+- **The "How to Run Locally" section references `apps/runner`**, which no longer
+  exists. Use `npm run dev` at the repo root, or
+  `cd apps/runner-go && go run ./cmd/printops-runner run`.
+
+What remains genuinely unproven is not in this file: it is the physical printer,
+clean-install and cross-machine evidence tracked in
+[../production/PROD-01-gap-table.md](../production/PROD-01-gap-table.md).

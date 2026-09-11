@@ -291,6 +291,45 @@ describe('Job Lifecycle: create → queued → running → success', () => {
     expect((result.metadata['printEvidence'] as Record<string, unknown>)['deviceConfirmed']).toBe(true);
   });
 
+  it('accepts spooler-delivery confirmation for WSD printers with no reachable IPP', async () => {
+    // The adapter's spooler-delivery fallback (deviceConfirmation =
+    // 'local-spooler-delivery') stands in for printer-side IPP proof when the
+    // printer exposes no reachable IPP/SNMP endpoint (WSD class drivers).
+    const spoolerRegistry = new AdapterRegistry();
+    spoolerRegistry.registerAdapter({
+      adapterName: 'WindowsSpoolerAdapter',
+      protocol: 'windows_spooler',
+      executeCommand: async () => ({
+        success: true,
+        message: 'delivered to the local spooler; printer-side IPP/SNMP confirmation is unavailable',
+        raw: {
+          spoolerJobIds: ['44'],
+          deviceConfirmed: true,
+          ippJobConfirmed: false,
+          deviceConfirmation: 'local-spooler-delivery',
+          verificationBasis: 'spooler-delivery (printer-side IPP/SNMP unavailable)',
+        },
+      }),
+    } as unknown as FakePrinterAdapter);
+
+    const spoolerExecute = new ExecuteJobService(
+      jobRepo, printerRepo, traceRepo, auditRepo, queue, eventBus, spoolerRegistry
+    );
+    const printer = await createPrinter.execute(
+      { name: 'WSD Printer', protocol: 'windows_spooler', connectionUri: 'spooler://runner/WSD%20Printer', metadata: {} },
+      'user-1'
+    );
+    const job = await createJob.execute(
+      { printerId: printer.id, createdBy: 'user-1', mimeType: 'text/html', copies: 1, duplex: false, colorMode: 'color', metadata: {} },
+      'user-1'
+    );
+
+    const result = await spoolerExecute.execute(job.id, 'runner-1');
+    expect(result.status).toBe('SUCCESS');
+    expect(result.printerAckAt).toBeDefined();
+    expect((result.metadata['printEvidence'] as Record<string, unknown>)['deviceConfirmation']).toBe('local-spooler-delivery');
+  });
+
   it('keeps a post-spooler exception UNVERIFIED so it cannot be blindly retried', async () => {
     const registryWithPostSubmitCrash = new AdapterRegistry();
     registryWithPostSubmitCrash.registerAdapter({

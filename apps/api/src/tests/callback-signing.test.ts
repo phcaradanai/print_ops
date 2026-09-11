@@ -3,7 +3,7 @@ import { callbackSigningSecret, signCallback, verifyCallbackSignature } from '..
 
 describe('HTTP callback HMAC signing', () => {
   const secret = 'synthetic-test-secret';
-  const rawBody = '{"event_id":"evt-1","print_status":"SUCCESS"}';
+  const rawBody = '{"event_id":"evt-1","status":"SUCCESS"}';
   const timestamp = '1785132000';
   const now = Number(timestamp) * 1000;
 

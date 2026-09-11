@@ -27,11 +27,12 @@ const commandTimeout = 5 * time.Second
 // present on Windows Home by default. Tier 2 is always available and returns
 // equivalent fields.
 //
-// Each script returns: Name,DriverName,PortName,Shared,Default,PrinterStatus
+// Each script returns: Name,DriverName,PortName,Shared,Default,PrinterStatus,
+// PrinterState,WorkOffline
 // plus any extras Tier 1 can provide (ShareName,Location,Comment,Type).
 const (
 	// Tier 1: PrintManagement (richest data). May fail on Home editions.
-	scriptGetPrinter = `Get-Printer | Select-Object Name,DriverName,PortName,Shared,ShareName,Location,Comment,PrinterStatus,Type | ConvertTo-Json -Depth 3 -Compress`
+	scriptGetPrinter = `Get-Printer | Select-Object Name,DriverName,PortName,Shared,ShareName,Location,Comment,PrinterStatus,PrinterState,WorkOffline,Type | ConvertTo-Json -Depth 3 -Compress`
 	scriptGetPort    = `Get-PrinterPort | Select-Object Name,Description,PrinterHostAddress,PortNumber | ConvertTo-Json -Depth 3 -Compress`
 
 	// Tier 2: CIM/WMI (available on ALL Windows editions, no extra modules).
@@ -41,7 +42,7 @@ const (
 	scriptGetPrinterCIM = `
 try {
   Get-CimInstance -Class Win32_Printer -ErrorAction Stop |
-    Select-Object Name,DriverName,PortName,Shared,Default,PrinterStatus,Location,Comment |
+    Select-Object Name,DriverName,PortName,Shared,Default,PrinterStatus,PrinterState,WorkOffline,Location,Comment |
     ConvertTo-Json -Depth 2 -Compress
 } catch { '' }
 `

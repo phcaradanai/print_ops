@@ -18,6 +18,11 @@ import type {
   CreateWebhookRoutePolicyInput,
 } from '../models/template.js';
 import type { ImportedDesign, CreateImportedDesignInput } from '../models/imported-design.js';
+import type {
+  PrinterPaperCalibration,
+  CreatePrinterPaperCalibrationInput,
+  UpdatePrinterPaperCalibrationInput,
+} from '../models/printer-calibration.js';
 import type { IntakeAttempt, CreateIntakeAttemptInput, IntakeOutcome, IntakeSource } from '../models/intake-attempt.js';
 import type {
   WebhookCallbackAttempt,
@@ -32,6 +37,12 @@ import type {
   CallbackDeliveryStatus,
   CallbackTransport,
 } from '../models/callback-delivery.js';
+import type {
+  OtaUpdateStateRecord,
+  ContentHistoryRecord,
+  ContentType,
+  UpdateState,
+} from '../models/ota.js';
 
 export interface ListOptions {
   limit?: number;
@@ -124,6 +135,15 @@ export interface PaperProfileRepositoryPort {
   findAll(opts?: ListOptions): Promise<PaperProfile[]>;
   create(input: CreatePaperProfileInput): Promise<PaperProfile>;
   update(id: string, patch: Partial<PaperProfile>): Promise<PaperProfile>;
+  delete(id: string): Promise<void>;
+}
+
+export interface PrinterPaperCalibrationRepositoryPort {
+  findById(id: string): Promise<PrinterPaperCalibration | undefined>;
+  findByKey(printerId: string, paperProfileId: string, dpi: number): Promise<PrinterPaperCalibration | undefined>;
+  findAll(opts?: ListOptions & { printerId?: string; paperProfileId?: string }): Promise<PrinterPaperCalibration[]>;
+  create(input: CreatePrinterPaperCalibrationInput): Promise<PrinterPaperCalibration>;
+  update(id: string, patch: UpdatePrinterPaperCalibrationInput): Promise<PrinterPaperCalibration>;
   delete(id: string): Promise<void>;
 }
 
@@ -230,4 +250,23 @@ export interface CallbackDeliveryRepositoryPort {
     fromStatuses: CallbackDeliveryStatus[],
     patch: Partial<CallbackDelivery>,
   ): Promise<CallbackDelivery | undefined>;
+}
+
+/**
+ * Persistent state for the application OTA update state machine.
+ * Singleton row (id=1) in ota_update_state table.
+ */
+export interface OtaUpdateStateRepositoryPort {
+  get(): Promise<OtaUpdateStateRecord>;
+  update(patch: Partial<OtaUpdateStateRecord>): Promise<OtaUpdateStateRecord>;
+}
+
+/**
+ * History of applied content manifests. Each row represents one content sync
+ * operation (profiles or templates) with the full manifest JSON for rollback.
+ */
+export interface ContentHistoryRepositoryPort {
+  create(input: Omit<ContentHistoryRecord, 'id'>): Promise<ContentHistoryRecord>;
+  findByType(contentType: ContentType, limit?: number): Promise<ContentHistoryRecord[]>;
+  findByTypeAndVersion(contentType: ContentType, version: number): Promise<ContentHistoryRecord | undefined>;
 }

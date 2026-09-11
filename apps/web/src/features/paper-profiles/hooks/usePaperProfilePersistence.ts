@@ -11,7 +11,7 @@ import {
   updatePaperProfile,
 } from '../api/paperProfilesApi.js';
 import { stringifyProfiles } from '../model/serialization.js';
-import { validatePaperForm } from '../model/validation.js';
+import { validateDynamicFields, validatePaperForm } from '../model/validation.js';
 import type { PaperProfile } from '../model/types.js';
 import type { PaperProfileEditor } from './usePaperProfileEditor.js';
 
@@ -36,7 +36,10 @@ export function usePaperProfilePersistence(
   const deleteReturnFocusRef = useRef<HTMLElement | null>(null);
 
   const saveAction = useApiAction(async () => {
-    const issues = validatePaperForm(editor.form);
+    const issues = [
+      ...validatePaperForm(editor.form),
+      ...validateDynamicFields(editor.form, editor.ux.dynamicFields),
+    ];
     if (issues.length > 0) throw new Error(issues.map((issue) => messages.validationMessage(issue.messageKey)).join('; '));
     const payload = {
       ...editor.form,

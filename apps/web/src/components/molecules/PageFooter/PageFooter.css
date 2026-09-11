@@ -1,0 +1,16 @@
+.ui-page-footer {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
+  padding-top: var(--spacing-xl);
+  border-top: 1px solid var(--neutral-border);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1024px) {
+  .ui-page-footer > * {
+    min-height: 44px;
+  }
+}

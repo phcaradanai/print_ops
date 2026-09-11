@@ -161,8 +161,8 @@
 }
 
 .paper-profiles-page .pp-presets,
-.paper-profiles-page .pp-command-actions > button,
-.paper-profiles-page .pp-command-actions > .pp-icon-btn-wrapper {
+
+.paper-profiles-page .pp-command-actions > button {
   flex: 0 0 auto;
 }
 

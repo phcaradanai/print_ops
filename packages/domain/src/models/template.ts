@@ -1,5 +1,6 @@
 export type TemplateEngine =
   | 'RAW_TEXT'
+  | 'DPL'
   | 'ZPL'
   | 'TSPL'
   | 'EPL'
@@ -57,6 +58,9 @@ export interface PaperProfileField {
   barcodeSymbology?: BarcodeSymbology;
   /** Only meaningful when type === 'barcode'. Bar height in mm. Defaults to 12mm when unset. */
   barcodeHeightMm?: number;
+  /** Only meaningful when type === 'barcode'. Bounding-box width in mm. When
+   * unset, the barcode keeps its natural width. */
+  barcodeWidthMm?: number;
   /** Only meaningful when type === 'qrcode'. Side length in mm. Defaults to 20mm when unset. */
   qrSizeMm?: number;
   xMm: number;
@@ -67,11 +71,26 @@ export interface PaperProfileField {
   align: 'left' | 'center' | 'right';
 }
 
+/**
+ * Physical repeated-label layout. Omitting it preserves legacy one-cell
+ * profiles; consumers resolve that case from the printable media area.
+ */
+export interface PaperProfileLayout {
+  columns: number;
+  cellWidthMm: number;
+  cellHeightMm: number;
+  columnGapMm: number;
+  /** Distance between the origins of consecutive feed rows. */
+  rowPitchMm: number;
+}
+
 export interface PaperProfile {
   id: string;
   code: string;
   name: string;
   widthMm: number;
+  /** Non-printing gap after the label in the feed direction, in mm. */
+  gapMm?: number;
   heightMm: number;
   marginTopMm: number;
   marginRightMm: number;
@@ -80,6 +99,11 @@ export interface PaperProfile {
   dpi: number;
   orientation: Orientation;
   unit: PaperUnit;
+  rotation?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
+  /** Optional so existing stored profiles remain valid as a one-cell layout. */
+  layout?: PaperProfileLayout;
   fields: PaperProfileField[];
   createdAt: Date;
   updatedAt: Date;
@@ -124,6 +148,71 @@ export interface WebhookRoutePolicy {
 
 export type CreateWebhookRoutePolicyInput = Omit<WebhookRoutePolicy, 'id' | 'createdAt' | 'updatedAt'>;
 
+/**
+ * The fields PrintOps itself contributes to an acceptance callback — the shape
+ * of the intake response, which is the only `result` ever handed to a
+ * templatable callback. A `callbackPayloadTemplate` reaches these with the
+ * `$$.field` namespace; `$.field` stays reserved for the caller's own intake
+ * payload. Terminal result callbacks resolve the same template against the v2
+ * envelope (so `$$.status` carries the real final status).
+ *
+ * Shared so the API resolves and the Webhooks page offers exactly the same
+ * seven keys — a UI that advertises a field the resolver cannot supply is how
+ * the fabricated `$.event` / `$.printerId` list happened in the first place.
+ */
+export const ACCEPTANCE_CALLBACK_SYSTEM_FIELDS = [
+  'print_job_id',
+  'job_id',
+  'request_id',
+  'trace_id',
+  'source_system',
+  'created_at',
+  'queued_at',
+  'resolved_printer_code',
+  'resolved_template_code',
+  'status',
+  'duplicate',
+] as const;
+
+export type AcceptanceCallbackSystemField = (typeof ACCEPTANCE_CALLBACK_SYSTEM_FIELDS)[number];
+
+/**
+ * Every key of the unified v2 callback envelope (see
+ * apps/api/src/services/callback-payload.ts). These are the keys a receiver
+ * sees in ANY status; the acceptance-template resolver can supply them all,
+ * including the ones that are not direct intake-response fields
+ * (`event_type`, `occurred_at`, `timeline.*`, `delivery.*`, …).
+ *
+ * Shared so the Webhooks page offers the complete v2 vocabulary as
+ * `$$.field` tokens instead of only the raw intake-response subset.
+ */
+export const CALLBACK_ENVELOPE_SYSTEM_FIELDS = [
+  'version',
+  'event_type',
+  'occurred_at',
+  'request_id',
+  'job_id',
+  'source_system',
+  'client_id',
+  'status',
+  'data_quality',
+  'missing_fields',
+  'render_warnings',
+  'printer_code',
+  'runner_id',
+  'trace_id',
+  'duplicate',
+  'error',
+  'timeline.accepted_at',
+  'timeline.queued_at',
+  'timeline.started_at',
+  'timeline.terminal_at',
+  'delivery.transports',
+  'delivery.nats_mode',
+] as const;
+
+export type CallbackEnvelopeSystemField = (typeof CALLBACK_ENVELOPE_SYSTEM_FIELDS)[number];
+
 export interface WebhookEndpoint {
   id: string;
   endpointCode: string;
@@ -145,10 +234,13 @@ export interface WebhookEndpoint {
   /** NATS reply subject template. May be a literal subject or a `$.field` path into the intake payload. */
   callbackNatsSubject?: string;
   /**
-   * Optional JSON payload template sent to the callback. Keys map to literal
-   * values, `$.field` references resolve from the ORIGINAL intake payload
-   * (so the caller gets back what they sent). When empty, a default envelope
-   * `{ request_id, print_job_id, status, trace_id, duplicate }` is used.
+   * Optional JSON payload template sent to the ACCEPTANCE callback. Keys map to
+   * literal values; `$.field` resolves from the ORIGINAL intake payload (so the
+   * caller gets back what they sent) and `$$.field` resolves from the intake
+   * response PrintOps produced (see ACCEPTANCE_CALLBACK_SYSTEM_FIELDS), so a
+   * custom template can carry both instead of trading one for the other. When
+   * empty, a default envelope `{ request_id, print_job_id, status, trace_id,
+   * duplicate }` is used.
    */
   callbackPayloadTemplate?: Record<string, unknown>;
   /** Send the callback only after the print result (success/failure) is known, instead of immediately after job creation. Defaults to false. */

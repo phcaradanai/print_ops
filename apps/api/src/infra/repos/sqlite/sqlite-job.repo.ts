@@ -18,6 +18,9 @@ function rowToJob(row: Record<string, unknown>): Job {
     sourceSystem: (row['source_system'] as string) || undefined,
     sourceReference: (row['source_reference'] as string) || undefined,
     requestId: (row['request_id'] as string) || undefined,
+    rotate: typeof row['rotate'] === 'number' ? row['rotate'] as number : undefined,
+    flipHorizontal: row['flip_horizontal'] == null ? undefined : toBool(row['flip_horizontal']),
+    flipVertical: row['flip_vertical'] == null ? undefined : toBool(row['flip_vertical']),
     status: row['status'] as JobStatus,
     priority: Number(row['priority']),
     priorityLabel: row['priority_label'] as Job['priorityLabel'],
@@ -172,6 +175,18 @@ export class SqliteJobRepository implements JobRepositoryPort {
       ],
     );
 
+    if (input.rotate !== undefined || input.flipHorizontal !== undefined || input.flipVertical !== undefined) {
+      db.run(
+        'UPDATE jobs SET rotate = ?, flip_horizontal = ?, flip_vertical = ? WHERE id = ?',
+        [
+          input.rotate ?? null,
+          input.flipHorizontal == null ? null : input.flipHorizontal ? 1 : 0,
+          input.flipVertical == null ? null : input.flipVertical ? 1 : 0,
+          input.id,
+        ],
+      );
+    }
+
     const stmt = db.prepare('SELECT * FROM jobs WHERE id = ?');
     stmt.bind([input.id]);
     stmt.step();
@@ -247,6 +262,9 @@ function buildJobPatch(patch: Partial<Job>): { fields: string[]; values: SqlValu
     if ('sourceSystem' in patch) add('source_system', patch.sourceSystem ?? null);
     if ('sourceReference' in patch) add('source_reference', patch.sourceReference ?? null);
     if ('requestId' in patch) add('request_id', patch.requestId ?? null);
+    if ('rotate' in patch) add('rotate', patch.rotate ?? null);
+    if ('flipHorizontal' in patch) add('flip_horizontal', patch.flipHorizontal == null ? null : patch.flipHorizontal ? 1 : 0);
+    if ('flipVertical' in patch) add('flip_vertical', patch.flipVertical == null ? null : patch.flipVertical ? 1 : 0);
     if ('status' in patch) add('status', patch.status);
     if ('priority' in patch) add('priority', patch.priority);
     if ('priorityLabel' in patch) add('priority_label', patch.priorityLabel);

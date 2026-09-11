@@ -1,4 +1,4 @@
-# PrinterOps installer pre-install shutdown payload.
+# PrintOps installer pre-install shutdown payload.
 #
 # This file is the SOURCE OF TRUTH and is embedded into the installer verbatim
 # at COMPILE time by nsis-hooks.nsh (a `File "/oname=$PLUGINSDIR\..."` command)
@@ -12,10 +12,10 @@
 # `server.exe` is a common name. Every candidate is matched on BOTH:
 #   1. an explicit name allowlist, and
 #   2. Win32_Process.ExecutablePath resolving under the current user's install
-#      root ($env:LOCALAPPDATA\PrinterOps\), normalized via GetFullPath +
+#      root ($env:LOCALAPPDATA\PrintOps\), normalized via GetFullPath +
 #      TrimEnd + trailing separator, compared with an ordinal case-insensitive
 #      StartsWith (not -like, which treats [] as wildcards).
-# A server.exe from any other product, or a PrinterOps copy installed elsewhere,
+# A server.exe from any other product, or a PrintOps copy installed elsewhere,
 # is left running.
 #
 # Failures are non-fatal by design: a failed shutdown must not abort the
@@ -39,7 +39,7 @@ function Write-HookLog {
 }
 
 # Exact normalization used to verify the predicate by hand outside the installer.
-$root = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'PrinterOps')).TrimEnd('\') + '\'
+$root = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'PrintOps')).TrimEnd('\') + '\'
 
 # Name allowlist. Combined with the $root check below - never used on its own.
 $names = @(
@@ -49,7 +49,7 @@ $names = @(
     'printops-html-print.exe'
 )
 
-function Get-PrinterOpsProcess {
+function Get-PrintOpsProcess {
     @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
         $_.ExecutablePath -and
         $names -contains $_.Name -and
@@ -59,7 +59,7 @@ function Get-PrinterOpsProcess {
 
 Write-HookLog ('start root=' + $root)
 
-$initial = Get-PrinterOpsProcess
+$initial = Get-PrintOpsProcess
 Write-HookLog ('found=' + $initial.Count)
 foreach ($p in $initial) {
     Write-HookLog ('proc=' + $p.ProcessId + ' ' + $p.Name + ' ' + $p.ExecutablePath)
@@ -87,7 +87,7 @@ Start-Sleep -Seconds 4
 # Step 2 - force. Anything still under the install root is either a hung main
 # process or a sidecar orphaned by an unclean exit. Re-query rather than reusing
 # $initial so processes that already exited are not touched.
-foreach ($p in Get-PrinterOpsProcess) {
+foreach ($p in Get-PrintOpsProcess) {
     try {
         Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
         Write-HookLog ('kill=' + $p.ProcessId + ' ' + $p.ExecutablePath)
@@ -101,11 +101,11 @@ foreach ($p in Get-PrinterOpsProcess) {
 # NSIS `File` silently skips a locked target, so this wait is what makes the
 # difference between a real upgrade and a success-reporting no-op.
 for ($i = 0; $i -lt 60; $i++) {
-    if ((Get-PrinterOpsProcess).Count -eq 0) { break }
+    if ((Get-PrintOpsProcess).Count -eq 0) { break }
     Start-Sleep -Milliseconds 250
 }
 
-$remaining = Get-PrinterOpsProcess
+$remaining = Get-PrintOpsProcess
 Write-HookLog ('remaining=' + $remaining.Count)
 foreach ($p in $remaining) {
     Write-HookLog ('stuck=' + $p.ProcessId + ' ' + $p.ExecutablePath)

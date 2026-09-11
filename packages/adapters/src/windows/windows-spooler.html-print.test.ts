@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildHtmlPrintScript, resolveHtmlPageSettings } from './windows-spooler.adapter.js';
+import type { PrintCommand } from '@printerops/domain';
+import { applyHtmlRenderTransform, buildHtmlPrintScript, resolveHtmlPageSettings } from './windows-spooler.adapter.js';
 
 describe('buildHtmlPrintScript', () => {
   it('uses WebView2 PrintAsync helper and observes a correlated Windows job when available', () => {
@@ -82,5 +83,132 @@ describe('resolveHtmlPageSettings', () => {
       marginLeftMm: 5,
       orientation: 'portrait',
     });
+  });
+
+  it('keeps the driver page at the label face height so a gap sensor is not counted twice', () => {
+    expect(resolveHtmlPageSettings('<main />', {
+      paperProfile: {
+        widthMm: 98,
+        heightMm: 11,
+        gapMm: 2,
+        marginTopMm: 0.05,
+        marginRightMm: 2,
+        marginBottomMm: 0.05,
+        marginLeftMm: 2,
+        orientation: 'landscape',
+      },
+    })).toMatchObject({
+      widthMm: 98,
+      heightMm: 11,
+      orientation: 'landscape',
+    });
+  });
+
+  it('uses the effective per-job transform when resolving the driver frame', () => {
+    expect(resolveHtmlPageSettings('<main />', {
+      paperProfile: {
+        widthMm: 100,
+        heightMm: 50,
+        orientation: 'landscape',
+        rotation: 15,
+      },
+    }, { rotate: 270 })).toMatchObject({
+      widthMm: 50,
+      heightMm: 100,
+      orientation: 'portrait',
+    });
+  });
+
+  it('reads the transformed frame size when the renderer already wrapped HTML', () => {
+    const html = '<div data-printops-transform-frame="true" style="position:relative;width:50mm;height:100mm;overflow:hidden"><div /></div>';
+    expect(resolveHtmlPageSettings(html, {
+      paperProfile: {
+        widthMm: 100,
+        heightMm: 50,
+        orientation: 'landscape',
+      },
+    })).toMatchObject({
+      widthMm: 50,
+      heightMm: 100,
+      orientation: 'portrait',
+    });
+  });
+});
+
+describe('applyHtmlRenderTransform', () => {
+  const page = {
+    widthMm: 100,
+    heightMm: 50,
+    marginTopMm: 2,
+    marginRightMm: 3,
+    marginBottomMm: 4,
+    marginLeftMm: 5,
+    orientation: 'landscape' as const,
+  };
+  const command = (overrides: Partial<PrintCommand> = {}): PrintCommand => ({
+    jobId: 'job-transform',
+    printerId: 'printer-transform',
+    traceId: 'trace-transform',
+    mimeType: 'text/html',
+    copies: 1,
+    duplex: false,
+    colorMode: 'auto',
+    metadata: {},
+    ...overrides,
+  });
+
+  it('applies profile transforms while preserving the physical page frame', () => {
+    const output = applyHtmlRenderTransform(
+      '<span>complete output</span>',
+      page,
+      command({
+        metadata: {
+          paperProfile: { rotation: 90, flipHorizontal: true, flipVertical: false },
+        },
+      }),
+    );
+
+    expect(output).toContain('transform:rotate(90deg) scaleX(-1) scaleY(1)');
+    expect(output).toContain('width:50mm;height:100mm;overflow:hidden');
+  });
+
+  it('lets per-job values override profile values without changing the page frame', () => {
+    const output = applyHtmlRenderTransform(
+      '<span>complete output</span>',
+      page,
+      command({
+        rotate: 270,
+        flipHorizontal: false,
+        flipVertical: true,
+        metadata: {
+          paperProfile: { rotation: 15, flipHorizontal: true, flipVertical: true },
+        },
+      }),
+    );
+
+    expect(output).toContain('transform:rotate(270deg) scaleX(1) scaleY(-1)');
+    expect(output).not.toContain('rotate(15deg)');
+    expect(output).toContain('width:50mm;height:100mm;overflow:hidden');
+  });
+
+  it('does not wrap output that the shared renderer already transformed', () => {
+    const output = applyHtmlRenderTransform(
+      '<div data-printops-transform-frame="true">already transformed</div>',
+      page,
+      command({ rotate: 90 }),
+    );
+
+    expect(output).toBe('<div data-printops-transform-frame="true">already transformed</div>');
+  });
+
+  it('uses direct HTML metadata dimensions as the source before a job rotation', () => {
+    const output = applyHtmlRenderTransform(
+      '<span>direct html</span>',
+      { widthMm: 100, heightMm: 50, marginTopMm: 0, marginRightMm: 0, marginBottomMm: 0, marginLeftMm: 0, orientation: 'landscape' },
+      command({ rotate: 90, metadata: { widthMm: 100, heightMm: 50 } }),
+    );
+
+    expect(output).toContain('width:50mm;height:100mm;overflow:hidden');
+    expect(output).toContain('left:-25mm;top:25mm;width:100mm;height:50mm');
   });
 });

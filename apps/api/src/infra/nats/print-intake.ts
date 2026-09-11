@@ -98,6 +98,9 @@ interface PrintIntakeEnvelope {
   copies?: number;
   priority?: DynamicPrintRequest['priority'];
   metadata?: Record<string, unknown>;
+  rotate?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
   /**
    * OPTIONAL reference to a configured WebhookEndpoint that should receive this
    * job's terminal print result (HTTP and/or NATS, per that endpoint's config).
@@ -304,6 +307,9 @@ export async function handlePrintIntakeMessage(
         payload: env.payload ?? {},
         copies: env.copies,
         priority: env.priority,
+        rotate: env.rotate,
+        flipHorizontal: env.flipHorizontal,
+        flipVertical: env.flipVertical,
         endpoint_code: env.endpoint_code,
         metadata: {
           ...(env.metadata ?? {}),

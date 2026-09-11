@@ -11,7 +11,7 @@ import type {
   JobLatency,
 } from '@printerops/domain';
 import type { AdapterRegistry } from '@printerops/adapters';
-import { generateId, ConflictError, NotFoundError } from '@printerops/shared';
+import { generateId, ConflictError, NotFoundError, readRenderTransformOverrides } from '@printerops/shared';
 import { emitPrintJobTerminal } from './emit-terminal-event.js';
 
 /**
@@ -28,6 +28,11 @@ const NON_EXECUTABLE_STATUSES: readonly JobStatus[] = [
   'PRINTING',
   'SUCCESS',
   'UNVERIFIED',
+  // TIMEOUT means the document reached the spooler and no verdict ever came
+  // back — the same may-have-printed class as UNVERIFIED. Re-executing it
+  // could put a second physical page on the wire; a retry must be an explicit
+  // reprint (product decision, 2026-08-03).
+  'TIMEOUT',
   'CANCELLED',
   'DUPLICATE_RETURNED',
 ];
@@ -38,7 +43,6 @@ const EXECUTABLE_STATUSES: readonly JobStatus[] = [
   'VALIDATED',
   'QUEUED',
   'FAILED',
-  'TIMEOUT',
 ];
 
 /**
@@ -47,6 +51,34 @@ const EXECUTABLE_STATUSES: readonly JobStatus[] = [
  * which for a patient or specimen label is real harm.
  */
 const UNVERIFIABLE_ERROR_CODE = 'PRINT_NOT_VERIFIABLE';
+
+/**
+ * The job reached the spooler but the adapter produced NO verdict at all
+ * within the watchdog deadline. Maps to terminal status TIMEOUT — which, like
+ * UNVERIFIED, is non-executable because a page may already exist.
+ */
+const RESULT_TIMEOUT_ERROR_CODE = 'PRINT_RESULT_TIMEOUT';
+
+/**
+ * Outer ceiling on one adapter execution. Every adapter bounds its own work
+ * (the Windows adapter waits up to 30s for the spooler and 90s for device
+ * verification); this watchdog only stops a wedged call — a hung PowerShell
+ * spawn, a stuck WebView2 helper — from pinning the job in DISPATCHED forever.
+ * Mirrors the Go runner's 180s executionTimeout.
+ */
+const EXECUTION_WATCHDOG_DEFAULT_MS = 180_000;
+
+function executionWatchdogMs(): number {
+  const raw = Number(process.env['PRINTOPS_EXECUTE_TIMEOUT_MS'] ?? EXECUTION_WATCHDOG_DEFAULT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : EXECUTION_WATCHDOG_DEFAULT_MS;
+}
+
+class ExecutionWatchdogExpired extends Error {
+  constructor(public readonly timeoutMs: number) {
+    super(`adapter produced no verdict within ${timeoutMs}ms`);
+    this.name = 'ExecutionWatchdogExpired';
+  }
+}
 
 function adapterEvidence(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
@@ -135,10 +167,14 @@ export class ExecuteJobService {
 
     const trace = await this.traces.findByJobId(jobId);
     let acceptedProgress: { occurredAt: Date; evidence: Record<string, unknown> } | undefined;
+    let watchdogFired = false;
+    let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+    let adapterRun: Promise<import('@printerops/domain').PrinterAdapterResult> | undefined;
 
     try {
       const adapter = this.registry.getAdapterForPrinter(printer);
-      const result = await adapter.executeCommand({
+      const transformOverrides = readRenderTransformOverrides(job.metadata);
+      adapterRun = adapter.executeCommand({
         jobId,
         printerId: printer.id,
         traceId: job.traceId,
@@ -152,6 +188,9 @@ export class ExecuteJobService {
         colorMode: job.colorMode,
         mediaType: job.mediaType,
         resolution: job.resolution,
+        rotate: transformOverrides.rotate ?? job.rotate,
+        flipHorizontal: transformOverrides.flipHorizontal ?? job.flipHorizontal,
+        flipVertical: transformOverrides.flipVertical ?? job.flipVertical,
         // Printer metadata first so job metadata can still override per job;
         // this is how snmpHost / snmpCommunity reach the adapter.
         metadata: {
@@ -161,6 +200,9 @@ export class ExecuteJobService {
           printerCode: printer.code,
         },
         onProgress: async (progress) => {
+          // The watchdog already declared this job terminal; a late progress
+          // write from the abandoned adapter call must not resurrect PRINTING.
+          if (watchdogFired) return;
           if (progress.stage !== 'SPOOLER_ACCEPTED') return;
           acceptedProgress = { occurredAt: progress.occurredAt, evidence: progress.evidence };
           try {
@@ -181,6 +223,18 @@ export class ExecuteJobService {
         },
       });
 
+      const watchdogMs = executionWatchdogMs();
+      const result = await Promise.race([
+        adapterRun,
+        new Promise<never>((_, rejectWatchdog) => {
+          watchdogTimer = setTimeout(
+            () => rejectWatchdog(new ExecutionWatchdogExpired(watchdogMs)),
+            watchdogMs,
+          );
+          watchdogTimer.unref?.();
+        }),
+      ]);
+
       const finishedAt = new Date();
       const runnerExecMs = finishedAt.getTime() - startedAt.getTime();
       const dispatchMs = startedAt.getTime() - dispatchedAt.getTime();
@@ -192,12 +246,19 @@ export class ExecuteJobService {
         ...(acceptedProgress?.evidence ?? {}),
         ...adapterEvidence(result.raw),
       };
+      // windows_spooler SUCCESS normally requires BOTH the device counter and
+      // the exact printer-side IPP job. WSD-only printers expose no reachable
+      // IPP/SNMP endpoint, so the adapter may confirm delivery through the
+      // local spooler instead (evidence.deviceConfirmation =
+      // 'local-spooler-delivery'); that explicit flag stands in for IPP proof.
+      const spoolerDeliveryConfirmed =
+        evidence['deviceConfirmation'] === 'local-spooler-delivery';
       if (
         result.success &&
         adapter.protocol === 'windows_spooler' &&
         (
           evidence['deviceConfirmed'] !== true ||
-          evidence['ippJobConfirmed'] !== true
+          (evidence['ippJobConfirmed'] !== true && !spoolerDeliveryConfirmed)
         )
       ) {
         return await this.handleFailure(
@@ -316,6 +377,29 @@ export class ExecuteJobService {
         );
       }
     } catch (err) {
+      if (err instanceof ExecutionWatchdogExpired) {
+        watchdogFired = true;
+        // The abandoned adapter promise keeps running; swallow its eventual
+        // outcome so it neither crashes the process as an unhandled rejection
+        // nor gets a chance to report anything (the job is terminal now).
+        adapterRun?.catch(() => undefined);
+        const mayHavePrinted = acceptedProgress !== undefined;
+        return await this.handleFailure(
+          job,
+          runnerId,
+          mayHavePrinted ? RESULT_TIMEOUT_ERROR_CODE : 'EXECUTION_TIMEOUT',
+          mayHavePrinted
+            ? `Windows accepted the job but no verdict arrived within ${err.timeoutMs}ms. ` +
+              'A page may have printed; the job was not retried to prevent a duplicate.'
+            : `Adapter produced no result within ${err.timeoutMs}ms before the job reached the spooler.`,
+          startedAt,
+          dispatchedAt,
+          queueWaitMs,
+          trace ?? undefined,
+          'unknown',
+          acceptedProgress?.evidence ?? {},
+        );
+      }
       // Without this the stack is swallowed and the job only records the bare
       // message, which is not enough to locate an adapter-side defect.
       // eslint-disable-next-line no-console
@@ -334,6 +418,8 @@ export class ExecuteJobService {
         'unknown',
         acceptedProgress?.evidence ?? {},
       );
+    } finally {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
     }
   }
 
@@ -369,7 +455,11 @@ export class ExecuteJobService {
     // page. UNVERIFIED is in NON_EXECUTABLE_STATUSES; reprinting means creating
     // a new job on purpose.
     const terminalStatus: JobStatus =
-      errorCode === UNVERIFIABLE_ERROR_CODE ? 'UNVERIFIED' : 'FAILED';
+      errorCode === UNVERIFIABLE_ERROR_CODE
+        ? 'UNVERIFIED'
+        : errorCode === RESULT_TIMEOUT_ERROR_CODE
+          ? 'TIMEOUT'
+          : 'FAILED';
 
     const spoolerSentAt = evidenceDate(evidence['spoolerAcceptedAt']);
     const failed = await this.jobs.update(job.id, {

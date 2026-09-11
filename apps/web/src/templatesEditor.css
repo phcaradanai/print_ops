@@ -1,0 +1,237 @@
+
+
+/* Ordinary page surfaces: border-defined, flat, 8px. These carried a 12px
+   radius under a wide soft shadow — a card pretending to float on a plane it
+   never leaves — plus a 3px gradient rule across the top in violet and teal,
+   two hues the palette does not contain. */
+.templates-page .tpl-editor,
+.templates-page .tpl-preview {
+  min-width: 0;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg);
+  box-shadow: none;
+}
+
+.templates-page .tpl-editor {
+  position: relative;
+  overflow: visible;
+  padding: var(--spacing-xl);
+}
+
+.templates-page .tpl-editor > h2 {
+  margin: 0;
+  color: var(--neutral-deep);
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+}
+
+.templates-page .tpl-engine-picker {
+  min-width: 0;
+  margin: 0;
+  padding: var(--spacing-md);
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg);
+  background: var(--neutral-paper);
+}
+
+.templates-page .tpl-engine-picker > legend,
+.templates-page .tpl-field-label {
+  padding: 0 0.25rem;
+  color: var(--neutral-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+.templates-page .tpl-engine-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.templates-page .tpl-engine-card {
+  min-width: 0;
+  border-color: var(--neutral-border);
+  border-radius: var(--rounded-md);
+  background: var(--neutral-surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.templates-page .tpl-engine-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 48%, #ffffff);
+  background: var(--state-info-surface);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(30, 102, 245, 0.09);
+}
+
+.templates-page .tpl-engine-card.is-selected {
+  border-color: var(--primary);
+  background: var(--state-info-surface);
+  box-shadow: inset 0 0 0 1px var(--primary), 0 6px 18px rgba(30, 102, 245, 0.12);
+}
+
+.templates-page .tpl-engine-card__text small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
+}
+
+.templates-page .tpl-content-block {
+  margin-top: var(--spacing-xl);
+}
+
+.templates-page .tpl-vars {
+  position: sticky;
+  top: 5.25rem;
+  align-self: start;
+  max-height: calc(100dvh - 8rem);
+  overflow: auto;
+  padding: var(--spacing-md);
+  border-color: var(--neutral-border);
+  border-radius: var(--rounded-lg);
+  background: var(--neutral-paper);
+  scrollbar-width: thin;
+}
+
+.templates-page .tpl-vars h3 {
+  margin-bottom: var(--spacing-sm);
+  color: var(--neutral-deep);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.templates-page .tpl-vars button {
+  min-height: 2.5rem;
+  border-radius: var(--rounded-md);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.templates-page .tpl-vars code {
+  overflow: hidden;
+  color: var(--primary-pressed);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.templates-page .tpl-editor-actions__right .ui-button--primary {
+  min-width: 9rem;
+  box-shadow: 0 5px 14px rgba(30, 102, 245, 0.2);
+}
+
+.templates-page .tpl-preview {
+  position: sticky;
+  top: 4.75rem;
+  max-height: calc(100dvh - 6rem);
+  overflow: auto;
+  padding: var(--spacing-lg);
+  scrollbar-width: thin;
+}
+
+.templates-page .tpl-preview-stage {
+  min-height: 30rem;
+  padding: var(--spacing-xl);
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg);
+  background:
+    linear-gradient(45deg, var(--neutral-subtle) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--neutral-subtle) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--neutral-subtle) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--neutral-subtle) 75%),
+    var(--neutral-paper);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.templates-page .tpl-preview-paper {
+  margin-inline: auto;
+  border: 1px solid #d8dee8;
+  background: var(--neutral-surface);
+  box-shadow: 0 16px 35px rgba(15, 23, 42, 0.16);
+}
+
+.templates-page .tpl-preview-note,
+.templates-page .tpl-preview-warnings {
+  margin: var(--spacing-md) 0 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--rounded-md);
+  line-height: 1.5;
+}
+
+.templates-page .tpl-preview-note {
+  border: 1px solid #bfdbfe;
+  background: var(--state-info-surface);
+  color: var(--state-info-text);
+}
+
+.templates-page .tpl-preview-warnings {
+  border: 1px solid #f6d58a;
+  background: #fff8e6;
+  color: #854d0e;
+}
+
+.templates-page .tpl-info {
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--neutral-border);
+}
+
+@media (max-width: 1280px) {
+
+  .templates-page .tpl-preview {
+    position: relative;
+    top: auto;
+    max-height: none;
+  }
+}
+
+@media (max-width: 900px) {
+
+  .templates-page .tpl-vars {
+    position: relative;
+    top: auto;
+    max-height: 20rem;
+  }
+
+  .templates-page .tpl-preview-stage {
+    min-height: 24rem;
+  }
+}
+
+@media (max-width: 640px) {
+
+  .templates-page .tpl-editor,
+  .templates-page .tpl-preview {
+    padding: var(--spacing-md);
+    border-radius: var(--rounded-lg);
+  }
+
+  .templates-page .tpl-engine-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .templates-page .tpl-editor-actions > .ui-button,
+  .templates-page .tpl-editor-actions__right .ui-button {
+    width: 100%;
+  }
+
+  .templates-page .tpl-preview-stage {
+    min-height: 20rem;
+    padding: var(--spacing-md);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .templates-page .tpl-engine-card,
+  .templates-page .tpl-vars button {
+    transition: none;
+  }
+
+  .templates-page .tpl-engine-card:hover,
+  .templates-page .tpl-vars button:hover {
+    transform: none;
+  }
+}

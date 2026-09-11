@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { apiFetch } from '../api/client.js';
+import { apiBase, apiFetch } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
@@ -27,6 +27,7 @@ import {
   Panel,
   Select,
   Stack,
+  Switch,
   TableEmpty,
   Text,
 } from '../components/ui/index.js';
@@ -78,6 +79,101 @@ interface IntakeAttempt {
   clientId?: string;
   subject?: string;
   jobId?: string;
+}
+
+const DEFAULT_API_ORIGIN = 'http://localhost:31415';
+const DEFAULT_HTTP_PATH = '/api/v1/printer/{code_template}/{code_profile}';
+
+function resolveApiBaseUrl(): string {
+  const configured = apiBase().trim();
+  if (configured) return configured.replace(/\/+$/, '');
+  if (typeof window !== 'undefined' && window.location.origin && window.location.origin !== 'null') {
+    return window.location.origin.replace(/\/+$/, '');
+  }
+  return DEFAULT_API_ORIGIN;
+}
+
+function resolvePrintPath(pathTemplate: string, template: string, profile: string): string {
+  return pathTemplate
+    .replaceAll('{code_template}', template)
+    .replaceAll('{code_profile}', profile)
+    // Keep compatibility with older fixtures/config responses that used
+    // colon-style path parameters.
+    .replaceAll(':template', template)
+    .replaceAll(':profile', profile);
+}
+
+function portFromUrl(value: string): string {
+  try {
+    const url = new URL(value, DEFAULT_API_ORIGIN);
+    return url.port || (url.protocol === 'https:' ? '443' : '80');
+  } catch {
+    return '—';
+  }
+}
+
+async function copyText(value: string): Promise<void> {
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    if (!document.execCommand('copy')) throw new Error('Clipboard unavailable');
+  } finally {
+    textarea.remove();
+  }
+}
+
+interface CopyableValueProps {
+  value: string;
+  copyLabel: string;
+  copiedLabel: string;
+  copyAriaLabel: string;
+  onCopyError?: () => void;
+  className?: string;
+}
+
+function CopyableValue({
+  value,
+  copyLabel,
+  copiedLabel,
+  copyAriaLabel,
+  onCopyError,
+  className = '',
+}: CopyableValueProps) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = useCallback(async () => {
+    try {
+      await copyText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      onCopyError?.();
+    }
+  }, [onCopyError, value]);
+
+  return (
+    <Inline gap="sm" className={`print-flow-copy-row${className ? ` ${className}` : ''}`}>
+      <Mono wrap className="print-flow-copy-row__value">{value}</Mono>
+      <Button
+        variant="secondary"
+        size="sm"
+        aria-label={copied ? copiedLabel : copyAriaLabel}
+        onClick={() => void copy()}
+      >
+        {copied ? copiedLabel : copyLabel}
+      </Button>
+    </Inline>
+  );
 }
 
 export default function PrintFlowBindings() {
@@ -181,8 +277,21 @@ export default function PrintFlowBindings() {
   const previewTemplate = form.templateCode || '{{code_template}}';
   const previewProfile = paperCodeById.get(form.paperProfileId) || '{{code_profile}}';
 
+  const httpBaseUrl = resolveApiBaseUrl();
+  const httpPathTemplate = flowConfig?.http.path ?? DEFAULT_HTTP_PATH;
+  const httpMethod = flowConfig?.http.method ?? 'POST';
+  const httpAuthHeader = flowConfig?.http.authHeader ?? 'X-Api-Key';
+  const httpEndpointPath = resolvePrintPath(httpPathTemplate, previewTemplate, previewProfile);
+  const httpEndpoint = `${httpBaseUrl}${httpEndpointPath.startsWith('/') ? '' : '/'}${httpEndpointPath}`;
+  const httpPort = portFromUrl(httpBaseUrl);
+
   const nats = flowConfig?.nats;
   const natsEnabled = nats?.enabled === true;
+
+  const handleCopyError = useCallback(
+    () => setMessage({ text: t('page.printFlow.copyError'), kind: 'error' }),
+    [t],
+  );
 
   // Example payloads, filled with the current selection so an operator can copy
   // a request that actually works against this instance.
@@ -240,7 +349,7 @@ export default function PrintFlowBindings() {
 
   return (
     <PageLayout
-      width="standard"
+      width="full"
       title={t('page.printFlow.title')}
       description={t('page.printFlow.description')}
       actions={<Freshness
@@ -273,24 +382,70 @@ export default function PrintFlowBindings() {
 
       <Stack gap="xl">
         <Panel padding="lg" tone="subtle" aria-label={t('page.printFlow.endpoint')}>
-          <Inline gap="sm">
-            <Badge tone="info">POST</Badge>
-            <Mono weight="semibold">/api/v1/printer/{previewTemplate}/{previewProfile}</Mono>
+          <Inline gap="sm" className="print-flow-endpoint">
+            <Badge tone="info">{httpMethod}</Badge>
+            <CopyableValue
+              value={httpEndpoint}
+              copyLabel={t('page.printFlow.copy')}
+              copiedLabel={t('page.printFlow.copied')}
+              copyAriaLabel={t('page.printFlow.copyRequestUrl')}
+              onCopyError={handleCopyError}
+              className="print-flow-endpoint__value"
+            />
           </Inline>
         </Panel>
 
         {/* ----- HTTP transport ----- */}
-        <Panel title={t('page.printFlow.httpTransport')}>
+        <Panel title={t('page.printFlow.httpTransport')} description={t('page.printFlow.httpTransportDesc')}>
           <Stack gap="lg">
             <CardDetail>
+              <CardDetailItem label={t('page.printFlow.requestUrl')}>
+                <CopyableValue
+                  value={httpEndpoint}
+                  copyLabel={t('page.printFlow.copy')}
+                  copiedLabel={t('page.printFlow.copied')}
+                  copyAriaLabel={t('page.printFlow.copyRequestUrl')}
+                  onCopyError={handleCopyError}
+                />
+              </CardDetailItem>
+              <CardDetailItem label={t('page.printFlow.apiBaseUrl')}>
+                <CopyableValue
+                  value={httpBaseUrl}
+                  copyLabel={t('page.printFlow.copy')}
+                  copiedLabel={t('page.printFlow.copied')}
+                  copyAriaLabel={t('page.printFlow.copyValue')}
+                  onCopyError={handleCopyError}
+                />
+              </CardDetailItem>
+              <CardDetailItem label={t('page.printFlow.apiPort')}>
+                <CopyableValue
+                  value={httpPort}
+                  copyLabel={t('page.printFlow.copy')}
+                  copiedLabel={t('page.printFlow.copied')}
+                  copyAriaLabel={t('page.printFlow.copyValue')}
+                  onCopyError={handleCopyError}
+                />
+              </CardDetailItem>
               <CardDetailItem label={t('page.printFlow.path')}>
-                <Mono>{flowConfig?.http.path ?? '/api/v1/printer/{code_template}/{code_profile}'}</Mono>
+                <CopyableValue
+                  value={httpPathTemplate}
+                  copyLabel={t('page.printFlow.copy')}
+                  copiedLabel={t('page.printFlow.copied')}
+                  copyAriaLabel={t('page.printFlow.copyValue')}
+                  onCopyError={handleCopyError}
+                />
               </CardDetailItem>
               <CardDetailItem label={t('page.printFlow.auth')}>
-                <Inline gap="xs">
-                  <Mono>{flowConfig?.http.authHeader ?? 'X-Api-Key'}</Mono>
+                <Stack gap="xs">
+                  <CopyableValue
+                    value={httpAuthHeader}
+                    copyLabel={t('page.printFlow.copy')}
+                    copiedLabel={t('page.printFlow.copied')}
+                    copyAriaLabel={t('page.printFlow.copyValue')}
+                    onCopyError={handleCopyError}
+                  />
                   <Text tone="muted">{t('page.printFlow.authRequired')}</Text>
-                </Inline>
+                </Stack>
               </CardDetailItem>
             </CardDetail>
             <Stack gap="xs">
@@ -318,17 +473,68 @@ export default function PrintFlowBindings() {
               <Alert tone="info">{t('page.printFlow.natsNoAuth')}</Alert>
 
               <CardDetail>
-                <CardDetailItem label={t('page.printFlow.subject')}>
-                  <Mono weight="semibold" tone="strong">{nats.subject}</Mono>
+                <CardDetailItem label={t('page.printFlow.natsServer')}>
+                  <CopyableValue
+                    value={nats.url}
+                    copyLabel={t('page.printFlow.copy')}
+                    copiedLabel={t('page.printFlow.copied')}
+                    copyAriaLabel={t('page.printFlow.copyValue')}
+                    onCopyError={handleCopyError}
+                  />
                 </CardDetailItem>
-                <CardDetailItem label={t('page.printFlow.stream')}><Mono>{nats.stream}</Mono></CardDetailItem>
-                <CardDetailItem label={t('page.printFlow.durable')}><Mono>{nats.durable}</Mono></CardDetailItem>
-                <CardDetailItem label={t('page.printFlow.server')}><Mono>{nats.url}</Mono></CardDetailItem>
+                <CardDetailItem label={t('page.printFlow.clientId')}>
+                  <CopyableValue
+                    value={nats.clientId}
+                    copyLabel={t('page.printFlow.copy')}
+                    copiedLabel={t('page.printFlow.copied')}
+                    copyAriaLabel={t('page.printFlow.copyValue')}
+                    onCopyError={handleCopyError}
+                  />
+                </CardDetailItem>
+                <CardDetailItem label={t('page.printFlow.subject')}>
+                  <CopyableValue
+                    value={nats.subject}
+                    copyLabel={t('page.printFlow.copy')}
+                    copiedLabel={t('page.printFlow.copied')}
+                    copyAriaLabel={t('page.printFlow.copyValue')}
+                    onCopyError={handleCopyError}
+                  />
+                </CardDetailItem>
+                <CardDetailItem label={t('page.printFlow.stream')}>
+                  <CopyableValue
+                    value={nats.stream}
+                    copyLabel={t('page.printFlow.copy')}
+                    copiedLabel={t('page.printFlow.copied')}
+                    copyAriaLabel={t('page.printFlow.copyValue')}
+                    onCopyError={handleCopyError}
+                  />
+                </CardDetailItem>
+                <CardDetailItem label={t('page.printFlow.durable')}>
+                  <CopyableValue
+                    value={nats.durable}
+                    copyLabel={t('page.printFlow.copy')}
+                    copiedLabel={t('page.printFlow.copied')}
+                    copyAriaLabel={t('page.printFlow.copyValue')}
+                    onCopyError={handleCopyError}
+                  />
+                </CardDetailItem>
                 <CardDetailItem label={t('page.printFlow.dlq')}>
-                  <Stack gap="xs">
-                    <Mono>{nats.dlqPrefix}{nats.subject}</Mono>
-                    <Text size="label" tone="muted">{t('page.printFlow.maxDeliver')} {nats.maxDeliver}</Text>
-                  </Stack>
+                  <CopyableValue
+                    value={`${nats.dlqPrefix}${nats.subject}`}
+                    copyLabel={t('page.printFlow.copy')}
+                    copiedLabel={t('page.printFlow.copied')}
+                    copyAriaLabel={t('page.printFlow.copyValue')}
+                    onCopyError={handleCopyError}
+                  />
+                </CardDetailItem>
+                <CardDetailItem label={t('page.printFlow.maxDeliver')}>
+                  <CopyableValue
+                    value={String(nats.maxDeliver)}
+                    copyLabel={t('page.printFlow.copy')}
+                    copiedLabel={t('page.printFlow.copied')}
+                    copyAriaLabel={t('page.printFlow.copyValue')}
+                    onCopyError={handleCopyError}
+                  />
                 </CardDetailItem>
               </CardDetail>
 
@@ -511,14 +717,14 @@ export default function PrintFlowBindings() {
                     </Chip>
                   </DataCell>
                   <DataCell label={bindingColumns.enabled} actions>
-                    <Chip
-                      selected={b.enabled}
-                      disabled={busy}
-                      onClick={() => void patch(b, { enabled: !b.enabled })}
-                      title={b.enabled ? t('status.disabled') : t('status.enabled')}
-                    >
-                      {b.enabled ? t('status.enabled') : t('status.disabled')}
-                    </Chip>
+                    <Switch
+                      label={bindingColumns.enabled}
+                      onLabel={t('status.enabled')}
+                      offLabel={t('status.disabled')}
+                      checked={b.enabled}
+                      onChange={() => void patch(b, { enabled: !b.enabled })}
+                      busy={busy}
+                    />
                   </DataCell>
                 </tr>
               ))}

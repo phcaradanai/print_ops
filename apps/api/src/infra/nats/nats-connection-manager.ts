@@ -57,6 +57,44 @@ export class NatsRetryableError extends Error {
   }
 }
 
+/**
+ * No JetStream stream covers the subject a callback was published to.
+ *
+ * Retryable on purpose: the usual cause is that the receiving side has not
+ * provisioned its stream yet, which an operator fixes without PrintOps
+ * restarting. PrintOps deliberately does not create the stream itself — see
+ * `docs/architecture/result-callbacks.md` on stream ownership.
+ */
+export class NatsNoStreamError extends Error {
+  readonly code = 'NATS_NO_STREAM';
+  readonly retryable = true;
+  constructor(subject: string) {
+    super(
+      `No JetStream stream is configured for subject '${subject}'. `
+      + 'At-least-once delivery needs the receiving environment to own a stream that captures it, '
+      + 'or set PRINTOPS_CALLBACK_NATS_MODE=CORE to accept best-effort delivery instead.',
+    );
+    this.name = 'NatsNoStreamError';
+  }
+}
+
+/** A JetStream publish acknowledgement, or the fact that there wasn't one. */
+export interface NatsPublishAck {
+  acknowledged: boolean;
+  stream?: string;
+  sequence?: number;
+  /** The broker recognised `Nats-Msg-Id` and stored nothing new. */
+  duplicate?: boolean;
+}
+
+function isNoRespondersError(error: unknown): boolean {
+  const value = error as { code?: unknown; message?: unknown } | undefined;
+  return value?.code === '503'
+    || value?.code === 503
+    || value?.code === 'NO_RESPONDERS'
+    || (typeof value?.message === 'string' && /no responders|no stream response|503/i.test(value.message));
+}
+
 function errorDetails(error: unknown): { code?: string; message: string } {
   const value = error as { code?: string; message?: string } | undefined;
   return {
@@ -75,7 +113,7 @@ export class ConsumerConfigConflictError extends Error {
     super(
       `Consumer configuration conflicts for ${stream}/${durable}: ${detail}. `
       + 'Align the configured subject prefix with the existing durable, or use a new client ID. '
-      + 'PrinterOps will not delete or retarget an existing consumer automatically.',
+      + 'PrintOps will not delete or retarget an existing consumer automatically.',
     );
     this.name = 'ConsumerConfigConflictError';
   }
@@ -216,6 +254,39 @@ export class NatsConnectionManager {
       throw new NatsRetryableError();
     }
     this.connection.publish(subject, JSON.stringify(payload));
+  }
+
+  /**
+   * Publish and wait for a JetStream acknowledgement.
+   *
+   * This is what makes a NATS result callback at-least-once rather than
+   * best-effort: the returned PubAck proves the broker persisted the message,
+   * which a Core publish never does. `msgId` is sent as `Nats-Msg-Id`, so the
+   * broker's own duplicate window collapses our retries into one stored
+   * message — the same `event_id` the receiver dedupes on.
+   *
+   * PrintOps does not create the stream. If none captures the subject the
+   * publish fails loudly (`NatsNoStreamError`) rather than silently degrading
+   * to a Core publish that would report a guarantee it did not obtain.
+   */
+  async publishJetStream(
+    subject: string,
+    payload: Record<string, unknown>,
+    opts: { msgId: string; timeoutMs?: number },
+  ): Promise<NatsPublishAck> {
+    if (!this.connection || this.connection.isClosed() || !this.status.callbackPublishReady) {
+      throw new NatsRetryableError();
+    }
+    try {
+      const ack = await this.connection.jetstream().publish(subject, JSON.stringify(payload), {
+        msgID: opts.msgId,
+        timeout: opts.timeoutMs ?? 10_000,
+      });
+      return { acknowledged: true, stream: ack.stream, sequence: ack.seq, duplicate: ack.duplicate };
+    } catch (error) {
+      if (isNoRespondersError(error)) throw new NatsNoStreamError(subject);
+      throw error;
+    }
   }
 
   async testConnection(): Promise<{ ok: boolean; stage: string; code?: string; message: string; durationMs: number }> {

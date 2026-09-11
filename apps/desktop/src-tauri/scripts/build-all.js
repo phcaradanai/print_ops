@@ -9,13 +9,17 @@
  * Run:  node src-tauri/scripts/build-all.js
  * Or via Tauri:  npm run tauri:build
  */
-const { execSync } = require('child_process');
+const { execFileSync, execSync } = require('child_process');
 const f = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 const RUNNER_DIR = path.join(ROOT, 'apps', 'runner-go');
+const UPDATER_DIR = path.join(ROOT, 'apps', 'updater-go');
 const PRINT_HELPER_DIR = path.join(ROOT, 'apps', 'windows-print-helper');
+const RELEASE_VERSION = JSON.parse(
+  f.readFileSync(path.join(ROOT, 'package.json'), 'utf8'),
+).version;
 
 function run(cmd, opts = {}) {
   console.log(`\n  > ${cmd}`);
@@ -57,11 +61,31 @@ step('Building Go runner (printops-runner.exe)', () => {
   const goVer = execSync('go version', { encoding: 'utf8' }).trim();
   console.log(`[BUILD] ${goVer}`);
 
-  execSync('go build -trimpath -o printops-runner.exe ./cmd/printops-runner/', {
-    stdio: 'inherit',
-    cwd: RUNNER_DIR,
-  });
+  execFileSync('go', [
+    'build',
+    '-trimpath',
+    '-ldflags',
+    `-X github.com/phcaradanai/print_ops/apps/runner-go/internal/config.Version=${RELEASE_VERSION}`,
+    '-o',
+    'printops-runner.exe',
+    './cmd/printops-runner/',
+  ], { stdio: 'inherit', cwd: RUNNER_DIR });
   console.log('[BUILD] OK: printops-runner.exe built');
+});
+
+// ── External OTA updater ────────────────────────────────────────────────────
+step('Building external OTA updater (printops-updater.exe)', () => {
+  const goVer = execSync('go version', { encoding: 'utf8' }).trim();
+  console.log(`[BUILD] ${goVer}`);
+
+  execFileSync('go', [
+    'build',
+    '-trimpath',
+    '-o',
+    'printops-updater.exe',
+    './cmd/printops-updater/',
+  ], { stdio: 'inherit', cwd: UPDATER_DIR });
+  console.log('[BUILD] OK: printops-updater.exe built');
 });
 
 // ──── Windows HTML print helper ─────────────────────────────────────
@@ -130,6 +154,33 @@ step('Copying resources into src-tauri/resources/', () => {
     console.log('[BUILD] Copied printops-runner.exe');
   } else {
     throw new Error('[BUILD] ERROR: printops-runner.exe not found');
+  }
+
+  // Copy the updater outside the API/runner process tree. It is deliberately
+  // bundled in the normal installer; users never install a second product.
+  const updaterExe = path.join(UPDATER_DIR, 'printops-updater.exe');
+  if (f.existsSync(updaterExe)) {
+    f.cpSync(updaterExe, path.join(d, 'printops-updater.exe'));
+    console.log('[BUILD] Copied printops-updater.exe');
+  } else {
+    throw new Error('[BUILD] ERROR: printops-updater.exe not found');
+  }
+
+  // Pin the verification key in the normal installer. The private signing key
+  // is never copied; it is consumed only by the release pipeline.
+  const publicKeyFile = process.env.PRINTOPS_OTA_PUBLIC_KEY_FILE;
+  const publicKeyPath = path.join(d, 'ota-public-key.txt');
+  if (publicKeyFile && f.existsSync(publicKeyFile)) {
+    f.cpSync(publicKeyFile, publicKeyPath);
+    console.log('[BUILD] Copied OTA Ed25519 public key');
+  } else if (process.env.PRINTOPS_OTA_PUBLIC_KEY?.trim()) {
+    f.writeFileSync(publicKeyPath, `${process.env.PRINTOPS_OTA_PUBLIC_KEY.trim()}\n`);
+    console.log('[BUILD] Wrote OTA Ed25519 public key from environment');
+  } else {
+    // Keep local developer builds reproducible; release verification rejects
+    // this marker whenever signed OTA is enabled.
+    f.writeFileSync(publicKeyPath, 'unconfigured\n');
+    console.log('[BUILD] OTA Ed25519 public key not configured (development build)');
   }
 
   // Copy WebView2 HTML print helper and its managed/native dependencies.

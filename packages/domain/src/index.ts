@@ -1,5 +1,6 @@
 // Models
 export * from './models/printer.js';
+export * from './models/printer-readiness.js';
 export * from './models/job.js';
 export * from './models/runner.js';
 export * from './models/user.js';
@@ -7,12 +8,15 @@ export * from './models/audit.js';
 export * from './models/service-account.js';
 export * from './models/discovered-printer.js';
 export * from './models/template.js';
+export * from './models/paper-geometry.js';
+export * from './models/printer-calibration.js';
 export * from './models/imported-design.js';
 export * from './models/intake-attempt.js';
 export * from './models/webhook-callback-attempt.js';
 export * from './models/callback-delivery.js';
 export * from './models/sandbox.js';
 export * from './models/connectivity.js';
+export * from './models/ota.js';
 
 // Events
 export * from './events/index.js';

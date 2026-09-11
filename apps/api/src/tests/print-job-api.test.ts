@@ -407,11 +407,30 @@ describe('Job Cancellation', () => {
     expect(job.status).toBe('QUEUED');
 
     const cancelled = await cancelJob.execute(job.id, 'user-1');
-    expect(cancelled.status).toBe('CANCELLED');
-    expect(cancelled.finishedAt).toBeDefined();
+    expect(cancelled.outcome).toBe('CANCELLED');
+    expect(cancelled.job.status).toBe('CANCELLED');
+    expect(cancelled.job.finishedAt).toBeDefined();
 
     const trace = await traceRepo.findByJobId(job.id);
     expect(trace!.steps.some((s) => s.stepName === 'job_cancelled')).toBe(true);
+  });
+
+  it('a DISPATCHED job gets a best-effort CANCEL_REQUESTED, never a status overwrite', async () => {
+    const printer = await createPrinter.execute(
+      { code: 'CANCEL_03', name: 'Cancel Printer 3', protocol: 'fake', connectionUri: 'fake://cancel3', metadata: {} },
+      'setup'
+    );
+    const job = await createJob.execute(
+      { printerId: printer.id, createdBy: 'user-1', mimeType: 'text/plain', copies: 1, duplex: false, colorMode: 'auto', metadata: {} },
+      'user-1'
+    );
+    // Simulate the executor having claimed the job.
+    await jobRepo.update(job.id, { status: 'DISPATCHED', dispatchedAt: new Date() });
+
+    const requested = await cancelJob.execute(job.id, 'user-1');
+    expect(requested.outcome).toBe('CANCEL_REQUESTED');
+    expect(requested.job.status).toBe('DISPATCHED');
+    expect(requested.job.metadata['cancelRequested']).toMatchObject({ by: 'user-1' });
   });
 
   it('cannot cancel a SUCCESS job', async () => {

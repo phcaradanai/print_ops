@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   existsSync,
@@ -66,6 +66,44 @@ function json(path) {
 
 function sha256(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
+}
+
+function canonicalJson(value) {
+  if (value === null) return 'null';
+  if (typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('cannot canonicalize a non-finite number');
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  throw new Error(`cannot canonicalize ${typeof value}`);
+}
+
+function publicKeyObject(value) {
+  const trimmed = value.trim();
+  if (trimmed.includes('BEGIN PUBLIC KEY')) return createPublicKey(trimmed);
+  const raw = /^[0-9a-f]{64}$/i.test(trimmed)
+    ? Buffer.from(trimmed, 'hex')
+    : Buffer.from(trimmed, 'base64');
+  if (raw.length !== 32) throw new Error('bundled OTA public key is not a 32-byte Ed25519 key');
+  return createPublicKey({
+    key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), raw]),
+    format: 'der',
+    type: 'spki',
+  });
+}
+
+function publicKeyBytes(value) {
+  return Buffer.from(publicKeyObject(value).export({ type: 'spki', format: 'der' }));
+}
+
+function signatureBytes(value) {
+  const trimmed = value.trim();
+  if (/^[0-9a-f]{128}$/i.test(trimmed)) return Buffer.from(trimmed, 'hex');
+  return Buffer.from(trimmed, 'base64');
 }
 
 function filesUnder(path, excluded = new Set()) {
@@ -175,12 +213,23 @@ function checkResources() {
   const required = [
     join(resourceRoot, 'server.exe'),
     join(resourceRoot, 'printops-runner.exe'),
+    join(resourceRoot, 'printops-updater.exe'),
+    join(resourceRoot, 'ota-public-key.txt'),
     join(resourceRoot, 'sql-wasm.wasm'),
     join(resourceRoot, 'static/index.html'),
     join(resourceRoot, 'print-helper/printops-html-print.exe'),
     join(resourceRoot, 'print-helper/WebView2Loader.dll'),
   ];
   required.forEach((path) => requireFile(path));
+  const publicKeyPath = join(resourceRoot, 'ota-public-key.txt');
+  if (process.env.PRINTOPS_OTA_REQUIRE_SIGNATURE !== 'false') {
+    const publicKey = readFileSync(publicKeyPath, 'utf8').trim();
+    if (!publicKey || publicKey === 'unconfigured') {
+      fail('ota:public-key', 'signed OTA is enabled but the bundled Ed25519 public key is unconfigured');
+    } else {
+      pass('ota:public-key', 'bundled Ed25519 verification key is configured');
+    }
+  }
 
   requireFresh(join(resourceRoot, 'server.exe'), [
     join(root, 'apps/api/src'),
@@ -194,6 +243,11 @@ function checkResources() {
     join(root, 'apps/runner-go/go.mod'),
     join(root, 'apps/runner-go/go.sum'),
   ], 'printops-runner.exe');
+  requireFresh(join(resourceRoot, 'printops-updater.exe'), [
+    join(root, 'apps/updater-go/cmd'),
+    join(root, 'apps/updater-go/internal'),
+    join(root, 'apps/updater-go/go.mod'),
+  ], 'printops-updater.exe');
   requireFresh(join(resourceRoot, 'static/index.html'), [
     join(root, 'apps/web/src'),
     join(root, 'apps/web/package.json'),
@@ -218,8 +272,8 @@ function checkResources() {
 function installers(version, minimumMtime) {
   const bundle = join(root, 'apps/desktop/src-tauri/target/release/bundle');
   const expected = [
-    join(bundle, 'msi', `PrinterOps_${version}_x64_en-US.msi`),
-    join(bundle, 'nsis', `PrinterOps_${version}_x64-setup.exe`),
+    join(bundle, 'msi', `PrintOps_${version}_x64_en-US.msi`),
+    join(bundle, 'nsis', `PrintOps_${version}_x64-setup.exe`),
   ];
   return expected.flatMap((path) => {
     if (!requireFile(path, `installer/${basename(path)}`)) return [];
@@ -288,8 +342,145 @@ for (const installer of installerManifest) {
   console.log(`[SHA-256] ${installer.sha256}`);
 }
 
+// The diagnostic resource/release manifests above describe this verifier's
+// checks. A separate OTA manifest follows the client wire contract and points
+// at the publishable artifacts by basename. The distribution step is expected
+// to publish those files beside ota-manifest.json (or rewrite the URLs for its
+// CDN/relay layout).
+if (postBundle && failures.length === 0) {
+  const nsis = installerManifest.find((item) => item.path.includes('/nsis/'));
+  const runner = resources.find((item) => item.path === 'printops-runner.exe');
+  if (!nsis || !runner) {
+    fail('ota:manifest', 'cannot emit OTA manifest without NSIS installer and runner artifact');
+  } else {
+    const channel = process.env.PRINTOPS_OTA_CHANNEL ?? 'stable';
+    const rolloutPercentage = Number(process.env.PRINTOPS_OTA_ROLLOUT_PERCENTAGE ?? '100');
+    // A release must declare the compatibility floor explicitly. Falling back
+    // to the target version makes every ordinary A -> B upgrade reject itself
+    // because the running A version is below B.
+    const minSupportedVersion = process.env.PRINTOPS_OTA_MIN_SUPPORTED_VERSION?.trim();
+    const schemaVersion = Number(process.env.PRINTOPS_DB_SCHEMA_VERSION ?? '7');
+    const requireSignature = process.env.PRINTOPS_OTA_REQUIRE_SIGNATURE !== 'false';
+    const signingKey = process.env.PRINTOPS_OTA_PRIVATE_KEY;
+    const bundledPublicKeyPath = join(root, 'apps/desktop/src-tauri/resources/ota-public-key.txt');
+    const bundledPublicKey = existsSync(bundledPublicKeyPath)
+      ? readFileSync(bundledPublicKeyPath, 'utf8').trim()
+      : '';
+    let signatures;
+    let privateKey;
+    let verificationKey;
+    try {
+      if (requireSignature && !signingKey) throw new Error('PRINTOPS_OTA_PRIVATE_KEY is not configured');
+      privateKey = signingKey ? createPrivateKey(signingKey) : undefined;
+      if (requireSignature && (!bundledPublicKey || bundledPublicKey === 'unconfigured')) {
+        throw new Error('the Desktop bundle does not contain a configured OTA public key');
+      }
+      if (bundledPublicKey && bundledPublicKey !== 'unconfigured') {
+        verificationKey = publicKeyObject(bundledPublicKey);
+      }
+      if (requireSignature && privateKey && verificationKey) {
+        const derived = Buffer.from(createPublicKey(privateKey).export({ type: 'spki', format: 'der' }));
+        if (!derived.equals(publicKeyBytes(bundledPublicKey))) {
+          throw new Error('the bundled OTA public key does not match PRINTOPS_OTA_PRIVATE_KEY');
+        }
+      }
+      const signDigest = (path) => privateKey
+        ? sign(null, Buffer.from(sha256(path), 'hex'), privateKey).toString('base64')
+        : '';
+      signatures = {
+        desktop: signDigest(nsis.path),
+        runner: signDigest(join(root, 'apps/desktop/src-tauri/resources/printops-runner.exe')),
+      };
+    } catch (error) {
+      fail('ota:signing', error instanceof Error ? error.message : String(error));
+    }
+    if (!['stable', 'beta', 'rc'].includes(channel)) {
+      fail('ota:manifest-channel', `unsupported OTA channel ${channel}`);
+    } else if (!Number.isInteger(rolloutPercentage) || rolloutPercentage < 0 || rolloutPercentage > 100) {
+      fail('ota:manifest-rollout', 'PRINTOPS_OTA_ROLLOUT_PERCENTAGE must be an integer from 0 to 100');
+    } else if (!minSupportedVersion) {
+      fail('ota:manifest-min-version', 'PRINTOPS_OTA_MIN_SUPPORTED_VERSION must be explicitly configured; refusing to default it to the target release');
+    } else if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(minSupportedVersion)) {
+      fail('ota:manifest-min-version', 'PRINTOPS_OTA_MIN_SUPPORTED_VERSION must be a semantic version');
+    } else if (!Number.isSafeInteger(schemaVersion) || schemaVersion < 0) {
+      fail('ota:manifest-schema-version', 'PRINTOPS_DB_SCHEMA_VERSION must be a non-negative integer');
+      } else if (!signatures) {
+        fail('ota:manifest-signing', 'unable to produce required Ed25519 artifact signatures');
+      } else {
+      const otaManifestPayload = {
+        schema_version: 1,
+        release: {
+          version,
+          channel,
+          release_date: new Date().toISOString(),
+          notes: process.env.PRINTOPS_OTA_RELEASE_NOTES ?? '',
+        },
+        artifacts: {
+          desktop: {
+            'windows-x64': {
+              url: basename(nsis.path),
+              sha256: nsis.sha256,
+              signature: signatures.desktop,
+              size: nsis.bytes,
+              format: 'nsis-installer',
+            },
+          },
+          runner: {
+            'windows-x64': {
+              url: basename(runner.path),
+              sha256: runner.sha256,
+              signature: signatures.runner,
+              size: runner.bytes,
+              format: 'binary',
+            },
+          },
+        },
+        compatibility: {
+          min_supported_version: minSupportedVersion,
+          schema_version: schemaVersion,
+        },
+        rollout: {
+          staged: rolloutPercentage < 100,
+          rollout_percentage: rolloutPercentage,
+        },
+      };
+      const manifestSignature = privateKey
+        ? sign(null, Buffer.from(canonicalJson(otaManifestPayload), 'utf8'), privateKey).toString('base64')
+        : '';
+      if (requireSignature) {
+        const valid = verificationKey
+          && verify(
+            null,
+            Buffer.from(canonicalJson(otaManifestPayload), 'utf8'),
+            verificationKey,
+            signatureBytes(manifestSignature),
+          );
+        if (!valid) {
+          fail('ota:manifest-signing', 'release manifest signature failed self-verification with the bundled public key');
+        }
+        for (const [label, path, signature] of [
+          ['desktop', nsis.path, signatures.desktop],
+          ['runner', join(root, 'apps/desktop/src-tauri/resources/printops-runner.exe'), signatures.runner],
+        ]) {
+          const artifactValid = verificationKey
+            && verify(null, Buffer.from(sha256(path), 'hex'), verificationKey, signatureBytes(signature));
+          if (!artifactValid) fail(`ota:${label}-signature`, `artifact signature failed self-verification with the bundled public key`);
+        }
+      }
+      const otaManifest = {
+        envelope_version: 1,
+        manifest: otaManifestPayload,
+        signature: manifestSignature,
+      };
+      const otaManifestPath = join(outputDir, 'ota-manifest.json');
+      writeFileSync(otaManifestPath, `${JSON.stringify(otaManifest, null, 2)}\n`);
+      console.log(`[INFO] OTA manifest: ${relative(root, otaManifestPath)}`);
+    }
+  }
+}
+
 if (failures.length) {
   console.error(`\nRelease verification failed with ${failures.length} error(s).`);
   process.exit(1);
 }
-console.log(`\nRelease verification passed for PrinterOps ${version}.`);
+console.log(`\nRelease verification passed for PrintOps ${version}.`);

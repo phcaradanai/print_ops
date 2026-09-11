@@ -1,3 +1,4 @@
+import { FormField, Grid, Input } from '../../../components/ui/index.js';
 import { Section } from './editorPrimitives.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { Translate } from './types.js';
@@ -13,18 +14,28 @@ export function BasicInfoSection({ editor, t, anchorRef }: {
       <Section title={t('page.paperProfiles.basicInfo')} icon={<PaperProfileIcon name="profile" />}
         open={editor.state.sectionsOpen.basicInfo}
         onToggle={() => editor.setSection('basicInfo', !editor.state.sectionsOpen.basicInfo)}>
-        <div className="pp-form-grid pp-form-grid--two">
-          <div>
-            <label className="pp-label" htmlFor="paper-profile-code">{t('page.paperProfiles.codeLabel')}</label>
-            <input id="paper-profile-code" value={editor.form.code} onChange={(event) => editor.patchForm('code', event.target.value)}
-              placeholder={t('page.paperProfiles.codePlaceholder')} className="pp-input" />
-          </div>
-          <div>
-            <label className="pp-label" htmlFor="paper-profile-name">{t('page.paperProfiles.nameLabel')} *</label>
-            <input id="paper-profile-name" value={editor.form.name} onChange={(event) => editor.patchForm('name', event.target.value)}
-              placeholder={t('page.paperProfiles.namePlaceholder')} className="pp-input" />
-          </div>
-        </div>
+        <Grid columns={2} gap="md">
+          <FormField label={t('page.paperProfiles.codeLabel')}>
+            {(control) => (
+              <Input
+                {...control}
+                value={editor.form.code}
+                onChange={(event) => editor.patchForm('code', event.target.value)}
+                placeholder={t('page.paperProfiles.codePlaceholder')}
+              />
+            )}
+          </FormField>
+          <FormField label={t('page.paperProfiles.nameLabel')} required>
+            {(control) => (
+              <Input
+                {...control}
+                value={editor.form.name}
+                onChange={(event) => editor.patchForm('name', event.target.value)}
+                placeholder={t('page.paperProfiles.namePlaceholder')}
+              />
+            )}
+          </FormField>
+        </Grid>
       </Section>
     </div>
   );

@@ -110,8 +110,14 @@ describe('Webhook callback flow via API', () => {
     expect(receiver.requests).toHaveLength(1);
     // callback-test always sends its fixed sample result envelope (not the
     // request's samplePayload) unless a callbackPayloadTemplate is set —
-    // see WebhookCallbackService.prepare().
-    expect(JSON.parse(receiver.requests[0]!)['print_job_id']).toBe('test');
+    // see WebhookCallbackService.prepare(). v2 envelope: job_id, status,
+    // occurred_at + timeline present.
+    const sent = JSON.parse(receiver.requests[0]!);
+    expect(sent['job_id']).toBe('test');
+    expect(sent['status']).toBe('QUEUED');
+    expect(sent['version']).toBe(2);
+    expect(sent['occurred_at']).toBeTruthy();
+    expect(sent['timeline']).toMatchObject({ accepted_at: null, queued_at: null });
   });
 
   it('reports a GENUINE failed HTTP delivery when the URL is unreachable (no fake ok:true)', async () => {

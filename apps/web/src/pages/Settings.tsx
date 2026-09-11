@@ -24,7 +24,8 @@ import {
   Alert,
   Badge,
   Button,
-  Checkbox,
+  StateBadge,
+  Switch,
   ErrorBanner,
   CardDetailItem,
   CardDetail,
@@ -319,7 +320,7 @@ export default function Settings() {
   const localhostNats = /^(nats:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|$)/i.test(natsDraft.url.trim());
 
   return (
-    <PageLayout width="standard" title={t('settings.title')}>
+    <PageLayout width="full" title={t('settings.title')}>
 
       {message && (
         <Alert
@@ -393,9 +394,11 @@ export default function Settings() {
                     {t('settings.system.discovery.goRunner')}
                   </CardDetailItem>
                   <CardDetailItem label={t('settings.system.runnerClaims')}>
-                    {runtimeResource.data.discovery.jobsEnabled
-                      ? t('settings.system.runnerClaims.enabled')
-                      : t('settings.system.runnerClaims.disabled')}
+                    <StateBadge
+                      value={runtimeResource.data.discovery.jobsEnabled}
+                      onLabel={t('settings.system.runnerClaims.enabled')}
+                      offLabel={t('settings.system.runnerClaims.disabled')}
+                    />
                   </CardDetailItem>
                   <CardDetailItem label={t('settings.system.protocolScope')}>
                     {runtimeResource.data.supportedProductionProtocols.length
@@ -602,11 +605,13 @@ export default function Settings() {
                 </Button>
               </Inline>
 
-              <Checkbox
+              <Switch
                 label={t('settings.nats.enabled')}
+                onLabel={t('status.enabled')}
+                offLabel={t('status.disabled')}
                 checked={natsDraft.enabled}
                 onChange={(e) => handleNatsChange('enabled', e.target.checked)}
-                disabled={natsSaving}
+                busy={natsSaving}
               />
 
               <FormField label={t('settings.nats.url')}>

@@ -1,6 +1,9 @@
 const APP_COMMANDS: &[&str] = &["write_export_file", "get_nats_settings", "save_nats_settings"];
 
 fn main() {
+    println!("cargo:rerun-if-env-changed=PRINTOPS_BUILD_VERSION");
+    println!("cargo:rerun-if-env-changed=PRINTOPS_BUILD_DB_SCHEMA_VERSION");
+    println!("cargo:rerun-if-env-changed=PRINTOPS_OTA_NATIVE_ACCEPTANCE_BUILD");
     let commit = std::process::Command::new("git")
         .args(["rev-parse", "HEAD"])
         .output()

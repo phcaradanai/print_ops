@@ -87,6 +87,174 @@ describe('WebhookCallbackService', () => {
     expect(published[0]?.[0]).toBe('medisync.reply.b1');
   });
 
+  it('resolves a $$.field token from the intake response', async () => {
+    let body: Record<string, unknown> = {};
+    const svc = new WebhookCallbackService(logger, async (_u, b) => { body = b as Record<string, unknown>; }, () => {});
+    await svc.send({
+      endpoint: endpoint({
+        callbackTransport: 'HTTP',
+        callbackUrl: 'https://h/cb',
+        callbackPayloadTemplate: { job: '$$.print_job_id', state: '$$.status', dup: '$$.duplicate' },
+      }),
+      intakePayload: {},
+      result: ACCEPTED,
+    });
+    expect(body['job']).toBe('J1');
+    expect(body['state']).toBe('QUEUED');
+    expect(body['dup']).toBe(false);
+  });
+
+  it('keeps $.field resolving from the intake payload even when the name collides with a system field', async () => {
+    // The compatibility case the `$$.` sigil exists for: this endpoint was
+    // saved when `$.status` could only mean "what the caller sent". It must
+    // keep meaning that.
+    let body: Record<string, unknown> = {};
+    const svc = new WebhookCallbackService(logger, async (_u, b) => { body = b as Record<string, unknown>; }, () => {});
+    await svc.send({
+      endpoint: endpoint({
+        callbackTransport: 'HTTP',
+        callbackUrl: 'https://h/cb',
+        callbackPayloadTemplate: { status: '$.status', request_id: '$.request_id' },
+      }),
+      intakePayload: { status: 'CALLER_SENT_THIS', request_id: 'CALLER-REQ' },
+      result: ACCEPTED,
+    });
+    expect(body['status']).toBe('CALLER_SENT_THIS');
+    expect(body['request_id']).toBe('CALLER-REQ');
+  });
+
+  it('leaves $.payload.* and $.result.* pointing at the intake payload', async () => {
+    // Why `$$.` won a separate sigil rather than a `$.result.` namespace:
+    // both of these already resolve for real callers today.
+    let body: Record<string, unknown> = {};
+    const svc = new WebhookCallbackService(logger, async (_u, b) => { body = b as Record<string, unknown>; }, () => {});
+    await svc.send({
+      endpoint: endpoint({
+        callbackTransport: 'HTTP',
+        callbackUrl: 'https://h/cb',
+        callbackPayloadTemplate: { label: '$.payload.label', outcome: '$.result.status' },
+      }),
+      intakePayload: { payload: { label: 'L-1' }, result: { status: 'CALLER_OWNED' } },
+      result: ACCEPTED,
+    });
+    expect(body['label']).toBe('L-1');
+    expect(body['outcome']).toBe('CALLER_OWNED');
+  });
+
+  it('mixes system fields, intake fields and literals in one template', async () => {
+    let body: Record<string, unknown> = {};
+    const svc = new WebhookCallbackService(logger, async (_u, b) => { body = b as Record<string, unknown>; }, () => {});
+    await svc.send({
+      endpoint: endpoint({
+        callbackTransport: 'HTTP',
+        callbackUrl: 'https://h/cb',
+        callbackPayloadTemplate: {
+          event_type: 'print.job.accepted',
+          request_id: '$$.request_id',
+          print_job_id: '$$.print_job_id',
+          hn: '$.hn',
+          retries: 0,
+        },
+      }),
+      intakePayload: { hn: 'HN123' },
+      result: ACCEPTED,
+    });
+    expect(body).toEqual({
+      event_type: 'print.job.accepted',
+      request_id: 'REQ-1',
+      print_job_id: 'J1',
+      hn: 'HN123',
+      retries: 0,
+    });
+  });
+
+  it('resolves derived v2 envelope fields (event_type, version, occurred_at, timeline.*, delivery.*)', async () => {
+    let body: Record<string, unknown> = {};
+    const svc = new WebhookCallbackService(logger, async (_u, b) => { body = b as Record<string, unknown>; }, () => {});
+    await svc.send({
+      endpoint: endpoint({
+        callbackTransport: 'BOTH',
+        callbackUrl: 'https://h/cb',
+        callbackNatsSubject: 'cb.nats',
+        callbackPayloadTemplate: {
+          event_type: '$$.event_type',
+          version: '$$.version',
+          occurred_at: '$$.occurred_at',
+          printer_code: '$$.printer_code',
+          queued_at: '$$.timeline.queued_at',
+          started_at: '$$.timeline.started_at',
+          transports: '$$.delivery.transports',
+          error: '$$.error',
+        },
+      }),
+      intakePayload: {},
+      result: {
+        ...ACCEPTED,
+        created_at: '2026-08-05T09:00:00.000Z',
+        queued_at: '2026-08-05T09:00:00.100Z',
+        resolved_printer_code: 'OFFICE_LASER_01',
+      },
+    });
+    expect(body).toEqual({
+      event_type: 'print.job.accepted',
+      version: 2,
+      occurred_at: '2026-08-05T09:00:00.100Z',
+      printer_code: 'OFFICE_LASER_01',
+      queued_at: '2026-08-05T09:00:00.100Z',
+      started_at: null,
+      transports: ['HTTP', 'NATS'],
+      error: null,
+    });
+  });
+
+  it('carries client_id from PRINTOPS_NATS_CLIENT_ID on the default envelope and the template', async () => {
+    const before = process.env['PRINTOPS_NATS_CLIENT_ID'];
+    process.env['PRINTOPS_NATS_CLIENT_ID'] = 'pharmacy-counter-01';
+    try {
+      // Default envelope (no template).
+      let body: Record<string, unknown> = {};
+      let svc = new WebhookCallbackService(logger, async (_u, b) => { body = b as Record<string, unknown>; }, () => {});
+      await svc.send({
+        endpoint: endpoint({ callbackTransport: 'HTTP', callbackUrl: 'https://h/cb' }),
+        intakePayload: {},
+        result: { ...ACCEPTED, created_at: '2026-08-05T09:00:00.000Z' },
+      });
+      expect(body['client_id']).toBe('pharmacy-counter-01');
+
+      // Custom template with $$.client_id.
+      body = {};
+      svc = new WebhookCallbackService(logger, async (_u, b) => { body = b as Record<string, unknown>; }, () => {});
+      await svc.send({
+        endpoint: endpoint({
+          callbackTransport: 'HTTP',
+          callbackUrl: 'https://h/cb',
+          callbackPayloadTemplate: { client_id: '$$.client_id', status: '$$.status' },
+        }),
+        intakePayload: {},
+        result: { ...ACCEPTED },
+      });
+      expect(body).toEqual({ client_id: 'pharmacy-counter-01', status: 'QUEUED' });
+    } finally {
+      if (before === undefined) delete process.env['PRINTOPS_NATS_CLIENT_ID'];
+      else process.env['PRINTOPS_NATS_CLIENT_ID'] = before;
+    }
+  });
+
+  it('resolves an unknown $$.field to undefined rather than the literal token', async () => {
+    let body: Record<string, unknown> = {};
+    const svc = new WebhookCallbackService(logger, async (_u, b) => { body = b as Record<string, unknown>; }, () => {});
+    await svc.send({
+      endpoint: endpoint({
+        callbackTransport: 'HTTP',
+        callbackUrl: 'https://h/cb',
+        callbackPayloadTemplate: { nope: '$$.not_a_system_field' },
+      }),
+      intakePayload: {},
+      result: ACCEPTED,
+    });
+    expect(body['nope']).toBeUndefined();
+  });
+
   it('fans out to BOTH transports', async () => {
     const seen: string[] = [];
     const http: HttpClient = async () => { seen.push('http'); };

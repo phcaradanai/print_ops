@@ -49,7 +49,7 @@ Sample delivered payload (cell 1, verbatim from the report):
   "request_id": "e2e-api-webhook-…",
   "job_id": "131a33aa-25f1-4c6a-ad68-016aadbcd3b9",
   "source_system": "e2e-e2e-http",
-  "print_status": "SUCCESS",
+  "status": "SUCCESS",
   "printer_code": "OFFICE_LASER_01",
   "runner_id": "desktop-local-worker",
   "error": null,
@@ -76,10 +76,10 @@ failing hardware:
 
 | Terminal status | How it is reached | Callback carries |
 |---|---|---|
-| `FAILED` (adapter) | printer with an unregistered protocol → registry lookup throws inside `execute()` | `print_status: FAILED`, `error.code: EXECUTION_ERROR` |
-| `FAILED` (runner) | `POST /runners/:id/jobs/:jobId/result` with `status: FAILED` | `print_status: FAILED`, `error.code` from runner evidence |
-| `UNVERIFIED` | runner reports `SUCCESS` for a `windows_spooler` printer with `device_confirmed` but no `ipp_job_confirmed` → `enforceWindowsSpoolerConfirmation` downgrades it | `print_status: UNVERIFIED`, `error.code: PRINT_NOT_VERIFIABLE` |
-| `CANCELLED` | `CancelJobService` | `print_status: CANCELLED`, `error.code: JOB_CANCELLED` |
+| `FAILED` (adapter) | printer with an unregistered protocol → registry lookup throws inside `execute()` | `status: FAILED`, `error.code: EXECUTION_ERROR` |
+| `FAILED` (runner) | `POST /runners/:id/jobs/:jobId/result` with `status: FAILED` | `status: FAILED`, `error.code` from runner evidence |
+| `UNVERIFIED` | runner reports `SUCCESS` for a `windows_spooler` printer with `device_confirmed` but no `ipp_job_confirmed` → `enforceWindowsSpoolerConfirmation` downgrades it | `status: UNVERIFIED`, `error.code: PRINT_NOT_VERIFIABLE` |
+| `CANCELLED` | `CancelJobService` | `status: CANCELLED`, `error.code: JOB_CANCELLED` |
 
 `UNVERIFIED` is the one that matters most and is the reason this table exists:
 reporting it as `FAILED` would invite a duplicate reprint of a label that may
@@ -94,7 +94,7 @@ Files: `src/tests/result-callback.test.ts`,
 
 | Case | Observed |
 |---|---|
-| `callbackOnPrintResult: true` | 1 callback, `event_type: print.job.completed`, `print_status: SUCCESS`, delivery persisted |
+| `callbackOnPrintResult: true` | 1 callback, `event_type: print.job.completed`, `status: SUCCESS`, delivery persisted |
 | `callbackOnPrintResult: false` | 1 callback, `event_type: print.job.accepted`, `status: QUEUED`, **0 delivery records** — result callback suppressed |
 | NATS envelope with **no** `endpoint_code` | job printed `SUCCESS`, **0 callbacks** on either transport — existing publishers unaffected |
 | NATS envelope with an `endpoint_code` owned by another `source_system` | **no job created**, message dead-lettered (1 DLQ message) |

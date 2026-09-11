@@ -50,11 +50,14 @@ describe('SimpleTemplateRenderer — barcode/QR support', () => {
     const payload = { label: 'Tube A', code: 'ABC123' };
 
     const print = await renderer.renderPrintPayload(template, payload, paper);
-    expect(print.renderedPrintPayload).toContain('<img src="data:image/png;base64,');
+    expect(print.renderedPrintPayload).toContain('<img src="data:image/svg+xml;base64,');
+    expect(print.renderedPrintPayload).toContain('ABC123');
+    expect(print.renderedPrintPayload).toContain('font-size:1.5mm');
     expect(print.warnings).toHaveLength(0);
 
     const preview = await renderer.renderPreview(template, payload, paper);
-    expect(preview.renderedPreview).toContain('<img src="data:image/png;base64,');
+    expect(preview.renderedPreview).toContain('<img src="data:image/svg+xml;base64,');
+    expect(preview.renderedPreview).toContain('ABC123');
   });
 
   it('HTML engine embeds a real <img> QR code via {{qrcode:key}}', async () => {
@@ -95,7 +98,7 @@ describe('SimpleTemplateRenderer — barcode/QR support', () => {
     expect(print.renderedPrintPayload).not.toContain('^BC');
 
     const preview = await renderer.renderPreview(template, payload, paper);
-    expect(preview.renderedPreview).toContain('<img src="data:image/png;base64,');
+    expect(preview.renderedPreview).toContain('<img src="data:image/svg+xml;base64,');
     // Literal text around the token is still escaped/wrapped as before.
     expect(preview.renderedPreview).toContain('LABEL Tube A');
   });
@@ -112,7 +115,7 @@ describe('SimpleTemplateRenderer — barcode/QR support', () => {
       ],
     });
     const preview = await renderer.renderPreview(template, { code: 'ABC123' }, paper);
-    expect(preview.renderedPreview).toContain('<img src="data:image/png;base64,');
+     expect(preview.renderedPreview).toContain('<img src="data:image/svg+xml;base64,');
     // The print payload for a non-HTML/ZPL engine is still the plain value —
     // profile-field inference only changes what the OPERATOR sees, not the
     // native output for engines with no barcode command of their own.
@@ -151,7 +154,7 @@ describe('SimpleTemplateRenderer — barcode/QR support', () => {
       fields: [
         {
           id: 'f1', key: 'code', label: 'Code', defaultValue: '', type: 'barcode',
-          barcodeSymbology: 'code128', barcodeHeightMm: 18, xMm: 5, yMm: 5, fontSize: 10, bold: false, color: '#000', align: 'left',
+          barcodeSymbology: 'code128', barcodeHeightMm: 18, barcodeWidthMm: 28, xMm: 5, yMm: 5, fontSize: 10, bold: false, color: '#000', align: 'left',
         },
         {
           id: 'f2', key: 'hn', label: 'HN', defaultValue: '', type: 'qrcode',
@@ -166,6 +169,7 @@ describe('SimpleTemplateRenderer — barcode/QR support', () => {
     expect(plainPrint.renderedPrintPayload).toContain('height:18mm');
     expect(plainPrint.renderedPrintPayload).toContain('height:35mm');
     expect(plainPrint.renderedPrintPayload).toContain('width:35mm');
+    expect(plainPrint.renderedPrintPayload).toContain('width:28mm');
 
     // Explicit token naming the same field key still inherits its size.
     const explicitTpl = makeTemplate({ engine: 'HTML', content: '<div>{{barcode:code}}</div><div>{{qrcode:hn}}</div>' });

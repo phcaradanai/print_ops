@@ -60,23 +60,29 @@ This returns all events with timestamps, allowing end-to-end latency calculation
 - `execution_finished_at - execution_started_at` = exec latency
 - `result_reported_at - execution_finished_at` = report latency
 
-### 4. Compare TypeScript vs Go Runner
+### 4. Compare TypeScript vs Go Runner — no longer applicable
 
-Run both runners against the same API with identical jobs:
+> **Obsolete section (2026-08-03).** This comparison decided the question it
+> was written for: the Go runner won and the TypeScript runner was deleted.
+> There is nothing left to compare, and `cd apps/runner && npm run dev` no
+> longer resolves. Kept for the reasoning, not as an instruction.
+
+To measure the Go runner on its own:
 
 ```bash
-# Terminal 1: TypeScript runner (port 3001 API)
-cd apps/runner && npm run dev
-
-# Terminal 2: Go runner
 cd apps/runner-go && go run ./cmd/printops-runner run
 
-# Create batches of 10, 50, 100 jobs and compare:
+# Create batches of 10, 50, 100 jobs and record:
 # - Memory usage (Task Manager / Activity Monitor)
 # - Startup time (time to first heartbeat)
 # - Job throughput (jobs/min)
 # - Average exec latency
 ```
+
+Note that in the packaged desktop the Go runner does **not** execute jobs at
+all — it is discovery and heartbeat only, and the API's in-process worker is the
+sole executor. Job-throughput figures for the runner therefore describe a
+deployment shape that is currently deferred.
 
 ## Expected Baselines (MVP, Fake Mode)
 

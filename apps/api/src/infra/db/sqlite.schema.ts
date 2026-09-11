@@ -1,6 +1,6 @@
 import type { Database } from 'sql.js';
 
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 7;
 
 export function schemaVersion(db: Database): number {
   const result = db.exec('PRAGMA user_version');
@@ -47,6 +47,11 @@ export function runSchemaMigration(db: Database): void {
   try {
     if (fromVersion < 1) migrateVersionZeroToOne(db);
     if (fromVersion < 2) migrateVersionOneToTwo(db);
+    if (fromVersion < 3) migrateVersionTwoToThree(db);
+    if (fromVersion < 4) migrateVersionThreeToFour(db);
+    if (fromVersion < 5) migrateVersionFourToFive(db);
+    if (fromVersion < 6) migrateVersionFiveToSix(db);
+    if (fromVersion < 7) migrateVersionSixToSeven(db);
     db.run(`PRAGMA user_version=${CURRENT_SCHEMA_VERSION}`);
     db.run('COMMIT');
   } catch (error) {
@@ -64,6 +69,96 @@ function migrateVersionOneToTwo(db: Database): void {
   ensureColumn(db, 'users', 'allowed_pages_json', 'TEXT');
 }
 
+function migrateVersionTwoToThree(db: Database): void {
+  if (db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'paper_profiles'")[0]?.values.length !== 1) return;
+  ensureColumn(db, 'paper_profiles', 'rotation', 'REAL NOT NULL DEFAULT 0');
+  ensureColumn(db, 'paper_profiles', 'flip_horizontal', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'paper_profiles', 'flip_vertical', 'INTEGER NOT NULL DEFAULT 0');
+}
+
+function migrateVersionThreeToFour(db: Database): void {
+  if (db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'jobs'")[0]?.values.length !== 1) return;
+  ensureColumn(db, 'jobs', 'rotate', 'REAL');
+  ensureColumn(db, 'jobs', 'flip_horizontal', 'INTEGER');
+  ensureColumn(db, 'jobs', 'flip_vertical', 'INTEGER');
+}
+function migrateVersionFourToFive(db: Database): void {
+  if (db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'paper_profiles'")[0]?.values.length !== 1) return;
+  ensureColumn(db, 'paper_profiles', 'gap_mm', 'REAL NOT NULL DEFAULT 0');
+}
+
+function migrateVersionFiveToSix(db: Database): void {
+  if (db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'paper_profiles'")[0]?.values.length === 1) {
+    ensureColumn(db, 'paper_profiles', 'layout', 'TEXT');
+  }
+  db.run(`
+    CREATE TABLE IF NOT EXISTS printer_paper_calibrations (
+      id TEXT PRIMARY KEY NOT NULL,
+      printer_id TEXT NOT NULL,
+      paper_profile_id TEXT NOT NULL,
+      dpi INTEGER NOT NULL CHECK (dpi > 0),
+      x_offset_dots INTEGER NOT NULL CHECK (x_offset_dots BETWEEN -10000 AND 10000),
+      y_offset_dots INTEGER NOT NULL CHECK (y_offset_dots BETWEEN -10000 AND 10000),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (printer_id) REFERENCES printers(id) ON DELETE CASCADE,
+      FOREIGN KEY (paper_profile_id) REFERENCES paper_profiles(id) ON DELETE CASCADE,
+      UNIQUE(printer_id, paper_profile_id, dpi)
+    )
+  `);
+}
+
+/**
+ * OTA foundation: persistent update state machine + content history + ownership
+ * columns on content tables. See docs/ota/OTA-architecture-contracts.md §10.
+ */
+function migrateVersionSixToSeven(db: Database): void {
+  // Singleton row tracking the application OTA state machine.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS ota_update_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      state TEXT NOT NULL DEFAULT 'IDLE',
+      target_version TEXT,
+      started_at TEXT,
+      updated_at TEXT NOT NULL,
+      error_message TEXT,
+      retry_count INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  // Ensure the singleton row exists so reads never have to special-case NULL.
+  db.run(`
+    INSERT OR IGNORE INTO ota_update_state (id, state, updated_at)
+    VALUES (1, 'IDLE', datetime('now'))
+  `);
+
+  // Content manifest history — each row is one applied content manifest.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS content_history (
+      id TEXT PRIMARY KEY NOT NULL,
+      content_type TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      applied_at TEXT NOT NULL,
+      manifest_json TEXT NOT NULL
+    )
+  `);
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_content_history_type_version
+    ON content_history(content_type, version)
+  `);
+
+  // Ownership columns on content tables. Existing rows default to LOCAL
+  // (they were created by users, not by OTA) so OTA never overwrites them.
+  if (db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'paper_profiles'")[0]?.values.length === 1) {
+    ensureColumn(db, 'paper_profiles', 'ownership', "TEXT NOT NULL DEFAULT 'LOCAL'");
+    ensureColumn(db, 'paper_profiles', 'source_version', 'INTEGER');
+    ensureColumn(db, 'paper_profiles', 'content_hash', 'TEXT');
+  }
+  if (db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'print_templates'")[0]?.values.length === 1) {
+    ensureColumn(db, 'print_templates', 'ownership', "TEXT NOT NULL DEFAULT 'LOCAL'");
+    ensureColumn(db, 'print_templates', 'source_version', 'INTEGER');
+    ensureColumn(db, 'print_templates', 'content_hash', 'TEXT');
+  }
+}
 function migrateVersionZeroToOne(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS printers (
@@ -98,6 +193,9 @@ function migrateVersionZeroToOne(db: Database): void {
       source_system TEXT,
       source_reference TEXT,
       request_id TEXT,
+      rotate REAL,
+      flip_horizontal INTEGER,
+      flip_vertical INTEGER,
       status TEXT NOT NULL DEFAULT 'ACCEPTED',
       priority INTEGER NOT NULL DEFAULT 50,
       priority_label TEXT NOT NULL DEFAULT 'normal',
@@ -286,6 +384,7 @@ function migrateVersionZeroToOne(db: Database): void {
       name TEXT NOT NULL,
       width_mm REAL NOT NULL,
       height_mm REAL NOT NULL,
+      gap_mm REAL NOT NULL DEFAULT 0,
       margin_top_mm REAL NOT NULL DEFAULT 0,
       margin_right_mm REAL NOT NULL DEFAULT 0,
       margin_bottom_mm REAL NOT NULL DEFAULT 0,
@@ -293,7 +392,11 @@ function migrateVersionZeroToOne(db: Database): void {
       dpi INTEGER NOT NULL DEFAULT 203,
       orientation TEXT NOT NULL DEFAULT 'portrait',
       unit TEXT NOT NULL DEFAULT 'mm',
+      rotation REAL NOT NULL DEFAULT 0,
+      flip_horizontal INTEGER NOT NULL DEFAULT 0,
+      flip_vertical INTEGER NOT NULL DEFAULT 0,
       fields TEXT NOT NULL DEFAULT '[]',
+      layout TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )

@@ -1,0 +1,31 @@
+.ui-pagination {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
+}
+
+.ui-pagination__status {
+  color: var(--neutral-text-muted);
+  font-size: var(--font-label-size);
+  font-weight: var(--font-label-weight);
+  line-height: var(--font-label-line-height);
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .ui-pagination {
+    justify-content: space-between;
+  }
+
+  .ui-pagination__status {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .ui-pagination > button {
+    min-height: 44px;
+  }
+}

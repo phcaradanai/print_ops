@@ -1,3 +1,10 @@
+import {
+  getOrientedPaperGeometry,
+  mapPrintablePointToVisual as mapPrintablePointToVisualShared,
+  mapVisualPointToPrintable as mapVisualPointToPrintableShared,
+  resolveRenderTransform,
+  resolveRenderTransformFrame,
+} from '@printerops/shared';
 import type { PaperForm, VisualPaperGeometry } from './types.js';
 
 export function getVisualPaperGeometry(
@@ -12,29 +19,18 @@ export function getVisualPaperGeometry(
     | 'orientation'
   >,
 ): VisualPaperGeometry {
-  const natural = form.widthMm > form.heightMm ? 'landscape' : 'portrait';
-  const rotated = natural !== form.orientation;
-  const marginTopMm = rotated ? form.marginLeftMm : form.marginTopMm;
-  const marginRightMm = rotated ? form.marginTopMm : form.marginRightMm;
-  const marginBottomMm = rotated ? form.marginRightMm : form.marginBottomMm;
-  const marginLeftMm = rotated ? form.marginBottomMm : form.marginLeftMm;
-  const widthMm = rotated ? form.heightMm : form.widthMm;
-  const heightMm = rotated ? form.widthMm : form.heightMm;
-  const sourcePrintableWidthMm = Math.max(0, form.widthMm - form.marginLeftMm - form.marginRightMm);
-  const sourcePrintableHeightMm = Math.max(0, form.heightMm - form.marginTopMm - form.marginBottomMm);
-  return {
-    rotated,
-    widthMm,
-    heightMm,
-    marginTopMm,
-    marginRightMm,
-    marginBottomMm,
-    marginLeftMm,
-    sourcePrintableWidthMm,
-    sourcePrintableHeightMm,
-    printableWidthMm: Math.max(0, widthMm - marginLeftMm - marginRightMm),
-    printableHeightMm: Math.max(0, heightMm - marginTopMm - marginBottomMm),
-  };
+  return getOrientedPaperGeometry(form);
+}
+
+export function getVisualPaperTransformFrame(
+  form: Pick<PaperForm, 'widthMm' | 'heightMm' | 'marginTopMm' | 'marginRightMm' | 'marginBottomMm' | 'marginLeftMm' | 'orientation' | 'rotation' | 'flipHorizontal' | 'flipVertical'>,
+) {
+  const geometry = getVisualPaperGeometry(form);
+  return resolveRenderTransformFrame(
+    geometry.widthMm,
+    geometry.heightMm,
+    resolveRenderTransform(form),
+  );
 }
 
 export function mapPrintablePointToVisual(
@@ -42,8 +38,7 @@ export function mapPrintablePointToVisual(
   yMm: number,
   geometry: Pick<VisualPaperGeometry, 'rotated' | 'sourcePrintableHeightMm'>,
 ) {
-  if (!geometry.rotated) return { xMm, yMm };
-  return { xMm: geometry.sourcePrintableHeightMm - yMm, yMm: xMm };
+  return mapPrintablePointToVisualShared(xMm, yMm, geometry);
 }
 
 export function mapVisualPointToPrintable(
@@ -51,8 +46,7 @@ export function mapVisualPointToPrintable(
   yMm: number,
   geometry: Pick<VisualPaperGeometry, 'rotated' | 'sourcePrintableHeightMm'>,
 ) {
-  if (!geometry.rotated) return { xMm, yMm };
-  return { xMm: yMm, yMm: geometry.sourcePrintableHeightMm - xMm };
+  return mapVisualPointToPrintableShared(xMm, yMm, geometry);
 }
 
 export function nudgePrintablePoint(
@@ -80,6 +74,27 @@ export function clampGridSpacing(value: number): number {
 export function clampFontSize(value: number): number {
   if (!Number.isFinite(value)) return 6;
   return Math.max(6, Math.min(72, Math.round(value)));
+}
+
+/**
+ * Physical pixel density used as the browser/CSS reference for "1mm on
+ * screen = 1mm on the printed sheet" (96 CSS px per inch ÷ 25.4mm per inch).
+ * This is the same assumption `FieldBarcodePreview` already relies on when it
+ * sizes barcodes/QR codes with raw CSS `mm` units.
+ *
+ * Both the compact preview and the full-screen preview auto-scale to fit
+ * whatever box they're drawn in, which — left uncapped — let a small label
+ * profile render *larger on screen* than a full A4 sheet. That makes the
+ * canvas useless as a real print-size reference. Capping the auto-fit scale
+ * at this value means paper is never inflated past real life: it can only
+ * shrink to fit its container, never grow beyond true size on its own.
+ */
+export const CSS_PX_PER_MM = 96 / 25.4;
+
+/** How close a preview's px-per-mm scale is to true physical size, as a whole-number percentage. */
+export function actualSizePercent(scale: number): number {
+  if (!Number.isFinite(scale) || scale <= 0) return 0;
+  return Math.round((scale / CSS_PX_PER_MM) * 100);
 }
 
 export const CANVAS_SCALE_MIN = 0.5;

@@ -15,6 +15,7 @@
  */
 
 import { getStatusBadgeColors } from '../statusColors.js';
+import './StatusBadge.css';
 
 export type StatusBadgeSize = 'sm' | 'md' | 'lg';
 

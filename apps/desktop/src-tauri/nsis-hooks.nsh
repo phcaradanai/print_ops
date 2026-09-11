@@ -1,4 +1,4 @@
-; PrinterOps NSIS installer hooks.
+; PrintOps NSIS installer hooks.
 ;
 ; Hand-written. The pre-install shutdown logic lives in
 ; scripts/nsis-shutdown.ps1 and is embedded into the installer at COMPILE time
@@ -37,7 +37,7 @@
 ; A process is only touched when its name is in the allowlist
 ; (printerops-desktop.exe, server.exe, printops-runner.exe,
 ; printops-html-print.exe) AND its Win32_Process.ExecutablePath resolves under
-; $env:LOCALAPPDATA\PrinterOps\ (GetFullPath + TrimEnd + trailing separator,
+; $env:LOCALAPPDATA\PrintOps\ (GetFullPath + TrimEnd + trailing separator,
 ; ordinal case-insensitive StartsWith). An unrelated server.exe elsewhere on the
 ; machine is left alone. The desktop app is asked to close gracefully first so
 ; it can stop its own sidecars; only survivors are force-killed, and the hook
@@ -62,7 +62,7 @@
   Push $0
   Push $1
 
-  DetailPrint "Closing PrinterOps before upgrade (root: $LOCALAPPDATA\PrinterOps)..."
+  DetailPrint "Closing PrintOps before upgrade (root: $LOCALAPPDATA\PrintOps)..."
 
   ; Breadcrumb #1 - NSIS proves the macro body ran even if powershell fails to
   ; launch. Judged by file existence, not content (this file's encoding is
@@ -87,7 +87,7 @@
   nsExec::ExecToStack `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\printerops-shutdown.ps1"`
   Pop $0
   Pop $1
-  DetailPrint "PrinterOps shutdown exit=$0"
+  DetailPrint "PrintOps shutdown exit=$0"
   DetailPrint "$1"
 
   ; Windows can hold the image handle a moment longer than the process object.
@@ -95,7 +95,7 @@
   Goto printerops_payload_done
 
   printerops_payload_failed:
-  DetailPrint "PrinterOps shutdown skipped: could not stage shutdown script"
+  DetailPrint "PrintOps shutdown skipped: could not stage shutdown script"
 
   printerops_payload_done:
   Pop $1

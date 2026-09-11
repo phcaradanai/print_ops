@@ -1,4 +1,5 @@
 import { PAPER_PRESETS } from '../model/defaults.js';
+import { IconButton } from '../../../components/ui/index.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { Translate } from './types.js';
@@ -11,11 +12,11 @@ export function PresetMenu({ editor, popups, t }: {
 }) {
   return (
     <div className="pp-presets" ref={popups.presetsContainerRef}>
-      <button type="button" className="pp-icon-btn" ref={popups.presetsTriggerRef}
-        onClick={popups.togglePresets} title={t('page.paperProfiles.presets')}
-        aria-label={t('page.paperProfiles.presets')} aria-expanded={popups.presetsOpen} aria-haspopup="menu">
+      <IconButton ref={popups.presetsTriggerRef}
+        label={t('page.paperProfiles.presets')} onClick={popups.togglePresets}
+        aria-expanded={popups.presetsOpen} aria-haspopup="menu">
         <PaperProfileIcon name="presets" />
-      </button>
+      </IconButton>
       {popups.presetsOpen && (
         <div className="pp-presets-menu" role="menu">
           {PAPER_PRESETS.map((preset) => (

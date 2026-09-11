@@ -28,6 +28,13 @@ export interface PrinterStatus {
   printerId: string;
   code: PrinterStatusCode;
   message?: string;
+  /** Whether the local OS found the named printer during this status check. */
+  detected?: boolean;
+  /** Windows WorkOffline signal, when the platform exposes it. */
+  workOffline?: boolean | null;
+  /** Raw platform status/state retained for readiness and diagnostics. */
+  rawStatus?: string;
+  rawState?: string;
   tonerLevels?: Record<string, number>;
   paperLevels?: Record<string, number>;
   checkedAt: Date;
@@ -64,6 +71,9 @@ export interface PrintCommand {
   colorMode: 'color' | 'monochrome' | 'auto';
   mediaType?: string;
   resolution?: string;
+  rotate?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
   metadata: Record<string, unknown>;
   /** In-process adapters can report a correlated native spooler job before
    * terminal device verification finishes. */

@@ -89,7 +89,7 @@ Two distinct events:
   carrying `status: "QUEUED"`. An acceptance notification, and now labelled as
   one.
 - **`print.job.completed`** — sent by `ResultCallbackDispatcher` after the print
-  reaches a terminal state, carrying `print_status`.
+  reaches a terminal state, carrying `status`.
 
 `callbackOnPrintResult` selects between them (`true` = result only, `false` =
 acceptance only). A duplicate submission always gets the acceptance

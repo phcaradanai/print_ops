@@ -30,6 +30,7 @@ describe('SQLite write durability', () => {
       name: 'Durable label',
       widthMm: 70,
       heightMm: 30,
+      gapMm: 2,
       marginTopMm: 2,
       marginRightMm: 2,
       marginBottomMm: 2,
@@ -45,6 +46,11 @@ describe('SQLite write durability', () => {
     await initDatabase();
 
     await expect(new SqlitePaperProfileRepository().findById(created.id))
-      .resolves.toMatchObject({ code: 'DURABLE_LABEL' });
+      .resolves.toMatchObject({
+        code: 'DURABLE_LABEL',
+        widthMm: 70,
+        heightMm: 30,
+        gapMm: 2,
+      });
   });
 });

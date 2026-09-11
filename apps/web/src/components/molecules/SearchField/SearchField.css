@@ -1,0 +1,11 @@
+.ui-search-field {
+  flex: 1 1 22rem;
+  min-width: min(18rem, 100%);
+}
+
+@media (max-width: 1024px) {
+  .ui-search-field {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+}

@@ -1,9 +1,11 @@
 import type { RefObject } from 'react';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
+import { Alert, IconButton } from '../../../components/ui/index.js';
 import { Section } from './editorPrimitives.js';
 import { FieldCard } from './FieldCard.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
 import type { Translate } from './types.js';
+import { validateDynamicFields } from '../model/validation.js';
 
 export function DynamicFieldsSection({ editor, t, anchorRef, onNotice }: {
   editor: PaperProfileEditor;
@@ -12,6 +14,7 @@ export function DynamicFieldsSection({ editor, t, anchorRef, onNotice }: {
   onNotice: (message: string) => void;
 }) {
   const fields = editor.ux.dynamicFields;
+  const geometryIssues = validateDynamicFields(editor.form, fields);
   const add = () => {
     editor.addField();
     onNotice(t('page.paperProfiles.addedFieldNote'));
@@ -27,19 +30,24 @@ export function DynamicFieldsSection({ editor, t, anchorRef, onNotice }: {
               <span className="pp-fields-empty__icon" aria-hidden="true"><PaperProfileIcon name="fields" /></span>
               <div><strong>{t('page.paperProfiles.noCustomFields')}</strong><p>{t('page.paperProfiles.clickAddField')}</p></div>
             </div>
-            <button type="button" className="pp-tool-btn" onClick={add}
-              title={t('page.paperProfiles.addField')} aria-label={t('page.paperProfiles.addField')}><PaperProfileIcon name="plus" /></button>
+            <IconButton variant="primary" className="pp-tool-btn"
+              label={t('page.paperProfiles.addField')} onClick={add}>
+              <PaperProfileIcon name="plus" />
+            </IconButton>
           </div>
         )}
         <p className="pp-preview-only-hint">{t('page.paperProfiles.previewOnlyHint')}</p>
+        {geometryIssues.length > 0 && (
+          <Alert tone="error">{t('validation.fieldOutsidePaper')}</Alert>
+        )}
         <div className="pp-field-list">
           {fields.map((field) => <FieldCard key={field.id} field={field} editor={editor} t={t} />)}
         </div>
         {fields.length > 0 && (
-          <button type="button" className="pp-add-field"
-            onClick={add} title={t('page.paperProfiles.addField')} aria-label={t('page.paperProfiles.addField')}>
+          <IconButton variant="primary" className="pp-add-field"
+            label={t('page.paperProfiles.addField')} onClick={add}>
             <PaperProfileIcon name="plus" />
-          </button>
+          </IconButton>
         )}
       </Section>
     </div>

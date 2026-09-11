@@ -1,4 +1,6 @@
+import { useSearchParams } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { evaluatePrinterReadiness } from '@printerops/domain';
 import { apiFetch } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
@@ -37,7 +39,14 @@ interface Printer {
   protocol: string;
   connectionUri: string;
   isActive: boolean;
-  status?: { code: string; checkedAt: string };
+  status?: {
+    code: string;
+    checkedAt: string;
+    detected?: boolean;
+    workOffline?: boolean | null;
+    rawStatus?: string;
+    rawState?: string;
+  };
   capabilities?: {
     colorSupported: boolean;
     duplexSupported: boolean;
@@ -77,6 +86,63 @@ interface SandboxJobResult {
   status: string;
   errorCode?: string;
   errorMessage?: string;
+}
+
+interface SandboxSourceJob {
+  id: string;
+  printerId: string;
+  printerCode?: string;
+  templateCode?: string;
+  resolvedTemplateCode?: string;
+  paperProfileId?: string;
+  copies?: number;
+  duplex?: boolean;
+  colorMode?: string;
+  priority?: number | string;
+  priorityLabel?: string;
+  payloadSnapshot?: string;
+  metadata?: {
+    sandboxInput?: {
+      templateId?: string;
+      templateCode?: string;
+      paperProfileId?: string;
+      printerId?: string;
+      printerCode?: string;
+      copies?: number;
+      duplex?: boolean;
+      colorMode?: string;
+      priority?: string;
+      samplePayload?: Record<string, unknown>;
+      scenarios?: Array<{ samplePayload?: Record<string, unknown> }>;
+    };
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseSourcePayload(job: SandboxSourceJob): Record<string, unknown> | undefined {
+  const input = job.metadata?.sandboxInput;
+  if (input?.samplePayload) return input.samplePayload;
+  if (input?.scenarios?.[0]?.samplePayload) return input.scenarios[0].samplePayload;
+  if (!job.payloadSnapshot) return undefined;
+
+  try {
+    const parsed: unknown = JSON.parse(job.payloadSnapshot);
+    if (!isRecord(parsed)) return undefined;
+    if (isRecord(parsed.samplePayload)) return parsed.samplePayload;
+    if (Array.isArray(parsed.scenarios) && isRecord(parsed.scenarios[0]) && isRecord(parsed.scenarios[0].samplePayload)) {
+      return parsed.scenarios[0].samplePayload;
+    }
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function sourcePriority(value?: string): 'low' | 'normal' | 'high' | 'urgent' {
+  return value === 'low' || value === 'high' || value === 'urgent' ? value : 'normal';
 }
 
 const TERMINAL_JOB_STATUSES = new Set([
@@ -140,6 +206,8 @@ const cardStyle: React.CSSProperties = {
 
 export default function TemplateSandbox() {
   const { t } = useLocale();
+  const [searchParams] = useSearchParams();
+  const sourceJobId = searchParams.get('jobId') ?? '';
   const [templates, setTemplates] = useState<Template[]>([]);
   const [papers, setPapers] = useState<Paper[]>([]);
   const [printers, setPrinters] = useState<Printer[]>([]);
@@ -162,6 +230,7 @@ export default function TemplateSandbox() {
   const [confirmPrintOpen, setConfirmPrintOpen] = useState(false);
   const [printAcknowledged, setPrintAcknowledged] = useState(false);
   const [submittedJobId, setSubmittedJobId] = useState<string | null>(null);
+  const [sourceApplied, setSourceApplied] = useState(false);
 
   // ---- load reference data ----
   // Each list was `.catch(() => {})`: a failure left the three dropdowns empty
@@ -178,6 +247,12 @@ export default function TemplateSandbox() {
 
   const reference = useApiResource(fetchReferenceData);
 
+  const fetchSourceJob = useCallback(
+    () => apiFetch<SandboxSourceJob>('/jobs/' + encodeURIComponent(sourceJobId)),
+    [sourceJobId],
+  );
+  const sourceJobResource = useApiResource(fetchSourceJob, { enabled: Boolean(sourceJobId) });
+
   useEffect(() => {
     if (!reference.data) return;
     setTemplates(reference.data.templates);
@@ -186,6 +261,43 @@ export default function TemplateSandbox() {
     setLoading((s) => ({ ...s, init: false }));
   }, [reference.data]);
 
+  useEffect(() => {
+    setSourceApplied(false);
+  }, [sourceJobId]);
+
+  useEffect(() => {
+    if (!sourceJobId || sourceApplied || !sourceJobResource.data || !reference.data) return;
+
+    const source = sourceJobResource.data;
+    const input = source.metadata?.sandboxInput;
+    const sourceTemplateCode = input?.templateCode ?? source.resolvedTemplateCode ?? source.templateCode;
+    const sourceTemplate = templates.find(
+      (template) => template.id === input?.templateId || template.templateCode === sourceTemplateCode,
+    );
+    const sourcePaperProfileId = input?.paperProfileId ?? source.paperProfileId ?? sourceTemplate?.paperProfileId ?? '';
+    const sourcePrinterCode = input?.printerCode ?? source.printerCode;
+    const sourcePrinter = printers.find(
+      (printer) => printer.id === input?.printerId || printer.code === sourcePrinterCode,
+    );
+    const sourcePayload = parseSourcePayload(source);
+
+    if (sourceTemplate) setTemplateId(sourceTemplate.id);
+    if (sourcePaperProfileId) setPaperProfileId(sourcePaperProfileId);
+    if (sourcePrinter?.id) setPrinterId(sourcePrinter.id);
+    else if (input?.printerId ?? source.printerId) setPrinterId(input?.printerId ?? source.printerId);
+    if (input?.copies ?? source.copies) setCopies(input?.copies ?? source.copies ?? 1);
+    setDuplex(Boolean(input?.duplex ?? source.duplex));
+    if (input?.colorMode === 'color' || input?.colorMode === 'monochrome' || input?.colorMode === 'auto') {
+      setColorMode(input.colorMode);
+    } else if (source.colorMode === 'color' || source.colorMode === 'monochrome' || source.colorMode === 'auto') {
+      setColorMode(source.colorMode);
+    }
+    setPriority(sourcePriority(input?.priority ?? source.priorityLabel));
+    if (sourcePayload) setPayload(JSON.stringify(sourcePayload, null, 2));
+    setPreview(null);
+    setError('');
+    setSourceApplied(true);
+  }, [reference.data, printers, sourceJobId, sourceJobResource.data, sourceApplied, templates]);
   useEffect(() => {
     if (reference.error != null) setLoading((s) => ({ ...s, init: false }));
   }, [reference.error]);
@@ -210,7 +322,19 @@ export default function TemplateSandbox() {
   const colorAvailable = Boolean(selectedPrinter?.capabilities?.colorSupported);
   const copiesExceeded = printerMaxCopies != null && copies > printerMaxCopies;
   const templateAllowed = !selectedPrinter?.allowedTemplates || selectedPrinter.allowedTemplates.length === 0 || !selectedTemplate || selectedPrinter.allowedTemplates.includes(selectedTemplate.templateCode);
-  const printerReady = selectedPrinter?.status?.code === 'online' || selectedPrinter?.status?.code === 'idle';
+  const printerReadiness = evaluatePrinterReadiness({
+    detected: selectedPrinter?.status?.detected,
+    statusCode: selectedPrinter?.status?.code,
+    rawStatus: selectedPrinter?.status?.rawStatus,
+    rawState: selectedPrinter?.status?.rawState,
+    workOffline: selectedPrinter?.status?.workOffline,
+  });
+  const printerReady = Boolean(selectedPrinter) && printerReadiness.ready;
+  const printerReadinessWarning = printerReadiness.warning === 'unknown-status'
+    ? t('page.sandbox.printerUnknownWarning')
+    : printerReadiness.warning === 'status-unavailable'
+      ? t('page.sandbox.printerStatusUnavailableWarning')
+      : '';
   const canPrint = !!printerId && !!templateId && !payloadError && !copiesExceeded && templateAllowed && printerReady;
   const testPrintBlockedReason = !printerId
     ? t('page.sandbox.testPrintNeedsPrinter')
@@ -222,8 +346,10 @@ export default function TemplateSandbox() {
           ? t('page.sandbox.testPrintReduceCopies')
           : !templateAllowed
             ? t('page.sandbox.testPrintChooseAllowedTemplate')
-            : !printerReady
-              ? 'The selected printer is not ready for physical output. Choose a printer reported as online or idle.'
+            : !printerReadiness.ready
+              ? printerReadiness.blockedBy === 'not-detected'
+                ? t('page.sandbox.testPrintNeedsStatus')
+                : t('page.sandbox.testPrintBlockedByPrinter')
             : '';
 
   useEffect(() => {
@@ -343,6 +469,24 @@ export default function TemplateSandbox() {
           onRetry={reference.refresh}
         />
       )}
+      {sourceJobId && sourceJobResource.loading && (
+        <Alert tone="info">
+          {t('page.sandbox.loadingSourceJob')}
+        </Alert>
+      )}
+      {sourceJobResource.error != null && (
+        <ErrorBanner
+          error={sourceJobResource.error}
+          title={t('page.sandbox.sourceJobLoadFailed')}
+          onRetry={sourceJobResource.refresh}
+        />
+      )}
+      {sourceApplied && (
+        <Alert tone="success">
+          {t('page.sandbox.prefilledFromJob').replace('{id}', sourceJobId.slice(0, 8))}
+        </Alert>
+      )}
+
 
       {/* ===== Result ===== */}
       {toast && (
@@ -435,6 +579,11 @@ export default function TemplateSandbox() {
               {!templateAllowed && (
                 <Alert tone="warning">
                   {t('page.sandbox.templateNotAllowed').replace('{code}', selectedTemplate?.templateCode ?? '')}
+                </Alert>
+              )}
+              {printerReadinessWarning && (
+                <Alert tone="warning">
+                  {printerReadinessWarning}
                 </Alert>
               )}
             </div>

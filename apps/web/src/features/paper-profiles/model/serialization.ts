@@ -11,6 +11,7 @@ export interface PaperProfileExport {
       | 'name'
       | 'widthMm'
       | 'heightMm'
+       | 'gapMm'
       | 'marginTopMm'
       | 'marginRightMm'
       | 'marginBottomMm'
@@ -18,6 +19,10 @@ export interface PaperProfileExport {
       | 'dpi'
       | 'orientation'
       | 'unit'
+      | 'rotation'
+      | 'flipHorizontal'
+      | 'flipVertical'
+      | 'layout'
       | 'fields'
     >
   >;
@@ -35,6 +40,7 @@ export function serializeProfiles(
       code: profile.code,
       name: profile.name,
       widthMm: profile.widthMm,
+      ...(profile.gapMm !== undefined ? { gapMm: profile.gapMm } : {}),
       heightMm: profile.heightMm,
       marginTopMm: profile.marginTopMm,
       marginRightMm: profile.marginRightMm,
@@ -43,6 +49,10 @@ export function serializeProfiles(
       dpi: profile.dpi,
       orientation: profile.orientation,
       unit: profile.unit,
+      ...(profile.rotation !== undefined ? { rotation: profile.rotation } : {}),
+      ...(profile.flipHorizontal !== undefined ? { flipHorizontal: profile.flipHorizontal } : {}),
+      ...(profile.flipVertical !== undefined ? { flipVertical: profile.flipVertical } : {}),
+      ...(profile.layout ? { layout: { ...profile.layout } } : {}),
       fields: profile.fields ?? [],
     })),
   };

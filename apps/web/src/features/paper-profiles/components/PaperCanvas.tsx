@@ -1,9 +1,10 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { qrQuietZoneMm, renderBarcodeSvg } from '../../../lib/barcode.js';
+import { inverseTransformVector, renderTransformCss, resolveRenderTransform, resolveRenderTransformFrame } from '@printerops/shared';
 import { useLocale } from '../../../i18n/index.js';
 import { anchorTransform, anchorTransformOrigin } from '../model/fieldGeometry.js';
 import { fontPointSizeToPreviewPixels, getVisualPaperGeometry, mapPrintablePointToVisual } from '../model/geometry.js';
-import { DEFAULT_BARCODE_HEIGHT_MM, DEFAULT_QR_SIZE_MM } from '../model/defaults.js';
+import { DEFAULT_BARCODE_HEIGHT_MM, DEFAULT_BARCODE_WIDTH_MM, DEFAULT_QR_SIZE_MM } from '../model/defaults.js';
 import type {
   DynamicField,
   DynamicFieldBarcodeSymbology,
@@ -13,6 +14,7 @@ import type {
   PaperProfileUx as UxOptions,
 } from '../model/types.js';
 import { IconButton } from './editorPrimitives.js';
+import { DraftNumberInput } from './DraftNumberInput.js';
 
 export function RulerSheet({
   form,
@@ -30,8 +32,9 @@ export function RulerSheet({
   if (!showRulers) return <>{children}</>;
 
   const geometry = getVisualPaperGeometry(form);
-  const pvW = geometry.widthMm * scale;
-  const pvH = geometry.heightMm * scale;
+  const frame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, resolveRenderTransform(form));
+  const pvW = frame.width * scale;
+  const pvH = frame.height * scale;
   const rulerThickness = 24;
   const fontSize = Math.min(10, Math.max(7, scale * 2));
 
@@ -136,7 +139,7 @@ export function RulerSheet({
           background: '#f9fafb',
         }}>
           <div style={{ width: pvW, height: rulerThickness, position: 'relative' as const }}>
-            {renderTicks(geometry.widthMm, false)}
+            {renderTicks(frame.width, false)}
           </div>
         </div>
       </div>
@@ -152,7 +155,7 @@ export function RulerSheet({
           flexShrink: 0,
         }}>
           <div style={{ width: rulerThickness, height: pvH, position: 'relative' as const }}>
-            {renderTicks(geometry.heightMm, true)}
+            {renderTicks(frame.height, true)}
           </div>
         </div>
         {children}
@@ -168,8 +171,8 @@ export function RulerSheet({
 export function FieldTypeControls({
   field,
   onUpdate,
-  selectClassName = 'pp-select',
-  numberClassName = 'pp-number',
+  selectClassName = 'ui-select ui-select--sm',
+  numberClassName = 'ui-input ui-input--sm',
 }: {
   field: DynamicField;
   onUpdate: (patch: Partial<DynamicField>) => void;
@@ -177,6 +180,9 @@ export function FieldTypeControls({
   selectClassName?: string;
   numberClassName?: string;
 }) {
+  // Defaulted, not optional-and-forgotten: the full-preview inspector rendered
+  // these with no class at all, so the same control looked unstyled there and
+  // styled in the field drawer.
   const { t } = useLocale();
   return (
     <>
@@ -189,6 +195,7 @@ export function FieldTypeControls({
           // Pre-fill a sensible real-world size the first time a field becomes
           // a barcode/QR, so the size input never starts out blank/undefined.
           if (nextType === 'barcode' && field.barcodeHeightMm == null) patch.barcodeHeightMm = DEFAULT_BARCODE_HEIGHT_MM;
+          if (nextType === 'barcode' && field.barcodeWidthMm == null) patch.barcodeWidthMm = DEFAULT_BARCODE_WIDTH_MM;
           if (nextType === 'qrcode' && field.qrSizeMm == null) patch.qrSizeMm = DEFAULT_QR_SIZE_MM;
           onUpdate(patch);
         }}
@@ -213,35 +220,40 @@ export function FieldTypeControls({
             <option value="ean13">{t('page.paperProfiles.symbologyEan13')}</option>
             <option value="datamatrix">{t('page.paperProfiles.symbologyDatamatrix')}</option>
           </select>
-          <input
+          <DraftNumberInput
             aria-label={t('page.paperProfiles.barcodeHeightMm')}
             title={t('page.paperProfiles.barcodeHeightMm')}
-            type="number"
             min={4}
             max={60}
             step={0.5}
             value={field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              if (!isNaN(v)) onUpdate({ barcodeHeightMm: Math.max(4, Math.min(60, v)) });
-            }}
+            normalize={(value) => Math.max(4, Math.min(60, value))}
+            onValueChange={(value) => onUpdate({ barcodeHeightMm: value })}
+            className={numberClassName}
+          />
+          <DraftNumberInput
+            aria-label={t('page.paperProfiles.barcodeWidthMm')}
+            title={t('page.paperProfiles.barcodeWidthMm')}
+            min={4}
+            max={100}
+            step={0.5}
+            value={field.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM}
+            normalize={(value) => Math.max(4, Math.min(100, value))}
+            onValueChange={(value) => onUpdate({ barcodeWidthMm: value })}
             className={numberClassName}
           />
         </>
       )}
       {field.type === 'qrcode' && (
-        <input
+        <DraftNumberInput
           aria-label={t('page.paperProfiles.qrSizeMm')}
           title={t('page.paperProfiles.qrSizeMm')}
-          type="number"
           min={4}
           max={100}
           step={0.5}
           value={field.qrSizeMm ?? DEFAULT_QR_SIZE_MM}
-          onChange={(e) => {
-            const v = parseFloat(e.target.value);
-            if (!isNaN(v)) onUpdate({ qrSizeMm: Math.max(4, Math.min(100, v)) });
-          }}
+          normalize={(value) => Math.max(4, Math.min(100, value))}
+          onValueChange={(value) => onUpdate({ qrSizeMm: value })}
           className={numberClassName}
         />
       )}
@@ -262,7 +274,7 @@ export function FieldBarcodePreview({ field }: { field: DynamicField }) {
   const sample = field.defaultValue || field.label || field.key || (field.type === 'qrcode' ? 'QR-SAMPLE' : '123456');
   const svg = renderBarcodeSvg(sample, field.type, field.barcodeSymbology);
   const heightMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM);
-  const widthMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : undefined;
+  const widthMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM);
   const quietMm = field.type === 'qrcode' ? (qrQuietZoneMm(sample, heightMm) ?? 0) : 0;
   return (
     <div className="pp-barcode-preview">
@@ -273,12 +285,12 @@ export function FieldBarcodePreview({ field }: { field: DynamicField }) {
             display: 'inline-block',
             maxWidth: '100%',
             height: `${heightMm}mm`,
-            width: widthMm ? `${widthMm}mm` : 'auto',
+            width: `${widthMm}mm`,
             padding: quietMm ? `${quietMm}mm` : undefined,
             background: quietMm ? 'var(--neutral-surface)' : undefined,
             lineHeight: 0,
           }}
-          dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', `<svg style="height:100%;width:${widthMm ? '100%' : 'auto'}" `) }}
+          dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', `<svg style="display:block;height:100%;width:100%;object-fit:contain" `) }}
         />
       ) : (
         <span style={{ fontSize: 'var(--font-label-size)', color: 'var(--neutral-text-muted)' }}>[{field.type}: {sample || '?'}]</span>
@@ -303,7 +315,9 @@ function FieldPreviewContent({ field, scale }: { field: DynamicField; scale: num
     const svg = renderBarcodeSvg(sample, field.type, field.barcodeSymbology);
     if (svg) {
       const realHeightMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM);
+      const realWidthMm = field.type === 'qrcode' ? realHeightMm : (field.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM);
       const heightPx = Math.max(10, realHeightMm * scale);
+      const widthPx = Math.max(10, realWidthMm * scale);
       const square = field.type === 'qrcode';
       const quietPx = square ? (qrQuietZoneMm(sample, realHeightMm) ?? 0) * scale : 0;
       return (
@@ -312,12 +326,12 @@ function FieldPreviewContent({ field, scale }: { field: DynamicField; scale: num
           style={{
             display: 'inline-block',
             height: heightPx,
-            width: square ? heightPx : 'auto',
+            width: widthPx,
             padding: quietPx || undefined,
             background: quietPx ? '#fff' : undefined,
             lineHeight: 0,
           }}
-          dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', `<svg style="display:block;height:100%;width:${square ? '100%' : 'auto'}" `) }}
+          dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', `<svg style="display:block;height:100%;width:100%;object-fit:contain" `) }}
         />
       );
     }
@@ -360,9 +374,15 @@ export function PaperCanvas({
   showDimensions?: boolean;
 }) {
   const { t } = useLocale();
+  const renderTransform = resolveRenderTransform(form);
   const geometry = getVisualPaperGeometry(form);
-  const pvW = geometry.widthMm * scale;
-  const pvH = geometry.heightMm * scale;
+  const transformFrame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, renderTransform);
+  const pvW = transformFrame.width * scale;
+  const pvH = transformFrame.height * scale;
+  const sourcePvW = geometry.widthMm * scale;
+  const sourcePvH = geometry.heightMm * scale;
+  const transformOffsetX = transformFrame.offsetX * scale;
+  const transformOffsetY = transformFrame.offsetY * scale;
   const pvMT = geometry.marginTopMm * scale;
   const pvMR = geometry.marginRightMm * scale;
   const pvMB = geometry.marginBottomMm * scale;
@@ -406,6 +426,19 @@ export function PaperCanvas({
         overflow: 'hidden',
       }}
     >
+      <div
+        data-printops-transform-layer="true"
+        style={{
+          position: 'absolute',
+          left: transformOffsetX,
+          top: transformOffsetY,
+          width: sourcePvW,
+          height: sourcePvH,
+          overflow: 'visible',
+          transformOrigin: '50% 50%',
+          transform: renderTransformCss(renderTransform),
+        }}
+      >
       {ux.watermarkText && (
         <div style={{
           position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
@@ -480,8 +513,10 @@ export function PaperCanvas({
                       : null;
               if (!delta) return;
               event.preventDefault();
-              onFieldNudge(f.id, delta[0], delta[1]);
+              const sourceDelta = inverseTransformVector(delta[0], delta[1], renderTransform);
+              onFieldNudge(f.id, sourceDelta.x, sourceDelta.y);
             } : undefined}
+            className="pp-canvas-field"
             style={{
               position: 'absolute', left: point.xMm * scale, top: point.yMm * scale,
               fontSize: fontPointSizeToPreviewPixels(f.fontSize, scale), fontWeight: f.bold ? 700 : 400,
@@ -489,9 +524,17 @@ export function PaperCanvas({
               color: f.color, whiteSpace: 'nowrap',
               fontFamily: ux.fontFamily, pointerEvents: interactive ? 'auto' : 'none',
               cursor: interactive ? 'grab' : 'default',
-              padding: interactive ? '0.15rem 0.25rem' : 0,
-              border: selectedFieldId === f.id ? '1px solid var(--primary)' : '1px solid transparent',
-              borderRadius: 3,
+              // No padding and no border: this element's box IS the printed
+              // field. Both are layout-affecting, so either one offsets the text
+              // from `left`/`top` — the exact anchor the printer uses — and
+              // because they are fixed px they represent more millimetres the
+              // smaller the canvas gets. The affordance moved to `outline` and a
+              // `::before` hit area in paperProfilesEditor.css, neither of which
+              // takes part in layout. See __tests__/fieldPreviewFidelity.
+              padding: 0,
+              border: 'none',
+              outline: selectedFieldId === f.id ? '1px solid var(--primary)' : 'none',
+              outlineOffset: 2,
               background: selectedFieldId === f.id ? 'var(--state-info-surface)' : 'transparent',
               transform: anchorTransform(f.align, geometry.rotated),
               transformOrigin: anchorTransformOrigin(f.align),
@@ -559,6 +602,7 @@ export function PaperCanvas({
           pointerEvents: 'none', zIndex: 1,
         }} />
       ))}
+      </div>
     </div>
   );
 }

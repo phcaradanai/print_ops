@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
+import { evaluatePrinterReadiness } from '@printerops/domain';
 import { apiFetch, apiFetchVoid } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
@@ -28,6 +29,10 @@ interface PrinterStatus {
   code: string;
   text?: string;
   lastSeenAt?: string;
+  detected?: boolean;
+  workOffline?: boolean | null;
+  rawStatus?: string;
+  rawState?: string;
 }
 
 interface Printer {
@@ -46,6 +51,7 @@ export default function PrinterDetail() {
   const { t } = useLocale();
   const { id } = useParams<{ id: string }>();
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  const [refreshedStatus, setRefreshedStatus] = useState<PrinterStatus | null>(null);
 
   const fetchPrinter = useCallback(() => apiFetch<Printer>(`/printers/${id}`), [id]);
   const printerResource = useApiResource(fetchPrinter, { enabled: Boolean(id) });
@@ -65,12 +71,17 @@ export default function PrinterDetail() {
   });
 
   const refreshStatus = useApiAction(async () => {
-    await apiFetch<PrinterStatus>(`/printers/${id}/status`);
+    const status = await apiFetch<PrinterStatus>(`/printers/${id}/status`);
+    setRefreshedStatus(status);
     // Re-read the printer instead of merging a partial status into local state:
     // the server is the source of truth for what it just observed.
     printerResource.refresh();
-    return true;
+    return status;
   });
+
+  useEffect(() => {
+    setRefreshedStatus(null);
+  }, [id]);
 
   const runTestPrint = async () => {
     const ok = await testPrint.run();
@@ -92,7 +103,7 @@ export default function PrinterDetail() {
 
   if (printerResource.loading && !printer) {
     return (
-      <PageLayout title={t('page.printerDetail.title')}>
+      <PageLayout width="standard" title={t('page.printerDetail.title')} backTo="/printers">
         <LoadingState />
       </PageLayout>
     );
@@ -100,7 +111,7 @@ export default function PrinterDetail() {
 
   if (!printer) {
     return (
-      <PageLayout title={t('page.printerDetail.title')}>
+      <PageLayout width="standard" title={t('page.printerDetail.title')} backTo="/printers">
         <ErrorState
           error={printerResource.error ?? new Error(t('page.printerDetail.notFound'))}
           title={t('page.printerDetail.loadFailed')}
@@ -110,11 +121,21 @@ export default function PrinterDetail() {
     );
   }
 
-  const statusCode = printer.status?.code ?? 'unknown';
+  const currentStatus = refreshedStatus ?? printer.status;
+  const statusCode = currentStatus?.code ?? 'unknown';
+  const readiness = evaluatePrinterReadiness({
+    detected: currentStatus?.detected,
+    statusCode: currentStatus?.code,
+    rawStatus: currentStatus?.rawStatus,
+    rawState: currentStatus?.rawState,
+    workOffline: currentStatus?.workOffline,
+  });
 
   return (
     <PageLayout
+      width="standard"
       title={`${t('page.printerDetail.title')}: ${printer.name}`}
+      backTo="/printers"
       actions={<Freshness
           lastSuccessAt={printerResource.lastSuccessAt}
           stale={printerResource.stale}
@@ -127,7 +148,13 @@ export default function PrinterDetail() {
           <Button variant="secondary" onClick={() => void runRefreshStatus()} busy={refreshStatus.pending}>
             {t('page.printerDetail.getStatus')}
           </Button>
-          <Button onClick={() => void runTestPrint()} busy={testPrint.pending} busyLabel={t('page.printerDetail.testPrintSending')}>
+          <Button
+            onClick={() => void runTestPrint()}
+            busy={testPrint.pending}
+            busyLabel={t('page.printerDetail.testPrintSending')}
+            disabled={!readiness.ready}
+            aria-describedby={!readiness.ready ? 'printer-test-print-status' : undefined}
+          >
             {t('page.printerDetail.testPrint')}
           </Button>
         </>
@@ -149,6 +176,24 @@ export default function PrinterDetail() {
           dismissLabel={t('error.dismiss')}
         >
           {message.text}
+        </Alert>
+      )}
+
+      {readiness.warning === 'unknown-status' && (
+        <Alert tone="warning">
+          {t('page.printerDetail.unknownStatusWarning')}
+        </Alert>
+      )}
+      {readiness.warning === 'status-unavailable' && (
+        <Alert tone="warning">
+          {t('page.printerDetail.statusUnavailableWarning')}
+        </Alert>
+      )}
+      {!readiness.ready && (
+        <Alert tone="warning">
+          <span id="printer-test-print-status">
+            {t('page.printerDetail.testPrintBlocked')}
+          </span>
         </Alert>
       )}
 

@@ -1,0 +1,132 @@
+name: Application OTA gate
+
+on:
+  pull_request:
+    branches: [mvp_nippon]
+    paths:
+      - 'apps/api/**'
+      - 'apps/desktop/**'
+      - 'apps/updater-go/**'
+      - 'apps/runner-go/**'
+      - 'packages/**'
+      - 'scripts/**'
+      - 'tests/ota-lab/**'
+      - 'docs/ota/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ota.yml'
+  push:
+    branches: [mvp_nippon]
+    paths:
+      - 'apps/api/**'
+      - 'apps/desktop/**'
+      - 'apps/updater-go/**'
+      - 'apps/runner-go/**'
+      - 'packages/**'
+      - 'scripts/**'
+      - 'tests/ota-lab/**'
+      - 'docs/ota/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ota.yml'
+  workflow_dispatch:
+    inputs:
+      run_native_windows_e2e:
+        description: 'Build and run the real signed NSIS A -> B -> broken-B rollback test'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ota-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: OTA TypeScript, Go, manifest, and Docker matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/updater-go/go.mod
+      - run: npm ci
+      - run: npm run build:packages
+      - run: npm run typecheck -w @printerops/api
+      - run: npm run test -w @printerops/domain
+      - run: npm run test -w @printerops/api -- --run src/tests/ota-update.service.test.ts src/tests/ota-update-policy.test.ts src/tests/readiness-support-bundle.test.ts
+      - run: npm run test:updater-go
+      - run: npm run test:runner-go
+      - run: npm run test:release-verifier
+      - run: npm run test:ota-docker
+
+  windows:
+    name: Windows packaged build and updater checks
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/updater-go/go.mod
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: npm ci
+      - run: npm run build:packages
+      - name: Generate Tauri resources before packaged checks
+        run: npm run build:resources
+        env:
+          PRINTOPS_OTA_REQUIRE_SIGNATURE: 'false'
+      - run: npm run test:updater-go
+      - run: npm run test:runner-go
+      - name: Validate Tauri application
+        run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - run: npm run test:packaged-sidecars
+        env:
+          PRINTOPS_OTA_REQUIRE_SIGNATURE: 'false'
+      - name: Prepare real Windows MSI and NSIS packages
+        run: npm run tauri:build -w @printerops/desktop
+        env:
+          PRINTOPS_OTA_REQUIRE_SIGNATURE: 'false'
+      - name: Verify packaged Desktop supervision
+        run: npm run test:packaged-desktop
+        env:
+          PRINTOPS_OTA_REQUIRE_SIGNATURE: 'false'
+      - name: Build reproducible signed native OTA acceptance artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_native_windows_e2e }}
+        shell: pwsh
+        env:
+          PRINTOPS_OTA_NATIVE_SIGNING_KEY: ${{ secrets.PRINTOPS_OTA_NATIVE_ACCEPTANCE_PRIVATE_KEY }}
+          PRINTOPS_OTA_NATIVE_OUTPUT_DIR: ${{ github.workspace }}\artifacts\ota-native
+        run: node scripts/ota-native-acceptance-build.mjs
+      - name: Export native OTA acceptance paths
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_native_windows_e2e }}
+        shell: pwsh
+        run: Get-Content -LiteralPath artifacts/ota-native/native-e2e.env | Add-Content -LiteralPath $env:GITHUB_ENV
+      - name: Real native Windows OTA acceptance
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_native_windows_e2e }}
+        shell: pwsh
+        run: ./scripts/ota-native-e2e.ps1
+        env:
+          PRINTOPS_OTA_NATIVE_E2E: '1'
+          PRINTOPS_OTA_NATIVE_EVIDENCE_DIR: ${{ github.workspace }}\artifacts\ota-native\evidence
+      - name: Upload native OTA acceptance evidence
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run_native_windows_e2e }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: printops-native-ota-evidence-${{ github.run_id }}
+          path: artifacts/ota-native
+          if-no-files-found: warn

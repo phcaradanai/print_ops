@@ -10,7 +10,7 @@
  *   - `aria-busy`, so the state is not conveyed by a spinner alone.
  */
 
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -25,7 +25,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children?: ReactNode;
 }
 
-export function Button({
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button({
   variant = 'primary',
   size = 'md',
   busy = false,
@@ -35,11 +35,12 @@ export function Button({
   className = '',
   children,
   ...rest
-}: ButtonProps) {
+}, ref) {
   const combinedClassName = `ui-button ui-button--${variant} ui-button--${size}${busy ? ' ui-button--busy' : ''}${className ? ` ${className}` : ''}`;
   return (
     <button
       {...rest}
+      ref={ref}
       type={type}
       className={combinedClassName}
       disabled={disabled || busy}
@@ -55,5 +56,4 @@ export function Button({
       )}
     </button>
   );
-}
-
+});

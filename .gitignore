@@ -30,6 +30,11 @@ apps/runner-go/printops-runner.exe
 apps/runner-go/*.exe
 apps/runner-go/runner.env
 
+# External OTA updater artifacts
+apps/updater-go/printops-updater
+apps/updater-go/printops-updater.exe
+apps/updater-go/*.test.exe
+
 # .NET WebView2 print helper artifacts
 apps/windows-print-helper/bin/
 apps/windows-print-helper/obj/
@@ -46,3 +51,6 @@ CLAUDE.md
 .agentsroom/handoff-transcript-*.txt
 .agentsroom/handoff-summary-*.md
 .agents/mcp_config.json
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+graft/

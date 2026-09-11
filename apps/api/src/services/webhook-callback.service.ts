@@ -1,4 +1,49 @@
-import type { WebhookEndpoint, WebhookCallbackAttemptRepositoryPort, CallbackAttemptTrigger } from '@printerops/domain';
+import type { WebhookEndpoint, WebhookCallbackAttemptRepositoryPort, CallbackAttemptTrigger, CallbackTransport } from '@printerops/domain';
+import { generateId } from '@printerops/shared';
+import { buildCallbackEnvelope, CALLBACK_ENVELOPE_VERSION } from './callback-payload.js';
+
+/**
+ * Acceptance-template system fields that are NOT raw intake-response keys.
+ * `$$.field` normally resolves against the intake response; these envelope
+ * fields are derived (event_type, version, occurred_at, timeline.*, …) so an
+ * operator can shape a custom template with every key the v2 payload can
+ * carry, not just the ones that happen to live on IntakeResponse.
+ *
+ * Resolution order is result-first: when `result` already carries the field
+ * (the v2 envelope passed to the TERMINAL resolver, or status/request_id on
+ * the intake response), the real value wins; the derived map only fills in
+ * what the acceptance intake response does not contain.
+ */
+const ENVELOPE_TEMPLATE_FIELDS: Record<string, (result: Record<string, unknown>, endpoint: WebhookEndpoint) => unknown> = {
+  'version': () => CALLBACK_ENVELOPE_VERSION,
+  'event_type': () => 'print.job.accepted',
+  'client_id': () => process.env['PRINTOPS_NATS_CLIENT_ID'] ?? null,
+  'occurred_at': (result) => result['queued_at'] ?? result['created_at'] ?? new Date().toISOString(),
+  'printer_code': (result) => result['resolved_printer_code'] ?? null,
+  'runner_id': () => null,
+  'data_quality': () => null,
+  'missing_fields': () => [],
+  'render_warnings': () => [],
+  'error': () => null,
+  'timeline.accepted_at': (result) => result['created_at'] ?? null,
+  'timeline.queued_at': (result) => result['queued_at'] ?? null,
+  'timeline.started_at': () => null,
+  'timeline.terminal_at': () => null,
+  'delivery.transports': (_result, endpoint) => {
+    const transport = endpoint.callbackTransport ?? 'NONE';
+    const transports: CallbackTransport[] = [];
+    if (transport === 'HTTP' || transport === 'BOTH') transports.push('HTTP');
+    if (transport === 'NATS' || transport === 'BOTH') transports.push('NATS');
+    return transports;
+  },
+  'delivery.nats_mode': () => null,
+};
+
+/** Minimal endpoint shape the template resolver needs (also satisfied by the
+ *  terminal intent snapshot). */
+export interface TemplateEndpointLike {
+  callbackTransport?: WebhookEndpoint['callbackTransport'];
+}
 
 /**
  * WebhookCallbackService notifies the original caller after a print job is
@@ -15,6 +60,13 @@ import type { WebhookEndpoint, WebhookCallbackAttemptRepositoryPort, CallbackAtt
  * value OR a `$.field` path that resolves against the ORIGINAL intake
  * payload, so the destination can be supplied dynamically per request
  * (e.g. a reply subject the publisher placed in the payload).
+ *
+ * `callbackPayloadTemplate` shapes the ACCEPTANCE callback body and reads from
+ * two sources: `$.field` from the caller's intake payload, `$$.field` from the
+ * intake response PrintOps produced. Before `$$.` existed, writing any custom
+ * template meant giving up every system field — request_id and print_job_id
+ * included — because the default envelope is used only when the template is
+ * empty.
  *
  * The callback is best-effort: a delivery failure is logged, never throws
  * into the intake path (a failed webhook must not fail the print job).
@@ -71,6 +123,25 @@ export interface CallbackSendResult {
 const FIELD_PATH = /^\$\.[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/;
 /** Matches `$.field` / `$.a.b` tokens embedded anywhere in a template string. */
 const EMBEDDED_FIELD = /\$\.[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*/g;
+/**
+ * `$$.field` — a payload-template reference to what PrintOps produced (the
+ * intake response), as opposed to `$.field`, which is what the caller sent.
+ *
+ * A separate sigil rather than a namespace under `$.`: `$.result.x` and
+ * `$.payload.x` both name real, reachable data today. The NATS intake envelope
+ * carries a top-level `payload` object, and `/api/v1/print-jobs` passes
+ * `body.payload` straight through as the intake payload — so reserving those
+ * prefixes would silently reinterpret tokens that already resolve for saved
+ * endpoints. `$$.` cannot collide: an anchored `$.field` never matches it, so
+ * a stored `$$.status` is a literal string today and no endpoint can be
+ * relying on it as a lookup.
+ *
+ * Scope is the payload template only. Destination templates (callbackUrl,
+ * callbackNatsSubject) still resolve against the intake payload alone — they
+ * are resolved at accept time and persisted with the job, and widening them is
+ * a separate decision.
+ */
+const SYSTEM_FIELD_PATH = /^\$\$\.[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/;
 
 /**
  * Resolve a destination template (`$.reply_to`, `results/$.tenant`, or a plain
@@ -109,14 +180,40 @@ function renderFieldTokens(template: string, payload: Record<string, unknown>): 
   });
 }
 
-function resolveTemplate(
+/**
+ * Resolve a payload template the way the acceptance callback does.
+ *
+ * Shared with the TERMINAL callback: there it is called with the v2 envelope
+ * as `result`, so `$$.field` resolves to the REAL final values (status,
+ * timeline, error, …) and the derived envelope map below only fills in the
+ * acceptance-time fields the intake response lacks. `$.field` always reads
+ * the caller's intake payload.
+ */
+export function resolveTemplate(
   template: Record<string, unknown> | undefined,
   intakePayload: Record<string, unknown>,
+  result: Record<string, unknown>,
+  endpoint: TemplateEndpointLike,
 ): Record<string, unknown> {
   if (!template) return {};
   const out: Record<string, unknown> = {};
   for (const [key, raw] of Object.entries(template)) {
-    if (typeof raw === 'string' && FIELD_PATH.test(raw)) {
+    if (typeof raw !== 'string') {
+      out[key] = raw;
+    } else if (SYSTEM_FIELD_PATH.test(raw)) {
+      // Result first: the v2 envelope (terminal) and the intake response
+      // (status, request_id, …) both carry real values. The derived map only
+      // fills in envelope keys the acceptance response does not contain
+      // (event_type, occurred_at, timeline.*, delivery.*, …).
+      const field = raw.slice(3);
+      const fromResult = fieldValue(result, raw.slice(1));
+      const envelopeField = ENVELOPE_TEMPLATE_FIELDS[field];
+      out[key] = fromResult !== undefined
+        ? fromResult
+        : envelopeField !== undefined
+          ? envelopeField(result, endpoint as WebhookEndpoint)
+          : fromResult;
+    } else if (FIELD_PATH.test(raw)) {
       out[key] = fieldValue(intakePayload, raw);
     } else {
       out[key] = raw;
@@ -192,23 +289,34 @@ export class WebhookCallbackService {
         : renderFieldTokens(endpoint.callbackNatsSubject, intakePayload);
     }
 
-    const userTemplate = resolveTemplate(endpoint.callbackPayloadTemplate, intakePayload);
+    const userTemplate = resolveTemplate(endpoint.callbackPayloadTemplate, intakePayload, result, endpoint);
+    const transports: CallbackTransport[] = [];
+    if (isHttpTransport(transport)) transports.push('HTTP');
+    if (isNatsTransport(transport)) transports.push('NATS');
     const payload: Record<string, unknown> = ctx.payloadOverride ??
       (Object.keys(userTemplate).length > 0
         ? userTemplate
-        : {
-            // `event_type` names this for what it is: an ACCEPTANCE
-            // notification. It carries `status: "QUEUED"` because the job has
-            // only been queued — it is not, and must never be described as, a
-            // print result. The terminal result arrives separately as
-            // `print.job.completed` (see ResultCallbackDispatcher).
-            event_type: 'print.job.accepted',
-            request_id: result['request_id'],
-            print_job_id: result['print_job_id'],
-            status: result['status'],
-            trace_id: result['trace_id'],
-            duplicate: result['duplicate'] ?? false,
-          });
+        : buildCallbackEnvelope({
+            // One event_id per acceptance, so a receiver can dedupe exactly
+            // like it does for the terminal callback's stable event_id.
+            eventId: generateId(),
+            eventType: 'print.job.accepted',
+            // The acceptance is the moment the print was ordered — a receiver
+            // must see the real timestamp, not re-derive it from queue polling.
+            occurredAt: (result['queued_at'] ?? result['created_at'] ?? new Date().toISOString()) as string,
+            requestId: (result['request_id'] as string | undefined) ?? null,
+            jobId: (result['job_id'] as string | undefined) ?? (result['print_job_id'] as string | undefined) ?? null,
+            sourceSystem: (result['source_system'] as string | undefined) ?? null,
+            status: (result['status'] as string | undefined) ?? 'QUEUED',
+            printerCode: (result['resolved_printer_code'] as string | undefined) ?? null,
+            traceId: (result['trace_id'] as string | undefined) ?? null,
+            duplicate: result['duplicate'] === true,
+            timeline: {
+              acceptedAt: (result['created_at'] as string | undefined) ?? null,
+              queuedAt: (result['queued_at'] as string | undefined) ?? null,
+            },
+            transports,
+          }));
 
     return { target, payload };
   }

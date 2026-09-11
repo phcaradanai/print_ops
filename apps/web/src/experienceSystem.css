@@ -91,8 +91,6 @@ body {
 
 .ops-page__title,
 .ops-page__header h1,
-.tpl-page-header h1,
-.wh-header h1,
 .pp-page-header h1 {
   letter-spacing: 0;
   text-wrap: pretty;
@@ -100,8 +98,6 @@ body {
 
 .ops-page__description,
 .ops-page__header p,
-.tpl-page-header p,
-.wh-header p,
 .pp-page-header p {
   text-wrap: pretty;
 }
@@ -113,7 +109,6 @@ body {
 
 .ops-page__actions > *,
 .tpl-page-tools > *,
-.wh-header-actions > *,
 .pp-toolbar > * {
   flex: 0 0 auto;
 }
@@ -227,7 +222,6 @@ body {
    on the second or final column. */
 .ui-data-table-frame {
   overflow: auto;
-  scrollbar-gutter: stable both-edges;
   overscroll-behavior-inline: contain;
 }
 
@@ -251,7 +245,6 @@ body {
   font-size: var(--font-label-size);
   font-weight: var(--font-label-weight);
   line-height: var(--font-label-line-height);
-  letter-spacing: 0;
   text-transform: none;
 }
 
@@ -300,6 +293,7 @@ body {
 /* Status text must remain readable at fatigue distance. */
 .status-badge,
 .ui-status-badge,
+.ui-state-badge,
 .ui-badge {
   min-height: 1.65rem;
   font-size: 0.75rem;
@@ -399,8 +393,6 @@ body {
 
   .ops-page__header,
   .page-header,
-  .tpl-page-header,
-  .wh-header,
   .pp-page-header {
     align-items: stretch;
   }
@@ -418,7 +410,6 @@ body {
     align-items: start;
     color: var(--neutral-text-muted);
     line-height: 1.35;
-    letter-spacing: 0;
     text-transform: none;
   }
 }
@@ -434,8 +425,6 @@ body {
 
   .ops-page__header,
   .page-header,
-  .tpl-page-header,
-  .wh-header,
   .pp-page-header {
     flex-direction: column;
     gap: var(--spacing-md);
@@ -444,14 +433,12 @@ body {
 
   .ops-page__actions,
   .tpl-page-tools,
-  .wh-header-actions,
   .pp-toolbar {
     justify-content: flex-start;
   }
 
   .ops-page__actions > *,
   .tpl-page-tools > *,
-  .wh-header-actions > *,
   .pp-toolbar > * {
     flex: 1 1 auto;
   }
@@ -528,7 +515,10 @@ body {
   .ui-chip,
   .status-badge,
   .ui-status-badge,
-  .ui-badge {
+  .ui-state-badge,
+  .ui-badge,
+  .ui-switch__track,
+  .ui-switch__thumb {
     forced-color-adjust: auto;
   }
 }

@@ -16,6 +16,7 @@ const serverLog = join(logsDir, 'server.log');
 const runnerLog = join(logsDir, 'runner.log');
 const serverExe = join(resources, 'server.exe');
 const runnerExe = join(resources, 'printops-runner.exe');
+const updaterExe = join(resources, 'printops-updater.exe');
 const wasmPath = join(resources, 'sql-wasm.wasm');
 const helperExe = join(resources, 'print-helper', 'printops-html-print.exe');
 const jwtSecret = randomBytes(32).toString('hex');
@@ -195,7 +196,7 @@ async function getJob(base, auth, id) {
 }
 
 try {
-  [serverExe, runnerExe, wasmPath, helperExe].forEach(requireResource);
+  [serverExe, runnerExe, updaterExe, wasmPath, helperExe].forEach(requireResource);
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
   serverChild = startServer(port);
@@ -331,7 +332,7 @@ try {
     status: 'PASS',
     topology: 'packaged resources; API local worker + discovery-only Go runner',
     networkScope: 'loopback',
-    resources: [serverExe, runnerExe, wasmPath, helperExe].map((path) => ({
+    resources: [serverExe, runnerExe, updaterExe, wasmPath, helperExe].map((path) => ({
       name: path.slice(resources.length + 1).replaceAll('\\', '/'),
       bytes: statSync(path).size,
       sha256: sha256(path),
