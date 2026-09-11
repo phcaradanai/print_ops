@@ -196,6 +196,8 @@ describe('OtaUpdatePolicyWorker', () => {
       blockedVersion: null,
       nextAttemptAt: null,
       pendingVersion: '0.1.29',
+      operatorRecoveryRequired: false,
+      rollbackFailedVersion: null,
       updatedAt: '2026-09-10T00:00:00.000Z',
     });
     const client = service({
@@ -234,6 +236,63 @@ describe('OtaUpdatePolicyWorker', () => {
     await expect(worker.runOnce()).resolves.toMatchObject({ kind: 'failed', blocked: false, version: '0.1.29' });
     expect(client.checkForUpdate).not.toHaveBeenCalled();
     expect(state.value).toMatchObject({ failureCount: 1, failureVersion: '0.1.29', pendingVersion: null });
+  });
+
+  it('hard-stops automatic OTA after a persisted ROLLBACK_FAILED across restart', async () => {
+    const state = store({
+      failureCount: 0,
+      failureVersion: null,
+      blockedVersion: null,
+      nextAttemptAt: null,
+      pendingVersion: '0.1.29',
+      operatorRecoveryRequired: false,
+      rollbackFailedVersion: null,
+      updatedAt: '2026-09-10T00:00:00.000Z',
+    });
+    const client = service({
+      getStatus: vi.fn(async () => ({
+        enabled: true,
+        configured: true,
+        currentVersion: '0.1.28',
+        currentSchemaVersion: 7,
+        channel: 'stable' as const,
+        signatureVerification: 'required' as const,
+        installerConfigured: true,
+        state: {
+          state: 'ROLLBACK_FAILED' as const,
+          targetVersion: '0.1.29',
+          startedAt: null,
+          updatedAt: new Date(),
+          errorMessage: 'rollback installer could not restore A',
+          retryCount: 1,
+        },
+        stagedArtifact: null,
+      })),
+    });
+    const config = {
+      enabled: true,
+      checkIntervalMs: 1_000,
+      jitterMs: 0,
+      retryBaseMs: 10,
+      retryMaxMs: 100,
+      maxFailures: 99,
+    };
+
+    const worker = new OtaUpdatePolicyWorker({ service: client, stateStore: state, config });
+    await expect(worker.runOnce()).resolves.toMatchObject({ kind: 'failed', blocked: true, version: '0.1.29' });
+    expect(state.value).toMatchObject({
+      operatorRecoveryRequired: true,
+      rollbackFailedVersion: '0.1.29',
+      blockedVersion: '0.1.29',
+      nextAttemptAt: null,
+    });
+    expect(client.checkForUpdate).not.toHaveBeenCalled();
+
+    const restarted = new OtaUpdatePolicyWorker({ service: client, stateStore: state, config });
+    await expect(restarted.runOnce()).resolves.toMatchObject({ kind: 'blocked', version: '0.1.29' });
+    expect(client.checkForUpdate).not.toHaveBeenCalled();
+    expect(client.downloadUpdate).not.toHaveBeenCalled();
+    expect(client.installUpdate).not.toHaveBeenCalled();
   });
 
   it('does not start a second policy operation while the first check is in flight', async () => {

@@ -10,6 +10,10 @@ export interface OtaPolicyState {
   nextAttemptAt: string | null;
   /** External handoff whose terminal outcome is still to be observed. */
   pendingVersion: string | null;
+  /** A failed native rollback leaves maintenance fail-closed until an operator recovers it. */
+  operatorRecoveryRequired: boolean;
+  /** Release whose failed rollback requires explicit operator recovery. */
+  rollbackFailedVersion: string | null;
   updatedAt: string;
 }
 
@@ -65,6 +69,8 @@ const EMPTY_STATE = (): OtaPolicyState => ({
   blockedVersion: null,
   nextAttemptAt: null,
   pendingVersion: null,
+  operatorRecoveryRequired: false,
+  rollbackFailedVersion: null,
   updatedAt: new Date(0).toISOString(),
 });
 
@@ -119,6 +125,13 @@ export class OtaUpdatePolicyWorker {
     try {
       const pendingOutcome = await this.observePendingHandoff();
       if (pendingOutcome) return pendingOutcome;
+
+      // A failed native rollback is distinct from an install/health failure:
+      // do not discover, download, or install any further candidate until an
+      // operator has restored a known-good installation and cleared this state.
+      if (this.state.operatorRecoveryRequired) {
+        return { kind: 'blocked', version: this.state.rollbackFailedVersion ?? undefined };
+      }
 
       const now = this.now();
       if (this.state.nextAttemptAt && Date.parse(this.state.nextAttemptAt) > now.getTime()) {
@@ -211,6 +224,8 @@ export class OtaUpdatePolicyWorker {
             ...loaded,
             failureVersion: loaded.failureVersion ?? null,
             pendingVersion: loaded.pendingVersion ?? null,
+            operatorRecoveryRequired: loaded.operatorRecoveryRequired ?? false,
+            rollbackFailedVersion: loaded.rollbackFailedVersion ?? null,
           };
         }
         if (this.deps.stateStore) await this.deps.stateStore.save(this.state);
@@ -229,6 +244,8 @@ export class OtaUpdatePolicyWorker {
       blockedVersion: null,
       nextAttemptAt: null,
       pendingVersion: null,
+      operatorRecoveryRequired: false,
+      rollbackFailedVersion: null,
       updatedAt: this.now().toISOString(),
     };
     await this.saveState();
@@ -252,6 +269,8 @@ export class OtaUpdatePolicyWorker {
       blockedVersion: blocked ? version ?? null : null,
       nextAttemptAt,
       pendingVersion: null,
+      operatorRecoveryRequired: false,
+      rollbackFailedVersion: null,
       updatedAt: this.now().toISOString(),
     };
     await this.saveState();
@@ -275,6 +294,25 @@ export class OtaUpdatePolicyWorker {
       this.persistenceUnavailable = true;
       this.deps.logger?.error?.({ error }, 'OTA automatic policy state could not be persisted');
     }
+  }
+
+  private async recordRollbackFailure(version: string, error: unknown): Promise<{
+    nextDelayMs: number;
+    blocked: boolean;
+  }> {
+    this.state = {
+      failureCount: Math.max(1, this.state.failureCount),
+      failureVersion: version,
+      blockedVersion: version,
+      nextAttemptAt: null,
+      pendingVersion: null,
+      operatorRecoveryRequired: true,
+      rollbackFailedVersion: version,
+      updatedAt: this.now().toISOString(),
+    };
+    await this.saveState();
+    this.deps.logger?.error?.({ error, version }, 'Automatic OTA blocked: native rollback failed and operator recovery is required');
+    return { nextDelayMs: this.nextInterval(), blocked: true };
   }
 
   private backoff(failureCount: number): number {
@@ -318,10 +356,16 @@ export class OtaUpdatePolicyWorker {
       await this.recordSuccess();
       return { kind: 'no-update', nextDelayMs: this.nextInterval(), version };
     }
+    if (state.state === 'ROLLBACK_FAILED') {
+      return {
+        kind: 'failed',
+        ...(await this.recordRollbackFailure(version, state.errorMessage ?? 'external updater rollback failed')),
+        version,
+      };
+    }
     if (state.state === 'ROLLED_BACK'
       || state.state === 'INSTALL_FAILED'
-      || state.state === 'HEALTH_CHECK_FAILED'
-      || state.state === 'ROLLBACK_FAILED') {
+      || state.state === 'HEALTH_CHECK_FAILED') {
       return {
         kind: 'failed',
         ...(await this.recordFailure(version, state.errorMessage ?? `external updater ended in ${state.state}`)),
@@ -341,5 +385,7 @@ function isPolicyState(value: unknown): value is OtaPolicyState {
     && (record['blockedVersion'] === null || typeof record['blockedVersion'] === 'string')
     && (record['nextAttemptAt'] === null || typeof record['nextAttemptAt'] === 'string')
     && (record['pendingVersion'] === undefined || record['pendingVersion'] === null || typeof record['pendingVersion'] === 'string')
+    && (record['operatorRecoveryRequired'] === undefined || typeof record['operatorRecoveryRequired'] === 'boolean')
+    && (record['rollbackFailedVersion'] === undefined || record['rollbackFailedVersion'] === null || typeof record['rollbackFailedVersion'] === 'string')
     && typeof record['updatedAt'] === 'string';
 }
