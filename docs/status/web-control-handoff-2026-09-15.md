@@ -4,7 +4,7 @@
 
 - Release version: `0.1.28`
 - Final stable `main` SHA: `4ea6cdd76f19f2f4babdc2a7de0311dd0a6fec51`
-- Release tag: [`v0.1.28`](https://github.com/phcaradanai/print_ops/releases/tag/v0.1.28)
+- Release tag: [`v0.1.28`](https://github.com/phcaradanai/print_ops/tree/v0.1.28)
 - Integration PR: [#22](https://github.com/phcaradanai/print_ops/pull/22), merged at `2026-09-15T13:52:58Z`
 - Web Control branch: `feature/web-control`
 - Web Control starting SHA: `4ea6cdd76f19f2f4babdc2a7de0311dd0a6fec51`

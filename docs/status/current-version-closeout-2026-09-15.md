@@ -12,7 +12,7 @@ The authoritative current-version baseline is:
 - Pre-merge `main` SHA: `b7a92fbec9be0d5d329aa860357bddd0879af45a`
 - Final `main` SHA / PR merge commit: `4ea6cdd76f19f2f4babdc2a7de0311dd0a6fec51`
 - Merge timestamp: `2026-09-15T13:52:58Z`
-- Release tag: [`v0.1.28`](https://github.com/phcaradanai/print_ops/releases/tag/v0.1.28)
+- Release tag: [`v0.1.28`](https://github.com/phcaradanai/print_ops/tree/v0.1.28)
 - PR state: merged normally; PR #22 is closed by merge
 - Web Control branch: `feature/web-control`
 - Web Control base SHA: `4ea6cdd76f19f2f4babdc2a7de0311dd0a6fec51`
