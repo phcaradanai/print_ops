@@ -472,8 +472,8 @@ test.describe('Webhooks second-pass operational behavior', () => {
     expect(state.requests.filter((request) => request.method === 'PUT').at(-1)?.body)
       .toEqual({ enabled: false });
 
-    await desktopEndpointTable(page).locator('tbody input[type="checkbox"]').first().check();
-    await desktopEndpointTable(page).locator('tbody input[type="checkbox"]').nth(1).check();
+    await desktopEndpointTable(page).locator('tbody .ui-check--bare input[type="checkbox"]').first().check();
+    await desktopEndpointTable(page).locator('tbody .ui-check--bare input[type="checkbox"]').nth(1).check();
     await page.getByRole('button', { name: 'Delete selected' }).click();
     await expect(page.getByText(/Deleting 2 endpoint/)).toBeVisible();
     await page.getByRole('button', { name: 'Delete 2 endpoints' }).click();
