@@ -55,6 +55,7 @@ No OTA, printer, queue, NATS, callback-contract, paper-profile production, or de
 - [Webhooks verification PR run 34971482306](https://github.com/phcaradanai/print_ops/actions/runs/34971482306), job `104388570635`: success; all steps succeeded and browser evidence was `7 passed`.
 - [Final closeout-head Webhooks run 34972866466](https://github.com/phcaradanai/print_ops/actions/runs/34972866466), job `104393166310`, head `06c6e0b2906b9999f988cd286a5d08edb89fdfd3`: every step succeeded; browser evidence was `7 passed`.
 - [Final closeout-head Web quality run 34973292594](https://github.com/phcaradanai/print_ops/actions/runs/34973292594), job `104394624183`, head `06c6e0b2906b9999f988cd286a5d08edb89fdfd3`: typecheck, web tests, and build succeeded.
+- [Final PR-head Webhooks run 34973664846](https://github.com/phcaradanai/print_ops/actions/runs/34973664846), final job `104400380836`, head `660da735dcee54505f12ec19b2fe7b86971ada81` (documentation-only commits over the implementation): all steps succeeded; browser evidence was `7 passed`.
 
 The root workspace command hit the existing SQLite exclusive-lock test race twice during isolated reruns (`PRINTOPS_DB_LOCKED` while the test reinitialised its just-closed temporary DB). The test and production lock code were not weakened or changed. The same hosted workflow passed on the next isolated rerun, including the full root command and browser step.
 
