@@ -4,14 +4,15 @@
 
 **PASS — candidate closed and ready for Web Control handoff.**
 
-Web Control implementation is not included. The final candidate is the pushed `mvp_nippon` head:
+Web Control implementation is not included. The frozen implementation candidate and the closeout metadata head are:
 
-- Candidate SHA: `c29ce1b1578ff797945ae934847dee66d321bd72`
+- Implementation SHA: `c29ce1b1578ff797945ae934847dee66d321bd72`
+- Closeout/head SHA: `06c6e0b2906b9999f988cd286a5d08edb89fdfd3` (documentation-only commit on top of the implementation)
 - Branch: `mvp_nippon`
 - Baseline SHA: `f66b36ff57380624f6bb44204ae26100685d6186`
 - Integration PR: [#22](https://github.com/phcaradanai/print_ops/pull/22)
 - Base branch/SHA: `main` / `b7a92fbec9be0d5d329aa860357bddd0879af45a`
-- PR head: `mvp_nippon` / `c29ce1b1578ff797945ae934847dee66d321bd72`
+- PR head: `mvp_nippon` / `06c6e0b2906b9999f988cd286a5d08edb89fdfd3`
 - PR state: open, ready for review, `MERGEABLE`, `CLEAN`; not merged
 
 PR #22 is the existing, explicitly scoped Webhooks integration vehicle. Its title/body are unambiguous and its final checks are green, so no duplicate PR was created. The branch comparison is diverged from `main` by one commit (`262` ahead, `1` behind; merge base `d5c7f339a7256d7cf04b6f6ca016c676b13e898d`). Formal GitHub approval and merge remain an integration-governance step; merging was not performed.
@@ -48,10 +49,12 @@ No OTA, printer, queue, NATS, callback-contract, paper-profile production, or de
 
 ### Hosted checks
 
-- [Web quality push run 34970880004](https://github.com/phcaradanai/print_ops/actions/runs/34970880004), job `104386592818`: typecheck, tests, and build succeeded.
+- [Web quality push run 34970880004](https://github.com/phcaradanai/print_ops/actions/runs/34970880004), job `104386592818`: typecheck, tests, and build succeeded for the implementation SHA.
 - [Webhooks verification push run 34970880208](https://github.com/phcaradanai/print_ops/actions/runs/34970880208), job `104389181179`: all workflow steps succeeded, including the root workspace command, callback API contracts, builds, and browser evidence.
 - Browser evidence in that job: `7 passed`.
 - [Webhooks verification PR run 34971482306](https://github.com/phcaradanai/print_ops/actions/runs/34971482306), job `104388570635`: success; all steps succeeded and browser evidence was `7 passed`.
+- [Final closeout-head Webhooks run 34972866466](https://github.com/phcaradanai/print_ops/actions/runs/34972866466), job `104393166310`, head `06c6e0b2906b9999f988cd286a5d08edb89fdfd3`: every step succeeded; browser evidence was `7 passed`.
+- [Final closeout-head Web quality run 34973292594](https://github.com/phcaradanai/print_ops/actions/runs/34973292594), job `104394624183`, head `06c6e0b2906b9999f988cd286a5d08edb89fdfd3`: typecheck, web tests, and build succeeded.
 
 The root workspace command hit the existing SQLite exclusive-lock test race twice during isolated reruns (`PRINTOPS_DB_LOCKED` while the test reinitialised its just-closed temporary DB). The test and production lock code were not weakened or changed. The same hosted workflow passed on the next isolated rerun, including the full root command and browser step.
 
