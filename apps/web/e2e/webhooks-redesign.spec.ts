@@ -316,9 +316,9 @@ async function expectNoPageOverflow(page: Page) {
       .slice(0, 8)
       .map(({ candidate }) => describe(candidate));
     const widest = candidates
-      .slice()
+      .filter((candidate) => candidate.scrollWidth > candidate.clientWidth + 1)
       .sort((left, right) => right.scrollWidth - left.scrollWidth)
-      .slice(0, 12)
+      .slice(0, 30)
       .map((candidate) => describe(candidate));
     const parent = element.parentElement;
     return {
