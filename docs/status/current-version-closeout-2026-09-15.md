@@ -2,19 +2,24 @@
 
 ## Verdict
 
-**PASS — candidate closed and ready for Web Control handoff.**
+**PASS — current version closed and ready for Web Control.**
 
-Web Control implementation is not included. The frozen release implementation candidate is:
+The authoritative current-version baseline is:
 
-- Implementation SHA: `c29ce1b1578ff797945ae934847dee66d321bd72`
-- Branch: `mvp_nippon`
-- Baseline SHA: `f66b36ff57380624f6bb44204ae26100685d6186`
+- Frozen implementation SHA: `c29ce1b1578ff797945ae934847dee66d321bd72`
+- Pre-merge `mvp_nippon` head: `753acda7cc90addb3cda7d16a42f140a1487fbaf`
 - Integration PR: [#22](https://github.com/phcaradanai/print_ops/pull/22)
-- Base branch/SHA: `main` / `b7a92fbec9be0d5d329aa860357bddd0879af45a`
-- Implementation PR head: `mvp_nippon` / `c29ce1b1578ff797945ae934847dee66d321bd72`
-- PR state: open, ready for review, `MERGEABLE`, `CLEAN`; not merged
+- Pre-merge `main` SHA: `b7a92fbec9be0d5d329aa860357bddd0879af45a`
+- Final `main` SHA / PR merge commit: `4ea6cdd76f19f2f4babdc2a7de0311dd0a6fec51`
+- Merge timestamp: `2026-09-15T13:52:58Z`
+- Release tag: [`v0.1.28`](https://github.com/phcaradanai/print_ops/releases/tag/v0.1.28)
+- PR state: merged normally; PR #22 is closed by merge
+- Web Control branch: `feature/web-control`
+- Web Control base SHA: `4ea6cdd76f19f2f4babdc2a7de0311dd0a6fec51`
 
-The closeout and handoff records are documentation-only commits on top of the implementation candidate. PR #22 is the existing, explicitly scoped Webhooks integration vehicle. Its title/body are unambiguous and its final checks are green, so no duplicate PR was created. The branch comparison is diverged from `main` by one commit (`262` ahead, `1` behind; merge base `d5c7f339a7256d7cf04b6f6ca016c676b13e898d`). Formal GitHub approval and merge remain an integration-governance step; merging was not performed.
+`mvp_nippon` remains frozen at the pre-merge release head. The merge tree differs from the frozen implementation only by the two existing closeout/handoff documents; no production feature code was added after `c29ce1b`.
+
+PR #22 was the existing, explicitly scoped Webhooks integration vehicle. It was merged without rewriting historical commits. No Web Control implementation is present.
 
 
 ## Root cause and smallest fix
@@ -37,56 +42,48 @@ The final Webhooks fixes were narrow and behavior-preserving:
 
 ## Files changed from baseline and why
 
-Only these tracked files differ from the supplied baseline:
+The implementation changes from the supplied baseline are limited to these tracked files:
 
 - `apps/api/src/tests/template-system.test.ts` — correct the rotated companion-template expectation; no production behavior change.
 - `apps/web/e2e/webhooks-redesign.spec.ts` — use the correct endpoint-selection controls and retain the page-overflow contract with clearer diagnostics.
 - `apps/web/src/features/webhooks/webhooks.css` — prevent narrow/zoomed editor min-content overflow and wrap long guide text.
 
-No OTA, printer, queue, NATS, callback-contract, paper-profile production, or desktop updater files changed in this closeout.
+The two closeout/handoff Markdown files were added for release evidence and the Web Control boundary. No OTA, printer, queue, NATS, callback-contract, paper-profile production, or desktop updater files changed.
 
 ## Verification evidence
 
 ### Hosted checks
 
-- [Web quality push run 34970880004](https://github.com/phcaradanai/print_ops/actions/runs/34970880004), job `104386592818`: typecheck, tests, and build succeeded for the implementation SHA.
-- [Webhooks verification push run 34970880208](https://github.com/phcaradanai/print_ops/actions/runs/34970880208), job `104389181179`: all workflow steps succeeded, including the root workspace command, callback API contracts, builds, and browser evidence.
-- Browser evidence in that job: `7 passed`.
-- [Webhooks verification PR run 34971482306](https://github.com/phcaradanai/print_ops/actions/runs/34971482306), job `104388570635`: success; all steps succeeded and browser evidence was `7 passed`.
-- [Final closeout-head Webhooks run 34972866466](https://github.com/phcaradanai/print_ops/actions/runs/34972866466), job `104393166310`, head `06c6e0b2906b9999f988cd286a5d08edb89fdfd3`: every step succeeded; browser evidence was `7 passed`.
-- [Final closeout-head Web quality run 34973292594](https://github.com/phcaradanai/print_ops/actions/runs/34973292594), job `104394624183`, head `06c6e0b2906b9999f988cd286a5d08edb89fdfd3`: typecheck, web tests, and build succeeded.
-- [Final PR-head Webhooks run 34973664846](https://github.com/phcaradanai/print_ops/actions/runs/34973664846), final job `104400380836`, head `660da735dcee54505f12ec19b2fe7b86971ada81` (documentation-only commits over the implementation): all steps succeeded; browser evidence was `7 passed`.
-The root workspace and callback-contract commands hit an intermittent existing SQLite exclusive-lock race during isolated retries (`PRINTOPS_DB_LOCKED` while a test reinitialised its just-closed temporary DB). The test and production lock code were not weakened or changed. The hosted workflow passed on a later isolated rerun, including the full root command and browser step.
+- [Post-merge Web quality run 34978001348](https://github.com/phcaradanai/print_ops/actions/runs/34978001348), job `104410617761`, head `4ea6cdd76f19f2f4babdc2a7de0311dd0a6fec51`: typecheck, web tests, and build succeeded.
+- [Post-merge Webhooks verification run 34978001551](https://github.com/phcaradanai/print_ops/actions/runs/34978001551), final retry job `104411529625`, head `4ea6cdd76f19f2f4babdc2a7de0311dd0a6fec51`: every workflow step succeeded, including API workspace tests, callback/Webhook API contracts, builds, and browser verification.
+- The first attempt of run `34978001551` failed only at `src/tests/sqlite-persistence.test.ts` with `PRINTOPS_DB_LOCKED`; the isolated retry passed without any code or test weakening.
+- Earlier pre-merge Webhooks and Web quality evidence remains available in the implementation history; this document records the authoritative post-merge gates.
 
-### Local checks
+### Local checks on merged `main`
 
 - Full API workspace: `npm run test -w apps/api -- --reporter=verbose` — `62 passed`, `1 skipped` test file; `504 passed`, `1 skipped` tests.
 - Affected callback/API contracts:
   `npm exec -w apps/api -- vitest run src/tests/webhook-callback-api.test.ts src/tests/webhook-callback.test.ts src/tests/webhook-endpoint.repo.test.ts src/tests/callback-delivery.repo.test.ts src/tests/callback-toggle.test.ts src/tests/callback-url-guard.test.ts src/tests/result-callback.test.ts`
   — `7 passed` files, `121 passed` tests.
-- Targeted Webhooks browser workflow:
-  `npx playwright test apps/web/e2e/webhooks-redesign.spec.ts apps/web/e2e/webhooks-final-visual.spec.ts`
-  — `7 passed`.
 - Web application build: `npm run build -w @printerops/web` — passed.
 
 ### OTA and production invariants
 
-Application OTA remains closed under the existing accepted gate:
-
-- OTA acceptance documentation records implementation commit `5647140aceb286c0579b0c5d3538704bd535d651`.
-- Existing [OTA gate run 34964251184](https://github.com/phcaradanai/print_ops/actions/runs/34964251184) at the pre-closeout candidate passed the Windows packaged updater and Linux/TypeScript/manifest checks.
-- OTA was not reopened or rerun for this Webhooks-only closeout, per instruction; no OTA files changed.
-
-The printing admission/queue/NATS/callback/paper-profile invariants remain covered by the existing implementation and checks. No Web Control code was added.
+- The merge changed no OTA-related files. The only tracked paths added after `c29ce1b` are the two closeout/handoff Markdown documents.
+- Application OTA remains closed under the existing accepted gate:
+  - OTA acceptance documentation records implementation commit `5647140aceb286c0579b0c5d3538704bd535d651`.
+  - Existing [OTA gate run 34964251184](https://github.com/phcaradanai/print_ops/actions/runs/34964251184) passed the Windows packaged updater and Linux/TypeScript/manifest checks.
+  - OTA was not reopened or rerun for this Webhooks-only merge because no OTA implementation changed.
+- Printing execution and queue lifecycle, one-runner-per-machine behavior, NATS/JetStream, HTTP intake, callback payload/status, paper-profile geometry/rotation, persisted data compatibility, and updater rollback contracts remain unchanged.
 
 ## Independent review
 
-A delegated reviewer who did not implement the changes independently returned **PASS** for `c29ce1b1578ff797945ae934847dee66d321bd72`.
+An independent delegated reviewer who did not implement the changes returned **PASS** for the merged release candidate `4ea6cdd76f19f2f4babdc2a7de0311dd0a6fec51`.
 
-The reviewer found no candidate verification blockers. They identified only the expected integration-governance follow-up: formal review/approval and eventual merge of PR #22.
+The reviewer found no candidate-code blockers, confirmed the post-merge Webhooks/Web quality evidence and unchanged OTA/printing scope, and identified only the bounded SQLite technical-debt item plus the requirement to keep `mvp_nippon` frozen.
 
 ## Deferred issues and next boundary
 
-- Obtain formal GitHub review/approval and merge PR #22; it is ready for review but intentionally not merged by this closeout.
-- The SQLite exclusive-lock test showed an intermittent hosted race during reruns. It passed in the successful final run; no test weakening or unrelated remediation was introduced.
-- Start Web Control only from the frozen candidate SHA above (or the exact commit after PR #22 is merged). Web Control implementation is intentionally deferred to the next workstream.
+- [SQLite race technical debt #25](https://github.com/phcaradanai/print_ops/issues/25): bound the intermittent hosted `PRINTOPS_DB_LOCKED` race in `sqlite-persistence.test.ts`; production impact is currently unproven, and reproduction is required before any locking change.
+- No formal branch-protection approval gate was configured for `main`; PR #22 was merged only after the required checks passed.
+- Web Control starts from `feature/web-control` at final `main` SHA `4ea6cdd76f19f2f4babdc2a7de0311dd0a6fec51`. The branch currently contains no Web Control implementation.
