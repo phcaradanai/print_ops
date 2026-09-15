@@ -111,6 +111,7 @@ jobs:
         env:
           PRINTOPS_OTA_NATIVE_SIGNING_KEY: ${{ secrets.PRINTOPS_OTA_NATIVE_ACCEPTANCE_PRIVATE_KEY }}
           PRINTOPS_OTA_NATIVE_OUTPUT_DIR: ${{ github.workspace }}\artifacts\ota-native
+          PRINTOPS_OTA_NATIVE_NORMALIZE_GENERATED_TAURI_FILES: '1'
         run: node scripts/ota-native-acceptance-build.mjs
       - name: Export native OTA acceptance paths
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_native_windows_e2e }}
