@@ -1,22 +1,20 @@
 /**
- * Modal wrapper over the native `<dialog>` element (FE-01.1).
+ * Shared PrintOps dialog adapter.
  *
- * `JobQueue`'s reprint confirmation is the only modal in the app and it wires
- * `showModal()` / `close()` / `onCancel` by hand through a ref and an effect.
- * That is the part everyone gets wrong: forgetting `onCancel` leaves Escape
- * closing the element without telling React, so the dialog reopens on the next
- * render. Centralised here, together with the labelling.
- *
- * `showModal()` gives us focus trapping, inert background and Escape handling
- * from the platform — no focus-management library needed. Nothing here creates
- * a `window.confirm`-style blocking dialog.
+ * The public API and visual class names remain owned by PrintOps while Radix
+ * owns modal semantics, focus containment, Escape handling, outside dismissal,
+ * scroll locking, portal rendering, and focus restoration in the browser.
  */
 
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
-/** Shared keyboard, scroll-lock and focus-return behaviour for div-based modals. */
+/**
+ * Compatibility hook for non-Dialog overlays that have not migrated to a
+ * headless primitive yet. New dialogs must use the shared Dialog adapter.
+ */
 export function useModalFocusTrap(open: boolean, panelRef: RefObject<HTMLElement>, onClose: () => void) {
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
@@ -31,8 +29,6 @@ export function useModalFocusTrap(open: boolean, panelRef: RefObject<HTMLElement
       const panel = panelRef.current;
       if (panel && !panel.contains(document.activeElement)) (focusable()[0] ?? panel).focus();
     };
-    // Focus synchronously for assistive technology, then repeat on the next
-    // frame in case a just-mounted drawer is still settling its descendants.
     moveFocusInside();
     const frame = requestAnimationFrame(moveFocusInside);
     const onKeyDown = (event: KeyboardEvent) => {
@@ -62,44 +58,43 @@ export function useModalFocusTrap(open: boolean, panelRef: RefObject<HTMLElement
 
 export interface DialogProps {
   open: boolean;
-  /** Called for Escape, backdrop dismissal and the close button. */
+  /** Called for an allowed dismissal path or an explicit close/cancel action. */
   onClose: () => void;
   title: ReactNode;
   children: ReactNode;
+  /** Accessible label for an explicit close control in the header. */
+  closeLabel?: string;
   /** Action row, typically Cancel + the confirming Button. */
   footer?: ReactNode;
   /** Prominent warning shown under the title (e.g. duplicate-copy risk). */
   warning?: ReactNode;
+  /** Disable for destructive dialogs so an incidental backdrop click cannot discard the confirmation context. */
+  dismissOnBackdrop?: boolean;
+  /** Escape normally performs a safe cancel; disable only for flows that require an explicit choice. */
+  dismissOnEscape?: boolean;
 }
 
-export function Dialog({ open, onClose, title, children, footer, warning }: DialogProps) {
-  const ref = useRef<HTMLDialogElement>(null);
+export function Dialog({
+  open,
+  onClose,
+  title,
+  children,
+  closeLabel,
+  footer,
+  warning,
+  dismissOnBackdrop = true,
+  dismissOnEscape = true,
+}: DialogProps) {
   const titleId = useId();
-
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
 
   if (!open) return null;
 
-  return (
-    <dialog
-      ref={ref}
-      className="ui-dialog"
-      aria-labelledby={titleId}
-      onCancel={(event) => {
-        // Let React own the open state: without this the element would close
-        // itself on Escape and immediately be reopened by the next render.
-        event.preventDefault();
-        onClose();
-      }}
-    >
-      <h2 className="ui-dialog-title" id={titleId}>
-        {title}
-      </h2>
+  const renderChrome = (titleNode: ReactNode, closeNode?: ReactNode) => (
+    <>
+      <div className="ui-dialog-header">
+        {titleNode}
+        {closeNode}
+      </div>
       {warning && (
         <p className="ui-dialog-warning" role="alert">
           {warning}
@@ -107,6 +102,76 @@ export function Dialog({ open, onClose, title, children, footer, warning }: Dial
       )}
       <div className="ui-dialog-body">{children}</div>
       {footer && <div className="ui-dialog-footer">{footer}</div>}
-    </dialog>
+    </>
+  );
+
+  const titleElement = (
+    <h2 className="ui-dialog-title" id={titleId}>
+      {title}
+    </h2>
+  );
+
+  const renderCloseButton = (handleClick?: () => void) => closeLabel ? (
+    <button
+      type="button"
+      className="ui-dialog-close"
+      aria-label={closeLabel}
+      title={closeLabel}
+      onClick={handleClick}
+    >
+      <span aria-hidden="true">×</span>
+    </button>
+  ) : undefined;
+
+  // Radix portals intentionally do not emit server markup. Keep the existing
+  // static-render contract used by isolated component and architecture tests.
+  if (typeof document === 'undefined') {
+    return (
+      <div
+        className="ui-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
+        {renderChrome(titleElement, renderCloseButton(onClose))}
+      </div>
+    );
+  }
+
+  const closeButton = renderCloseButton();
+
+  return (
+    <DialogPrimitive.Root
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose();
+      }}
+    >
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="ui-dialog-overlay" />
+        <DialogPrimitive.Content
+          className="ui-dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          aria-describedby={undefined}
+          onEscapeKeyDown={(event) => {
+            if (!dismissOnEscape) event.preventDefault();
+          }}
+          onPointerDownOutside={(event) => {
+            if (!dismissOnBackdrop) event.preventDefault();
+          }}
+          onInteractOutside={(event) => {
+            if (!dismissOnBackdrop) event.preventDefault();
+          }}
+        >
+          {renderChrome(
+            <DialogPrimitive.Title asChild>{titleElement}</DialogPrimitive.Title>,
+            closeButton ? (
+              <DialogPrimitive.Close asChild>{closeButton}</DialogPrimitive.Close>
+            ) : undefined,
+          )}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

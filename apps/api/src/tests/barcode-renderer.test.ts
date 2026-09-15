@@ -6,14 +6,26 @@ import {
 } from '../infra/template/barcode-renderer.js';
 
 describe('renderBarcodeDataUri', () => {
-  it('renders a code128 barcode as a PNG data URI', async () => {
+  it('renders a code128 barcode as a crisp SVG data URI', async () => {
     const uri = await renderBarcodeDataUri('ABC123', 'barcode', 'code128');
-    expect(uri).toMatch(/^data:image\/png;base64,/);
-    // Decode enough to confirm it's a real PNG (magic bytes 89 50 4E 47).
-    const b64 = uri.slice('data:image/png;base64,'.length);
-    const bytes = Buffer.from(b64, 'base64');
-    expect(bytes.length).toBeGreaterThan(100);
-    expect(bytes.subarray(0, 4).toString('hex')).toBe('89504e47');
+    expect(uri).toMatch(/^data:image\/svg\+xml;base64,/);
+    const svg = Buffer.from(uri.slice('data:image/svg+xml;base64,'.length), 'base64').toString('utf8');
+    expect(svg).toContain('<svg');
+    expect(svg).toContain('shape-rendering="crispEdges"');
+    expect(svg).toContain('preserveAspectRatio="none"');
+    expect(svg).toContain('<path');
+  });
+
+  it('defaults to bars-only output so HRI cannot overflow a fixed-height field', async () => {
+    const barsOnly = await renderBarcodeDataUri('ABC123', 'barcode', 'code128');
+    const withHri = await renderBarcodeDataUri('ABC123', 'barcode', 'code128', { includeText: true });
+    const decode = (uri: string) => Buffer.from(uri.slice('data:image/svg+xml;base64,'.length), 'base64').toString('utf8');
+    const barsOnlySvg = decode(barsOnly);
+    const withHriSvg = decode(withHri);
+    const barsOnlyHeight = Number(barsOnlySvg.match(/viewBox="0 0 \d+ (\d+)"/)?.[1]);
+    const withHriHeight = Number(withHriSvg.match(/viewBox="0 0 \d+ (\d+)"/)?.[1]);
+    expect(withHriSvg).not.toBe(barsOnlySvg);
+    expect(withHriHeight).toBeGreaterThan(barsOnlyHeight);
   });
 
   it('renders a QR code as a vector data URI so printer-DPI scaling stays sharp', async () => {
@@ -26,7 +38,7 @@ describe('renderBarcodeDataUri', () => {
 
   it('defaults to code128 when no symbology is given', async () => {
     const uri = await renderBarcodeDataUri('42', 'barcode');
-    expect(uri).toMatch(/^data:image\/png;base64,/);
+    expect(uri).toMatch(/^data:image\/svg\+xml;base64,/);
   });
 
   it('rejects data that is invalid for the requested symbology (ean13 requires 12-13 digits)', async () => {
@@ -34,8 +46,8 @@ describe('renderBarcodeDataUri', () => {
   });
 
   it('renders code39 and datamatrix symbologies', async () => {
-    await expect(renderBarcodeDataUri('HELLO', 'barcode', 'code39')).resolves.toMatch(/^data:image\/png;base64,/);
-    await expect(renderBarcodeDataUri('HELLO', 'barcode', 'datamatrix')).resolves.toMatch(/^data:image\/png;base64,/);
+    await expect(renderBarcodeDataUri('HELLO', 'barcode', 'code39')).resolves.toMatch(/^data:image\/svg\+xml;base64,/);
+    await expect(renderBarcodeDataUri('HELLO', 'barcode', 'datamatrix')).resolves.toMatch(/^data:image\/svg\+xml;base64,/);
   });
 
   it('keeps QR raster generation independent from its CSS physical size', async () => {
@@ -44,13 +56,13 @@ describe('renderBarcodeDataUri', () => {
     expect(large).toBe(small);
   });
 
-  it('produces a taller 1D barcode raster when heightMm is doubled', async () => {
+  it('produces a taller 1D barcode SVG when heightMm is doubled', async () => {
     const short = await renderBarcodeDataUri('ABC123', 'barcode', 'code128', { heightMm: 6 });
     const tall = await renderBarcodeDataUri('ABC123', 'barcode', 'code128', { heightMm: 18 });
-    const shortBytes = Buffer.from(short.slice('data:image/png;base64,'.length), 'base64');
-    const tallBytes = Buffer.from(tall.slice('data:image/png;base64,'.length), 'base64');
-    const shortHeight = shortBytes.readUInt32BE(20);
-    const tallHeight = tallBytes.readUInt32BE(20);
+    const shortSvg = Buffer.from(short.slice('data:image/svg+xml;base64,'.length), 'base64').toString('utf8');
+    const tallSvg = Buffer.from(tall.slice('data:image/svg+xml;base64,'.length), 'base64').toString('utf8');
+    const shortHeight = Number(shortSvg.match(/viewBox="0 0 \d+ (\d+)"/)?.[1]);
+    const tallHeight = Number(tallSvg.match(/viewBox="0 0 \d+ (\d+)"/)?.[1]);
     expect(tallHeight).toBeGreaterThan(shortHeight);
   });
 });

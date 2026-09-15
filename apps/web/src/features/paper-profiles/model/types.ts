@@ -18,6 +18,7 @@ export interface DynamicField {
   type: DynamicFieldType;
   barcodeSymbology?: DynamicFieldBarcodeSymbology;
   barcodeHeightMm?: number;
+  barcodeWidthMm?: number;
   qrSizeMm?: number;
   xMm: number;
   yMm: number;
@@ -27,10 +28,19 @@ export interface DynamicField {
   align: 'left' | 'center' | 'right';
 }
 
+export interface PaperProfileLayout {
+  columns: number;
+  cellWidthMm: number;
+  cellHeightMm: number;
+  columnGapMm: number;
+  rowPitchMm: number;
+}
+
 export interface PaperForm {
   code: string;
   name: string;
   widthMm: number;
+  gapMm?: number;
   heightMm: number;
   marginTopMm: number;
   marginRightMm: number;
@@ -39,10 +49,17 @@ export interface PaperForm {
   dpi: number;
   orientation: PaperOrientation;
   unit: 'mm' | 'inch';
+  rotation?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
+  layout?: PaperProfileLayout;
 }
 
-export interface PaperProfile extends PaperForm {
+export interface PaperProfile extends Omit<PaperForm, 'rotation' | 'flipHorizontal' | 'flipVertical'> {
   id: string;
+  rotation?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
   fields: DynamicField[];
   createdAt: Date;
   updatedAt: Date;

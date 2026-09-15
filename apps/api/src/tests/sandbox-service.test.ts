@@ -153,6 +153,113 @@ describe('SandboxService', () => {
     await expect(svc.runBatch('TEST_LABEL', [])).rejects.toThrow(/at least one scenario/i);
   });
 
+  it('submits same-printer HTML batch as one multipage spool job', async () => {
+    await printerRepo.create({
+      code: 'TEST_PRINTER',
+      name: 'Test Printer',
+      protocol: 'fake',
+      connectionUri: 'fake://test',
+      isActive: true,
+      metadata: {},
+    });
+    await templateRepo.create({
+      templateCode: 'HTML_BATCH',
+      name: 'HTML Batch',
+      engine: 'HTML',
+      content: '<div>{{name}}</div>',
+      paperProfileId: (await paperRepo.findAll())[0]!.id,
+      status: 'PUBLISHED',
+      createdBy: 'seed',
+    });
+
+    const svc = makeService();
+    const batch = await svc.runBatch('HTML_BATCH', [
+      { samplePayload: { name: '000001' }, testPrint: { printerCode: 'TEST_PRINTER' } },
+      { samplePayload: { name: '000002' }, testPrint: { printerCode: 'TEST_PRINTER' } },
+      { samplePayload: { name: '000003' }, testPrint: { printerCode: 'TEST_PRINTER' } },
+    ]);
+
+    const jobs = await jobRepo.findAll();
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]!.renderedPrintPayload?.match(/data-printops-page=/g)).toHaveLength(3);
+    expect(batch.runs.map((run) => run.testJobId)).toEqual([
+      jobs[0]!.id,
+      jobs[0]!.id,
+      jobs[0]!.id,
+    ]);
+    expect(batch.runs.every((run) => run.testPrintSuccess)).toBe(true);
+    const metadata = jobs[0]!.metadata as {
+      sandboxInput?: {
+        mode?: string;
+        templateCode?: string;
+        printerCode?: string;
+        scenarios?: Array<{ samplePayload?: Record<string, unknown> }>;
+      };
+    };
+    expect(metadata.sandboxInput).toMatchObject({ mode: 'batch', templateCode: 'HTML_BATCH', printerCode: 'TEST_PRINTER' });
+    expect(metadata.sandboxInput?.scenarios).toHaveLength(3);
+  });
+
+  it('packs a 3-up HTML batch into rows without skipped labels', async () => {
+    await printerRepo.create({
+      code: 'GRID_PRINTER',
+      name: 'Grid Printer',
+      protocol: 'fake',
+      connectionUri: 'fake://grid',
+      isActive: true,
+      metadata: {},
+    });
+    const gridPaper = await paperRepo.create({
+      code: 'LABEL_98X11_3UP',
+      name: '98x11 3-up',
+      widthMm: 98,
+      heightMm: 11,
+      marginTopMm: 0,
+      marginRightMm: 0,
+      marginBottomMm: 0,
+      marginLeftMm: 0,
+      gapMm: 0,
+      dpi: 203,
+      orientation: 'landscape',
+      unit: 'mm',
+      layout: {
+        columns: 3,
+        cellWidthMm: 31,
+        cellHeightMm: 9,
+        columnGapMm: 2,
+        rowPitchMm: 11,
+      },
+    });
+    await templateRepo.create({
+      templateCode: 'HTML_GRID_BATCH',
+      name: 'HTML Grid Batch',
+      engine: 'HTML',
+      content: '<div>{{barcode}}</div>',
+      paperProfileId: gridPaper.id,
+      status: 'PUBLISHED',
+      createdBy: 'seed',
+    });
+
+    const svc = makeService();
+    const batch = await svc.runBatch('HTML_GRID_BATCH', Array.from({ length: 50 }, (_, index) => ({
+      samplePayload: { barcode: String(100001 + index) },
+      testPrint: { printerCode: 'GRID_PRINTER' },
+    })));
+
+    const jobs = await jobRepo.findAll();
+    expect(jobs).toHaveLength(1);
+    const payload = jobs[0]!.renderedPrintPayload ?? '';
+    expect(payload.match(/data-printops-row=/g)).toHaveLength(17);
+    expect(payload.match(/data-printops-cell-column="1"/g)).toHaveLength(17);
+    expect(payload.match(/data-printops-cell-column="2"/g)).toHaveLength(17);
+    expect(payload.match(/data-printops-cell-column="3"/g)).toHaveLength(16);
+    expect(payload.match(/data-printops-page=/g)).toBeNull();
+    expect(payload).toContain('left:0mm');
+    expect(payload).toContain('left:33mm');
+    expect(payload).toContain('left:66mm');
+    expect(batch.runs.every((run) => run.testPrintSuccess)).toBe(true);
+  });
+
   it('throws NotFoundError for nonexistent template', async () => {
     const svc = makeService();
     await expect(
@@ -195,7 +302,7 @@ describe('SandboxService', () => {
     const svc = makeService();
     const result = await svc.run({
       templateCode: 'TEST_LABEL',
-      samplePayload: { name: 'Test', barcode: 'X' },
+      samplePayload: { name: 'Test', barcode: 'X', apiToken: 'do-not-persist' },
       testPrint: { printerCode: 'TEST_PRINTER' },
     });
 
@@ -203,5 +310,22 @@ describe('SandboxService', () => {
     expect(result.testPrintSuccess).toBe(true);
     expect(result.testPrintStatus).toBe('SUCCESS');
     expect(result.testPrintError).toBeUndefined();
+    const job = await jobRepo.findById(result.testJobId!);
+    expect(job?.payloadSnapshot).toContain('"apiToken": "[REDACTED]"');
+    expect(job?.payloadSnapshot).not.toContain('do-not-persist');
+    expect(job?.metadata).toMatchObject({
+      sandbox: true,
+      templateSnapshot: {
+        templateCode: 'TEST_LABEL',
+        name: 'Test Label',
+        paperProfileId: expect.any(String),
+      },
+      sandboxInput: {
+        mode: 'single',
+        templateCode: 'TEST_LABEL',
+        printerCode: 'TEST_PRINTER',
+        samplePayload: { apiToken: '[REDACTED]' },
+      },
+    });
   });
 });

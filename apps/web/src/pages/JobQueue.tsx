@@ -305,6 +305,7 @@ export default function JobQueue() {
     <PageLayout
       title={t('page.jobQueue.title')}
       density="compact"
+      width="full"
       actions={<Freshness
           lastSuccessAt={queue.lastSuccessAt}
           stale={queue.stale}

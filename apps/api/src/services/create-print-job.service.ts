@@ -7,6 +7,8 @@ import type {
   PrinterRepositoryPort,
   CreateJobInput,
   Job,
+  PaperProfileRepositoryPort,
+  PrinterPaperCalibrationRepositoryPort,
 } from '@printerops/domain';
 import type { JobPriority } from '@printerops/domain';
 import {
@@ -15,7 +17,10 @@ import {
   generateCorrelationId,
   NotFoundError,
   ValidationError,
+  isValidRotation,
+  withRenderTransformOverrides,
 } from '@printerops/shared';
+import type { PrintAdmissionGatePort } from './print-admission-gate.js';
 
 const PRIORITY_MAP: Record<JobPriority, number> = {
   urgent: 100, high: 75, normal: 50, low: 25,
@@ -28,10 +33,20 @@ export class CreatePrintJobService {
     private queue: JobQueuePort,
     private traces: TraceRepositoryPort,
     private audit: AuditRepositoryPort,
-    private events: EventBusPort
+    private events: EventBusPort,
+    private calibrations?: PrinterPaperCalibrationRepositoryPort,
+    private papers?: PaperProfileRepositoryPort,
+    private admission?: PrintAdmissionGatePort,
   ) {}
 
   async execute(input: CreateJobInput, actorId: string): Promise<Job> {
+    if (this.admission) {
+      return this.admission.run(() => this.executeInternal(input, actorId));
+    }
+    return this.executeInternal(input, actorId);
+  }
+
+  private async executeInternal(input: CreateJobInput, actorId: string): Promise<Job> {
     const receivedAt = new Date();
 
     // Resolve printer (by id or code)
@@ -43,6 +58,16 @@ export class CreatePrintJobService {
 
     if (!printer) {
       throw new NotFoundError('Printer', input.printerCode ?? input.printerId ?? 'unknown');
+    }
+
+    if (input.rotate !== undefined && !isValidRotation(input.rotate)) {
+      throw new ValidationError('rotate must be a finite number from 0 to less than 360');
+    }
+    if (input.flipHorizontal !== undefined && typeof input.flipHorizontal !== 'boolean') {
+      throw new ValidationError('flipHorizontal must be a boolean');
+    }
+    if (input.flipVertical !== undefined && typeof input.flipVertical !== 'boolean') {
+      throw new ValidationError('flipVertical must be a boolean');
     }
 
     // Validate copies.
@@ -86,8 +111,36 @@ export class CreatePrintJobService {
     const traceId = generateTraceId();
     const correlationId = generateCorrelationId();
 
+    const metadata = withRenderTransformOverrides(input.metadata, {
+      rotate: input.rotate,
+      flipHorizontal: input.flipHorizontal,
+      flipVertical: input.flipVertical,
+    });
+    // Calibration is resolved from the trusted printer/profile tuple at job
+    // creation time. Never accept offsets supplied by an external payload.
+    delete metadata['printerCalibration'];
+    if (this.calibrations && input.paperProfileId) {
+      // The profile's DPI comes from the repository, not request metadata.
+      // Metadata is only a rendering snapshot and can be supplied by a caller.
+      const profileDpi = this.papers
+        ? (await this.papers.findById(input.paperProfileId))?.dpi
+        : undefined;
+      if (typeof profileDpi === 'number' && Number.isInteger(profileDpi) && profileDpi > 0) {
+        const calibration = await this.calibrations.findByKey(printer.id, input.paperProfileId, profileDpi);
+        if (calibration) {
+          metadata['printerCalibration'] = {
+            printerId: calibration.printerId,
+            paperProfileId: calibration.paperProfileId,
+            dpi: calibration.dpi,
+            xOffsetDots: calibration.xOffsetDots,
+            yOffsetDots: calibration.yOffsetDots,
+          };
+        }
+      }
+    }
     const job = await this.jobs.create({
       ...input,
+      metadata,
       printerId: printer.id,
       id: jobId,
       traceId,

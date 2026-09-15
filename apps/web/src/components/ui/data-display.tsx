@@ -9,14 +9,17 @@ export interface DataTableProps extends TableHTMLAttributes<HTMLTableElement> {
 export function DataTable({ label, responsive = false, className = '', children, ...props }: DataTableProps) {
   return (
     <div className="ui-data-table-frame" data-responsive={responsive || undefined} tabIndex={0} role="region" aria-label={label}>
-      <table {...props} className={`ui-data-table${className ? ` ${className}` : ''}`} aria-label={label} data-responsive={responsive || undefined}>
+      <table
+        {...props}
+        className={`data-table ui-data-table${className ? ` ${className}` : ''}`}
+        aria-label={label}
+        data-responsive={responsive || undefined}
+      >
         {children}
       </table>
     </div>
   );
 }
-
-
 
 export function DataHead({ className = '', ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
   return <th {...props} className={`ui-data-head${className ? ` ${className}` : ''}`} scope={props.scope ?? 'col'} />;
@@ -68,8 +71,6 @@ export function RecordCard({ className = '', ...props }: HTMLAttributes<HTMLLIEl
 export function RecordHeader({ className = '', ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div {...props} className={`ui-record-header${className ? ` ${className}` : ''}`} />;
 }
-
-
 
 export type BadgeTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 

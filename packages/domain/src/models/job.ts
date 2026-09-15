@@ -89,6 +89,9 @@ export interface Job {
   sourceSystem?: string;
   sourceReference?: string;
   requestId?: string;
+  rotate?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
   status: JobStatus;
   priority: number;
   priorityLabel: JobPriority;
@@ -161,5 +164,8 @@ export type CreateJobInput = Pick<
   sourceSystem?: string;
   sourceReference?: string;
   requestId?: string;
+  rotate?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
   payloadSnapshot?: string;
 };

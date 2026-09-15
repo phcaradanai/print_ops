@@ -96,12 +96,12 @@ async function acquireDatabaseLock(target: string): Promise<void> {
       server.removeListener('listening', onListening);
       if (error.code === 'EADDRINUSE') {
         rejectListen(new Error(
-          `PRINTOPS_DB_LOCKED: another PrinterOps API instance is already using ${target}. `
+          `PRINTOPS_DB_LOCKED: another PrintOps API instance is already using ${target}. `
           + 'Close the duplicate application before starting it again.',
         ));
         return;
       }
-      rejectListen(new Error(`Unable to lock PrinterOps database ${target}: ${error.message}`));
+      rejectListen(new Error(`Unable to lock PrintOps database ${target}: ${error.message}`));
     };
     const onListening = () => {
       server.removeListener('error', onError);

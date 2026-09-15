@@ -1,0 +1,11 @@
+.ui-select-filter {
+  flex: 0 1 16rem;
+  min-width: min(14rem, 100%);
+}
+
+@media (max-width: 1024px) {
+  .ui-select-filter {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+}

@@ -206,4 +206,66 @@ describe('Dynamic print HTTP endpoint (POST /api/v1/printer/:code_template/:code
     );
     fetchMock.mockRestore();
   });
+
+  it('POSTs an acceptance callback carrying the $$ system fields', async () => {
+    // Before this, `endpoint_code` on this route bought a terminal callback and
+    // nothing else — an acceptance notification was unreachable here.
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 204 }),
+    );
+    const { app } = await buildApp();
+    const token = await login(app, 'sysadmin@printerops.local');
+    const endpoint = await app.inject({
+      method: 'POST',
+      url: '/api/v1/webhook-endpoints',
+      headers: auth(token),
+      payload: {
+        endpointCode: 'api-accept-hook',
+        name: 'API acceptance hook',
+        sourceSystem: 'integration-service',
+        authMode: 'NONE',
+        enabled: true,
+        routePolicyId: '',
+        callbackTransport: 'HTTP',
+        callbackUrl: 'https://receiver.example/accepted',
+        callbackOnPrintResult: false,
+        callbackPayloadTemplate: {
+          event_type: 'print.job.accepted',
+          job: '$$.print_job_id',
+          printer: '$$.resolved_printer_code',
+          hn: '$.hn',
+        },
+      },
+    });
+    expect(endpoint.statusCode).toBe(201);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/printer/LAB_LABEL_DEFAULT/LABEL_100X50',
+      headers: withApiKey(),
+      payload: {
+        request_id: 'REQ-HTTP-ACCEPT-CB',
+        source_system: 'integration-service',
+        endpoint_code: 'api-accept-hook',
+        payload: { hn: 'HN-9001' },
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as { print_job_id: string };
+
+    // The send is fire-and-forget off the accept path, so let the microtask
+    // queue drain before asserting on it.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const call = fetchMock.mock.calls.find(([url]) => url === 'https://receiver.example/accepted');
+    expect(call).toBeDefined();
+    const sent = JSON.parse((call![1] as { body: string }).body) as Record<string, unknown>;
+    expect(sent).toEqual({
+      event_type: 'print.job.accepted',
+      job: body.print_job_id,
+      printer: 'LAB_LABEL_01',
+      hn: 'HN-9001',
+    });
+    fetchMock.mockRestore();
+  });
 });

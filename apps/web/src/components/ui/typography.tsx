@@ -117,39 +117,6 @@ export function Heading({ level = 2, size, className = '', children, ...props }:
   );
 }
 
-export interface SectionHeadingProps {
-  title: ReactNode;
-  description?: ReactNode;
-  actions?: ReactNode;
-  level?: 1 | 2 | 3 | 4;
-  id?: string;
-}
-
-/**
- * Heading + optional supporting line + optional actions on one baseline.
- *
- * Replaces `section-heading`, `section-title`, `wh-form-section-title`,
- * `wh-panel-header` and `job-panel__heading`, which were five spellings of this.
- * Actions wrap below the title on narrow widths rather than squeezing it.
- */
-export function SectionHeading({ title, description, actions, level = 2, id }: SectionHeadingProps) {
-  return (
-    <div className="ui-section-heading">
-      <div className="ui-section-heading__copy">
-        <Heading level={level} id={id}>
-          {title}
-        </Heading>
-        {description != null && (
-          <Text as="p" tone="muted" className="ui-section-heading__description">
-            {description}
-          </Text>
-        )}
-      </div>
-      {actions != null && <div className="ui-section-heading__actions">{actions}</div>}
-    </div>
-  );
-}
-
 export interface CodeBlockProps extends HTMLAttributes<HTMLPreElement> {
   children: ReactNode;
   /** Caps the height and scrolls instead of pushing the page down. */

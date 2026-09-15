@@ -65,6 +65,14 @@ export interface JobCallbackIntent {
   natsSubject?: string;
   natsMode?: NatsDeliveryMode;
   callbackSigningSecretRef?: string;
+  /**
+   * The endpoint's payload template, snapshotted at accept time. The
+   * acceptance callback resolves it against the intake response; the terminal
+   * callback resolves the same template against the v2 envelope (so `$$.status`
+   * becomes the real final status, `$$.timeline.*` the real timestamps, …).
+   * `$.field` tokens resolve against the intake payload stored on the job.
+   */
+  payloadTemplate?: Record<string, unknown>;
   /** Why `enabled` is false, for the UI. */
   disabledReason?: string;
 }
@@ -181,6 +189,7 @@ export function readCallbackIntent(
     natsSubject: intent.natsSubject,
     natsMode: intent.natsMode,
     callbackSigningSecretRef: intent.callbackSigningSecretRef,
+    payloadTemplate: intent.payloadTemplate,
     disabledReason: intent.disabledReason,
   };
 }

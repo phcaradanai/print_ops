@@ -31,11 +31,14 @@ export function renderBarcodeSvg(data: string, kind: BarcodeKind, symbology?: Ba
   if (!data) return undefined;
   try {
     const bcid = kind === 'qrcode' ? 'qrcode' : SYMBOLOGY_TO_BCID[symbology ?? 'code128'];
-    return bwipjs.toSVG(
+    const svg = bwipjs.toSVG(
       kind === 'qrcode'
         ? { bcid, text: data, scale: 2 }
-        : { bcid, text: data, scale: 2, height: 10, includetext: true, textxalign: 'center' },
+        : { bcid, text: data, scale: 2, height: 10, includetext: false },
     );
+    return kind === 'qrcode'
+      ? svg
+      : svg.replace('<svg ', '<svg shape-rendering="crispEdges" preserveAspectRatio="none" ');
   } catch {
     return undefined;
   }

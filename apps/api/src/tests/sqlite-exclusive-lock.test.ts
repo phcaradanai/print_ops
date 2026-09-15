@@ -27,6 +27,30 @@ function close(server: Server): Promise<void> {
   return new Promise((resolve) => server.close(() => resolve()));
 }
 
+async function listenAfterRelease(endpoint: string, timeoutMs = 1_000): Promise<Server> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown;
+
+  while (Date.now() < deadline) {
+    const candidate = createServer();
+    try {
+      await listen(candidate, endpoint);
+      return candidate;
+    } catch (error) {
+      lastError = error;
+      candidate.close();
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'EADDRINUSE') {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Database lock endpoint was not released within ${timeoutMs}ms`);
+}
+
 describe.sequential('sql.js exclusive database ownership', () => {
   let tempDir: string;
   let blocker: Server | undefined;
@@ -88,10 +112,11 @@ describe.sequential('sql.js exclusive database ownership', () => {
     expect(() => getDb()).not.toThrow();
 
     closeDatabase();
-    await new Promise((resolve) => setImmediate(resolve));
 
-    // Prove close really released the endpoint; no hidden resurrected DB owns it.
-    blocker = createServer();
-    await expect(listen(blocker, databaseLockEndpoint())).resolves.toBeUndefined();
+    // closeDatabase() starts an asynchronous OS-socket close. Prove the
+    // endpoint becomes reusable promptly without assuming the kernel releases
+    // it within exactly one event-loop turn.
+    blocker = await listenAfterRelease(databaseLockEndpoint());
+    expect(blocker.listening).toBe(true);
   });
 });

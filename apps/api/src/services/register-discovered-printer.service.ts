@@ -46,6 +46,7 @@ export class RegisterDiscoveredPrinterService {
         driverName: dp.driverName,
         portName: dp.portName,
         connectionType: dp.connectionType,
+        discoveryAttributes: dp.attributes,
         registeredFromDiscoveryId: dp.id,
       },
     });

@@ -98,23 +98,12 @@
   }
 }
 
-/* --------------------------------------------------------------------------
-   Inputs and native selects, including WebView2 dark-system-theme defence.
-   -------------------------------------------------------------------------- */
-
-.paper-profiles-page .pp-input,
-.paper-profiles-page .pp-number,
-.paper-profiles-page .pp-select,
-.paper-profiles-page .pp-small-input,
 .paper-profiles-page .paper-preview-modal__field-grid input,
-.paper-profiles-page .paper-preview-modal__field-grid select,
-.paper-profiles-page .pp-drawer input:not([type='checkbox']):not([type='color']):not([type='file']),
-.paper-profiles-page .pp-drawer select,
-.paper-profiles-page .pp-drawer textarea {
+.paper-profiles-page .paper-preview-modal__field-grid select {
   min-width: 0;
   min-height: 36px;
   color-scheme: light;
-  background-color: #fff !important;
+  background-color: var(--neutral-surface) !important;
   color: var(--neutral-text, #374151) !important;
   caret-color: var(--neutral-deep, #1e1e2e);
   border-color: var(--neutral-border-strong, #d1d5db) !important;
@@ -122,15 +111,13 @@
     background-color 0.15s ease;
 }
 
-.paper-profiles-page .pp-select,
-.paper-profiles-page .paper-preview-modal__field-grid select,
-.paper-profiles-page .pp-drawer select {
+.paper-profiles-page .paper-preview-modal__field-grid select {
   appearance: none;
   -webkit-appearance: none;
   padding-right: 2.25rem !important;
   background-image:
-    linear-gradient(45deg, transparent 50%, #6b7280 50%),
-    linear-gradient(135deg, #6b7280 50%, transparent 50%);
+    linear-gradient(45deg, transparent 50%, var(--neutral-text-muted) 50%),
+    linear-gradient(135deg, var(--neutral-text-muted) 50%, transparent 50%);
   background-position:
     calc(100% - 15px) 50%,
     calc(100% - 10px) 50%;
@@ -141,35 +128,21 @@
 .paper-profiles-page select option,
 .paper-profiles-page select optgroup {
   color-scheme: light;
-  background-color: #fff !important;
-  color: #111827 !important;
+  background-color: var(--neutral-surface) !important;
+  color: var(--neutral-inverse) !important;
 }
 
-.paper-profiles-page .pp-input:hover:not(:disabled),
-.paper-profiles-page .pp-number:hover:not(:disabled),
-.paper-profiles-page .pp-select:hover:not(:disabled),
-.paper-profiles-page .pp-small-input:hover:not(:disabled),
 .paper-profiles-page .paper-preview-modal__field-grid input:hover:not(:disabled),
-.paper-profiles-page .paper-preview-modal__field-grid select:hover:not(:disabled),
-.paper-profiles-page .pp-drawer input:hover:not(:disabled),
-.paper-profiles-page .pp-drawer select:hover:not(:disabled),
-.paper-profiles-page .pp-drawer textarea:hover:not(:disabled) {
-  border-color: #9399b2 !important;
+.paper-profiles-page .paper-preview-modal__field-grid select:hover:not(:disabled) {
+  border-color: var(--semantic-neutral) !important;
 }
 
-.paper-profiles-page .pp-input:focus-visible,
-.paper-profiles-page .pp-number:focus-visible,
-.paper-profiles-page .pp-select:focus-visible,
-.paper-profiles-page .pp-small-input:focus-visible,
 .paper-profiles-page .paper-preview-modal__field-grid input:focus-visible,
-.paper-profiles-page .paper-preview-modal__field-grid select:focus-visible,
-.paper-profiles-page .pp-drawer input:focus-visible,
-.paper-profiles-page .pp-drawer select:focus-visible,
-.paper-profiles-page .pp-drawer textarea:focus-visible {
+.paper-profiles-page .paper-preview-modal__field-grid select:focus-visible {
   border-color: var(--primary, #1e66f5) !important;
   outline: 2px solid rgba(30, 102, 245, 0.28) !important;
   outline-offset: 1px !important;
-  box-shadow: 0 0 0 1px #fff;
+  box-shadow: 0 0 0 1px var(--neutral-surface);
 }
 
 .paper-profiles-page [aria-invalid='true'],
@@ -216,7 +189,7 @@
 }
 
 .paper-profiles-page .pp-field-row:hover:not(.is-selected) {
-  border-color: #9399b2 !important;
+  border-color: var(--semantic-neutral) !important;
   background: #fbfdff !important;
 }
 
@@ -227,7 +200,7 @@
 
 .paper-profiles-page .pp-field-row.is-selected {
   border-color: var(--primary, #1e66f5) !important;
-  background: #eef4ff !important;
+  background: var(--state-info-surface) !important;
   box-shadow: inset 3px 0 0 var(--primary, #1e66f5);
 }
 
@@ -262,11 +235,11 @@
 }
 
 .paper-profiles-page table tbody tr:hover {
-  background: #f8fafc;
+  background: var(--neutral-paper);
 }
 
 .paper-profiles-page table tbody tr:focus-within {
-  background: #eef4ff;
+  background: var(--state-info-surface);
   outline: 2px solid rgba(30, 102, 245, 0.24);
   outline-offset: -2px;
 }
@@ -279,8 +252,8 @@
 
 .paper-profiles-page table td:last-child .ds-btn--danger:hover:not(:disabled) {
   border-color: var(--state-danger-text, #9f1239);
-  color: #991b1b;
-  background: #fee2e2;
+  color: var(--state-danger-text);
+  background: var(--state-danger-surface);
 }
 
 /* Avoid sticky mouse hover styling on touch-first devices. */
@@ -292,50 +265,6 @@
     background: revert !important;
     box-shadow: none;
   }
-}
-
-/* --------------------------------------------------------------------------
-   Viewport-safe tooltips and popups.
-   -------------------------------------------------------------------------- */
-
-.paper-profiles-page .pp-icon-btn-tooltip {
-  visibility: hidden;
-  width: max-content;
-  max-width: min(260px, calc(100vw - 1rem));
-  white-space: normal !important;
-  overflow-wrap: anywhere;
-  text-align: left;
-  opacity: 0;
-  transition: opacity 0.12s ease, visibility 0s linear 0.12s;
-  transition-delay: 0s;
-}
-
-.paper-profiles-page .pp-icon-btn-wrapper:hover .pp-icon-btn-tooltip {
-  visibility: visible;
-  opacity: 1;
-  transition-delay: 0.4s;
-}
-
-.paper-profiles-page .pp-icon-btn-wrapper:focus-within .pp-icon-btn-tooltip {
-  visibility: visible;
-  opacity: 1;
-  transition-delay: 0s;
-}
-
-.paper-profiles-page .pp-toolbar .pp-icon-btn-wrapper:first-child .pp-icon-btn-tooltip,
-.paper-profiles-page .pp-command-actions .pp-icon-btn-wrapper:first-child .pp-icon-btn-tooltip,
-.paper-profiles-page .pp-canvas-toolbar .pp-icon-btn-wrapper:first-child .pp-icon-btn-tooltip {
-  left: 0;
-  right: auto;
-  transform: none;
-}
-
-.paper-profiles-page .pp-toolbar .pp-icon-btn-wrapper:last-child .pp-icon-btn-tooltip,
-.paper-profiles-page .pp-command-actions .pp-icon-btn-wrapper:last-child .pp-icon-btn-tooltip,
-.paper-profiles-page .pp-canvas-toolbar .pp-icon-btn-wrapper:last-child .pp-icon-btn-tooltip {
-  right: 0;
-  left: auto;
-  transform: none;
 }
 
 .paper-profiles-page .pp-presets-menu {
@@ -420,16 +349,10 @@
   max-width: 100%;
 }
 
-/* --------------------------------------------------------------------------
-   Drawer and full-preview scroll ownership.
-   -------------------------------------------------------------------------- */
-
-.paper-profiles-page .pp-drawer__header,
 .paper-profiles-page .paper-preview-modal__header {
   flex: 0 0 auto;
 }
 
-.paper-profiles-page .pp-drawer__body,
 .paper-profiles-page .paper-preview-modal__field-list,
 .paper-profiles-page .paper-preview-modal__sheet-stage {
   overscroll-behavior: contain;

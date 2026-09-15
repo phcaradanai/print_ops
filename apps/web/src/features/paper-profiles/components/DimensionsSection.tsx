@@ -1,35 +1,92 @@
-import { useEffect, useState } from 'react';
 import { DISPLAY_UNITS, DPI_OPTIONS } from '../model/defaults.js';
 import { displayValue, toMillimeters } from '../model/units.js';
-import type { PaperForm } from '../model/types.js';
+import type { PaperForm, PaperProfileLayout } from '../model/types.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
+import { FormField, Grid, Select, Switch } from '../../../components/ui/index.js';
 import { Section } from './editorPrimitives.js';
 import type { Translate } from './types.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
+import { DraftNumberInput } from './DraftNumberInput.js';
+import { normalizeRotation } from '@printerops/shared';
 
 export function DimensionInput({ editor, field, label, t }: {
   editor: PaperProfileEditor;
-  field: keyof Pick<PaperForm, 'widthMm' | 'heightMm' | 'marginTopMm' | 'marginRightMm' | 'marginBottomMm' | 'marginLeftMm'>;
+  field: keyof Pick<PaperForm, 'widthMm' | 'heightMm' | 'gapMm' | 'marginTopMm' | 'marginRightMm' | 'marginBottomMm' | 'marginLeftMm'>;
   label: string;
   t: Translate;
 }) {
-  const [raw, setRaw] = useState<string | null>(null);
   const { displayUnit } = editor.ux;
-  const inputId = `paper-profile-${field}`;
-  useEffect(() => setRaw(null), [displayUnit]);
+  const valueMm = editor.form[field] ?? 0;
   return (
-    <div>
-      <label className="pp-label" htmlFor={inputId}>{t(label)} ({displayUnit})</label>
-      <input id={inputId} type="number" className="pp-input" step="any"
-        value={raw ?? String(displayValue(editor.form[field], displayUnit, editor.form.dpi))}
-        onChange={(event) => {
-          setRaw(event.target.value);
-          const value = Number.parseFloat(event.target.value);
-          if (!Number.isNaN(value)) editor.patchForm(field, toMillimeters(value, displayUnit, editor.form.dpi));
-        }}
-        onBlur={() => setRaw(null)} />
-    </div>
+    <FormField label={`${t(label)} (${displayUnit})`}>
+      {(control) => (
+        <DraftNumberInput
+          {...control}
+          step="any"
+          value={Number(displayValue(valueMm, displayUnit, editor.form.dpi))}
+          onValueChange={(value) => editor.patchForm(field, toMillimeters(value, displayUnit, editor.form.dpi))}
+        />
+      )}
+    </FormField>
   );
+}
+
+function LayoutInput({ editor, field, label, t }: {
+  editor: PaperProfileEditor;
+  field: keyof PaperProfileLayout;
+  label: string;
+  t: Translate;
+}) {
+  const layout = editor.form.layout;
+  const value = layout?.[field] ?? (field === 'columns' ? 1 : field === 'cellWidthMm'
+    ? Math.max(0, editor.form.widthMm - editor.form.marginLeftMm - editor.form.marginRightMm)
+    : field === 'cellHeightMm'
+      ? Math.max(0, editor.form.heightMm - editor.form.marginTopMm - editor.form.marginBottomMm)
+      : field === 'rowPitchMm'
+        ? Math.max(0, editor.form.heightMm - editor.form.marginTopMm - editor.form.marginBottomMm + (editor.form.gapMm ?? 0))
+        : 0);
+  return (
+    <FormField label={t(label)}>
+      {(control) => (
+        <DraftNumberInput
+          {...control}
+          min={field === 'columns' ? 1 : 0}
+          step={field === 'columns' ? 1 : 'any'}
+          value={value}
+          normalize={field === 'columns' ? (next) => Math.max(1, Math.round(next)) : undefined}
+          onValueChange={(next) => {
+            const current = layout ?? {
+              columns: 1,
+              cellWidthMm: editor.form.widthMm - editor.form.marginLeftMm - editor.form.marginRightMm,
+              cellHeightMm: editor.form.heightMm - editor.form.marginTopMm - editor.form.marginBottomMm,
+              columnGapMm: editor.form.gapMm ?? 0,
+              rowPitchMm: editor.form.heightMm - editor.form.marginTopMm - editor.form.marginBottomMm + (editor.form.gapMm ?? 0),
+            };
+            editor.patchForm('layout', {
+              ...current,
+              [field]: next,
+            });
+          }}
+        />
+      )}
+    </FormField>
+  );
+}
+
+function layoutIssues(form: PaperForm): string[] {
+  const layout = form.layout;
+  if (!layout) return [];
+  const printableWidth = form.widthMm - form.marginLeftMm - form.marginRightMm;
+  const printableHeight = form.heightMm - form.marginTopMm - form.marginBottomMm;
+  const usedWidth = layout.columns * layout.cellWidthMm + Math.max(0, layout.columns - 1) * layout.columnGapMm;
+  const issues: string[] = [];
+  if (!Number.isInteger(layout.columns) || layout.columns < 1) issues.push('page.paperProfiles.layoutColumnsInvalid');
+  if (layout.cellWidthMm <= 0 || layout.cellHeightMm <= 0 || layout.rowPitchMm <= 0) issues.push('page.paperProfiles.layoutValuesInvalid');
+  if (layout.columnGapMm < 0) issues.push('page.paperProfiles.layoutGapInvalid');
+  if (usedWidth > printableWidth + 0.0001) issues.push('page.paperProfiles.layoutWidthInvalid');
+  if (layout.cellHeightMm > printableHeight + 0.0001) issues.push('page.paperProfiles.layoutHeightInvalid');
+  if (layout.rowPitchMm < layout.cellHeightMm) issues.push('page.paperProfiles.layoutPitchInvalid');
+  return issues;
 }
 
 export function DimensionsSection({ editor, t, anchorRef }: {
@@ -43,45 +100,134 @@ export function DimensionsSection({ editor, t, anchorRef }: {
       <Section title={t('page.paperProfiles.dimensions')} icon={<PaperProfileIcon name="dimensions" />}
         open={editor.state.sectionsOpen.dimensions}
         onToggle={() => editor.setSection('dimensions', !editor.state.sectionsOpen.dimensions)}>
-        <div className="pp-form-grid pp-form-grid--three">
-          <div>
-            <label className="pp-label" htmlFor="paper-profile-display-unit">{t('page.paperProfiles.displayUnitLabel')}</label>
-            <select id="paper-profile-display-unit" value={ux.displayUnit}
-              onChange={(event) => editor.patchUx('displayUnit', event.target.value as typeof ux.displayUnit)}
-              className="pp-select">
-              {DISPLAY_UNITS.map((unit) => <option key={unit}>{unit}</option>)}
-            </select>
-          </div>
+        <Grid columns={3} gap="md">
+          <FormField label={t('page.paperProfiles.displayUnitLabel')}>
+            {(control) => (
+              <Select
+                {...control}
+                value={ux.displayUnit}
+                onChange={(event) => editor.patchUx('displayUnit', event.target.value as typeof ux.displayUnit)}
+              >
+                {DISPLAY_UNITS.map((unit) => <option key={unit}>{unit}</option>)}
+              </Select>
+            )}
+          </FormField>
+
           <DimensionInput editor={editor} field="widthMm" label="page.paperProfiles.width" t={t} />
           <DimensionInput editor={editor} field="heightMm" label="page.paperProfiles.height" t={t} />
-          <div>
-            <label className="pp-label" htmlFor="paper-profile-orientation">{t('page.paperProfiles.orientation')}</label>
-            <select id="paper-profile-orientation" value={form.orientation} className="pp-select" onChange={(event) => {
-              const orientation = event.target.value as typeof form.orientation;
-              if (orientation === form.orientation) return;
-              const natural = form.widthMm > form.heightMm ? 'landscape' : 'portrait';
-              editor.patchForm('orientation', orientation);
-              if (orientation !== natural) {
-                editor.patchForm('widthMm', form.heightMm);
-                editor.patchForm('heightMm', form.widthMm);
-              }
-            }}>
-              <option value="portrait">{t('page.paperProfiles.portrait')}</option>
-              <option value="landscape">{t('page.paperProfiles.landscape')}</option>
-            </select>
+          <DimensionInput editor={editor} field="gapMm" label="page.paperProfiles.gap" t={t} />
+
+          <FormField label={t('page.paperProfiles.orientation')}>
+            {(control) => (
+              <Select
+                {...control}
+                value={form.orientation}
+                onChange={(event) => {
+                  const orientation = event.target.value as typeof form.orientation;
+                  if (orientation === form.orientation) return;
+                  // Rotating the sheet swaps the sides rather than leaving the
+                  // label claiming an orientation its dimensions contradict.
+                  const natural = form.widthMm > form.heightMm ? 'landscape' : 'portrait';
+                  editor.patchForm('orientation', orientation);
+                  if (orientation !== natural) {
+                    editor.patchForm('widthMm', form.heightMm);
+                    editor.patchForm('heightMm', form.widthMm);
+                  }
+                }}
+              >
+                <option value="portrait">{t('page.paperProfiles.portrait')}</option>
+                <option value="landscape">{t('page.paperProfiles.landscape')}</option>
+              </Select>
+            )}
+          </FormField>
+
+          <FormField label={t('page.paperProfiles.dpi')}>
+            {(control) => (
+              <Select
+                {...control}
+                value={form.dpi}
+                onChange={(event) => editor.patchForm('dpi', Number(event.target.value))}
+              >
+                {DPI_OPTIONS.map((dpi) => <option key={dpi} value={dpi}>{dpi} dpi</option>)}
+              </Select>
+            )}
+          </FormField>
+
+          <FormField label={t('page.paperProfiles.unitStorageLabel')}>
+            {(control) => (
+              <Select
+                {...control}
+                value={form.unit}
+                onChange={(event) => editor.patchForm('unit', event.target.value as typeof form.unit)}
+              >
+                <option value="mm">mm</option>
+                <option value="inch">inch</option>
+              </Select>
+            )}
+          </FormField>
+          <FormField label={t('page.paperProfiles.rotation')}>
+            {(control) => (
+              <div className="pp-rotation-control">
+                <DraftNumberInput
+                  {...control}
+                  min={0}
+                  max={359.999}
+                  step="any"
+                  value={form.rotation ?? 0}
+                  normalize={normalizeRotation}
+                  onValueChange={(value) => editor.patchForm('rotation', value)}
+                />
+                <div className="pp-rotation-presets" role="group" aria-label={t('page.paperProfiles.rotationPresets')}>
+                  {[0, 90, 180, 270].map((angle) => (
+                    <button
+                      key={angle}
+                      type="button"
+                      className={`pp-rotation-preset${(form.rotation ?? 0) === angle ? ' is-active' : ''}`}
+                      aria-pressed={(form.rotation ?? 0) === angle}
+                      onClick={() => editor.patchForm('rotation', angle)}
+                    >
+                      {angle}°
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </FormField>
+
+          <Switch
+            label={t('page.paperProfiles.flipHorizontal')}
+            onLabel={t('status.on')}
+            offLabel={t('status.off')}
+            checked={Boolean(form.flipHorizontal)}
+            onChange={(event) => editor.patchForm('flipHorizontal', event.target.checked)}
+          />
+
+          <Switch
+            label={t('page.paperProfiles.flipVertical')}
+            onLabel={t('status.on')}
+            offLabel={t('status.off')}
+            checked={Boolean(form.flipVertical)}
+            onChange={(event) => editor.patchForm('flipVertical', event.target.checked)}
+          />
+        </Grid>
+        <div className="pp-layout-controls">
+          <div className="pp-layout-controls__heading">
+            <strong>{t('page.paperProfiles.layoutTitle')}</strong>
+            <span>{t('page.paperProfiles.layoutHint')}</span>
           </div>
-          <div>
-            <label className="pp-label" htmlFor="paper-profile-dpi">{t('page.paperProfiles.dpi')}</label>
-            <select id="paper-profile-dpi" value={form.dpi} onChange={(event) => editor.patchForm('dpi', Number(event.target.value))} className="pp-select">
-              {DPI_OPTIONS.map((dpi) => <option key={dpi} value={dpi}>{dpi} dpi</option>)}
-            </select>
+          <Grid columns={3} gap="md">
+            <LayoutInput editor={editor} field="columns" label="page.paperProfiles.layoutColumns" t={t} />
+            <LayoutInput editor={editor} field="cellWidthMm" label="page.paperProfiles.layoutCellWidth" t={t} />
+            <LayoutInput editor={editor} field="cellHeightMm" label="page.paperProfiles.layoutCellHeight" t={t} />
+            <LayoutInput editor={editor} field="columnGapMm" label="page.paperProfiles.layoutColumnGap" t={t} />
+            <LayoutInput editor={editor} field="rowPitchMm" label="page.paperProfiles.layoutRowPitch" t={t} />
+          </Grid>
+          <div className="pp-layout-summary" role="status">
+            {editor.form.layout
+              ? `${t('page.paperProfiles.layoutUsedWidth')}: ${(editor.form.layout.columns * editor.form.layout.cellWidthMm + Math.max(0, editor.form.layout.columns - 1) * editor.form.layout.columnGapMm).toFixed(2)} / ${Math.max(0, editor.form.widthMm - editor.form.marginLeftMm - editor.form.marginRightMm).toFixed(2)} mm`
+              : t('page.paperProfiles.layoutSingleColumn')}
           </div>
-          <div>
-            <label className="pp-label" htmlFor="paper-profile-storage-unit">{t('page.paperProfiles.unitStorageLabel')}</label>
-            <select id="paper-profile-storage-unit" value={form.unit} onChange={(event) => editor.patchForm('unit', event.target.value as typeof form.unit)} className="pp-select">
-              <option value="mm">mm</option><option value="inch">inch</option>
-            </select>
-          </div>
+          {layoutIssues(editor.form).map((issue) => <div className="pp-layout-error" role="alert" key={issue}>{t(issue)}</div>)}
         </div>
       </Section>
     </div>

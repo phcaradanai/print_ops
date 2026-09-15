@@ -594,9 +594,12 @@ describe('executeCommand shares the same chain', () => {
     expect(result.message).toContain('printer confirmed 1 exact IPP job impression(s) completed successfully');
   });
 
-  it('keeps an exact SNMP +1 UNVERIFIED when no printer-side IPP job can prove ownership', async () => {
+  it('keeps an exact SNMP +1 UNVERIFIED when the spooler never observed our job', async () => {
+    // The device counter is printer-global: an increment alone cannot prove
+    // THIS document printed, and without the spooler observing our exact job
+    // the spooler-delivery fallback must not fire either.
     const { adapter } = makeAdapter({
-      htmlSubmission: exactHtmlSubmission(),
+      htmlSubmission: { ...exactHtmlSubmission(), jobs: [] },
       jobs: [[], []],
       snmpHost: SNMP_HOST,
       deviceStates: [deviceState({ pageCount: 100 })],
@@ -610,6 +613,7 @@ describe('executeCommand shares the same chain', () => {
     expect(result.message).toContain('Physical output cannot be attributed safely');
     expect((result.raw as Record<string, unknown>)['deviceCounterAdvanced']).toBe(true);
     expect((result.raw as Record<string, unknown>)['ippJobConfirmed']).toBe(false);
+    expect((result.raw as Record<string, unknown>)['deviceConfirmation']).toBeUndefined();
   });
 
   it('does not accept a different remote IPP job when the global counter advances', async () => {

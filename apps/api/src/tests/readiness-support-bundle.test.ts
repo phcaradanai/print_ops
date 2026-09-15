@@ -81,6 +81,16 @@ describe('production readiness and support bundle', () => {
     expect(readinessResponse.statusCode).toBe(200);
     expect(readinessResponse.headers['cache-control']).toBe('no-store');
     const readiness = readinessResponse.json();
+    expect(readiness.applicationVersion).toBe('9.8.7-test');
+    expect(readiness.ota).toMatchObject({
+      contract: 'printops-ota-v1',
+      status: 'NOT_READY',
+      requiredComponents: {
+        localApi: { state: 'READY' },
+        database: { state: 'NOT_CONFIGURED' },
+        localPrintWorker: { state: 'READY' },
+      },
+    });
     expect(readiness.components.localApi.state).toBe('READY');
     expect(readiness.components.localPrintWorker.state).toBe('READY');
     expect(readiness.components.natsCore.state).toBe('NOT_CONFIGURED');

@@ -1,0 +1,464 @@
+/* UX-02 Paper Profiles library visualization.
+ *
+ * This layer is intentionally limited to library mode. It improves geometry
+ * recognition, resource controls, table hierarchy, and responsive cards without
+ * changing profile persistence, printable dimensions, editor state, or canvas
+ * behavior.
+ */
+
+.paper-profiles-page .pp-page-header--library {
+  position: relative;
+  align-items: center;
+  padding: var(--spacing-lg) var(--spacing-xl);
+  border: 1px solid var(--neutral-border);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.065), rgba(124, 58, 237, 0.025) 52%, transparent),
+    var(--neutral-surface);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.055);
+}
+
+.paper-profiles-page .pp-page-header--library .pp-page-heading h1 {
+  letter-spacing: -0.02em;
+}
+
+.paper-profiles-page .pp-page-header--library .pp-page-heading__description {
+  max-width: 68ch;
+}
+
+.paper-profiles-page .pp-page-header--library > .ds-btn {
+  min-height: 40px;
+  padding-inline: var(--spacing-lg);
+  border-color: var(--primary-strong);
+  background: var(--primary-strong);
+  color: var(--neutral-surface);
+  box-shadow: 0 5px 14px rgba(37, 99, 235, 0.2);
+}
+
+.paper-profiles-page .pp-page-header--library > .ds-btn:hover:not(:disabled) {
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
+  color: var(--neutral-surface);
+  transform: translateY(-1px);
+}
+
+.paper-profiles-page .pp-saved-profiles {
+  overflow: hidden;
+  border-color: var(--neutral-border);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.055);
+}
+
+.paper-profiles-page .pp-library-heading {
+  padding: var(--spacing-lg) var(--spacing-xl);
+  border-bottom: 1px solid var(--neutral-border);
+  background: linear-gradient(180deg, var(--neutral-surface) 0%, #fbfdff 100%);
+}
+
+.paper-profiles-page .pp-library-heading .ui-section-heading__copy {
+  max-width: 66ch;
+}
+
+.paper-profiles-page .pp-library-heading .ui-section-heading__actions {
+  gap: var(--spacing-xs);
+}
+
+.paper-profiles-page .pp-library-heading .ui-button--ghost {
+  min-height: 36px;
+  border: 1px solid transparent;
+  color: var(--neutral-text);
+}
+
+.paper-profiles-page .pp-library-heading .ui-button--ghost:hover:not(:disabled) {
+  border-color: var(--neutral-border);
+  background: var(--neutral-page);
+  color: var(--primary-strong);
+}
+
+.paper-profiles-page .pp-library-controls {
+  grid-template-columns: minmax(18rem, 1fr) minmax(14rem, auto) auto;
+  align-items: end;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-lg) var(--spacing-xl);
+  border-bottom: 1px solid var(--neutral-border);
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.04), transparent 45%),
+    var(--neutral-paper);
+}
+
+.paper-profiles-page .pp-library-controls .ui-input {
+  min-height: 40px;
+  border-color: var(--neutral-border-strong);
+  background: var(--neutral-surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.paper-profiles-page .pp-library-controls .ui-input:focus-within,
+.paper-profiles-page .pp-library-controls .ui-input:focus {
+  border-color: var(--primary-strong);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.paper-profiles-page .pp-library-filter {
+  display: grid;
+  grid-template-columns: auto minmax(10rem, 1fr);
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.paper-profiles-page .pp-library-filter .ui-label {
+  color: var(--neutral-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.paper-profiles-page .pp-library-filter .ui-select {
+  min-height: 40px;
+  background: var(--neutral-surface);
+}
+
+.paper-profiles-page .pp-library-count {
+  align-self: center;
+  justify-self: end;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-pill);
+  background: var(--neutral-surface);
+  color: var(--neutral-text);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.paper-profiles-page .pp-saved-profiles .ui-data-table-frame {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.paper-profiles-page .pp-profile-library-table {
+  table-layout: auto;
+}
+
+.paper-profiles-page .pp-profile-library-table thead th {
+  padding-block: 0.75rem;
+  background: var(--neutral-paper);
+  color: var(--neutral-text);
+  font-size: 0.72rem;
+  letter-spacing: 0.025em;
+}
+
+.paper-profiles-page .pp-profile-library-table tbody tr {
+  min-height: 74px;
+  transition: background-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.paper-profiles-page .pp-profile-library-table tbody tr:hover {
+  background: var(--state-info-surface);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--primary) 48%, #ffffff);
+}
+
+.paper-profiles-page .pp-profile-library-table tbody tr:focus-within {
+  background: var(--state-info-surface);
+  box-shadow: inset 3px 0 0 var(--primary-strong);
+  outline: 0;
+}
+
+.paper-profiles-page .pp-profile-library-table td {
+  padding-block: 0.7rem;
+  vertical-align: middle;
+}
+
+.paper-profiles-page .pp-profile-cell--identity {
+  min-width: 11rem;
+}
+
+.paper-profiles-page .pp-profile-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  min-width: 0;
+}
+
+.paper-profiles-page .pp-profile-identity__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.paper-profiles-page .pp-profile-identity__copy .ui-mono {
+  overflow: hidden;
+  color: var(--neutral-deep);
+  font-size: 0.79rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paper-profiles-page .pp-profile-identity__size {
+  display: none;
+}
+
+.paper-profiles-page .pp-profile-thumbnail {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 3.4rem;
+  max-height: 3.6rem;
+  min-height: 2rem;
+  overflow: hidden;
+  border: 1px solid var(--neutral-border-strong);
+  /* Sub-scale corner: this is a 3.4rem depiction of a physical sheet, so it
+     takes a paper corner rather than the 4-8px UI scale. Same for the drop
+     shadow — it is the sheet lifting off the surface, not card elevation. */
+  border-radius: 3px;
+  background: var(--neutral-surface);
+  box-shadow: 0 5px 12px rgba(15, 23, 42, 0.12);
+}
+
+.paper-profiles-page .pp-profile-thumbnail::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 9px;
+  height: 2px;
+  border-radius: var(--rounded-pill);
+  background: var(--neutral-border-strong);
+  box-shadow: 0 -4px 0 var(--neutral-border);
+}
+
+.paper-profiles-page .pp-profile-thumbnail__printable {
+  position: absolute;
+  top: var(--pp-margin-top);
+  right: var(--pp-margin-right);
+  bottom: var(--pp-margin-bottom);
+  left: var(--pp-margin-left);
+  min-width: 4px;
+  min-height: 4px;
+  border: 1px dashed var(--primary);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.paper-profiles-page .pp-profile-cell--size .ui-mono,
+.paper-profiles-page .pp-profile-library-table td:nth-child(4) .ui-mono {
+  color: var(--neutral-text);
+  font-size: 0.76rem;
+}
+
+.paper-profiles-page .pp-profile-library-table .ui-badge {
+  min-height: 24px;
+  padding: 3px 9px;
+  font-size: 0.75rem;
+}
+
+.paper-profiles-page .pp-saved-profiles__row-actions {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  min-width: max-content;
+  padding: 0.2rem;
+  border: 1px solid transparent;
+  border-radius: var(--rounded-md);
+}
+
+.paper-profiles-page .pp-profile-row:focus-within .pp-saved-profiles__row-actions,
+.paper-profiles-page .pp-profile-row:hover .pp-saved-profiles__row-actions {
+  border-color: var(--neutral-border);
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.paper-profiles-page .pp-edit-profile {
+  min-width: 6.5rem;
+}
+
+.paper-profiles-page .pp-saved-profiles__state {
+  min-height: 15rem;
+  padding-block: var(--spacing-2xl);
+}
+
+@media (max-width: 1180px) {
+  .paper-profiles-page .pp-library-controls {
+    grid-template-columns: minmax(16rem, 1fr) minmax(13rem, auto);
+  }
+
+  .paper-profiles-page .pp-library-count {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 1024px) {
+  .paper-profiles-page .pp-page-header--library {
+    align-items: stretch;
+  }
+
+  .paper-profiles-page .pp-page-header--library > .ds-btn {
+    width: 100%;
+  }
+
+  .paper-profiles-page .pp-library-heading {
+    align-items: stretch;
+  }
+
+  .paper-profiles-page .pp-library-heading .ui-section-heading__actions {
+    width: 100%;
+  }
+
+  .paper-profiles-page .pp-library-controls {
+    grid-template-columns: minmax(0, 1fr) minmax(12rem, auto);
+    padding: var(--spacing-md) var(--spacing-lg);
+  }
+
+  .paper-profiles-page .pp-profile-library-table tbody {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg);
+    background: var(--neutral-paper);
+  }
+
+  .paper-profiles-page .pp-profile-library-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    gap: var(--spacing-sm) var(--spacing-lg);
+    min-height: 0;
+    padding: var(--spacing-lg);
+    border: 1px solid var(--neutral-border);
+    border-radius: var(--rounded-lg);
+    background: var(--neutral-surface);
+    box-shadow: none;
+  }
+
+  .paper-profiles-page .pp-profile-library-table tbody tr:hover,
+  .paper-profiles-page .pp-profile-library-table tbody tr:focus-within {
+    border-color: color-mix(in srgb, var(--primary) 48%, #ffffff);
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.1), inset 3px 0 0 var(--primary-strong);
+  }
+
+  .paper-profiles-page .pp-profile-library-table tbody td {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .paper-profiles-page .pp-profile-library-table tbody td::before {
+    margin-bottom: 0.2rem;
+    color: var(--neutral-text-muted);
+    font-size: var(--font-label-size);
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .paper-profiles-page .pp-profile-library-table .pp-profile-cell--identity,
+  .paper-profiles-page .pp-profile-library-table tbody td:nth-child(2),
+  .paper-profiles-page .pp-profile-library-table tbody td[data-actions] {
+    grid-column: 1 / -1;
+  }
+
+  .paper-profiles-page .pp-profile-library-table .pp-profile-cell--identity::before,
+  .paper-profiles-page .pp-profile-library-table tbody td:nth-child(2)::before,
+  .paper-profiles-page .pp-profile-library-table tbody td[data-actions]::before {
+    display: none;
+  }
+
+  .paper-profiles-page .pp-profile-identity__size {
+    display: block;
+  }
+
+  .paper-profiles-page .pp-profile-cell--size {
+    display: none;
+  }
+
+  .paper-profiles-page .pp-profile-identity {
+    padding-bottom: var(--spacing-md);
+    border-bottom: 1px solid var(--neutral-border);
+  }
+
+  .paper-profiles-page .pp-profile-thumbnail {
+    width: 3.8rem;
+    max-height: 4rem;
+  }
+
+  .paper-profiles-page .pp-saved-profiles__row-actions {
+    justify-content: flex-start;
+    min-width: 0;
+    margin-top: var(--spacing-sm);
+    padding-top: var(--spacing-md);
+    border: 0;
+    border-top: 1px solid var(--neutral-border);
+    border-radius: 0;
+    background: transparent;
+  }
+}
+
+@media (max-width: 700px) {
+  .paper-profiles-page .pp-library-heading .ui-section-heading__actions,
+  .paper-profiles-page .pp-library-heading .ui-section-heading__actions .ui-button {
+    width: 100%;
+  }
+
+  .paper-profiles-page .pp-library-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .paper-profiles-page .pp-library-filter {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .paper-profiles-page .pp-library-count {
+    grid-column: auto;
+  }
+
+  .paper-profiles-page .pp-profile-library-table tbody {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--spacing-md);
+  }
+
+  .paper-profiles-page .pp-saved-profiles__row-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    width: 100%;
+  }
+
+  .paper-profiles-page .pp-edit-profile {
+    width: 100%;
+  }
+}
+
+@media (max-width: 430px) {
+  .paper-profiles-page .pp-page-header--library,
+  .paper-profiles-page .pp-library-heading,
+  .paper-profiles-page .pp-library-controls {
+    padding-inline: var(--spacing-md);
+  }
+
+  .paper-profiles-page .pp-profile-library-table tbody tr {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .paper-profiles-page .pp-profile-library-table tbody td {
+    grid-column: auto;
+  }
+
+  .paper-profiles-page .pp-profile-library-table tbody td[data-actions],
+  .paper-profiles-page .pp-profile-library-table .pp-profile-cell--identity,
+  .paper-profiles-page .pp-profile-library-table tbody td:nth-child(2) {
+    grid-column: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paper-profiles-page .pp-page-header--library > .ds-btn,
+  .paper-profiles-page .pp-profile-library-table tbody tr {
+    transition: none;
+  }
+
+  .paper-profiles-page .pp-page-header--library > .ds-btn:hover:not(:disabled) {
+    transform: none;
+  }
+}

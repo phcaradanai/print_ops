@@ -98,6 +98,45 @@ func TestParsePrinters_SingleObject(t *testing.T) {
 	}
 }
 
+func TestParsePrinters_USBUnknownWorkOfflineFalseIsReady(t *testing.T) {
+	const usbUnknownJSON = `[
+  {
+    "Name": "POSTEK_USB",
+    "DriverName": "POSTEK G-2000",
+    "PortName": "USB001",
+    "Shared": false,
+    "PrinterStatus": "Unknown",
+    "PrinterState": "Unknown",
+    "WorkOffline": false,
+    "Type": "Local"
+  }
+]`
+
+	out, err := ParsePrinters(usbUnknownJSON, "", "")
+	if err != nil {
+		t.Fatalf("ParsePrinters USB Unknown failed: %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("expected 1 printer, got %d", len(out))
+	}
+	printer := out[0]
+	if printer.ConnectionType != discovery.ConnUSB {
+		t.Fatalf("connection = %q, want usb", printer.ConnectionType)
+	}
+	if printer.Status != "unknown" {
+		t.Fatalf("status = %q, want unknown", printer.Status)
+	}
+	if ready, ok := printer.Raw["readiness_ready"].(bool); !ok || !ready {
+		t.Fatalf("readiness_ready = %v, want true", printer.Raw["readiness_ready"])
+	}
+	if workOffline, ok := printer.Raw["work_offline"].(bool); !ok || workOffline {
+		t.Fatalf("work_offline = %v, want false", printer.Raw["work_offline"])
+	}
+	if warning, ok := printer.Raw["readiness_warning"].(string); !ok || warning == "" {
+		t.Fatalf("readiness_warning = %v, want a warning", printer.Raw["readiness_warning"])
+	}
+}
+
 func TestParsePrinters_EmptyInput(t *testing.T) {
 	out, err := ParsePrinters("", "", "")
 	if err != nil {
@@ -122,7 +161,7 @@ func TestNormalizeStatus(t *testing.T) {
 		"Printing":   "busy",
 		"Offline":    "offline",
 		"":           "unknown",
-		"Paused":     "offline",
+		"Paused":     "paused",
 		"WeirdState": "weirdstate",
 	}
 	for in, want := range cases {

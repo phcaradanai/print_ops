@@ -8,8 +8,15 @@ import type {
   TemplateRendererPort,
   PrinterRepositoryPort,
 } from '@printerops/domain';
+import { getOrientedPaperGeometry, mapPrintablePointToVisual } from '@printerops/shared';
 import { actor, requirePermission } from './permission-guard.js';
+import {
+  coerceImportNumber,
+  validatePaperProfileCreate,
+  validatePaperProfileUpdate,
+} from './paper-profile-validation.js';
 
+const DEFAULT_BARCODE_WIDTH_MM = 28;
 /**
  * CSS anchor transform for a field's text alignment — kept in lockstep with
  * apps/web/src/pages/PaperProfiles.tsx's anchorTransform() so the printed HTML
@@ -32,34 +39,45 @@ function escapeHtmlAttr(raw: string): string {
  * (and WindowsSpoolerAdapter's printHtml) already renders literally.
  */
 function buildFieldsTemplateHtml(profile: PaperProfile): string {
-  const naturalOrientation = profile.widthMm > profile.heightMm ? 'landscape' : 'portrait';
-  const rotated = naturalOrientation !== profile.orientation;
-  const widthMm = rotated ? profile.heightMm : profile.widthMm;
-  const heightMm = rotated ? profile.widthMm : profile.heightMm;
-  const sourcePrintableHeightMm = Math.max(
-    0,
-    profile.heightMm - profile.marginTopMm - profile.marginBottomMm,
-  );
+  const cellWidthMm = profile.layout && profile.layout.columns > 1
+    ? profile.layout.cellWidthMm
+    : profile.widthMm;
+  const cellHeightMm = profile.layout && profile.layout.columns > 1
+    ? profile.layout.cellHeightMm
+    : profile.heightMm;
+  const geometry = getOrientedPaperGeometry({
+    widthMm: cellWidthMm,
+    heightMm: cellHeightMm,
+    marginTopMm: profile.marginTopMm,
+    marginRightMm: profile.marginRightMm,
+    marginBottomMm: profile.marginBottomMm,
+    marginLeftMm: profile.marginLeftMm,
+    orientation: profile.orientation,
+  });
   const spans = (profile.fields ?? [])
     .map((f) => {
       const placeholderKey = f.key.trim() || f.id;
-      // Match mapPrintablePointToVisual() in the profile editor. Rotate only
-      // the stored coordinate system; keeping the span itself unrotated means
-      // text and barcodes stay upright exactly as they do in the preview.
-      const xMm = rotated ? sourcePrintableHeightMm - f.yMm : f.xMm;
-      const yMm = rotated ? f.xMm : f.yMm;
+      // Keep the stored printable-relative coordinate system in lockstep with
+      // the editor. The shared renderer applies the same page transform to the
+      // complete HTML output, including this field content.
+      const point = mapPrintablePointToVisual(f.xMm, f.yMm, geometry);
+      const xMm = geometry.marginLeftMm + point.xMm;
+      const yMm = geometry.marginTopMm + point.yMm;
       const isMachineReadable = f.type === 'barcode' || f.type === 'qrcode';
+      const barcodeBoxStyle = f.type === 'barcode'
+        ? `display:inline-block;width:${f.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM}mm;height:${f.barcodeHeightMm ?? 12}mm;overflow:hidden;`
+        : '';
       const style =
         `position:absolute;left:${xMm}mm;top:${yMm}mm;` +
         (isMachineReadable
-          ? 'font-size:0;line-height:0;'
+          ? `${barcodeBoxStyle}font-size:0;line-height:0;`
           : `font-size:${f.fontSize}pt;font-weight:${f.bold ? 700 : 400};color:${escapeHtmlAttr(f.color)};`) +
         `white-space:nowrap;` +
         fieldAnchorTransform(f.align);
       return `  <span style="${style}">{{${placeholderKey}}}</span>`;
     })
     .join('\n');
-  return `<div style="position:relative;width:${widthMm}mm;height:${heightMm}mm;">\n${spans}\n</div>`;
+  return `<div style="position:relative;width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;">\n${spans}\n</div>`;
 }
 
 export async function templateRoutes(
@@ -119,7 +137,7 @@ export async function templateRoutes(
 
   app.post('/templates/:id/preview', { onRequest: [requirePermission('template:preview')] }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const body = req.body as { samplePayload?: Record<string, unknown>; paperProfileId?: string };
+    const body = req.body as { samplePayload?: Record<string, unknown>; paperProfileId?: string; rotate?: number; flipHorizontal?: boolean; flipVertical?: boolean };
     const template = await deps.templates.findById(id);
     if (!template) return reply.status(404).send({ error: 'Template not found' });
     const paper = body.paperProfileId
@@ -128,7 +146,14 @@ export async function templateRoutes(
         ? await deps.papers.findById(template.paperProfileId)
         : undefined;
     if (!paper) return reply.status(404).send({ error: 'Paper profile not found' });
-    return deps.renderer.renderPreview(template, body.samplePayload ?? {}, paper);
+    const renderOptions = {
+      ...(body.rotate !== undefined ? { rotate: body.rotate } : {}),
+      ...(body.flipHorizontal !== undefined ? { flipHorizontal: body.flipHorizontal } : {}),
+      ...(body.flipVertical !== undefined ? { flipVertical: body.flipVertical } : {}),
+    };
+    return Object.keys(renderOptions).length > 0
+      ? deps.renderer.renderPreview(template, body.samplePayload ?? {}, paper, renderOptions)
+      : deps.renderer.renderPreview(template, body.samplePayload ?? {}, paper);
   });
 
   app.post('/templates/:id/publish', { onRequest: [requirePermission('template:publish')] }, async (req) => {
@@ -182,6 +207,10 @@ export async function templateRoutes(
 
   app.get('/paper-profiles', { onRequest: [requirePermission('paper-profile:read')] }, async () => deps.papers.findAll());
   app.post('/paper-profiles', { onRequest: [requirePermission('paper-profile:create')] }, async (req, reply) => {
+    const issues = validatePaperProfileCreate((req.body ?? {}) as Record<string, unknown>);
+    if (issues.length > 0) {
+      return reply.status(400).send({ error: 'VALIDATION_ERROR', message: issues[0]!.message, issues });
+    }
     const profile = await deps.papers.create(req.body as Parameters<typeof deps.papers.create>[0]);
     await deps.audit.create({ traceId: 'paper', action: 'paper_profile.created', actorId: actor(req), resourceType: 'paper_profile', resourceId: profile.id, after: profile as unknown as Record<string, unknown>, metadata: {} });
     await ensureFieldsTemplate(profile, actor(req));
@@ -213,13 +242,18 @@ export async function templateRoutes(
         name: profile.name,
         widthMm: profile.widthMm,
         heightMm: profile.heightMm,
+         gapMm: profile.gapMm ?? 0,
         marginTopMm: profile.marginTopMm,
         marginRightMm: profile.marginRightMm,
         marginBottomMm: profile.marginBottomMm,
+        rotation: profile.rotation ?? 0,
+        flipHorizontal: profile.flipHorizontal ?? false,
+        flipVertical: profile.flipVertical ?? false,
         marginLeftMm: profile.marginLeftMm,
         dpi: profile.dpi,
         orientation: profile.orientation,
         unit: profile.unit,
+        layout: profile.layout,
         fields: profile.fields ?? [],
       })),
     };
@@ -258,23 +292,61 @@ export async function templateRoutes(
         ? item.code.trim()
         : item.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
-      const widthMm = Number(item.widthMm) || 100;
-      const heightMm = Number(item.heightMm) || 150;
+      // A missing numeric field keeps its legacy default, but a PRESENT value
+      // that is not a usable number is a client error — silently replacing it
+      // with a default prints on the wrong physical size without anyone asking.
+      const numericFields: Array<[string, number]> = [
+        ['widthMm', 100],
+        ['heightMm', 150],
+         ['gapMm', 0],
+        ['marginTopMm', 0],
+        ['marginRightMm', 0],
+        ['marginBottomMm', 0],
+        ['rotation', 0],
+        ['marginLeftMm', 0],
+        ['dpi', 203],
+      ];
+      const numbers: Record<string, number> = {};
+      for (const [field, fallback] of numericFields) {
+        const coerced = coerceImportNumber(item[field], fallback);
+        if ('invalid' in coerced) {
+          return reply.status(400).send({
+            error: 'VALIDATION_ERROR',
+            message: `Invalid profile '${baseCode}': ${field} is not a valid number`,
+            issues: [{ field, message: `${field} is not a valid number` }],
+          });
+        }
+        numbers[field] = coerced.value;
+      }
 
       const profileInput = {
         code: baseCode,
         name: item.name.trim(),
-        widthMm,
-        heightMm,
-        marginTopMm: Number(item.marginTopMm) || 0,
-        marginRightMm: Number(item.marginRightMm) || 0,
-        marginBottomMm: Number(item.marginBottomMm) || 0,
-        marginLeftMm: Number(item.marginLeftMm) || 0,
-        dpi: Number(item.dpi) || 203,
+        widthMm: numbers['widthMm']!,
+        heightMm: numbers['heightMm']!,
+         gapMm: numbers['gapMm']!,
+        marginTopMm: numbers['marginTopMm']!,
+        marginRightMm: numbers['marginRightMm']!,
+        marginBottomMm: numbers['marginBottomMm']!,
+        marginLeftMm: numbers['marginLeftMm']!,
+        dpi: numbers['dpi']!,
         orientation: (item.orientation === 'landscape' ? 'landscape' : 'portrait') as 'portrait' | 'landscape',
         unit: (item.unit === 'inch' ? 'inch' : 'mm') as 'mm' | 'inch',
+        rotation: numbers['rotation']!,
+        flipHorizontal: item.flipHorizontal ?? false,
+        flipVertical: item.flipVertical ?? false,
+        layout: item.layout,
         fields: Array.isArray(item.fields) ? item.fields : [],
       };
+
+      const geometryIssues = validatePaperProfileCreate(profileInput as unknown as Record<string, unknown>);
+      if (geometryIssues.length > 0) {
+        return reply.status(400).send({
+          error: 'VALIDATION_ERROR',
+          message: `Invalid profile '${baseCode}': ${geometryIssues[0]!.message}`,
+          issues: geometryIssues,
+        });
+      }
 
       const existing = await deps.papers.findByCode(profileInput.code);
       let finalProfile: PaperProfile;
@@ -340,6 +412,7 @@ export async function templateRoutes(
           code: profile.code,
           name: profile.name,
           widthMm: profile.widthMm,
+          gapMm: profile.gapMm ?? 0,
           heightMm: profile.heightMm,
           marginTopMm: profile.marginTopMm,
           marginRightMm: profile.marginRightMm,
@@ -348,6 +421,10 @@ export async function templateRoutes(
           dpi: profile.dpi,
           orientation: profile.orientation,
           unit: profile.unit,
+          rotation: profile.rotation ?? 0,
+          flipHorizontal: profile.flipHorizontal ?? false,
+          flipVertical: profile.flipVertical ?? false,
+          layout: profile.layout,
           fields: profile.fields ?? [],
         },
       ],
@@ -359,8 +436,14 @@ export async function templateRoutes(
       .send(exportData);
   });
 
-  app.put('/paper-profiles/:id', { onRequest: [requirePermission('paper-profile:update')] }, async (req) => {
+  app.put('/paper-profiles/:id', { onRequest: [requirePermission('paper-profile:update')] }, async (req, reply) => {
     const { id } = req.params as { id: string };
+    const existing = await deps.papers.findById(id);
+    if (!existing) return reply.status(404).send({ error: 'Paper profile not found' });
+    const issues = validatePaperProfileUpdate(existing, (req.body ?? {}) as Record<string, unknown>);
+    if (issues.length > 0) {
+      return reply.status(400).send({ error: 'VALIDATION_ERROR', message: issues[0]!.message, issues });
+    }
     const profile = await deps.papers.update(id, req.body as Record<string, unknown>);
     await deps.audit.create({ traceId: 'paper', action: 'paper_profile.updated', actorId: actor(req), resourceType: 'paper_profile', resourceId: id, after: profile as unknown as Record<string, unknown>, metadata: {} });
     await ensureFieldsTemplate(profile, actor(req));

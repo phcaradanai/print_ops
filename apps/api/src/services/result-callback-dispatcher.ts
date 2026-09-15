@@ -7,6 +7,7 @@ import type {
   Job,
   JobCallbackIntent,
   JobRepositoryPort,
+  NatsDeliveryMode,
   PrintJobTerminal,
   WebhookCallbackAttemptRepositoryPort,
 } from '@printerops/domain';
@@ -20,10 +21,18 @@ import {
 } from './callback-retry-policy.js';
 import { assertCallbackUrlAllowed, CallbackUrlRejected, callbackUrlPolicyFromEnv, type CallbackUrlPolicy } from '../infra/http/callback-url-guard.js';
 import { callbackSigningSecret, CALLBACK_SIGNATURE_VERSION, signCallback } from './callback-signing.js';
+import { buildCallbackEnvelope, CALLBACK_ENVELOPE_VERSION } from './callback-payload.js';
+import { resolveTemplate, type TemplateEndpointLike } from './webhook-callback.service.js';
 
-/** Wire-format version of the result-callback contract. Bump on a breaking
- *  change to the payload shape; receivers should switch on it. */
-export const RESULT_CALLBACK_VERSION = 1;
+/**
+ * Wire-format version of the result-callback contract. Bump on a breaking
+ *  change to the payload shape; receivers should switch on it.
+ *
+ * v2 (2026-08-05): unified envelope — `print_status` is now `status`, the
+ * same key the acceptance event uses, and `occurred_at` / `timeline` are
+ * present on every phase. See buildCallbackEnvelope in callback-payload.ts.
+ */
+export const RESULT_CALLBACK_VERSION = CALLBACK_ENVELOPE_VERSION;
 
 export const RESULT_EVENT_TYPE = 'print.job.completed';
 
@@ -42,7 +51,35 @@ export type CallbackHttpSender = (
   opts: { timeoutMs: number; headers: Record<string, string> },
 ) => Promise<CallbackHttpResponse>;
 
-export type CallbackNatsSender = (subject: string, body: Record<string, unknown>) => void | Promise<void>;
+/** What a NATS publish achieved. `acknowledged` is true only for a JetStream
+ *  PubAck; a Core publish resolves with `acknowledged: false`, which the
+ *  dispatcher records as `BEST_EFFORT`. */
+export interface CallbackNatsAck {
+  acknowledged: boolean;
+  stream?: string;
+  sequence?: number;
+  duplicate?: boolean;
+}
+
+export type CallbackNatsSender = (
+  subject: string,
+  body: Record<string, unknown>,
+  opts: { msgId: string; mode: NatsDeliveryMode },
+) => Promise<CallbackNatsAck>;
+
+/**
+ * Transport mode for NATS result callbacks.
+ *
+ * Defaults to JETSTREAM: at-least-once with broker-side dedupe on
+ * `Nats-Msg-Id` is the agreed delivery contract (decision 2026-08-03). It
+ * requires the receiving environment to own a stream capturing the callback
+ * subject — PrintOps never creates one, for the same reason it does not create
+ * the intake stream. Set `PRINTOPS_CALLBACK_NATS_MODE=CORE` to deliberately
+ * accept best-effort delivery where no stream can be provisioned.
+ */
+export function callbackNatsModeFromEnv(env = process.env): NatsDeliveryMode {
+  return env['PRINTOPS_CALLBACK_NATS_MODE']?.trim().toUpperCase() === 'CORE' ? 'CORE' : 'JETSTREAM';
+}
 
 export interface DispatcherLogger {
   info(obj: unknown, msg?: string): void;
@@ -59,6 +96,9 @@ export interface ResultCallbackDispatcherDeps {
   logger: DispatcherLogger;
   policy?: RetryPolicy;
   urlPolicy?: CallbackUrlPolicy;
+  /** Transport mode for deliveries whose stored intent predates `natsMode`.
+   *  Defaults to `callbackNatsModeFromEnv()`. */
+  natsMode?: NatsDeliveryMode;
   /** Injectable clock — the retry sweep must be drivable from a test without
    *  waiting 12 real minutes. */
   now?: () => Date;
@@ -82,6 +122,7 @@ export interface ResultCallbackDispatcherDeps {
 export class ResultCallbackDispatcher {
   private readonly policy: RetryPolicy;
   private readonly urlPolicy: CallbackUrlPolicy;
+  private readonly natsMode: NatsDeliveryMode;
   private readonly now: () => Date;
   private readonly random: () => number;
   private sweepTimer?: ReturnType<typeof setInterval>;
@@ -89,6 +130,7 @@ export class ResultCallbackDispatcher {
   constructor(private readonly deps: ResultCallbackDispatcherDeps) {
     this.policy = deps.policy ?? DEFAULT_RETRY_POLICY;
     this.urlPolicy = deps.urlPolicy ?? callbackUrlPolicyFromEnv();
+    this.natsMode = deps.natsMode ?? callbackNatsModeFromEnv();
     this.now = deps.now ?? (() => new Date());
     this.random = deps.random ?? Math.random;
   }
@@ -164,8 +206,11 @@ export class ResultCallbackDispatcher {
       }
       const intent = readCallbackIntent(job.metadata);
       if (!intent || !intent.enabled) {
-        // Not an error: most jobs have no callback configured, and an endpoint
-        // with callbackOnPrintResult off is a deliberate operator choice.
+        // Not an error: most jobs have no callback configured at all. The
+        // intent is enabled for every job whose endpoint resolved a
+        // destination — `callbackOnPrintResult` only decides whether the
+        // ACCEPTANCE callback also fires, never whether the terminal result
+        // is delivered.
         return;
       }
 
@@ -350,13 +395,29 @@ export class ResultCallbackDispatcher {
         errorMessage: 'NATS transport is not connected',
       };
     }
+    // The mode is taken from the intent snapshotted onto the job, so flipping
+    // the deployment setting cannot change the contract of a callback already
+    // in flight. Falls back to the current setting for pre-existing deliveries
+    // whose intent predates the field.
+    const intent = readCallbackIntent((await this.deps.jobs.findById(delivery.printJobId))?.metadata);
+    const mode: NatsDeliveryMode = intent?.natsMode ?? this.natsMode;
     try {
-      await this.deps.nats(delivery.target, delivery.payload);
-      // BEST_EFFORT, and the word is chosen carefully. A Core NATS publish that
-      // does not throw proves the bytes left this process — it does NOT prove a
-      // subscriber received them. Reporting this as ACKNOWLEDGED would be a lie
-      // an integrator would build on.
-      return { success: true, kind: 'PERMANENT', guarantee: 'BEST_EFFORT' };
+      // `event_id` as the dedupe key: it is re-sent verbatim on every retry, so
+      // the broker's duplicate window and the receiver's own idempotency check
+      // agree on what "the same result notification" means.
+      const ack = await this.deps.nats(delivery.target, delivery.payload, {
+        msgId: delivery.eventId,
+        mode,
+      });
+      // ACKNOWLEDGED only on a real JetStream PubAck. A Core publish that does
+      // not throw proves the bytes left this process — it does NOT prove any
+      // subscriber or broker stored them, and reporting that as ACKNOWLEDGED
+      // would be a lie an integrator would build on.
+      return {
+        success: true,
+        kind: 'PERMANENT',
+        guarantee: ack.acknowledged ? 'ACKNOWLEDGED' : 'BEST_EFFORT',
+      };
     } catch (err) {
       return {
         success: false,
@@ -412,44 +473,127 @@ interface SendOutcome {
  * reprint of a patient label. No print payload is included; a callback is a
  * notification, not a copy of the document.
  */
+const MISSING_FIELD_WARNING_PREFIX = 'Missing field: ';
+
+/** Render-time warnings recorded at accept time (metadata.renderWarnings).
+ *  Missing-field warnings are additionally parsed out into a structured list
+ *  so a caller can programmatically see WHICH data was absent. */
+export function extractRenderQuality(job: Job): {
+  dataQuality: 'OK' | 'WITH_WARNINGS';
+  warnings: string[];
+  missingFields: string[];
+} {
+  const raw = job.metadata?.['renderWarnings'];
+  const warnings = Array.isArray(raw)
+    ? raw.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+  const missingFields = warnings
+    .filter((warning) => warning.startsWith(MISSING_FIELD_WARNING_PREFIX))
+    .map((warning) => warning.slice(MISSING_FIELD_WARNING_PREFIX.length));
+  return {
+    dataQuality: warnings.length > 0 ? 'WITH_WARNINGS' : 'OK',
+    warnings,
+    missingFields,
+  };
+}
+
 export function buildResultCallbackPayload(
   event: PrintJobTerminal,
   job: Job,
   intent: JobCallbackIntent,
 ): Record<string, unknown> {
-  return {
-    version: RESULT_CALLBACK_VERSION,
-    event_id: event.eventId,
-    event_type: RESULT_EVENT_TYPE,
-    occurred_at: (event.finishedAt ?? event.occurredAt).toISOString(),
+  // Product decision (2026-08-03): a print that succeeded with missing data
+  // must never read as a plain SUCCESS to the caller. The canonical
+  // status vocabulary stays untouched; completeness travels alongside
+  // it, so SUCCESS + WITH_WARNINGS carries the same meaning as a
+  // "SUCCESS_WITH_WARNING" status without breaking every status consumer.
+  const quality = extractRenderQuality(job);
+  const envelope = buildCallbackEnvelope({
+    eventId: event.eventId,
+    eventType: RESULT_EVENT_TYPE,
+    occurredAt: (event.finishedAt ?? event.occurredAt).toISOString(),
 
-    request_id: event.requestId ?? job.requestId ?? null,
-    job_id: event.jobId,
-    source_system: event.sourceSystem ?? job.sourceSystem ?? null,
+    requestId: event.requestId ?? job.requestId ?? null,
+    jobId: event.jobId,
+    sourceSystem: event.sourceSystem ?? job.sourceSystem ?? null,
 
-    print_status: event.status,
+    status: event.status,
+    dataQuality: quality.dataQuality,
+    missingFields: quality.missingFields,
+    renderWarnings: quality.warnings,
 
-    printer_code: event.printerCode ?? job.printerCode ?? null,
-    runner_id: event.runnerId ?? job.runnerId ?? null,
+    printerCode: event.printerCode ?? job.printerCode ?? null,
+    runnerId: event.runnerId ?? job.runnerId ?? null,
 
     error: event.errorCode
       ? { code: event.errorCode, message: event.errorMessage ?? null }
       : null,
 
-    trace_id: event.traceId,
+    traceId: event.traceId,
     timeline: {
-      accepted_at: job.receivedAt?.toISOString() ?? job.createdAt?.toISOString() ?? null,
-      queued_at: job.queuedAt?.toISOString() ?? null,
-      started_at: job.startedAt?.toISOString() ?? job.runnerReceivedAt?.toISOString() ?? null,
-      terminal_at: (event.finishedAt ?? event.occurredAt).toISOString(),
+      acceptedAt: job.receivedAt?.toISOString() ?? job.createdAt?.toISOString() ?? null,
+      queuedAt: job.queuedAt?.toISOString() ?? null,
+      startedAt: job.startedAt?.toISOString() ?? job.runnerReceivedAt?.toISOString() ?? null,
+      terminalAt: (event.finishedAt ?? event.occurredAt).toISOString(),
     },
+
     // Lets a receiver tell a BEST_EFFORT NATS notification from an HTTP one it
     // actually acknowledged.
-    delivery: {
-      transports: intent.transports,
-      nats_mode: intent.natsMode ?? null,
-    },
-  };
+    transports: intent.transports,
+    natsMode: intent.natsMode ?? null,
+  });
+
+  // When the endpoint defined a payload template, the TERMINAL callback is
+  // shaped by it too — same keys as the acceptance callback, resolved against
+  // the real final envelope. `$$.status` becomes the actual final status,
+  // `$$.timeline.*` the real timestamps. Without a template the fixed v2
+  // envelope is sent (previous behaviour).
+  const template = intent.payloadTemplate;
+  if (template && Object.keys(template).length > 0) {
+    // The acceptance callback resolves `$$.field` against the intake response,
+    // whose shape is ACCEPTANCE_CALLBACK_SYSTEM_FIELDS (print_job_id,
+    // created_at, queued_at, resolved_printer_code, resolved_template_code, …).
+    // The v2 envelope carries the real final values but NOT those intake-only
+    // keys — a template using them resolved at acceptance and then silently
+    // dropped the key at terminal time. Merge a job-derived intake-shaped view
+    // UNDER the envelope so every `$$.field` the acceptance callback can
+    // resolve resolves identically here; the envelope is spread last, so where
+    // both define a key (status, occurred_at, timeline.*, error, …) the real
+    // final value wins.
+    const intakeShaped: Record<string, unknown> = {
+      print_job_id: job.id,
+      created_at: job.receivedAt?.toISOString() ?? job.createdAt?.toISOString() ?? null,
+      queued_at: job.queuedAt?.toISOString() ?? null,
+      resolved_printer_code: job.printerCode ?? null,
+      resolved_template_code: job.resolvedTemplateCode ?? job.templateCode ?? null,
+    };
+    return resolveTemplate(template, jobIntakePayload(job), { ...intakeShaped, ...envelope }, {
+      callbackTransport: transportsToEndpointTransport(intent.transports),
+    });
+  }
+  return envelope;
+}
+
+/** The caller's original intake payload, kept on the job so `$.field` tokens
+ *  can resolve at terminal time (the intake payload itself is long gone). */
+function jobIntakePayload(job: Job): Record<string, unknown> {
+  const stored = job.metadata?.['payload'] ?? job.metadata?.['intakePayload'];
+  return stored && typeof stored === 'object' && !Array.isArray(stored)
+    ? stored as Record<string, unknown>
+    : {};
+}
+
+/** intent.transports -> the endpoint.callbackTransport shape the resolver
+ *  understands for the derived `$$.delivery.transports` fallback. */
+function transportsToEndpointTransport(
+  transports: JobCallbackIntent['transports'],
+): NonNullable<TemplateEndpointLike['callbackTransport']> {
+  const hasHttp = transports.includes('HTTP');
+  const hasNats = transports.includes('NATS');
+  if (hasHttp && hasNats) return 'BOTH';
+  if (hasHttp) return 'HTTP';
+  if (hasNats) return 'NATS';
+  return 'NONE';
 }
 
 function errCode(err: unknown): string | undefined {

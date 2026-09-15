@@ -1,0 +1,70 @@
+/* Template row action menu rendered through a body portal.
+ *
+ * The library table owns horizontal scrolling through `.ui-data-table-frame`.
+ * Rendering this menu in the viewport layer prevents the bottom rows from
+ * clipping it while retaining table scrolling and semantic menu behavior.
+ */
+
+.tpl-row-menu-popover {
+  position: fixed;
+  z-index: 420;
+  display: flex;
+  width: max-content;
+  min-width: 11rem;
+  max-width: calc(100vw - 1rem);
+  flex-direction: column;
+  gap: 2px;
+  padding: 0.25rem;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-md);
+  background: var(--neutral-surface);
+  box-shadow: 0 12px 32px rgba(17, 24, 39, 0.18);
+}
+
+.tpl-row-menu-popover__item {
+  display: flex;
+  min-width: 0;
+  min-height: 2.25rem;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: var(--rounded-sm);
+  background: transparent;
+  color: var(--neutral-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tpl-row-menu-popover__item:hover,
+.tpl-row-menu-popover__item:focus-visible {
+  background: var(--neutral-page);
+  color: var(--primary);
+  outline: 2px solid transparent;
+}
+
+.tpl-row-menu-popover__item--danger {
+  color: var(--state-danger-text);
+}
+
+.tpl-row-menu-popover__item--danger:hover,
+.tpl-row-menu-popover__item--danger:focus-visible {
+  background: var(--state-danger-surface);
+  color: var(--state-danger-text);
+}
+
+@media (pointer: coarse), (max-width: 1024px) {
+  .tpl-row-menu-popover__item {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tpl-row-menu-popover__item {
+    transition: none;
+  }
+}

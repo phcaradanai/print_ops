@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Database } from 'sql.js';
 import { TERMINAL_PRINT_STATUSES } from '@printerops/domain';
 
@@ -29,6 +31,11 @@ export interface RetentionOptions {
   retentionDays: number;
   /** Additionally cap each table at this many rows (keeps the most recent). 0 disables the cap. */
   maxRows: number;
+  /** When set, every pruned row (jobs, traces, callback deliveries, audit
+   * logs) is written to a timestamped JSON file in this directory BEFORE
+   * deletion. A failed archive write aborts the sweep — data is never deleted
+   * unarchived (product decision, 2026-08-03). */
+  archiveDir?: string;
 }
 
 export interface RetentionResult {
@@ -53,6 +60,20 @@ function countRows(db: Database, sql: string, params: (string | number)[]): numb
   } finally {
     stmt.free();
   }
+}
+
+function collectRows(db: Database, sql: string, params: (string | number)[]): Record<string, unknown>[] {
+  const stmt = db.prepare(sql);
+  const rows: Record<string, unknown>[] = [];
+  try {
+    stmt.bind(params);
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject());
+    }
+  } finally {
+    stmt.free();
+  }
+  return rows;
 }
 
 function collectIds(db: Database, sql: string, params: (string | number)[]): string[] {
@@ -111,6 +132,21 @@ export function pruneOldRecords(db: Database, options: RetentionOptions): Retent
 
   const staleJobIds = Array.from(new Set([...staleByAge, ...staleByCount]));
 
+  const staleAuditByAge = new Set<string>(
+    cutoff ? collectIds(db, 'SELECT id FROM audit_logs WHERE occurred_at < ?', [cutoff]) : [],
+  );
+  const staleAuditByCount = new Set<string>(
+    countEnabled
+      ? collectIds(db, 'SELECT id FROM audit_logs ORDER BY occurred_at DESC LIMIT -1 OFFSET ?', [maxRows])
+      : [],
+  );
+  const staleAuditIds = Array.from(new Set([...staleAuditByAge, ...staleAuditByCount]));
+
+  // Archive BEFORE any delete. If this throws, nothing has been pruned yet.
+  if (options.archiveDir && (staleJobIds.length > 0 || staleAuditIds.length > 0)) {
+    archivePrunedRows(db, options.archiveDir, staleJobIds, staleAuditIds);
+  }
+
   let tracesDeleted = 0;
   let callbackDeliveriesDeleted = 0;
   if (staleJobIds.length > 0) {
@@ -133,15 +169,6 @@ export function pruneOldRecords(db: Database, options: RetentionOptions): Retent
     db.run(`DELETE FROM jobs WHERE id IN (${jobPlaceholders})`, staleJobIds);
   }
 
-  const staleAuditByAge = new Set<string>(
-    cutoff ? collectIds(db, 'SELECT id FROM audit_logs WHERE occurred_at < ?', [cutoff]) : [],
-  );
-  const staleAuditByCount = new Set<string>(
-    countEnabled
-      ? collectIds(db, 'SELECT id FROM audit_logs ORDER BY occurred_at DESC LIMIT -1 OFFSET ?', [maxRows])
-      : [],
-  );
-  const staleAuditIds = Array.from(new Set([...staleAuditByAge, ...staleAuditByCount]));
   if (staleAuditIds.length > 0) {
     const auditPlaceholders = staleAuditIds.map(() => '?').join(',');
     db.run(`DELETE FROM audit_logs WHERE id IN (${auditPlaceholders})`, staleAuditIds);
@@ -155,28 +182,75 @@ export function pruneOldRecords(db: Database, options: RetentionOptions): Retent
   };
 }
 
+/** Writes every row about to be pruned to a timestamped JSON file. Throws on
+ * any write failure so the caller aborts the sweep instead of deleting
+ * unarchived history. */
+function archivePrunedRows(
+  db: Database,
+  archiveDir: string,
+  staleJobIds: string[],
+  staleAuditIds: string[],
+): void {
+  const jobPlaceholders = staleJobIds.map(() => '?').join(',');
+  const auditPlaceholders = staleAuditIds.map(() => '?').join(',');
+  const payload = {
+    version: 1,
+    type: 'printops_retention_archive',
+    archivedAt: new Date().toISOString(),
+    jobs: staleJobIds.length > 0
+      ? collectRows(db, `SELECT * FROM jobs WHERE id IN (${jobPlaceholders})`, staleJobIds)
+      : [],
+    traces: staleJobIds.length > 0
+      ? collectRows(db, `SELECT * FROM traces WHERE job_id IN (${jobPlaceholders})`, staleJobIds)
+      : [],
+    callbackDeliveries: staleJobIds.length > 0
+      ? collectRows(db, `SELECT * FROM callback_deliveries WHERE print_job_id IN (${jobPlaceholders})`, staleJobIds)
+      : [],
+    auditLogs: staleAuditIds.length > 0
+      ? collectRows(db, `SELECT * FROM audit_logs WHERE id IN (${auditPlaceholders})`, staleAuditIds)
+      : [],
+  };
+  mkdirSync(archiveDir, { recursive: true });
+  const fileName = `retention-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+  writeFileSync(join(archiveDir, fileName), JSON.stringify(payload));
+}
+
 /**
  * Retention window in days — override via PRINTOPS_RETENTION_DAYS. Defaults
- * to 7: PrintOps is a print gateway, not the system of record for print job
- * history, so a short operational window (enough to debug "what happened
- * yesterday") is enough. `0` disables age-based pruning (count cap still
- * applies unless that is also disabled).
+ * to 14 (product decision, 2026-08-03: hot data 7–14 days): PrintOps is a
+ * print gateway, not the system of record for print job history, so a short
+ * operational window (enough to debug "what happened last week") is enough.
+ * `0` disables age-based pruning (count cap still applies unless that is
+ * also disabled).
  */
 export function retentionDaysFromEnv(): number {
   const raw = process.env['PRINTOPS_RETENTION_DAYS'];
-  if (raw === undefined || raw.trim() === '') return 7;
+  if (raw === undefined || raw.trim() === '') return 14;
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 7;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 14;
 }
 
 /**
  * Row-count cap per table — override via PRINTOPS_RETENTION_MAX_ROWS.
- * Defaults to 1000. `0` disables the count-based cap (age cutoff still
- * applies unless that is also disabled).
+ * Defaults to 0 = DISABLED (product decision, 2026-08-03: the hot window is
+ * bounded by age, not by an arbitrary row count that could silently truncate
+ * a busy day's history). Set a positive number to re-enable the cap.
  */
 export function retentionMaxRowsFromEnv(): number {
   const raw = process.env['PRINTOPS_RETENTION_MAX_ROWS'];
-  if (raw === undefined || raw.trim() === '') return 1000;
+  if (raw === undefined || raw.trim() === '') return 0;
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 1000;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+/** Archive directory for pruned rows — <db dir>/archive by default; disable
+ * with PRINTOPS_RETENTION_ARCHIVE=false. */
+export function retentionArchiveDirFromEnv(): string | undefined {
+  if ((process.env['PRINTOPS_RETENTION_ARCHIVE'] ?? '').toLowerCase() === 'false') return undefined;
+  const explicit = process.env['PRINTOPS_RETENTION_ARCHIVE_DIR'];
+  if (explicit && explicit.trim()) return explicit.trim();
+  const dbPath = process.env['PRINTOPS_DB_PATH'] ?? './printops.db';
+  const lastSep = Math.max(dbPath.lastIndexOf('/'), dbPath.lastIndexOf('\\'));
+  const dbDir = lastSep >= 0 ? dbPath.slice(0, lastSep) : '.';
+  return join(dbDir, 'archive');
 }

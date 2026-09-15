@@ -25,13 +25,13 @@ import {
   PageLayout,
   Panel,
   Stack,
+  Switch,
   TableEmpty,
   Text,
 } from '../components/ui/index.js';
 
 const EditIcon = () => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>;
 const TrashIcon = () => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>;
-const PowerIcon = () => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>;
 
 interface Binding { id: string; printerCode: string; templateCode: string; paperProfileId: string; isDefault: boolean; enabled: boolean }
 
@@ -95,6 +95,7 @@ export default function PrinterBindings() {
     <PageLayout
       title={t('page.bindings.title')}
       density="compact"
+      width="full"
       actions={<Freshness
           lastSuccessAt={bindingsResource.lastSuccessAt}
           stale={bindingsResource.stale}
@@ -214,21 +215,17 @@ export default function PrinterBindings() {
                       : <Text tone="muted">{t('page.bindings.notDefault')}</Text>}
                   </DataCell>
                   <DataCell label={columns.enabled}>
-                    <Badge tone={b.enabled ? 'success' : 'neutral'}>
-                      {b.enabled ? t('status.enabled') : t('status.disabled')}
-                    </Badge>
+                    <Switch
+                      label={columns.enabled}
+                      onLabel={t('status.enabled')}
+                      offLabel={t('status.disabled')}
+                      checked={b.enabled}
+                      onChange={() => void toggleEnabled.run(b)}
+                      busy={toggleEnabled.pending}
+                    />
                   </DataCell>
                   <DataCell label={columns.actions} align="right">
                     <Inline gap="xs">
-                      <IconButton
-                        label={b.enabled ? t('common.deactivate') : t('common.activate')}
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => void toggleEnabled.run(b)}
-                        busy={toggleEnabled.pending}
-                      >
-                        <PowerIcon />
-                      </IconButton>
                       <IconButton
                         label={t('common.edit')}
                         variant="ghost"

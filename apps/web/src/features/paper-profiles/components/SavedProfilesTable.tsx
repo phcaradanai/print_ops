@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { PaperProfilePersistence } from '../hooks/usePaperProfilePersistence.js';
+import { getVisualPaperGeometry } from '../model/geometry.js';
 import type { PaperProfile } from '../model/types.js';
 import type { Translate } from './types.js';
 import { TransferIcon } from '../../../components/TransferIcon.js';
@@ -22,9 +23,59 @@ import {
   Mono,
   SectionHeading,
   Select,
-  Stack,
   Text,
 } from '../../../components/ui/index.js';
+
+const THUMBNAIL_MAX_WIDTH_REM = 3.4;
+const THUMBNAIL_MAX_HEIGHT_REM = 3.6;
+
+function marginPercent(value: number, total: number): string {
+  if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return '0%';
+  return `${Math.max(0, Math.min(42, (value / total) * 100))}%`;
+}
+
+function fittedThumbnailSize(widthMm: number, heightMm: number) {
+  const width = Math.max(1, widthMm);
+  const height = Math.max(1, heightMm);
+  const scale = Math.min(THUMBNAIL_MAX_WIDTH_REM / width, THUMBNAIL_MAX_HEIGHT_REM / height);
+  return {
+    widthRem: Number((width * scale).toFixed(4)),
+    heightRem: Number((height * scale).toFixed(4)),
+  };
+}
+
+function effectiveSize(profile: PaperProfile): string {
+  const geometry = getVisualPaperGeometry(profile);
+  return `${geometry.widthMm}×${geometry.heightMm} mm`;
+}
+
+function effectiveMargins(profile: PaperProfile): string {
+  const geometry = getVisualPaperGeometry(profile);
+  return `${geometry.marginTopMm}/${geometry.marginRightMm}/${geometry.marginBottomMm}/${geometry.marginLeftMm} mm`;
+}
+
+function PaperProfileThumbnail({ profile }: { profile: PaperProfile }) {
+  const geometry = getVisualPaperGeometry(profile);
+  const thumbnailSize = fittedThumbnailSize(geometry.widthMm, geometry.heightMm);
+  const style = {
+    '--pp-thumb-width': `${thumbnailSize.widthRem}rem`,
+    '--pp-thumb-height': `${thumbnailSize.heightRem}rem`,
+    '--pp-margin-top': marginPercent(geometry.marginTopMm, geometry.heightMm),
+    '--pp-margin-right': marginPercent(geometry.marginRightMm, geometry.widthMm),
+    '--pp-margin-bottom': marginPercent(geometry.marginBottomMm, geometry.heightMm),
+    '--pp-margin-left': marginPercent(geometry.marginLeftMm, geometry.widthMm),
+  } as CSSProperties;
+
+  return (
+    <span
+      className={`pp-profile-thumbnail pp-profile-thumbnail--${profile.orientation}`}
+      style={style}
+      aria-hidden="true"
+    >
+      <span className="pp-profile-thumbnail__printable" />
+    </span>
+  );
+}
 
 export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
   onEdit: (profile: PaperProfile) => void;
@@ -67,6 +118,7 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
         id="paper-profile-library-title"
         title={t('page.paperProfiles.profileLibrary')}
         description={t('page.paperProfiles.libraryHint')}
+        className="pp-library-heading"
         actions={
           <>
             {/* Native file picker stays native — the browser behavior is the feature. */}
@@ -155,7 +207,7 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
                existed twice in the accessibility tree — including the destructive
                one, whose two copies passed different trigger elements to
                `requestDelete` and so restored focus to different places. */
-            <DataTable label={t('page.paperProfiles.profileLibrary')} responsive>
+            <DataTable className="pp-profile-library-table" label={t('page.paperProfiles.profileLibrary')} responsive>
               <thead>
                 <tr>
                   <DataHead>{columns.code}</DataHead>
@@ -170,9 +222,17 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
               </thead>
               <tbody>
                 {filteredProfiles.map((profile) => (
-                  <tr key={profile.id}>
-                    <DataCell label={columns.code}>
-                      <Mono weight="semibold">{profile.code}</Mono>
+                  <tr key={profile.id} className="pp-profile-row">
+                    <DataCell label={columns.code} className="pp-profile-cell--identity">
+                      <div className="pp-profile-identity">
+                        <PaperProfileThumbnail profile={profile} />
+                        <div className="pp-profile-identity__copy">
+                          <Mono weight="semibold">{profile.code}</Mono>
+                          <Text size="label" tone="muted" className="pp-profile-identity__size">
+                            {effectiveSize(profile)}
+                          </Text>
+                        </div>
+                      </div>
                     </DataCell>
                     <DataCell label={columns.name}>
                       <Text weight="semibold" tone="strong">{profile.name}</Text>
@@ -180,13 +240,11 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
                     {/* Dimensions are the substance of this surface, so they keep
                         their unit rather than relying on a header two rows away —
                         the card view has no header to rely on at all. */}
-                    <DataCell label={columns.size}>
-                      <Mono nowrap>{profile.widthMm}×{profile.heightMm} mm</Mono>
+                    <DataCell label={columns.size} className="pp-profile-cell--size">
+                      <Mono nowrap>{effectiveSize(profile)}</Mono>
                     </DataCell>
                     <DataCell label={columns.margins}>
-                      <Mono nowrap>
-                        {profile.marginTopMm}/{profile.marginRightMm}/{profile.marginBottomMm}/{profile.marginLeftMm} mm
-                      </Mono>
+                      <Mono nowrap>{effectiveMargins(profile)}</Mono>
                     </DataCell>
                     <DataCell label={columns.orient}>
                       <Badge>{orientationLabel(profile)}</Badge>

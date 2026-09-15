@@ -9,7 +9,8 @@ import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { Translate } from './types.js';
 import { TransferIcon } from '../../../components/TransferIcon.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
-import { Drawer } from '../../../components/ui/index.js';
+import { Alert, Button, Drawer, FormField, Grid, Inline, Input, Select, Stack } from '../../../components/ui/index.js';
+import { DraftNumberInput } from './DraftNumberInput.js';
 
 export function ImportDesignDrawer({ controller, popups, t }: {
   controller: ImportDesignController;
@@ -29,7 +30,7 @@ export function ImportDesignDrawer({ controller, popups, t }: {
       closeLabel={t('common.cancel')}
       className="pp-drawer--import"
     >
-          {controller.error && <div className="pp-import-error">{controller.error}</div>}
+          {controller.error && <Alert tone="error">{controller.error}</Alert>}
           {controller.phase === 'select' && (
             <label className="pp-import-dropzone">
               <input type="file" accept={ACCEPTED_IMPORT_MIME_TYPES.join(',')} hidden
@@ -46,9 +47,9 @@ export function ImportDesignDrawer({ controller, popups, t }: {
           {controller.phase === 'analyzing' && <ImportProgress text={t('page.paperProfiles.importAnalyzing')} />}
           {controller.phase === 'importing' && <ImportProgress text={t('page.paperProfiles.importImporting')} />}
           {controller.phase === 'error' && (
-            <button type="button" className="ds-btn ds-btn--ghost" onClick={controller.reset}>
+            <Button variant="secondary" onClick={controller.reset}>
               {t('page.paperProfiles.importRetry')}
-            </button>
+            </Button>
           )}
           {controller.phase === 'review' && controller.analysis && (
             <ImportReview controller={controller} t={t} />
@@ -88,41 +89,59 @@ function ImportReview({ controller, t }: { controller: ImportDesignController; t
         <div className="pp-import-warning"><PaperProfileIcon name="warning" /> {t('page.paperProfiles.importWarningLowDpi')
           .replace('{detected}', String(analysis.detectedDpi)).replace('{suggested}', String(analysis.suggestedDpi))}</div>
       )}
-      <div className="pp-import-form">
-        <label>{t('page.paperProfiles.nameLabel')} *<input className="pp-input" value={draft.name}
-          onChange={(event) => patch('name', event.target.value)} /></label>
-        <label>{t('page.paperProfiles.codeLabel')} *<input className="pp-input" value={draft.code}
-          onChange={(event) => patch('code', event.target.value)} /></label>
-        <div className="pp-form-grid pp-form-grid--two">
+      <Stack gap="md" className="pp-import-form">
+        <FormField label={t('page.paperProfiles.nameLabel')} required>
+          {(control) => (
+            <Input {...control} value={draft.name} onChange={(event) => patch('name', event.target.value)} />
+          )}
+        </FormField>
+        <FormField label={t('page.paperProfiles.codeLabel')} required>
+          {(control) => (
+            <Input {...control} value={draft.code} onChange={(event) => patch('code', event.target.value)} />
+          )}
+        </FormField>
+        <Grid columns={2} gap="md">
           <ImportNumber label={`${t('page.paperProfiles.width')} (mm)`} value={draft.widthMm} onChange={(value) => patch('widthMm', value)} />
           <ImportNumber label={`${t('page.paperProfiles.height')} (mm)`} value={draft.heightMm} onChange={(value) => patch('heightMm', value)} />
-        </div>
+        </Grid>
         <ImportNumber label={t('page.paperProfiles.dpi')} value={draft.dpi} onChange={(value) => patch('dpi', value)} />
-        <label>{t('page.paperProfiles.importFitMode')}
-          <select value={controller.fitMode} className="pp-select"
-            onChange={(event) => controller.setFitMode(event.target.value as ImportFitMode)}>
-            <option value="contain">{t('page.paperProfiles.importFitContain')}</option>
-            <option value="cover">{t('page.paperProfiles.importFitCover')}</option>
-            <option value="stretch">{t('page.paperProfiles.importFitStretch')}</option>
-          </select>
-        </label>
-      </div>
-      {draftErrors.length > 0 && <div className="pp-import-error">{draftErrors.map((issue) => t(issue.messageKey)).join('; ')}</div>}
-      <div className="pp-import-actions">
-        <button type="button" className="ds-btn ds-btn--ghost" onClick={controller.reset}>{t('page.paperProfiles.importBack')}</button>
-        <button type="button" className="pp-save-button" onClick={() => void controller.submit()}
-          disabled={draftErrors.length > 0}>{t('page.paperProfiles.importButton')}</button>
-      </div>
+        <FormField label={t('page.paperProfiles.importFitMode')}>
+          {(control) => (
+            <Select
+              {...control}
+              value={controller.fitMode}
+              onChange={(event) => controller.setFitMode(event.target.value as ImportFitMode)}
+            >
+              <option value="contain">{t('page.paperProfiles.importFitContain')}</option>
+              <option value="cover">{t('page.paperProfiles.importFitCover')}</option>
+              <option value="stretch">{t('page.paperProfiles.importFitStretch')}</option>
+            </Select>
+          )}
+        </FormField>
+      </Stack>
+      {draftErrors.length > 0 && (
+        <Alert tone="error">{draftErrors.map((issue) => t(issue.messageKey)).join('; ')}</Alert>
+      )}
+      <Inline gap="sm" className="pp-import-actions">
+        <Button variant="secondary" onClick={controller.reset}>{t('page.paperProfiles.importBack')}</Button>
+        <Button onClick={() => void controller.submit()} disabled={draftErrors.length > 0}>
+          {t('page.paperProfiles.importButton')}
+        </Button>
+      </Inline>
     </div>
   );
 }
 
 function ImportNumber({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
   return (
-    <label>{label}<input type="number" className="pp-input" value={value}
-      onChange={(event) => {
-        const next = Number(event.target.value);
-        if (!Number.isNaN(next)) onChange(next);
-      }} /></label>
+    <FormField label={label}>
+      {(control) => (
+        <DraftNumberInput
+          {...control}
+          value={value}
+          onValueChange={onChange}
+        />
+      )}
+    </FormField>
   );
 }

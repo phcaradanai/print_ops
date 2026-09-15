@@ -161,10 +161,11 @@ describe('Template management, sandbox, and dynamic intake', () => {
     expect(companion!.content).toContain('{{hn_masked}}');
     // Stored geometry is 70x30 (landscape), but explicit orientation is
     // portrait. Match the editor's clockwise point mapping while leaving the
-    // actual glyph upright: x'=(30-2-2)-10=16, y'=5.5.
+    // actual glyph upright, then offset the printable-relative result by the
+    // rotated page margins: x'=(30-2-2)-10+2=18, y'=5.5+2=7.5.
     expect(companion!.content).toContain('width:30mm;height:70mm');
-    expect(companion!.content).toContain('left:16mm');
-    expect(companion!.content).toContain('top:5.5mm');
+    expect(companion!.content).toContain('left:18mm');
+    expect(companion!.content).toContain('top:7.5mm');
     expect(companion!.content).toContain('translateX(-50%)'); // center align
     expect(companion!.content).not.toContain('rotate(');
 

@@ -2,6 +2,7 @@ import type { WebhookEndpointRepositoryPort } from '@printerops/domain';
 import { generateId } from '@printerops/shared';
 import type { WebhookCallbackService } from './webhook-callback.service.js';
 import { findDefaultCallbackEndpoint } from './callback-intent.service.js';
+import { buildCallbackEnvelope } from './callback-payload.js';
 
 export interface IntakeRejectedOutcome {
   endpointCode?: string;
@@ -37,23 +38,24 @@ export class IntakeOutcomeCallbackService {
     }
     if ((endpoint.callbackTransport ?? 'NONE') === 'NONE') return false;
 
-    const payload = {
-      version: 1,
-      event_id: generateId(),
-      event_type: 'print.job.rejected',
-      occurred_at: new Date().toISOString(),
-      request_id: outcome.requestId ?? null,
-      job_id: null,
-      source_system: outcome.sourceSystem,
-      source_reference: outcome.sourceReference ?? null,
-      print_status: 'REJECTED',
-      intake_transport: outcome.intakeTransport,
-      failure_stage: outcome.stage,
+    const payload = buildCallbackEnvelope({
+      eventId: generateId(),
+      eventType: 'print.job.rejected',
+      occurredAt: new Date().toISOString(),
+      requestId: outcome.requestId ?? null,
+      jobId: null,
+      sourceSystem: outcome.sourceSystem,
+      status: 'REJECTED',
       error: {
         code: outcome.errorCode,
         message: outcome.errorMessage,
       },
-    };
+      extra: {
+        source_reference: outcome.sourceReference ?? null,
+        intake_transport: outcome.intakeTransport,
+        failure_stage: outcome.stage,
+      },
+    });
 
     await this.callbacks.send({
       endpoint,

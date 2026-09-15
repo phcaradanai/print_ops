@@ -1,3 +1,4 @@
+import { IconButton as SharedIconButton } from '../../../components/ui/index.js';
 import { IconButton } from './editorPrimitives.js';
 import { PresetMenu } from './PresetMenu.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
@@ -34,10 +35,10 @@ export function PaperProfileCommandBar({ editor, persistence, popups, t, scrollT
     <div className="pp-command-bar">
       <nav className="pp-index" role="navigation" aria-label={t('page.paperProfiles.sectionIndex')}>
         {(['basicInfo', 'dimensions', 'margins', 'fields'] as SectionKey[]).map((key) => (
-          <button type="button" key={key} className="pp-index-btn" onClick={() => scrollTo(key)}
-            title={t(`page.paperProfiles.${key}`)} aria-label={t(`page.paperProfiles.${key}`)}>
+          <SharedIconButton key={key} variant="ghost" className="pp-index-btn"
+            label={t(`page.paperProfiles.${key}`)} onClick={() => scrollTo(key)}>
             <PaperProfileIcon name={SECTION_ICONS[key]} />
-          </button>
+          </SharedIconButton>
         ))}
       </nav>
       <div className="pp-command-actions">
@@ -45,23 +46,27 @@ export function PaperProfileCommandBar({ editor, persistence, popups, t, scrollT
           <span className="pp-command-status__dot" aria-hidden="true" />
           <span>{statusText}</span>
           {saveStatus === 'error' && (
-            <button type="button" onClick={editor.dismissSaveError} className="pp-command-status__dismiss"
-              aria-label={t('common.cancel')}><PaperProfileIcon name="close" /></button>
+            <SharedIconButton variant="ghost" size="sm" className="pp-command-status__dismiss"
+              label={t('common.cancel')} onClick={editor.dismissSaveError}>
+              <PaperProfileIcon name="close" />
+            </SharedIconButton>
           )}
         </div>
         <PresetMenu editor={editor} popups={popups} t={t} />
         <IconButton icon={<PaperProfileIcon name="chevron" className={allExpanded ? 'pp-icon--expanded' : undefined} />}
           label={allExpanded ? t('page.paperProfiles.collapseAll') : t('page.paperProfiles.expandAll')}
           onClick={() => editor.setAllSections(!allExpanded)} />
-        <button type="button" className="ds-btn ds-btn--primary" onClick={() => void persistence.save().then((saved) => {
-          if (saved) onSaved();
-        })}
-          disabled={persistence.savePending} title={editingProfileId ? t('page.paperProfiles.updateProfile') : t('page.paperProfiles.saveProfile')}
-          aria-label={editingProfileId ? t('page.paperProfiles.updateProfile') : t('page.paperProfiles.saveProfile')}>
-          <PaperProfileIcon name={persistence.savePending ? 'spinner' : 'save'} className={persistence.savePending ? 'pp-icon--spin' : undefined} />
-        </button>
-        <button type="button" className="pp-icon-btn" onClick={onCancel}
-          title={t('page.paperProfiles.backToLibrary')} aria-label={t('page.paperProfiles.backToLibrary')}><PaperProfileIcon name="close" /></button>
+        <SharedIconButton
+          variant="primary"
+          busy={persistence.savePending}
+          label={editingProfileId ? t('page.paperProfiles.updateProfile') : t('page.paperProfiles.saveProfile')}
+          onClick={() => void persistence.save().then((saved) => { if (saved) onSaved(); })}
+        >
+          <PaperProfileIcon name="save" />
+        </SharedIconButton>
+        <SharedIconButton label={t('page.paperProfiles.backToLibrary')} onClick={onCancel}>
+          <PaperProfileIcon name="close" />
+        </SharedIconButton>
       </div>
     </div>
   );

@@ -4,8 +4,12 @@ import type {
   TemplatePreview,
   TemplateRendererPort,
   BarcodeSymbology,
+  RenderTransformOverrides,
 } from '@printerops/domain';
+import { paperProfileForCell } from '@printerops/domain';
+import { getOrientedPaperGeometry, resolveRenderTransform, resolveRenderTransformFrame, wrapHtmlWithRenderTransform } from '@printerops/shared';
 import { qrGeometry, renderBarcodeDataUri, renderZplQrGraphic } from './barcode-renderer.js';
+import { renderDatamaxDpl } from './datamax-dpl-renderer.js';
 
 type CompiledTemplate = {
   fields: string[];
@@ -25,6 +29,8 @@ const FIELD_PATTERN = /\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g;
 const COMBINED_PATTERN =
   /\{\{\s*(?:(barcode|qrcode)\s*:\s*([a-zA-Z0-9_.-]+)(?:\s*:\s*([a-zA-Z0-9_-]+))?|([a-zA-Z0-9_.-]+))\s*\}\}/g;
 
+const DEFAULT_BARCODE_WIDTH_MM = 28;
+
 interface BarcodeToken {
   /** The exact `{{...}}` text matched — used as the cache key. */
   raw: string;
@@ -34,6 +40,9 @@ interface BarcodeToken {
   /** Bar height in mm, inherited from the matching paper-profile field (see
    *  `findBarcodeTokens`). Only meaningful for kind === 'barcode'. */
   heightMm?: number;
+  /** Bounding-box width in mm, inherited from the matching paper-profile
+   * field. Only meaningful for kind === 'barcode'. */
+  widthMm?: number;
   /** Side length in mm, inherited from the matching paper-profile field. Only
    *  meaningful for kind === 'qrcode'. */
   sizeMm?: number;
@@ -100,6 +109,7 @@ function findBarcodeTokens(content: string, paperProfile?: PaperProfile): Map<st
         key: explicitKey,
         symbology: (symbology as BarcodeSymbology | undefined) ?? matchingField?.barcodeSymbology,
         heightMm: matchingField?.barcodeHeightMm,
+        widthMm: matchingField ? (matchingField.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM) : undefined,
         sizeMm: matchingField?.qrSizeMm,
       });
       continue;
@@ -113,6 +123,7 @@ function findBarcodeTokens(content: string, paperProfile?: PaperProfile): Map<st
           key: plainKey,
           symbology: field.barcodeSymbology,
           heightMm: field.barcodeHeightMm,
+          widthMm: field.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM,
           sizeMm: field.qrSizeMm,
         });
       }
@@ -177,22 +188,36 @@ function zplBarcodeCommand(token: BarcodeToken, value: string, dpi: number): str
  * the barcode/QR prints (and previews) at the physical size the operator
  * configured on the paper-profile field — not at whatever arbitrary raster
  * pixel count bwip-js happened to produce. QR is square (width = height);
- * 1D barcodes only constrain height and let width follow the data's natural
- * aspect ratio (forcing a width would squash/stretch the bars unreadably).
+ * 1D barcodes use the configured bounding-box width. The SVG renderer marks
+ * them as non-preserving in aspect ratio so the bars occupy that box instead
+ * of being silently reduced to their natural-width inset. Human-readable text
+ * is rendered as a separate line inside the same fixed barcode box, so it
+ * cannot change the bar position or overflow the label edge.
  */
 function imgTag(
   dataUri: string,
   kind: 'barcode' | 'qrcode',
   sizeMm?: { heightMm?: number; sizeMm?: number; quietZoneMm?: number },
+  widthMm?: number,
+  humanReadable?: string,
 ): string {
   const heightMm = kind === 'qrcode' ? (sizeMm?.sizeMm ?? 20) : (sizeMm?.heightMm ?? 12);
-  const widthCss = kind === 'qrcode' ? `${heightMm}mm` : 'auto';
-  const image = `<img src="${dataUri}" alt="${kind}" style="display:block;height:${heightMm}mm;width:${widthCss};max-width:none" />`;
-  if (kind !== 'qrcode') return image;
-  // Four-module quiet zone lives outside the requested symbol. Putting it
-  // inside the 20mm image box would recreate the measured undersize defect.
-  const quietZoneMm = sizeMm?.quietZoneMm ?? 0;
-  return `<span style="display:inline-block;padding:${quietZoneMm}mm;background:#fff;line-height:0">${image}</span>`;
+  const barcodeWidthMm = kind === 'barcode' ? widthMm : undefined;
+  const widthCss = kind === 'qrcode' ? `${heightMm}mm` : barcodeWidthMm != null ? `${barcodeWidthMm}mm` : 'auto';
+  const showHri = kind === 'barcode' && humanReadable != null;
+  const hriHeightMm = showHri ? Math.min(2, Math.max(1.6, heightMm * 0.25)) : 0;
+  const barsHeightMm = showHri ? Math.max(1, heightMm - hriHeightMm) : heightMm;
+  const fitCss = kind === 'barcode' && barcodeWidthMm != null ? ';object-fit:fill;image-rendering:crisp-edges' : '';
+  const image = `<img src="${dataUri}" alt="${kind}" style="display:block;height:${barsHeightMm}mm;width:${widthCss};max-width:none${fitCss}" />`;
+  if (!showHri) {
+    if (kind !== 'qrcode') return image;
+    // Four-module quiet zone lives outside the requested symbol. Putting it
+    // inside the 20mm image box would recreate the measured undersize defect.
+    const quietZoneMm = sizeMm?.quietZoneMm ?? 0;
+    return `<span style="display:inline-block;padding:${quietZoneMm}mm;background:#fff;line-height:0">${image}</span>`;
+  }
+  const hri = `<span style="display:block;width:100%;height:${hriHeightMm}mm;line-height:${hriHeightMm}mm;font-family:Arial,sans-serif;font-size:1.5mm;font-weight:400;text-align:center;white-space:nowrap;overflow:hidden;color:#000">${escapeHtml(humanReadable)}</span>`;
+  return `<span style="display:inline-flex;flex-direction:column;align-items:center;justify-content:flex-start;width:${widthCss};height:${heightMm}mm;max-width:none;overflow:hidden;line-height:0;vertical-align:top">${image}${hri}</span>`;
 }
 
 export class SimpleTemplateRenderer implements TemplateRendererPort {
@@ -213,12 +238,13 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
   async renderPreview(
     template: PrintTemplate,
     payload: Record<string, unknown>,
-    paperProfile: PaperProfile
+    paperProfile: PaperProfile,
+    renderOptions?: RenderTransformOverrides,
   ): Promise<TemplatePreview> {
     const t0 = Date.now();
     await this.compileTemplate(template);
-    const print = await this.renderPrintPayload(template, payload, paperProfile);
-    const renderedPreview = await this.previewMarkup(template, payload, paperProfile);
+    const print = await this.renderPrintPayload(template, payload, paperProfile, renderOptions);
+    const renderedPreview = await this.previewMarkup(template, payload, paperProfile, renderOptions);
     return {
       templateCode: template.templateCode,
       paperProfile,
@@ -234,6 +260,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     template: PrintTemplate,
     payload: Record<string, unknown>,
     paperProfile: PaperProfile,
+    renderOptions?: RenderTransformOverrides,
   ): Promise<{ renderedPrintPayload: string; warnings: string[]; renderTimeMs: number }> {
     const t0 = Date.now();
     const validation = await this.validateTemplate(template);
@@ -241,7 +268,11 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     const tokens = findBarcodeTokens(template.content, paperProfile);
 
     let rendered: string;
-    if (tokens.size === 0) {
+    if (template.engine === 'DPL') {
+      const dpl = renderDatamaxDpl(template.content, payload, paperProfileForCell(paperProfile), renderOptions);
+      rendered = dpl.dpl;
+      warnings.push(...dpl.warnings);
+    } else if (tokens.size === 0) {
       const r = renderContent(template.content, payload);
       rendered = r.rendered;
       warnings.push(...r.warnings);
@@ -259,7 +290,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
           heightMm: tok.heightMm,
           sizeMm: tok.sizeMm,
           quietZoneMm: img.quietZoneMm,
-        });
+        }, tok.widthMm, String(valueAt(payload, tok.key)));
       });
     } else if (template.engine === 'ZPL') {
       // Zebra printers decode ^BC/^BQ natively — emit the real command so it
@@ -286,6 +317,16 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
         }
         return String(value);
       });
+    }
+
+    if (template.engine === 'HTML') {
+      const geometry = getOrientedPaperGeometry(paperProfile);
+      rendered = wrapHtmlWithRenderTransform(
+        rendered,
+        geometry.widthMm,
+        geometry.heightMm,
+        resolveRenderTransform(paperProfile, renderOptions),
+      );
     }
 
     return { renderedPrintPayload: rendered, warnings, renderTimeMs: Date.now() - t0 };
@@ -321,26 +362,28 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     template: PrintTemplate,
     payload: Record<string, unknown>,
     paperProfile: PaperProfile,
+    renderOptions?: RenderTransformOverrides,
   ): Promise<string> {
     const tokens = findBarcodeTokens(template.content, paperProfile);
     const images = tokens.size > 0
       ? await resolveBarcodeImages(tokens, payload)
       : new Map<string, { dataUri?: string; quietZoneMm?: number; warning?: string }>();
 
-    if (template.engine === 'HTML') {
-      if (tokens.size === 0) return renderContent(template.content, payload).rendered;
-      return this.substituteRaw(template.content, payload, tokens, (tok) => {
-        const img = images.get(tok.raw);
-        return img?.dataUri ? imgTag(img.dataUri, tok.kind, {
-          heightMm: tok.heightMm,
-          sizeMm: tok.sizeMm,
-          quietZoneMm: img.quietZoneMm,
-        }) : '';
-      });
-    }
-
+    const isHtml = template.engine === 'HTML';
     let body: string;
-    if (tokens.size === 0) {
+
+    if (isHtml) {
+      body = tokens.size === 0
+        ? renderContent(template.content, payload).rendered
+        : this.substituteRaw(template.content, payload, tokens, (tok) => {
+          const img = images.get(tok.raw);
+          return img?.dataUri ? imgTag(img.dataUri, tok.kind, {
+            heightMm: tok.heightMm,
+            sizeMm: tok.sizeMm,
+            quietZoneMm: img.quietZoneMm,
+          }, tok.widthMm, String(valueAt(payload, tok.key))) : '';
+        });
+    } else if (tokens.size === 0) {
       body = escapeHtml(renderContent(template.content, payload).rendered);
     } else {
       body = '';
@@ -355,7 +398,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
             heightMm: tok.heightMm,
             sizeMm: tok.sizeMm,
             quietZoneMm: img.quietZoneMm,
-          }) : `<span class="tpl-preview-missing">[${escapeHtml(tok.kind)}: ${escapeHtml(tok.key)}]</span>`;
+          }, tok.widthMm, String(valueAt(payload, tok.key))) : `<span class="tpl-preview-missing">[${escapeHtml(tok.kind)}: ${escapeHtml(tok.key)}]</span>`;
         } else {
           const plainKey = m[4];
           const value = plainKey ? valueAt(payload, plainKey) : undefined;
@@ -366,6 +409,37 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
       body += escapeHtml(template.content.slice(lastIndex));
     }
 
-    return `<div style="width:${paperProfile.widthMm}mm;height:${paperProfile.heightMm}mm;border:1px solid #111;background:#fff;padding:4mm;font-family:monospace;white-space:pre-wrap;overflow:hidden">${body}</div>`;
+    const geometry = getOrientedPaperGeometry(paperProfile);
+    const transformFrame = resolveRenderTransformFrame(
+      geometry.widthMm,
+      geometry.heightMm,
+      resolveRenderTransform(paperProfile, renderOptions),
+    );
+    if (isHtml) {
+      body = wrapHtmlWithRenderTransform(
+        body,
+        geometry.widthMm,
+        geometry.heightMm,
+        resolveRenderTransform(paperProfile, renderOptions),
+      );
+    }
+
+    // Frame every engine's preview at the paper profile's true physical size
+    // (real CSS mm units, box-sizing:border-box, clipped with
+    // overflow:hidden) so what's on screen can be trusted as a print-size
+    // reference. Previously only the non-HTML engines got this frame, so an
+    // HTML template — the very engine the paper-profile "companion
+    // template" generator itself produces (see template.routes.ts) —
+    // previewed with no page boundary at all.
+    //
+    // HTML gets a bare same-size box with no padding/border of its own:
+    // hand-authored markup, and the companion generator's own
+    // `position:relative` box at this exact width/height, both already
+    // manage their own spacing — adding padding here would just clip their
+    // content instead of framing it.
+    const frameStyle = isHtml
+      ? `width:${transformFrame.width}mm;height:${transformFrame.height}mm;background:#fff;overflow:hidden;box-sizing:border-box`
+      : `width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;border:1px solid #111;background:#fff;padding:4mm;font-family:monospace;white-space:pre-wrap;overflow:hidden;box-sizing:border-box`;
+    return `<div style="${frameStyle}">${body}</div>`;
   }
 }

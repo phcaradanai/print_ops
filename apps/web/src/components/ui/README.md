@@ -9,16 +9,18 @@ Import public components from `components/ui/index.ts`. Keep feature-specific be
 ### Atoms
 
 - Actions: `Button`, `IconButton`, `ActionIcon`, `TransferIcon`
-- Form controls: `Label`, `Input`, `Select`, `Textarea`, `Checkbox`, `Chip`
+- Form controls: `Label`, `Input`, `Select`, `Textarea`, `Checkbox`, `Switch`, `Chip`
 - Layout: `Stack`, `Inline`, `Grid`, `Spacer`, `Divider`
 - Text: `Text`, `Mono`, `Heading`
-- State: `Badge`, `StatusBadge`, `StatusDot`
+- State: `Badge`, `StateBadge`, `StateIcon`, `StatusBadge`, `StatusDot`
 
 Atoms own size, focus, disabled, invalid, and coarse-pointer behavior. Avoid raw form controls unless the browser-native behavior is the feature itself.
 
 `Text` replaces the inline-style habit — `tone`, `size`, `weight`, `mono`, `truncate`, `nowrap` cover what pages used to spell as `style={{ color: 'var(--neutral-text-muted)' }}`. Its `caps` prop is opt-in and Latin-only: never apply it to localized copy, because Thai glyph clusters must not be transformed.
 
 `Chip` is the pill the system reserves for filtering and toggling; it exposes `aria-pressed`. Pills are never primary buttons.
+
+`Switch` is the shared binary control for enabled/disabled and on/off settings. It exposes the native checkbox semantics as `role="switch"`, always renders a visible state label, and carries an authored check or cross icon so color is not the only signal. `StateBadge` is the read-only equivalent.
 
 ### Molecules
 
@@ -59,6 +61,7 @@ Two different things, deliberately kept apart:
 5. Every overlay has a labelled dialog, Escape behavior, focus containment, a visible close action, and focus restoration.
 6. Keep EN/TH copy in translations. Components accept content; they do not hard-code operator-facing language.
 7. Preserve explicit operational consequences. Shared composition must never combine proof generation with physical printing or weaken disabled safety states.
+8. Binary state must have a visible icon, shape, and localized label; never rely on color or text alone.
 
 ## Adding a component
 

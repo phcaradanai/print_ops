@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { AcceptExternalJobService } from '../../services/accept-external-job.service.js';
+import type { DynamicPrintService } from '../../services/dynamic-print.service.js';
 import type { CancelJobService } from '../../services/cancel-job.service.js';
 import type { ExecuteJobService } from '../../services/execute-job.service.js';
 import type { JobRepositoryPort, TraceRepositoryPort, ServiceAccount, IntakeAttemptRepositoryPort } from '@printerops/domain';
@@ -14,7 +14,7 @@ export async function v1PrintJobRoutes(
   deps: {
     jobs: JobRepositoryPort;
     traces: TraceRepositoryPort;
-    acceptExternalJob: AcceptExternalJobService;
+    dynamicPrint: DynamicPrintService;
     cancelJob: CancelJobService;
     executeJob: ExecuteJobService;
     apiKeyHook: (req: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<void>;
@@ -37,6 +37,9 @@ export async function v1PrintJobRoutes(
       copies?: number;
       priority?: import('@printerops/domain').JobPriority;
       metadata?: Record<string, unknown>;
+      rotate?: number;
+      flipHorizontal?: boolean;
+      flipVertical?: boolean;
       /** Optional webhook endpoint that receives this job's terminal print
        *  result. Omitting it preserves the existing contract exactly. */
       endpoint_code?: string;
@@ -75,31 +78,31 @@ export async function v1PrintJobRoutes(
       return reply.status(400).send({ error: 'printer_code is required' });
     }
 
-    // Service account printer allowlist check
-    if (
-      sa.allowedPrinterCodes.length > 0 &&
-      !sa.allowedPrinterCodes.includes(body.printer_code)
-    ) {
-      const reason = `printer_code '${body.printer_code}' not allowed for this service account`;
-      await rejectEarly(reason, 'FORBIDDEN');
-      return reply.status(403).send({ error: reason });
-    }
+    // Service account printer allowlist check happens inside dynamicPrint.submit
+    // (it must gate the RESOLVED printer, including the binding-resolved one).
 
     try {
-      const result = await deps.acceptExternalJob.execute(
+      const result = await deps.dynamicPrint.submit(
         {
           request_id: body.request_id,
           source_system: body.source_system ?? sa.sourceSystem,
           source_reference: body.source_reference,
+          code_template: body.template_code ?? '',
+          code_profile: typeof body.metadata?.['code_profile'] === 'string'
+            ? body.metadata['code_profile']
+            : '',
           printer_code: body.printer_code,
-          template_code: body.template_code,
           payload: body.payload ?? {},
           copies: body.copies,
           priority: body.priority,
-          metadata: body.metadata,
+          rotate: body.rotate,
+          flipHorizontal: body.flipHorizontal,
+          flipVertical: body.flipVertical,
           endpoint_code: body.endpoint_code,
+          metadata: body.metadata,
         },
-        sa.id
+        sa.id,
+        { source: 'api', allowedPrinterCodes: sa.allowedPrinterCodes },
       );
 
       const status = result.duplicate ? 200 : 201;
@@ -151,7 +154,7 @@ export async function v1PrintJobRoutes(
     const { source_system } = req.query as { source_system?: string };
     const sa = (req as unknown as ReqWithServiceAccount).serviceAccount;
     const sourceSystem = source_system ?? sa.sourceSystem;
-    const job = await deps.acceptExternalJob.getJobByRequestId(requestId, sourceSystem);
+    const job = await deps.jobs.findByRequestId(requestId, sourceSystem);
     if (!job) return reply.status(404).send({ error: 'Job not found for given request_id' });
     return redactJob(job);
   });
@@ -160,8 +163,13 @@ export async function v1PrintJobRoutes(
   app.post('/print-jobs/:id/cancel', guard, async (req, reply) => {
     const { id } = req.params as { id: string };
     const sa = (req as unknown as ReqWithServiceAccount).serviceAccount;
-    const job = await deps.cancelJob.execute(id, sa.id);
-    return reply.send(redactJob(job));
+    const { job, outcome } = await deps.cancelJob.execute(id, sa.id);
+    // 200 = the job IS cancelled. 202 = cancellation was only REQUESTED: the
+    // document is already with the executor and its real verdict wins, so the
+    // caller must keep waiting for the terminal result callback.
+    return reply
+      .status(outcome === 'CANCELLED' ? 200 : 202)
+      .send({ ...redactJob(job), cancel_outcome: outcome });
   });
 
   // GET /api/v1/print-jobs/:id/trace

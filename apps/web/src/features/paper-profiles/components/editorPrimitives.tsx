@@ -1,5 +1,16 @@
-import { useId, useState, type ReactNode } from 'react';
-import { PaperProfileIcon } from './PaperProfileIcon.js';
+/**
+ * Paper Profiles editor primitives.
+ *
+ * These were a parallel primitive layer — its own collapsible section, its own
+ * icon button with a hand-rolled tooltip, its own colour field — built because
+ * the shared system had no workspace vocabulary. It does now, so each of these
+ * is an adapter that keeps this feature's call signature while the appearance
+ * and behaviour come from `components/ui`. The pure helpers below stay: they
+ * are the tested contract for how a blocked control explains itself.
+ */
+
+import type { ReactNode } from 'react';
+import { CollapsibleSection, ColorField, IconButton as SharedIconButton } from '../../../components/ui/index.js';
 
 export function getIconButtonAriaLabel(label: string, disabled: boolean, disabledReason?: string): string {
   return disabled && disabledReason ? `${label}: ${disabledReason}` : label;
@@ -14,31 +25,30 @@ export function isIconButtonActionBlocked(disabled: boolean): boolean {
 }
 
 // ── Collapsible Section ────────────────────────────────────────────
+
 export function Section({ title, defaultOpen, children, icon, open, onToggle }: {
-  title: string; defaultOpen?: boolean; children: ReactNode; icon?: ReactNode;
+  title: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+  icon?: ReactNode;
   open?: boolean;
   onToggle?: () => void;
 }) {
-  const [internalOpen, setInternalOpen] = useState(defaultOpen !== false);
-  const isOpen = open !== undefined ? open : internalOpen;
-  const handleToggle = () => { if (onToggle) onToggle(); else setInternalOpen(!isOpen); };
   return (
-    <div className="pp-section">
-      <button
-        type="button"
-        onClick={handleToggle}
-        aria-expanded={isOpen}
-        className="pp-section__toggle"
-      >
-        <PaperProfileIcon name="chevron" className={`pp-section__chevron${isOpen ? ' is-open' : ''}`} />
-        {icon && <span className="pp-section__icon">{icon}</span>}
-        <span className="pp-section__title">{title}</span>
-        <PaperProfileIcon name={isOpen ? 'minus' : 'plus'} className="pp-section__state-icon" />
-      </button>
-      {isOpen && <div className="pp-section__body">{children}</div>}
-    </div>
+    <CollapsibleSection
+      className="pp-section"
+      title={title}
+      leading={icon}
+      defaultOpen={defaultOpen !== false}
+      open={open}
+      onToggle={onToggle}
+    >
+      {children}
+    </CollapsibleSection>
   );
 }
+
+// ── Icon button ────────────────────────────────────────────────────
 
 export function IconButton({
   icon,
@@ -55,53 +65,21 @@ export function IconButton({
   disabled?: boolean;
   disabledReason?: string;
 }) {
-  const tooltipId = useId();
-  const ariaLabel = getIconButtonAriaLabel(label, disabled, disabledReason);
-  const tipText = getIconButtonTooltipText(label, disabled, disabledReason);
-  const handleClick = () => {
-    if (isIconButtonActionBlocked(disabled)) return;
-    onClick();
-  };
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (disabled && (e.key === 'Enter' || e.key === ' ')) {
-      e.preventDefault();
-    }
-  };
   return (
-    <div
-      className="pp-icon-btn-wrapper"
+    <SharedIconButton
+      label={label}
+      pressed={active}
+      disabled={disabled}
+      disabledReason={disabledReason}
+      onClick={onClick}
     >
-      <button
-        type="button"
-        className={'pp-icon-btn' + (active ? ' pp-icon-btn--active' : '')}
-        aria-label={ariaLabel}
-        aria-disabled={disabled || undefined}
-        aria-describedby={tooltipId}
-        onClick={handleClick}
-        onKeyDown={handleKeyDown}
-      >
-        <span aria-hidden="true">{icon}</span>
-      </button>
-      <span
-        id={tooltipId}
-        role="tooltip"
-        className="pp-icon-btn-tooltip"
-      >
-        {tipText}
-      </span>
-    </div>
+      {icon}
+    </SharedIconButton>
   );
 }
 
 // ── Color Picker ───────────────────────────────────────────────────
-export function ColorInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="pp-color-field">
-      <label className="pp-label pp-color-field__label">{label}</label>
-      <input className="pp-color" type="color" value={value} onChange={(e) => onChange(e.target.value)} />
-      <input className="pp-input pp-input--sm pp-input--mono pp-color-field__value" value={value} onChange={(e) => onChange(e.target.value)} />
-    </div>
-  );
-}
 
-// ── Ruler wrapper around the paper preview ─────────────────────────
+export function ColorInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return <ColorField label={label} value={value} onChange={onChange} swatchLabel={label} />;
+}

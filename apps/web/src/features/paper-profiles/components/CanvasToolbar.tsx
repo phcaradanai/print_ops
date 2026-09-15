@@ -1,3 +1,4 @@
+import { Button } from '../../../components/ui/index.js';
 import { IconButton } from './editorPrimitives.js';
 import type { Translate } from './types.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
@@ -26,7 +27,9 @@ export function CanvasToolbar({ options, setOptions, onExpand, t }: {
         onClick={() => setOptions({ rulers: !options.rulers })} />
       <IconButton icon={<PaperProfileIcon name="dimensions" />} label={t('page.paperProfiles.showFieldDimensions')} active={options.dimensions}
         onClick={() => setOptions({ dimensions: !options.dimensions })} />
-      <button type="button" className="pp-canvas-fit" onClick={onExpand}>{t('page.paperProfiles.expandCanvas')}</button>
+      <Button variant="secondary" size="sm" className="pp-canvas-fit" onClick={onExpand}>
+        {t('page.paperProfiles.expandCanvas')}
+      </Button>
     </div>
   );
 }

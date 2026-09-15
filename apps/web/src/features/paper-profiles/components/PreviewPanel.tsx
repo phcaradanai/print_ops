@@ -2,7 +2,7 @@ import type { RefObject } from 'react';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { useCanvasInteraction } from '../hooks/useCanvasInteraction.js';
-import { getVisualPaperGeometry } from '../model/geometry.js';
+import { actualSizePercent, CSS_PX_PER_MM, getVisualPaperGeometry, getVisualPaperTransformFrame } from '../model/geometry.js';
 import { displayValue, toPixels } from '../model/units.js';
 import { CanvasToolbar, type CanvasOptions } from './CanvasToolbar.js';
 import { PaperCanvas, RulerSheet } from './PaperCanvas.js';
@@ -21,15 +21,24 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
 }) {
   const { form, ux } = editor;
   const geometry = getVisualPaperGeometry(form);
-  const scale = Math.min(560 / geometry.widthMm, 560 / geometry.heightMm, 5);
+  const transformFrame = getVisualPaperTransformFrame(form);
+  // Fit within the panel's ~560px box, but never scale past true physical
+  // size — see CSS_PX_PER_MM for why an uncapped auto-fit isn't safe to use
+  // as a print-size reference.
+  const scale = Math.min(560 / transformFrame.width, 560 / transformFrame.height, CSS_PX_PER_MM);
+  // Not a PageLayout `detail` region: this canvas is the surface the operator
+  // edits against (drag, nudge, select a field), so it is half of the primary
+  // task rather than supporting evidence. Kept as a plain div — a page's only
+  // complementary landmark is the scaffold's `detail` slot.
+  // See docs/frontend/LAYOUT_COMPONENT_STANDARD.md.
   return (
-    <aside className="pp-preview-panel">
+    <div className="pp-preview-panel">
       <div className="pp-preview-panel__body">
         <div className="pp-preview-header">
           <div><span className="pp-preview-header__title">{t('page.paperProfiles.labelCanvas')}</span>
             <span className="pp-preview-header__subtitle">{t('page.paperProfiles.canvasDragHint')}</span></div>
           <span className="pp-preview-header__size">
-            {displayValue(form.widthMm, ux.displayUnit, form.dpi)} × {displayValue(form.heightMm, ux.displayUnit, form.dpi)} {ux.displayUnit}
+            {displayValue(transformFrame.width, ux.displayUnit, form.dpi)} × {displayValue(transformFrame.height, ux.displayUnit, form.dpi)} {ux.displayUnit}
           </span>
         </div>
         <CanvasToolbar options={options} setOptions={setOptions} onExpand={popups.openFullPreview} t={t} />
@@ -55,15 +64,15 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
           </RulerSheet>
         </div>
         <div className="pp-preview-quick-info">
-          <span>{t('page.paperProfiles.quickSize')}: {form.widthMm} × {form.heightMm} mm</span>
+          <span>{t('page.paperProfiles.quickSize')}: {geometry.widthMm} × {geometry.heightMm} mm</span>
           <span>{t('page.paperProfiles.quickDpi')}: {form.dpi}</span>
-          <span>{t('page.paperProfiles.quickPrintable')}: {(form.widthMm - form.marginLeftMm - form.marginRightMm).toFixed(1)} × {(form.heightMm - form.marginTopMm - form.marginBottomMm).toFixed(1)} mm</span>
-          <span>{t('page.paperProfiles.quickPixels')}: {Math.round(toPixels(form.widthMm, form.dpi))} × {Math.round(toPixels(form.heightMm, form.dpi))} px</span>
-          <span>{t('page.paperProfiles.quickScale')}: {scale.toFixed(2)}x</span>
+          <span>{t('page.paperProfiles.quickPrintable')}: {geometry.printableWidthMm.toFixed(1)} × {geometry.printableHeightMm.toFixed(1)} mm</span>
+          <span>{t('page.paperProfiles.quickPixels')}: {Math.round(toPixels(geometry.widthMm, form.dpi))} × {Math.round(toPixels(geometry.heightMm, form.dpi))} px</span>
+          <span>{t('page.paperProfiles.quickScale')}: {scale.toFixed(2)}x ({actualSizePercent(scale)}% {t('page.paperProfiles.actualSize')})</span>
           <span>{t('page.paperProfiles.quickFields')}: {ux.dynamicFields.length}</span>
         </div>
         <SelectionStatus field={editor.selectedField} t={t} />
       </div>
-    </aside>
+    </div>
   );
 }

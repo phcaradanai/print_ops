@@ -27,7 +27,7 @@ npm run dev
 ```bash
 npm run dev -w apps/api
 npm run dev -w apps/web
-npm run dev -w apps/runner
+cd apps/runner-go && go run ./cmd/printops-runner run   # the only runner
 ```
 
 ## Tests
@@ -55,19 +55,28 @@ HOST=0.0.0.0
 JWT_SECRET=dev-secret-change-in-production
 ```
 
-### apps/runner
+### apps/runner-go
 ```
-API_URL=http://localhost:3001
-RUNNER_API_TOKEN=<jwt from login>
-RUNNER_NAME=runner-local
-SUPPORTED_PROTOCOLS=fake,ipp,cups
-POLL_INTERVAL_MS=2000
-HEARTBEAT_INTERVAL_MS=10000
+PRINTOPS_API_BASE_URL=http://localhost:3001
+PRINTOPS_RUNNER_TOKEN=<jwt from login>
+PRINTOPS_RUNNER_NAME=runner-local
+PRINTOPS_DISCOVERY_MODE=auto
+PRINTOPS_POLL_INTERVAL_MS=750
+PRINTOPS_HEARTBEAT_INTERVAL_MS=15000
 ```
 
-## Default Admin Account (MVP seed)
+## Default Admin Account (dev seed only)
+
+Seeding is off unless `PRINTOPS_DEV_SEED=true`, and passwords are really
+verified (salted scrypt) — the old "any password is accepted" behaviour is gone.
 
 ```
-email: admin@printerops.local
-password: (any, no password check in MVP)
+email:    admin@printerops.local
+password: Dev-password1!
 ```
+
+Other seeded accounts share that password: `sysadmin@` (OWNER), `admin@`
+(ADMIN), `user@` (OPERATOR), `viewer@` (VIEWER).
+
+A packaged install seeds nothing: the first run creates the OWNER account
+through the bootstrap screen instead.

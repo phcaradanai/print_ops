@@ -1,0 +1,57 @@
+.ui-section-heading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-lg);
+}
+
+.ui-section-heading__copy {
+  display: grid;
+  min-width: 0;
+  gap: var(--spacing-xs);
+}
+
+/* The title and its scope control read as one phrase, so they share a row and
+   wrap together rather than the scope being pushed to the far end. */
+.ui-section-heading__title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-lg);
+  flex-wrap: wrap;
+}
+
+.ui-section-heading__scope {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.ui-section-heading__description {
+  max-width: 72ch;
+  overflow-wrap: anywhere;
+}
+
+.ui-section-heading__actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1024px) {
+  .ui-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+
+  .ui-section-heading__actions {
+    justify-content: flex-start;
+  }
+}

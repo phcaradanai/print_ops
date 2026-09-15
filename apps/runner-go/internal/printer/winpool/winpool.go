@@ -27,6 +27,7 @@ import (
 
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/printer"
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/snmp"
+	"github.com/phcaradanai/print_ops/apps/runner-go/internal/windowsstatus"
 )
 
 // errCodeNotVerifiable marks a job that was handed to the spooler without any
@@ -122,25 +123,38 @@ func (e *Executor) Execute(ctx context.Context, job printer.PrintJob) (*printer.
 	defer unlock()
 
 	// ── Pre-flight: check printer is online and not in error ─────────
-	preflightStatus, preflightErr := e.checkPrinterStatus(printerName)
+	preflight, preflightErr := e.checkPrinterStatus(printerName)
 	if preflightErr != nil {
 		// Non-fatal: log but continue (some printers don't support status query)
-		preflightStatus = "unknown"
+		preflight = windowsstatus.Observation{Detected: true, Status: "unknown"}
 	}
-	if preflightStatus == "offline" || preflightStatus == "error" || preflightStatus == "paperJam" || preflightStatus == "paperOut" {
+	preflightStatus := windowsstatus.NormalizeStatus(preflight.Status)
+	preflightReadiness := windowsstatus.Evaluate(preflight)
+	// Paper jam/out remains an explicit spooler safety veto. It is separate
+	// from readiness because the shared readiness policy only classifies the
+	// three explicit states Offline, Error, and Paused; status uncertainty must
+	// not be turned into one of those states.
+	safetyFault := preflightSafetyFault(preflight.Status, preflight.State)
+	if !preflightReadiness.Ready || safetyFault != "" {
+		blockedState := preflightReadiness.BlockedBy
+		if blockedState == "" {
+			blockedState = safetyFault
+		}
 		return &printer.PrintResult{
 			Status:      printer.StatusFailed,
 			Executor:    e.Name(),
-			SafeMessage: fmt.Sprintf("printer %q is %s — cannot accept job", printerName, preflightStatus),
+			SafeMessage: fmt.Sprintf("printer %q is %s — cannot accept job", printerName, blockedState),
 			DurationMs:  time.Since(start).Milliseconds(),
 			StartedAt:   start,
 			FinishedAt:  time.Now(),
 			Evidence: map[string]any{
 				"printer_name":     printerName,
 				"preflight_status": preflightStatus,
+				"preflight_state":  preflight.State,
+				"work_offline":     preflight.WorkOffline,
 				"preflight_error":  errString(preflightErr),
 			},
-			Err: fmt.Errorf("printer %s: %s", printerName, preflightStatus),
+			Err: fmt.Errorf("printer %s: %s", printerName, blockedState),
 		}, nil
 	}
 
@@ -209,12 +223,15 @@ func (e *Executor) Execute(ctx context.Context, job printer.PrintJob) (*printer.
 
 	// ── Verify job acceptance ────────────────────────────────────────
 	evidence := map[string]any{
-		"printer_name":     printerName,
-		"payload_size":     len(job.RenderedPayload),
-		"copies":           job.Copies,
-		"powershell_ok":    true,
-		"preflight_status": preflightStatus,
-		"device_confirmed": false,
+		"printer_name":      printerName,
+		"payload_size":      len(job.RenderedPayload),
+		"copies":            job.Copies,
+		"powershell_ok":     true,
+		"preflight_status":  preflightStatus,
+		"preflight_state":   preflight.State,
+		"work_offline":      preflight.WorkOffline,
+		"readiness_warning": preflightReadiness.Warning,
+		"device_confirmed":  false,
 	}
 	if target != nil {
 		evidence["snmp_host"] = target.Host
@@ -362,53 +379,71 @@ func describeVerificationGap(printerName string, target *snmpTarget, deviceBefor
 		"Install the vendor driver for this model, or point snmp_host at an interface that reports it.", target.Host)
 }
 
-// checkPrinterStatus queries the Windows printer status via Get-Printer.
-// Returns one of: "idle", "printing", "offline", "error", "paperJam",
-// "paperOut", "unknown".
-func (e *Executor) checkPrinterStatus(printerName string) (string, error) {
+// checkPrinterStatus queries the Windows printer status and the Win32
+// WorkOffline signal. USB drivers often report PrinterStatus=Unknown while
+// WorkOffline=False, so callers must retain the structured observation instead
+// of reducing it to a binary online/offline value.
+func (e *Executor) checkPrinterStatus(printerName string) (windowsstatus.Observation, error) {
 	script := fmt.Sprintf(`$ErrorActionPreference='SilentlyContinue'
 $p = Get-Printer -Name '%s' | Select-Object -First 1
-if ($null -eq $p) { '{"status":"unknown","note":"printer not found"}' ; exit }
-$state = $p.PrinterStatus
+if ($null -eq $p) { throw 'printer not found' }
+$win32 = $null
+try {
+  $win32 = Get-CimInstance -Class Win32_Printer -ErrorAction Stop |
+    Where-Object { $_.Name -eq '%s' } | Select-Object -First 1
+} catch { }
+$workOffline = $p.WorkOffline
+if ($null -eq $workOffline -and $null -ne $win32) { $workOffline = $win32.WorkOffline }
 $jobs = @(Get-PrintJob -PrinterName '%s').Count
-[ordered]@{ "status"=$state; "jobCount"=$jobs } | ConvertTo-Json -Compress`,
-		escapeForPS(printerName), escapeForPS(printerName))
+[ordered]@{
+  "status"=[string]$p.PrinterStatus
+  "state"=[string]$p.PrinterState
+  "workOffline"=$workOffline
+  "jobCount"=$jobs
+} | ConvertTo-Json -Compress`,
+		escapeForPS(printerName), escapeForPS(printerName), escapeForPS(printerName))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 	out, err := cmd.Output()
 	if err != nil {
-		return "unknown", err
+		return windowsstatus.Observation{}, err
 	}
 
 	var info struct {
-		Status   string `json:"status"`
-		JobCount int    `json:"jobCount"`
+		Status      string `json:"status"`
+		State       string `json:"state"`
+		WorkOffline *bool  `json:"workOffline"`
 	}
 	if jErr := json.Unmarshal(out, &info); jErr != nil {
-		return "unknown", jErr
+		// Keep compatibility with older PowerShell stubs and adapters that
+		// return only the status token.
+		return windowsstatus.Observation{Detected: true, Status: strings.TrimSpace(string(out))}, nil
 	}
+	if strings.TrimSpace(info.Status) == "" {
+		info.Status = "unknown"
+	}
+	return windowsstatus.Observation{
+		Detected:    true,
+		Status:      info.Status,
+		State:       info.State,
+		WorkOffline: info.WorkOffline,
+	}, nil
+}
 
-	// Normalize Windows printer status strings.
-	s := strings.ToLower(strings.TrimSpace(info.Status))
+// preflightSafetyFault preserves the existing paper-media safety veto while
+// keeping it separate from the shared readiness policy. Unknown USB status is
+// never rewritten into one of these values.
+func preflightSafetyFault(status, state string) string {
+	value := strings.ToLower(strings.TrimSpace(status + " " + state))
 	switch {
-	case strings.Contains(s, "idle"):
-		return "idle", nil
-	case strings.Contains(s, "printing"):
-		return "printing", nil
-	case strings.Contains(s, "offline"):
-		return "offline", nil
-	case strings.Contains(s, "error"):
-		return "error", nil
-	case strings.Contains(s, "paper") && strings.Contains(s, "jam"):
-		return "paperJam", nil
-	case strings.Contains(s, "paper") && (strings.Contains(s, "out") || strings.Contains(s, "empty")):
-		return "paperOut", nil
-	case strings.Contains(s, "normal"), s == "":
-		return "idle", nil
+	case strings.Contains(value, "paper") && strings.Contains(value, "jam"):
+		return "paperJam"
+	case strings.Contains(value, "paper") && (strings.Contains(value, "out") || strings.Contains(value, "empty")):
+		return "paperOut"
 	default:
-		return s, nil
+		return ""
 	}
 }
 

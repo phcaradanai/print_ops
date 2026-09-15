@@ -45,6 +45,35 @@ const NAVY_TEXT = '#1e1e2e';
 void NAVY_TEXT; // retained so the contrast audit comment above still references it
 
 /**
+ * The job-status axis, referenced as CSS custom properties rather than repeated
+ * as literals.
+ *
+ * `styles.css` is the single definition of these eleven values; before this,
+ * the badge read them from here and the job-row status dots invented their own
+ * (`#2f732a` for SUCCESS, `#ba3253` for FAILED), so one job could show two
+ * different colors on the same screen. These resolve in inline `style`
+ * attributes exactly as they do in a stylesheet, so nothing about how
+ * StatusBadge renders changes.
+ *
+ * Keep the keys aligned with `JOB_STATUSES` in @printerops/domain; the guard in
+ * __tests__/statusAxis.test.ts fails if a status has no token or a token has no
+ * definition.
+ */
+const STATUS_TOKEN = {
+  ACCEPTED: 'var(--status-accepted)',
+  VALIDATED: 'var(--status-validated)',
+  QUEUED: 'var(--status-queued)',
+  DISPATCHED: 'var(--status-dispatched)',
+  PRINTING: 'var(--status-printing)',
+  SUCCESS: 'var(--status-success)',
+  UNVERIFIED: 'var(--status-unverified)',
+  FAILED: 'var(--status-failed)',
+  TIMEOUT: 'var(--status-timeout)',
+  CANCELLED: 'var(--status-cancelled)',
+  DUPLICATE_RETURNED: 'var(--status-duplicate)',
+} as const;
+
+/**
  * Outlined-pill palette (Impeccable Live — Variant A).
  *
  * Each entry maps a status to:
@@ -61,17 +90,17 @@ void NAVY_TEXT; // retained so the contrast audit comment above still references
  *   DUPLICATE  #4b5563  9.75:1 ✓
  */
 const STATUS_OUTLINED: Record<string, Omit<StatusBadgeColors, 'bg'>> = {
-  ACCEPTED:           { border: '#0e7490', text: '#0e7490' },
-  VALIDATED:          { border: '#0891b2', text: '#0891b2' },
-  QUEUED:             { border: '#1d4ed8', text: '#1d4ed8' },
-  DISPATCHED:         { border: '#6d28d9', text: '#6d28d9' },
-  PRINTING:           { border: '#c2410c', text: '#c2410c' },
-  SUCCESS:            { border: '#166534', text: '#166534' },
-  UNVERIFIED:         { border: '#92400e', text: '#92400e' },
-  FAILED:             { border: '#9f1239', text: '#9f1239' },
-  TIMEOUT:            { border: '#78350f', text: '#78350f' },
-  CANCELLED:          { border: '#374151', text: '#374151' },
-  DUPLICATE_RETURNED: { border: '#4b5563', text: '#4b5563' },
+  ACCEPTED:           { border: STATUS_TOKEN.ACCEPTED,   text: STATUS_TOKEN.ACCEPTED },
+  VALIDATED:          { border: STATUS_TOKEN.VALIDATED,  text: STATUS_TOKEN.VALIDATED },
+  QUEUED:             { border: STATUS_TOKEN.QUEUED,     text: STATUS_TOKEN.QUEUED },
+  DISPATCHED:         { border: STATUS_TOKEN.DISPATCHED, text: STATUS_TOKEN.DISPATCHED },
+  PRINTING:           { border: STATUS_TOKEN.PRINTING,   text: STATUS_TOKEN.PRINTING },
+  SUCCESS:            { border: STATUS_TOKEN.SUCCESS,    text: STATUS_TOKEN.SUCCESS },
+  UNVERIFIED:         { border: STATUS_TOKEN.UNVERIFIED, text: STATUS_TOKEN.UNVERIFIED },
+  FAILED:             { border: STATUS_TOKEN.FAILED,     text: STATUS_TOKEN.FAILED },
+  TIMEOUT:            { border: STATUS_TOKEN.TIMEOUT,    text: STATUS_TOKEN.TIMEOUT },
+  CANCELLED:          { border: STATUS_TOKEN.CANCELLED,  text: STATUS_TOKEN.CANCELLED },
+  DUPLICATE_RETURNED: { border: STATUS_TOKEN.DUPLICATE_RETURNED, text: STATUS_TOKEN.DUPLICATE_RETURNED },
 };
 
 export const STATUS_BADGE: Record<string, StatusBadgeColors> = Object.fromEntries(

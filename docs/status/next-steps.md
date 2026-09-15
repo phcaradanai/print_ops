@@ -1,60 +1,87 @@
 # Next Steps
 
-## Priority 1: Real Windows Service
+Last updated: 2026-08-03. Ordered by what blocks the Windows pilot, not by
+technical interest.
 
-Implement actual Windows Service registration using `golang.org/x/sys/windows/svc`.
+The previous version of this file listed the Windows Service story, a Windows
+spooler executor, and an MSI installer as future work. All three now exist —
+see `docs/status/current-status.md`.
 
-- [ ] Build-tag-gated `service/windows` package
-- [ ] `install-service` creates Windows Service entry via `mgr`
-- [ ] `uninstall-service` removes the entry
-- [ ] `run` detects service context vs interactive
-- [ ] Service recovery options (restart on failure)
-- [ ] Event log integration
+---
 
-## Priority 2: Windows Spooler Executor
+## Done (2026-08-03)
 
-Real printing via Windows Print Spooler (PowerShell or Win32 API).
+| # | Change |
+|---|---|
+| I-1 | Server-side paper-profile validation on create / update / import |
+| I-2 | Unrenderable jobs rejected (`RENDER_FAILED`, `TEMPLATE_PROFILE_MISSING`) instead of printing the raw payload |
+| I-3 | `data_quality` / `missing_fields` / `render_warnings` in result callbacks + Job Detail banner |
+| I-4 | Execution watchdog gives `TIMEOUT` a real producer; `TIMEOUT` moved to the non-executable class |
+| I-5 | Cancel guaranteed pre-dispatch, best-effort (202 `CANCEL_REQUESTED`) after |
+| I-6 | Product name settled as PrintOps on every user-visible surface |
+| I-7 | 14-day hot retention window, archive-before-prune, idle-only sweep |
 
-- [ ] `printer/windows` package with `PrintExecutor` impl
-- [ ] Use `Out-Printer` or `AddJob`/`ScheduleJob` Win32 APIs
-- [ ] Paper size / tray selection
-- [ ] Status feedback from spooler
-- [ ] Error mapping (offline, paper out, jam)
+---
 
-## Priority 3: Raw TCP 9100 Production
+## Next iteration
 
-Promote `printer/rawtcp` from skeleton to production for label printers.
+### N-1 — JetStream at-least-once for result callbacks
 
-- [ ] Connection pooling per printer
-- [ ] Configurable retry policy
-- [ ] ZPL payload validation
-- [ ] TSPL payload validation
-- [ ] Printer status query (optional `~HQ` for Zebra)
-- [ ] Template + variable substitution
+Result callbacks over NATS currently use Core publish and are honestly labelled
+`BEST_EFFORT`. The agreed target is at-least-once with dedupe on `event_id`.
 
-## Priority 4: macOS CUPS Executor
+- [ ] `js.publish()` with a PubAck; on ack mark `DELIVERED` / `ACKNOWLEDGED`
+- [ ] Set `Nats-Msg-Id: <event_id>` so the broker dedupes as well
+- [ ] No ack → `RETRYABLE`, reusing the existing backoff/sweep machinery
+- [ ] Agree and document stream ownership for the callback subject (the
+      publisher's environment owns intake streams today; the same rule should
+      apply here)
 
-- [ ] `printer/cups` via `lp` / `lpr` command
-- [ ] PPD-aware options
-- [ ] Status feedback via `lpstat`
+Acceptance: kill the broker mid-send; deliveries sit `RETRY_SCHEDULED` and land
+once it returns, with no duplicate observed by the receiver.
 
-## Priority 5: Observability
+### N-2 — Zebra printer certification
 
-- [ ] Prometheus metrics endpoint
-- [ ] OpenTelemetry trace export
-- [ ] Structured log shipping (JSON to file/syslog/Event Log)
+The verification chain has only ever been exercised against an Epson. Zebra is
+a real pilot device.
 
-## Priority 6: Deployment
+- [ ] ZPL through the Windows driver without the driver re-processing it
+- [ ] SNMP page-counter OIDs and timing versus `winpool`'s expectations
+- [ ] Physical sticker size against the paper profile
+- [ ] Failure matrix: cable pulled, media out, head open, power cut mid-job
 
-- [ ] MSI installer for Windows
-- [ ] pkg .deb / .rpm for Linux
-- [ ] Homebrew formula for macOS
-- [ ] Auto-update mechanism
-- [ ] Config management templates
+### N-3 — Postek printer certification
 
-## Priority 7: Security Hardening
+- [ ] **First question: USB or LAN.** USB-only means no SNMP/IPP channel exists,
+      so jobs will legitimately end `UNVERIFIED` — that has to be an accepted,
+      documented policy for the model, not a surprise on the ward
+- [ ] TSPL (or ZPL emulation, if the unit ships with it) through the driver
+- [ ] Same size and failure matrix as N-2
 
-- [ ] mTLS between runner and API
-- [ ] Runner token rotation
-- [ ] Signed job payloads
-- [ ] Audit log local cache + forward on reconnect
+### N-4 — External acceptance gates
+
+Still `BLOCKED` in `docs/production/PROD-01-gap-table.md`:
+
+- [ ] Clean Windows install with no developer toolchain
+- [ ] Cross-machine NATS + callback receiver matrix
+- [ ] Upgrade / rollback / uninstall and data retention
+
+---
+
+## Later
+
+- Screenshot audit of every page in EN and TH (the bilingual commitment has no
+  visual evidence on record)
+- Role-based navigation filtering in the dashboard
+- "Open logs folder" action on Local Diagnostics
+- Printer capability display from discovery data
+- Required-field enforcement per template — only if the floor actually reports
+  blank labels as a problem
+
+## Deliberately not planned
+
+CUPS / raw TCP / IPP as production executors, remote or headless runners,
+macOS/Linux packaged builds, Postgres/Redis/BullMQ, and any centralized fleet
+management. Each would add infrastructure a single on-premise workstation has
+to run and maintain, for no benefit the current deployment has asked for.
+Revisit only against a real requirement.

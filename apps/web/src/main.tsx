@@ -1,3 +1,4 @@
+import 'virtual:uno.css';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
@@ -11,7 +12,15 @@ import './components/ui/ui.css';
 import './components/ui/inputs.css';
 import './components/ui/Card.css';
 import './components/ui/CardDetail.css';
+import './components/dialogClose.css';
 import './experienceSystem.css';
+import './templatesLibrary.css';
+import './templatesEditor.css';
+import './templatesRowMenu.css';
+import './paperProfilesLibrary.css';
+import './paperProfilesLibraryGeometryHotfix.css';
+import './paperProfilesEditor.css';
+import './paperProfilesCompletion.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -13,11 +13,13 @@ import type {
   Job,
   JobPriority,
   WebhookEndpointRepositoryPort,
+  PrinterPaperCalibrationRepositoryPort,
 } from '@printerops/domain';
-import { CALLBACK_INTENT_METADATA_KEY } from '@printerops/domain';
-import { AppError } from '@printerops/shared';
+import { CALLBACK_INTENT_METADATA_KEY, paperProfileForCell, snapshotPaperProfileGeometry } from '@printerops/domain';
+import { AppError, isValidRotation, ValidationError } from '@printerops/shared';
 import { CreatePrintJobService } from './create-print-job.service.js';
 import { resolveEndpointCallbackIntent } from './callback-intent.service.js';
+import type { PrintAdmissionGatePort } from './print-admission-gate.js';
 
 export interface ExternalPrintJobRequest {
   request_id: string;
@@ -29,6 +31,9 @@ export interface ExternalPrintJobRequest {
   copies?: number;
   priority?: JobPriority;
   metadata?: Record<string, unknown>;
+  rotate?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
   /** Optional webhook endpoint whose callback configuration receives this
    *  job's terminal print result. Omitted = no result callback (previous
    *  behaviour, unchanged for every existing caller). */
@@ -41,6 +46,10 @@ export interface ExternalPrintJobResponse {
   status: string;
   trace_id: string;
   accepted_at: Date;
+  /** Instant the job entered the queue. Mirrors IntakeResponse.queued_at so
+   *  BOTH intake paths' acceptance callbacks report the same queued time the
+   *  terminal callback reports. */
+  queued_at: Date;
   duplicate: boolean;
   existing_job_id?: string;
 }
@@ -66,8 +75,20 @@ export class AcceptExternalJobService {
     private renderer?: TemplateRendererPort,
     private intakeLog?: IntakeAttemptRepositoryPort,
     private endpoints?: WebhookEndpointRepositoryPort,
+    private calibrations?: PrinterPaperCalibrationRepositoryPort,
+    private admission?: PrintAdmissionGatePort,
   ) {
-    this.createJob = new CreatePrintJobService(jobs, printers, queue, traces, audit, events);
+    this.createJob = new CreatePrintJobService(
+      jobs,
+      printers,
+      queue,
+      traces,
+      audit,
+      events,
+      calibrations,
+      papers,
+      admission,
+    );
   }
 
   async execute(
@@ -120,11 +141,13 @@ export class AcceptExternalJobService {
         status: 'DUPLICATE_RETURNED',
         trace_id: existing.traceId,
         accepted_at: existing.createdAt,
+        queued_at: existing.queuedAt ?? existing.createdAt,
         duplicate: true,
         existing_job_id: existing.id,
       };
     }
 
+    const renderOptions = externalRenderTransformOverrides(req);
     // An explicitly provided template that does not exist is a client error.
     //
     // Without this, POST /api/v1/print-jobs with template_code=NO_SUCH_TEMPLATE
@@ -164,9 +187,22 @@ export class AcceptExternalJobService {
           `application/${template.engine.toLowerCase()}`;
         const paperId = template.paperProfileId;
         const paper = paperId ? await this.papers.findById(paperId) : undefined;
-        if (paper) {
+        // On the rendered-document flow (renderer + papers wired), a template
+        // whose paper profile is missing cannot produce the document the
+        // caller asked for. Falling through would print the RAW payload —
+        // giving the caller a different document and calling it success.
+        if (!paper) {
+          throw new AppError(
+            'TEMPLATE_PROFILE_MISSING',
+            `Template '${req.template_code}' has no usable paper profile; the document cannot be rendered.`,
+            422,
+          );
+        }
+        {
           paperProfileMetadata = {
             widthMm: paper.widthMm,
+            paperProfileId: paper.id,
+            gapMm: paper.gapMm ?? 0,
             heightMm: paper.heightMm,
             marginTopMm: paper.marginTopMm,
             marginRightMm: paper.marginRightMm,
@@ -174,13 +210,30 @@ export class AcceptExternalJobService {
             marginLeftMm: paper.marginLeftMm,
             orientation: paper.orientation,
             dpi: paper.dpi,
+            rotation: paper.rotation ?? 0,
+            flipHorizontal: paper.flipHorizontal ?? false,
+            flipVertical: paper.flipVertical ?? false,
+            geometry: snapshotPaperProfileGeometry(paper),
           };
+          // Two very different failure classes meet here and must not be
+          // conflated (product decision, 2026-08-03):
+          //  - MISSING FIELDS render fine with warnings — the job proceeds and
+          //    the warnings travel with it into the result callback.
+          //  - A renderer EXCEPTION means no document exists at all. Printing
+          //    the raw payload instead would send JSON to a label printer, so
+          //    this is a rejection the caller hears about, not a warning.
           try {
-            const rendered = await this.renderer.renderPrintPayload(template, req.payload, paper);
+            const rendered = Object.keys(renderOptions).length > 0
+              ? await this.renderer.renderPrintPayload(template, req.payload, paperProfileForCell(paper), renderOptions)
+              : await this.renderer.renderPrintPayload(template, req.payload, paperProfileForCell(paper));
             renderedPrintPayload = rendered.renderedPrintPayload;
             renderWarnings = rendered.warnings ?? [];
           } catch (err) {
-            renderWarnings.push(`render error: ${err instanceof Error ? err.message : String(err)}`);
+            throw new AppError(
+              'RENDER_FAILED',
+              `Rendering template '${req.template_code}' failed: ${err instanceof Error ? err.message : String(err)}`,
+              422,
+            );
           }
         }
       }
@@ -207,6 +260,9 @@ export class AcceptExternalJobService {
         requestId: req.request_id,
         createdBy: actorId,
         mimeType: resolvedMimeType,
+        rotate: req.rotate,
+        flipHorizontal: req.flipHorizontal,
+        flipVertical: req.flipVertical,
         copies: req.copies ?? 1,
         duplex: false,
         colorMode: 'auto',
@@ -230,6 +286,7 @@ export class AcceptExternalJobService {
       status: job.status,
       trace_id: job.traceId,
       accepted_at: job.createdAt,
+      queued_at: job.queuedAt ?? job.createdAt,
       duplicate: false,
     };
   }
@@ -237,4 +294,25 @@ export class AcceptExternalJobService {
   async getJobByRequestId(requestId: string, sourceSystem: string): Promise<Job | undefined> {
     return this.jobs.findByRequestId(requestId, sourceSystem);
   }
+}
+
+function externalRenderTransformOverrides(req: ExternalPrintJobRequest): {
+  rotate?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
+} {
+  if (req.rotate !== undefined && !isValidRotation(req.rotate)) {
+    throw new ValidationError('rotate must be a finite number from 0 to less than 360');
+  }
+  if (req.flipHorizontal !== undefined && typeof req.flipHorizontal !== 'boolean') {
+    throw new ValidationError('flipHorizontal must be a boolean');
+  }
+  if (req.flipVertical !== undefined && typeof req.flipVertical !== 'boolean') {
+    throw new ValidationError('flipVertical must be a boolean');
+  }
+  return {
+    ...(req.rotate !== undefined ? { rotate: req.rotate } : {}),
+    ...(req.flipHorizontal !== undefined ? { flipHorizontal: req.flipHorizontal } : {}),
+    ...(req.flipVertical !== undefined ? { flipVertical: req.flipVertical } : {}),
+  };
 }

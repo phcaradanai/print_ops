@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-01T12:39:56Z",
+  "generatedAt": "2026-08-02T15:28:03Z",
   "title": "Design System: PrintOps",
   "extensions": {
     "colorMeta": {
@@ -9,14 +9,14 @@
         "displayName": "Action Blue",
         "canonical": "#1e66f5",
         "tonalRamp": [
-          "#0a214e",
-          "#0f337b",
-          "#1649b0",
+          "#00073e",
+          "#002375",
+          "#003db6",
           "#1e66f5",
-          "#548bf7",
-          "#86acfa",
-          "#bcd1fc",
-          "#e4edfe"
+          "#528dff",
+          "#90b7ff",
+          "#c3d8ff",
+          "#ebf2ff"
         ]
       },
       "primary-strong": {
@@ -24,14 +24,14 @@
         "displayName": "Action Blue Strong",
         "canonical": "#2563eb",
         "tonalRamp": [
-          "#0c204b",
-          "#133276",
-          "#1b47a9",
+          "#00004a",
+          "#001f7a",
+          "#053cb7",
           "#2563eb",
-          "#5988f0",
-          "#89abf4",
-          "#bed0f9",
-          "#e5ecfd"
+          "#548cff",
+          "#91b7ff",
+          "#c3d8ff",
+          "#ebf2ff"
         ]
       },
       "primary-hover": {
@@ -39,14 +39,14 @@
         "displayName": "Action Blue Hover",
         "canonical": "#1654d1",
         "tonalRamp": [
-          "#071b43",
-          "#0b2a69",
-          "#103c96",
+          "#00073f",
+          "#002275",
+          "#023eb4",
           "#1654d1",
-          "#4e7ddc",
-          "#81a3e6",
-          "#b9ccf1",
-          "#e3eaf9"
+          "#528dff",
+          "#90b7ff",
+          "#c3d8ff",
+          "#ebf2ff"
         ]
       },
       "primary-pressed": {
@@ -54,14 +54,14 @@
         "displayName": "Action Blue Pressed",
         "canonical": "#1d4ed8",
         "tonalRamp": [
-          "#091945",
-          "#0f276c",
-          "#15389c",
+          "#000049",
+          "#010c8d",
+          "#0e39bc",
           "#1d4ed8",
-          "#5378e1",
-          "#859fea",
-          "#bbcaf3",
-          "#e4eafa"
+          "#598bff",
+          "#94b6ff",
+          "#c4d8ff",
+          "#ebf2ff"
         ]
       },
       "neutral-deep": {
@@ -69,14 +69,14 @@
         "displayName": "Deep Navy",
         "canonical": "#1e1e2e",
         "tonalRamp": [
-          "#0a0a0f",
-          "#0f0f17",
-          "#161621",
+          "#10101e",
           "#1e1e2e",
-          "#545460",
-          "#86868e",
-          "#bcbcc0",
-          "#e4e4e6"
+          "#4b4b5c",
+          "#6c6d7d",
+          "#9091a0",
+          "#b5b6c5",
+          "#d5d6e4",
+          "#f0f0fe"
         ]
       },
       "neutral-page": {
@@ -84,14 +84,14 @@
         "displayName": "Page Gray",
         "canonical": "#f5f5f5",
         "tonalRamp": [
-          "#4e4e4e",
-          "#7b7b7b",
-          "#b0b0b0",
-          "#f5f5f5",
-          "#f7f7f7",
-          "#fafafa",
-          "#fcfcfc",
-          "#fefefe"
+          "#121212",
+          "#2e2e2e",
+          "#4d4d4d",
+          "#6f6f6f",
+          "#929292",
+          "#b7b7b7",
+          "#d7d7d7",
+          "#f5f5f5"
         ]
       },
       "neutral-surface": {
@@ -99,14 +99,29 @@
         "displayName": "White Surface",
         "canonical": "#ffffff",
         "tonalRamp": [
-          "#525252",
-          "#808080",
-          "#b8b8b8",
-          "#ffffff",
-          "#ffffff",
-          "#ffffff",
-          "#ffffff",
+          "#121212",
+          "#2e2e2e",
+          "#4d4d4d",
+          "#6f6f6f",
+          "#929292",
+          "#b7b7b7",
+          "#d7d7d7",
           "#ffffff"
+        ]
+      },
+      "neutral-paper": {
+        "role": "neutral",
+        "displayName": "Paper White",
+        "canonical": "#f8fafc",
+        "tonalRamp": [
+          "#111212",
+          "#2d2e2f",
+          "#4c4d4e",
+          "#6d6f70",
+          "#919294",
+          "#b6b7b9",
+          "#d6d8d9",
+          "#f8fafc"
         ]
       },
       "neutral-subtle": {
@@ -114,14 +129,14 @@
         "displayName": "Warm Subtle Gray",
         "canonical": "#f0f0f0",
         "tonalRamp": [
+          "#121212",
+          "#2e2e2e",
           "#4d4d4d",
-          "#787878",
-          "#adadad",
-          "#f0f0f0",
-          "#f4f4f4",
-          "#f7f7f7",
-          "#fbfbfb",
-          "#fdfdfd"
+          "#6f6f6f",
+          "#929292",
+          "#b7b7b7",
+          "#d7d7d7",
+          "#f0f0f0"
         ]
       },
       "neutral-border": {
@@ -129,14 +144,14 @@
         "displayName": "Border Gray",
         "canonical": "#e5e7eb",
         "tonalRamp": [
-          "#494a4b",
-          "#737476",
-          "#a5a6a9",
-          "#e5e7eb",
-          "#ebedf0",
-          "#f1f2f4",
-          "#f7f8f9",
-          "#fcfcfd"
+          "#111213",
+          "#2d2e30",
+          "#4c4d4f",
+          "#6d6f71",
+          "#919295",
+          "#b6b7bb",
+          "#d5d7db",
+          "#e5e7eb"
         ]
       },
       "neutral-border-strong": {
@@ -144,14 +159,14 @@
         "displayName": "Strong Border Gray",
         "canonical": "#d1d5db",
         "tonalRamp": [
-          "#434446",
-          "#696b6e",
-          "#96999e",
+          "#101214",
+          "#2c2e31",
+          "#4b4d51",
+          "#6c6f73",
+          "#8f9297",
+          "#b4b8bd",
           "#d1d5db",
-          "#dcdfe4",
-          "#e6e8ec",
-          "#f1f2f4",
-          "#f9fafb"
+          "#eef2f8"
         ]
       },
       "neutral-text": {
@@ -159,14 +174,14 @@
         "displayName": "Body Gray",
         "canonical": "#374151",
         "tonalRamp": [
-          "#12151a",
-          "#1c2129",
-          "#282f3a",
+          "#0a121e",
+          "#252e3d",
           "#374151",
-          "#676f7b",
-          "#9398a1",
-          "#c3c6cb",
-          "#e7e8ea"
+          "#656f7f",
+          "#8993a2",
+          "#afb8c7",
+          "#cfd8e6",
+          "#eaf2ff"
         ]
       },
       "neutral-text-muted": {
@@ -174,14 +189,14 @@
         "displayName": "Muted Gray",
         "canonical": "#6b7280",
         "tonalRamp": [
-          "#222429",
-          "#363940",
-          "#4d525c",
+          "#0d121a",
+          "#292e38",
+          "#474d59",
           "#6b7280",
-          "#8f949e",
-          "#afb3ba",
-          "#d3d5d9",
-          "#edeef0"
+          "#8b92a0",
+          "#b1b8c5",
+          "#d1d8e5",
+          "#ecf2fe"
         ]
       },
       "neutral-inverse": {
@@ -189,486 +204,636 @@
         "displayName": "Almost Black",
         "canonical": "#111827",
         "tonalRamp": [
-          "#05080c",
-          "#090c14",
-          "#0c111c",
           "#111827",
-          "#4a4f5b",
-          "#7e828a",
-          "#b8babe",
-          "#e2e3e5"
+          "#262e3d",
+          "#454d5d",
+          "#676f7e",
+          "#8b92a1",
+          "#b0b8c6",
+          "#d1d8e5",
+          "#ecf2ff"
+        ]
+      },
+      "canvas-ink": {
+        "role": "tertiary",
+        "displayName": "Canvas Ink",
+        "canonical": "#111827",
+        "tonalRamp": [
+          "#111827",
+          "#262e3d",
+          "#454d5d",
+          "#676f7e",
+          "#8b92a1",
+          "#b0b8c6",
+          "#d1d8e5",
+          "#ecf2ff"
+        ]
+      },
+      "canvas-gutter": {
+        "role": "tertiary",
+        "displayName": "Canvas Gutter",
+        "canonical": "#0f172a",
+        "tonalRamp": [
+          "#0f172a",
+          "#252d41",
+          "#444d61",
+          "#666f82",
+          "#8992a5",
+          "#afb7c9",
+          "#d0d8e9",
+          "#ecf2ff"
+        ]
+      },
+      "canvas-edge": {
+        "role": "tertiary",
+        "displayName": "Canvas Edge",
+        "canonical": "#334155",
+        "tonalRamp": [
+          "#071221",
+          "#222e41",
+          "#334155",
+          "#627084",
+          "#8693a7",
+          "#abb8cb",
+          "#ccd9ea",
+          "#eaf3ff"
+        ]
+      },
+      "canvas-line": {
+        "role": "tertiary",
+        "displayName": "Canvas Line",
+        "canonical": "#94a3b8",
+        "tonalRamp": [
+          "#0a121c",
+          "#252e3c",
+          "#434e5d",
+          "#637081",
+          "#94a3b8",
+          "#aab9cd",
+          "#cad9ed",
+          "#eaf3ff"
+        ]
+      },
+      "canvas-text": {
+        "role": "tertiary",
+        "displayName": "Canvas Text",
+        "canonical": "#e5e7eb",
+        "tonalRamp": [
+          "#111213",
+          "#2d2e30",
+          "#4c4d4f",
+          "#6d6f71",
+          "#919295",
+          "#b6b7bb",
+          "#d5d7db",
+          "#e5e7eb"
+        ]
+      },
+      "canvas-caret": {
+        "role": "tertiary",
+        "displayName": "Canvas Caret",
+        "canonical": "#93c5fd",
+        "tonalRamp": [
+          "#00112b",
+          "#102f4f",
+          "#2c4f75",
+          "#4a729d",
+          "#6a96c7",
+          "#93c5fd",
+          "#bbdbff",
+          "#e9f3ff"
         ]
       },
       "semantic-success": {
-        "role": "semantic",
+        "role": "secondary",
         "displayName": "Soft Green",
         "canonical": "#a6e3a1",
         "tonalRamp": [
-          "#354934",
-          "#537251",
-          "#78a374",
+          "#001800",
+          "#133711",
+          "#30582d",
+          "#4e7c4b",
+          "#6ea26a",
+          "#90c98b",
           "#a6e3a1",
-          "#bbeab8",
-          "#cff0cc",
-          "#e4f7e3",
-          "#f4fcf4"
+          "#d6ffd3"
         ]
       },
       "semantic-warning": {
-        "role": "semantic",
+        "role": "secondary",
         "displayName": "Pale Amber",
         "canonical": "#f9e2af",
         "tonalRamp": [
-          "#504838",
-          "#7d7158",
-          "#b3a37e",
+          "#1a1000",
+          "#382c10",
+          "#594b2b",
+          "#7d6d49",
+          "#a29067",
+          "#cab588",
           "#f9e2af",
-          "#fae9c2",
-          "#fcefd4",
-          "#fdf6e7",
-          "#fefcf5"
+          "#fff1d0"
         ]
       },
       "semantic-error": {
-        "role": "semantic",
+        "role": "secondary",
         "displayName": "Muted Rose",
         "canonical": "#f38ba8",
         "tonalRamp": [
-          "#4e2c36",
-          "#7a4654",
-          "#af6479",
+          "#2a000e",
+          "#521129",
+          "#7a3048",
+          "#a44f68",
+          "#cf708b",
           "#f38ba8",
-          "#f6a7bd",
-          "#f9c0d0",
-          "#fbdce5",
-          "#fef1f5"
+          "#ffc6d3",
+          "#ffecf0"
         ]
       },
       "semantic-info": {
-        "role": "semantic",
+        "role": "secondary",
         "displayName": "Powder Blue",
         "canonical": "#89b4fa",
         "tonalRamp": [
-          "#2c3a50",
-          "#455a7d",
-          "#6382b4",
+          "#000e32",
+          "#132c57",
+          "#2f4c7e",
+          "#4c6fa7",
+          "#6c93d2",
           "#89b4fa",
-          "#a5c6fb",
-          "#bfd7fc",
-          "#dce9fe",
-          "#f1f6fe"
+          "#c1d9ff",
+          "#eaf2ff"
         ]
       },
       "semantic-neutral": {
-        "role": "semantic",
+        "role": "secondary",
         "displayName": "Slate",
         "canonical": "#9399b2",
         "tonalRamp": [
-          "#2f3139",
-          "#4a4d59",
-          "#6a6e80",
+          "#0e111d",
+          "#292d3d",
+          "#484c5f",
+          "#686e83",
           "#9399b2",
-          "#adb1c4",
-          "#c5c8d5",
-          "#dfe0e8",
-          "#f2f3f6"
+          "#b0b6cf",
+          "#d0d6ee",
+          "#eef1ff"
         ]
       },
       "semantic-progress": {
-        "role": "semantic",
+        "role": "secondary",
         "displayName": "Warm Peach",
         "canonical": "#fab387",
         "tonalRamp": [
-          "#50392b",
-          "#7d5a44",
-          "#b48161",
+          "#220900",
+          "#492103",
+          "#6e4020",
+          "#96603d",
+          "#bf825c",
           "#fab387",
-          "#fbc5a4",
-          "#fcd6be",
-          "#fee8db",
-          "#fef6f1"
+          "#ffcbab",
+          "#ffeee4"
         ]
       },
       "state-danger-surface": {
-        "role": "semantic",
+        "role": "secondary",
         "displayName": "Danger Surface",
         "canonical": "#fee2e2",
         "tonalRamp": [
-          "#514848",
-          "#7f7171",
-          "#b7a3a3",
-          "#fee2e2",
-          "#fee9e9",
-          "#feefef",
-          "#fff6f6",
-          "#fffcfc"
+          "#190e0f",
+          "#372a2a",
+          "#594849",
+          "#7c6969",
+          "#a28c8c",
+          "#c9b1b1",
+          "#ebd0d0",
+          "#fee2e2"
         ]
       },
       "state-danger-text": {
-        "role": "semantic",
+        "role": "secondary",
         "displayName": "Danger Text",
         "canonical": "#991b1b",
         "tonalRamp": [
-          "#310909",
-          "#4d0e0e",
-          "#6e1313",
+          "#2c0000",
+          "#5d0004",
           "#991b1b",
-          "#b15252",
-          "#c88484",
-          "#e0bbbb",
-          "#f3e4e4"
+          "#b7423b",
+          "#dc6c61",
+          "#ff968a",
+          "#ffc8c1",
+          "#ffedeb"
         ]
       },
       "state-warning-surface": {
-        "role": "semantic",
+        "role": "secondary",
         "displayName": "Warning Surface",
         "canonical": "#fef3c7",
         "tonalRamp": [
-          "#514e40",
-          "#7f7a64",
-          "#b7af8f",
-          "#fef3c7",
-          "#fef6d4",
-          "#fef9e1",
-          "#fffbee",
-          "#fffef8"
+          "#161102",
+          "#332e18",
+          "#544d33",
+          "#766f51",
+          "#9b9271",
+          "#c1b892",
+          "#e2d8af",
+          "#fef3c7"
         ]
       },
       "state-warning-text": {
-        "role": "semantic",
+        "role": "secondary",
         "displayName": "Warning Text",
         "canonical": "#92400e",
         "tonalRamp": [
-          "#2f1404",
-          "#492007",
-          "#692e0a",
+          "#250700",
+          "#4f1c00",
           "#92400e",
-          "#ac6e48",
-          "#c4987d",
-          "#dec6b7",
-          "#f2e8e2"
+          "#a6552b",
+          "#ca7b55",
+          "#efa27e",
+          "#ffcab2",
+          "#ffeee6"
         ]
       },
       "state-success-surface": {
-        "role": "semantic",
+        "role": "secondary",
         "displayName": "Success Surface",
         "canonical": "#e6f7e6",
         "tonalRamp": [
-          "#4a4f4a",
-          "#737c73",
-          "#a6b2a6",
-          "#e6f7e6",
-          "#ecf9ec",
-          "#f2fbf2",
-          "#f8fdf8",
-          "#fcfefc"
+          "#0d140d",
+          "#283028",
+          "#465046",
+          "#677267",
+          "#899689",
+          "#aebcae",
+          "#cdddcd",
+          "#e6f7e6"
         ]
       },
       "state-success-text": {
-        "role": "semantic",
+        "role": "secondary",
         "displayName": "Success Text",
         "canonical": "#2d6a2d",
         "tonalRamp": [
-          "#0e220e",
-          "#173517",
-          "#204c20",
+          "#001800",
+          "#003902",
           "#2d6a2d",
-          "#5f8e5f",
-          "#8eaf8e",
-          "#c0d2c0",
-          "#e6ede6"
+          "#457f43",
+          "#6ca26a",
+          "#93c791",
+          "#b6e7b3",
+          "#d6ffd4"
         ]
       },
       "state-info-surface": {
-        "role": "semantic",
-        "displayName": "Information Surface",
+        "role": "secondary",
+        "displayName": "Info Surface",
         "canonical": "#eff6ff",
         "tonalRamp": [
-          "#4c4f52",
-          "#787b80",
-          "#acb1b8",
-          "#eff6ff",
-          "#f3f8ff",
-          "#f6faff",
-          "#fafcff",
-          "#fdfeff"
+          "#0f1215",
+          "#2b2e32",
+          "#494d53",
+          "#6a6f75",
+          "#8d9399",
+          "#b2b8c0",
+          "#d2d8e0",
+          "#eff6ff"
         ]
       },
       "state-info-text": {
-        "role": "semantic",
-        "displayName": "Information Text",
+        "role": "secondary",
+        "displayName": "Info Text",
         "canonical": "#1e40af",
         "tonalRamp": [
-          "#0a1438",
-          "#0f2058",
-          "#162e7e",
+          "#020048",
+          "#071980",
           "#1e40af",
-          "#546ec2",
-          "#8698d4",
-          "#bcc6e7",
-          "#e4e8f5"
+          "#3f66d0",
+          "#648df2",
+          "#95b6ff",
+          "#c5d8ff",
+          "#ecf2ff"
         ]
       },
       "danger-action": {
-        "role": "semantic",
+        "role": "secondary",
         "displayName": "Consequence Rose",
         "canonical": "#9f1239",
         "tonalRamp": [
-          "#330612",
-          "#50091d",
-          "#720d29",
+          "#2b0007",
+          "#5c001b",
           "#9f1239",
-          "#b64b69",
-          "#cb7f94",
-          "#e2b8c4",
-          "#f3e3e7"
+          "#ba3a52",
+          "#df6576",
+          "#ff939e",
+          "#ffc7cb",
+          "#ffedee"
         ]
       },
       "danger-action-hover": {
-        "role": "semantic",
+        "role": "secondary",
         "displayName": "Consequence Rose Deep",
         "canonical": "#830e2e",
         "tonalRamp": [
-          "#2a040f",
-          "#420717",
-          "#5e0a21",
+          "#2b0007",
+          "#5c001b",
           "#830e2e",
-          "#a14860",
-          "#bc7d8e",
-          "#dab7c0",
-          "#f0e2e6"
+          "#af4757",
+          "#d46f7b",
+          "#f897a1",
+          "#ffc7cb",
+          "#ffedee"
+        ]
+      },
+      "device-ok": {
+        "role": "tertiary",
+        "displayName": "Device OK Green",
+        "canonical": "#2d6a2d",
+        "tonalRamp": [
+          "#001800",
+          "#003902",
+          "#2d6a2d",
+          "#457f43",
+          "#6ca26a",
+          "#93c791",
+          "#b6e7b3",
+          "#d6ffd4"
+        ]
+      },
+      "device-busy": {
+        "role": "tertiary",
+        "displayName": "Device Busy Orange",
+        "canonical": "#c2410c",
+        "tonalRamp": [
+          "#280300",
+          "#551400",
+          "#872700",
+          "#c2410c",
+          "#e3683f",
+          "#ff9877",
+          "#ffc9b8",
+          "#ffede8"
+        ]
+      },
+      "device-down": {
+        "role": "tertiary",
+        "displayName": "Device Down Rose",
+        "canonical": "#9f1239",
+        "tonalRamp": [
+          "#2b0007",
+          "#5c001b",
+          "#9f1239",
+          "#ba3a52",
+          "#df6576",
+          "#ff939e",
+          "#ffc7cb",
+          "#ffedee"
+        ]
+      },
+      "device-unknown": {
+        "role": "tertiary",
+        "displayName": "Device Unknown Gray",
+        "canonical": "#6b7280",
+        "tonalRamp": [
+          "#0d121a",
+          "#292e38",
+          "#474d59",
+          "#6b7280",
+          "#8b92a0",
+          "#b1b8c5",
+          "#d1d8e5",
+          "#ecf2fe"
         ]
       },
       "nav-bg": {
         "role": "neutral",
-        "displayName": "Deep Navy Navigation",
+        "displayName": "Rail Navy",
         "canonical": "#1e1e2e",
         "tonalRamp": [
-          "#0a0a0f",
-          "#0f0f17",
-          "#161621",
+          "#10101e",
           "#1e1e2e",
-          "#555561",
-          "#85858c",
-          "#bbbbbf",
-          "#e4e4e5"
+          "#4b4b5c",
+          "#6c6d7d",
+          "#9091a0",
+          "#b5b6c5",
+          "#d5d6e4",
+          "#f0f0fe"
         ]
       },
       "nav-text": {
         "role": "neutral",
-        "displayName": "Lavender Navigation Text",
+        "displayName": "Lavender Rail Text",
         "canonical": "#cdd6f4",
         "tonalRamp": [
-          "#42444e",
-          "#676b7a",
-          "#949ab0",
+          "#0e111d",
+          "#292d3d",
+          "#474c5f",
+          "#676e83",
+          "#8a91aa",
+          "#aeb6d2",
           "#cdd6f4",
-          "#d9e0f7",
-          "#e4e9f9",
-          "#f0f3fc",
-          "#f9fafe"
+          "#edf1ff"
         ]
       },
       "nav-active": {
         "role": "primary",
-        "displayName": "Powder Blue Navigation Active",
+        "displayName": "Powder Blue Rail Focus",
         "canonical": "#89b4fa",
         "tonalRamp": [
-          "#2c3a50",
-          "#455a7d",
-          "#6382b4",
+          "#000e32",
+          "#132c57",
+          "#2f4c7e",
+          "#4c6fa7",
+          "#6c93d2",
           "#89b4fa",
-          "#a5c6fb",
-          "#bfd8fc",
-          "#dceafd",
-          "#f1f8fe"
+          "#c1d9ff",
+          "#eaf2ff"
         ]
       },
       "nav-button": {
         "role": "neutral",
-        "displayName": "Dark Slate Navigation Button",
+        "displayName": "Dark Slate Rail Button",
         "canonical": "#313244",
         "tonalRamp": [
-          "#101016",
-          "#191922",
-          "#232431",
+          "#10101e",
           "#313244",
-          "#626371",
-          "#90909a",
-          "#c1c2c7",
-          "#e6e6e9"
+          "#4a4b5e",
+          "#6c6d7f",
+          "#8f91a2",
+          "#b4b6c7",
+          "#d5d6e6",
+          "#eff1ff"
         ]
       },
       "status-accepted": {
-        "role": "semantic",
+        "role": "tertiary",
         "displayName": "Accepted Teal",
         "canonical": "#0e7490",
         "tonalRamp": [
-          "#04252e",
-          "#073a48",
-          "#0a5468",
+          "#00151d",
+          "#003443",
+          "#00566c",
           "#0e7490",
-          "#4895ab",
-          "#7db4c3",
-          "#b7d5de",
-          "#e2eef2"
+          "#509eb9",
+          "#7cc3dd",
+          "#a0e3fc",
+          "#e0f6ff"
         ]
       },
       "status-validated": {
-        "role": "semantic",
+        "role": "tertiary",
         "displayName": "Validated Cyan",
         "canonical": "#0891b2",
         "tonalRamp": [
-          "#032e39",
-          "#044959",
-          "#066880",
+          "#00151d",
+          "#003442",
+          "#00566b",
+          "#007b98",
           "#0891b2",
-          "#43abc4",
-          "#7ac4d5",
-          "#b5dee8",
-          "#e1f2f6"
+          "#66c6e5",
+          "#98e5ff",
+          "#dff6ff"
         ]
       },
       "status-queued": {
-        "role": "semantic",
+        "role": "tertiary",
         "displayName": "Queued Blue",
         "canonical": "#1d4ed8",
         "tonalRamp": [
-          "#091945",
-          "#0f276c",
-          "#15389c",
+          "#000049",
+          "#010c8d",
+          "#0e39bc",
           "#1d4ed8",
-          "#5378e1",
-          "#859fea",
-          "#bbcaf3",
-          "#e4eafa"
+          "#598bff",
+          "#94b6ff",
+          "#c4d8ff",
+          "#ebf2ff"
         ]
       },
       "status-dispatched": {
-        "role": "semantic",
+        "role": "tertiary",
         "displayName": "Dispatched Violet",
         "canonical": "#6d28d9",
         "tonalRamp": [
-          "#230d45",
-          "#37146d",
-          "#4e1d9c",
+          "#17003a",
+          "#370078",
+          "#5a04bc",
           "#6d28d9",
-          "#905ce2",
-          "#b08bea",
-          "#d3bff4",
-          "#ede5fa"
+          "#9973ff",
+          "#baa8ff",
+          "#d8d0ff",
+          "#f2f0ff"
         ]
       },
       "status-printing": {
-        "role": "semantic",
-        "displayName": "Printing Orange",
+        "role": "tertiary",
+        "displayName": "Printing Ember",
         "canonical": "#c2410c",
         "tonalRamp": [
-          "#3e1504",
-          "#612106",
-          "#8c2f09",
+          "#280300",
+          "#551400",
+          "#872700",
           "#c2410c",
-          "#d16f46",
-          "#de987c",
-          "#edc6b6",
-          "#f8e8e2"
+          "#e3683f",
+          "#ff9877",
+          "#ffc9b8",
+          "#ffede8"
         ]
       },
       "status-success": {
-        "role": "semantic",
-        "displayName": "Success Green",
+        "role": "tertiary",
+        "displayName": "Success Forest",
         "canonical": "#166534",
         "tonalRamp": [
-          "#072011",
-          "#0b331a",
-          "#104925",
+          "#001805",
+          "#003917",
           "#166534",
-          "#4e8a65",
-          "#81ac91",
-          "#b9d1c2",
-          "#e3ede7"
+          "#3b7f4f",
+          "#64a374",
+          "#8dc89b",
+          "#b0e8bc",
+          "#d3ffdc"
         ]
       },
       "status-unverified": {
-        "role": "semantic",
+        "role": "tertiary",
         "displayName": "Unverified Amber",
         "canonical": "#92400e",
         "tonalRamp": [
-          "#2f1404",
-          "#492007",
-          "#692e0a",
+          "#250700",
+          "#4f1c00",
           "#92400e",
-          "#ac6e48",
-          "#c4987d",
-          "#dec6b7",
-          "#f2e8e2"
+          "#a6552b",
+          "#ca7b55",
+          "#efa27e",
+          "#ffcab2",
+          "#ffeee6"
         ]
       },
       "status-failed": {
-        "role": "semantic",
+        "role": "tertiary",
         "displayName": "Failed Rose",
         "canonical": "#9f1239",
         "tonalRamp": [
-          "#330612",
-          "#50091d",
-          "#720d29",
+          "#2b0007",
+          "#5c001b",
           "#9f1239",
-          "#b64b69",
-          "#cb7f94",
-          "#e2b8c4",
-          "#f3e3e7"
+          "#ba3a52",
+          "#df6576",
+          "#ff939e",
+          "#ffc7cb",
+          "#ffedee"
         ]
       },
       "status-timeout": {
-        "role": "semantic",
+        "role": "tertiary",
         "displayName": "Timeout Umber",
         "canonical": "#78350f",
         "tonalRamp": [
-          "#261105",
-          "#3c1b08",
-          "#56260b",
+          "#250700",
+          "#4f1c00",
           "#78350f",
-          "#986549",
-          "#b6927d",
-          "#d7c2b7",
-          "#efe7e2"
+          "#9d5b3b",
+          "#c18062",
+          "#e5a78a",
+          "#ffcab2",
+          "#ffeee6"
         ]
       },
       "status-cancelled": {
-        "role": "semantic",
+        "role": "tertiary",
         "displayName": "Cancelled Slate",
         "canonical": "#374151",
         "tonalRamp": [
-          "#12151a",
-          "#1c2129",
-          "#282f3a",
+          "#0a121e",
+          "#252e3d",
           "#374151",
-          "#676f7b",
-          "#9398a1",
-          "#c3c6cb",
-          "#e7e8ea"
+          "#656f7f",
+          "#8993a2",
+          "#afb8c7",
+          "#cfd8e6",
+          "#eaf2ff"
         ]
       },
       "status-duplicate": {
-        "role": "semantic",
+        "role": "tertiary",
         "displayName": "Duplicate Gray",
         "canonical": "#4b5563",
         "tonalRamp": [
-          "#181b20",
-          "#262b32",
-          "#363d47",
+          "#0b121b",
+          "#262e3a",
           "#4b5563",
-          "#767e88",
-          "#9ea3ab",
-          "#c9ccd0",
-          "#e9ebec"
+          "#66707d",
+          "#8993a1",
+          "#afb8c5",
+          "#cfd8e5",
+          "#eaf3ff"
         ]
       }
     },
     "typographyMeta": {
       "headline": {
         "displayName": "Page Headline",
-        "purpose": "One top-level title per application surface."
+        "purpose": "One top-level title per application surface; -0.015em tracking, text-wrap: pretty."
       },
       "title": {
         "displayName": "Section Title",
@@ -676,68 +841,87 @@
       },
       "body": {
         "displayName": "Body Text",
-        "purpose": "Forms, tables, descriptions, and operational copy."
+        "purpose": "Forms, tables, descriptions, and operational copy; prose caps at 72ch."
       },
       "label": {
         "displayName": "Compact Label",
-        "purpose": "Metadata and column labels; uppercase and tracking only where the script permits."
+        "purpose": "Metadata, table headers, field labels. Rendered at natural case; the 0.05em tracking is an opt-in Latin-only treatment."
       },
       "mono": {
-        "displayName": "Technical Evidence",
-        "purpose": "Identifiers, payloads, printer addresses, and trace values."
+        "displayName": "Evidence Mono",
+        "purpose": "Job IDs, template identifiers, URIs, payloads, printer addresses, trace values. Opens to 1.65 line-height inside the Evidence Canvas."
       },
       "stat": {
-        "displayName": "Operational Stat",
-        "purpose": "At-a-glance dashboard metrics only."
+        "displayName": "Dashboard Stat",
+        "purpose": "At-a-glance metric values, tabular numerals. Secondary metric rows step down to headline size."
+      },
+      "action": {
+        "displayName": "Control Label",
+        "purpose": "Button and control labels; 0.012em is optical correction, not style."
       }
     },
     "shadows": [
       {
         "name": "subtle-surface",
         "value": "0 1px 3px rgba(0, 0, 0, 0.05)",
-        "purpose": "Rare separation for compact metrics or proof paper."
+        "purpose": "Sticky action bars and preview paper when a border alone is insufficient."
       },
       {
         "name": "floating-panel",
         "value": "0 8px 24px rgba(0, 0, 0, 0.08)",
-        "purpose": "Dialogs, login panels, and centered overlays."
+        "purpose": "Login and splash panels, drawers."
       },
       {
         "name": "popover",
         "value": "0 8px 24px rgba(17, 24, 39, 0.14)",
-        "purpose": "Menus and anchored floating content."
+        "purpose": "Dialogs, menus, and anchored floating content over white surfaces."
       },
       {
         "name": "drawer",
         "value": "-4px 0 24px rgba(0, 0, 0, 0.12)",
-        "purpose": "Directional depth for right-edge drawers."
+        "purpose": "Side drawers; depth is cast away from the attached edge."
       },
       {
         "name": "action-lift",
         "value": "0 3px 8px rgba(30, 102, 245, 0.30)",
-        "purpose": "Hover feedback for the canonical primary button."
+        "purpose": "Hover feedback on the primary button; rose equivalent at 0.24 alpha for danger. Absent at rest, pressed, and disabled."
+      },
+      {
+        "name": "backdrop-dialog",
+        "value": "rgba(30, 30, 46, 0.45)",
+        "purpose": "Dialog backdrop. Drawers use rgba(17, 24, 39, 0.42); the full-screen paper preview uses 0.72."
       }
     ],
     "motion": [
       {
         "name": "state-fast",
-        "value": "0.15s ease",
-        "purpose": "Color, border, and opacity feedback on interactive state changes."
+        "value": "120ms ease",
+        "purpose": "Color and background state changes on buttons, rows, and links."
       },
       {
-        "name": "surface-standard",
-        "value": "0.2s ease",
-        "purpose": "Navigation and overlay spatial transitions."
+        "name": "control-standard",
+        "value": "160ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Button and icon-button state transitions."
       },
       {
-        "name": "surface-expressive",
-        "value": "0.2s cubic-bezier(0.16, 1, 0.3, 1)",
-        "purpose": "Short active-marker and drawer movement with a firm finish."
+        "name": "field-standard",
+        "value": "150ms ease",
+        "purpose": "Field border, halo, and background transitions."
+      },
+      {
+        "name": "surface-spatial",
+        "value": "200ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Nav rail slide and the active-marker scale-in — motion that explains spatial origin."
+      },
+      {
+        "name": "indeterminate-spin",
+        "value": "0.6s–0.8s linear infinite",
+        "purpose": "Button and splash spinners only."
       },
       {
         "name": "reduced-motion",
-        "value": "none",
-        "purpose": "Instant fallback under prefers-reduced-motion."
+        "value": "animation/transition-duration 0.01ms; view-transition-name: none",
+        "purpose": "Global kill switch under prefers-reduced-motion: reduce. Every animation has an instant fallback."
       }
     ],
     "breakpoints": [
@@ -746,7 +930,7 @@
         "value": "520px"
       },
       {
-        "name": "mobile",
+        "name": "mobile-shell",
         "value": "760px"
       },
       {
@@ -754,8 +938,16 @@
         "value": "860px"
       },
       {
-        "name": "dense-grid-reduction",
+        "name": "primary-transition",
+        "value": "1024px"
+      },
+      {
+        "name": "dense-form-reduction",
         "value": "1100px"
+      },
+      {
+        "name": "rail-expanded",
+        "value": "1025px"
       }
     ]
   },
@@ -764,93 +956,118 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Action-blue control for direct task progression.",
+      "description": "Action-blue control for direct task progression. Flat at rest; the lift is hover-only.",
       "html": "<button class=\"ds-button-primary\">Save changes</button>",
-      "css": ".ds-button-primary { min-height: 38px; padding: 0.48rem 1.1rem; border: 1.5px solid #1e66f5; border-radius: 6px; background: #1e66f5; color: #fff; font-family: system-ui, sans-serif; font-size: 0.825rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease; } .ds-button-primary:hover { background: #1654d1; border-color: #1654d1; transform: translateY(-1px); box-shadow: 0 3px 8px rgba(30,102,245,0.3); } .ds-button-primary:active { transform: translateY(0); box-shadow: 0 1px 2px rgba(30,102,245,0.2); } .ds-button-primary:focus-visible { outline: 2px solid #1e66f5; outline-offset: 2px; }"
+      "css": ".ds-button-primary { display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem; min-height: 38px; padding: 0.48rem 1.15rem; border: 1px solid var(--primary, #1e66f5); border-radius: var(--rounded-md, 6px); background: var(--primary, #1e66f5); color: var(--neutral-surface, #ffffff); font-family: system-ui, sans-serif; font-size: 0.825rem; font-weight: 600; letter-spacing: 0.012em; white-space: nowrap; cursor: pointer; transition: background-color 160ms cubic-bezier(0.16,1,0.3,1), border-color 160ms cubic-bezier(0.16,1,0.3,1), box-shadow 160ms cubic-bezier(0.16,1,0.3,1); } .ds-button-primary:hover { background: var(--primary-hover, #1654d1); border-color: var(--primary-hover, #1654d1); box-shadow: 0 3px 8px rgba(30, 102, 245, 0.30); } .ds-button-primary:active { box-shadow: none; } .ds-button-primary:focus-visible { outline: 2px solid var(--primary, #1e66f5); outline-offset: 2px; }"
     },
     {
       "name": "Secondary Button",
       "kind": "button",
       "refersTo": "button-secondary",
-      "description": "White bordered control for reversible or supporting actions.",
-      "html": "<button class=\"ds-button-secondary\">Preview</button>",
-      "css": ".ds-button-secondary { min-height: 38px; padding: 0.48rem 1.1rem; border: 1.5px solid #d1d5db; border-radius: 6px; background: #fff; color: #1e1e2e; font-family: system-ui, sans-serif; font-size: 0.825rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease; } .ds-button-secondary:hover { border-color: #1e66f5; color: #1e66f5; background: rgba(30,102,245,0.03); } .ds-button-secondary:active { background: #eff6ff; } .ds-button-secondary:focus-visible { outline: 2px solid #1e66f5; outline-offset: 2px; }"
+      "description": "White outlined control for the alternative action in a pair.",
+      "html": "<button class=\"ds-button-secondary\">Cancel</button>",
+      "css": ".ds-button-secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0.48rem 1.15rem; border: 1px solid var(--neutral-border-strong, #d1d5db); border-radius: var(--rounded-md, 6px); background: var(--neutral-surface, #ffffff); color: var(--neutral-text, #374151); font-family: system-ui, sans-serif; font-size: 0.825rem; font-weight: 600; letter-spacing: 0.012em; cursor: pointer; transition: background-color 160ms cubic-bezier(0.16,1,0.3,1), border-color 160ms cubic-bezier(0.16,1,0.3,1); } .ds-button-secondary:hover { background: var(--neutral-subtle, #f0f0f0); } .ds-button-secondary:focus-visible { outline: 2px solid var(--primary, #1e66f5); outline-offset: 2px; }"
     },
     {
       "name": "Danger Button",
       "kind": "button",
       "refersTo": "button-danger",
-      "description": "Consequence-rose control for destructive or physically consequential confirmation.",
-      "html": "<button class=\"ds-button-danger\">Confirm physical print</button>",
-      "css": ".ds-button-danger { min-height: 38px; padding: 0.48rem 1.1rem; border: 1.5px solid #9f1239; border-radius: 6px; background: #9f1239; color: #fff; font-family: system-ui, sans-serif; font-size: 0.825rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease; } .ds-button-danger:hover { background: #830e2e; border-color: #830e2e; transform: translateY(-1px); box-shadow: 0 3px 8px rgba(159,18,57,0.3); } .ds-button-danger:active { transform: translateY(0); box-shadow: none; } .ds-button-danger:focus-visible { outline: 2px solid #1e66f5; outline-offset: 2px; }"
+      "description": "Consequence Rose. Destructive or physically consequential confirmation only.",
+      "html": "<button class=\"ds-button-danger\">Delete printer</button>",
+      "css": ".ds-button-danger { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0.48rem 1.15rem; border: 1px solid var(--danger-action, #9f1239); border-radius: var(--rounded-md, 6px); background: var(--danger-action, #9f1239); color: var(--neutral-surface, #ffffff); font-family: system-ui, sans-serif; font-size: 0.825rem; font-weight: 600; letter-spacing: 0.012em; cursor: pointer; transition: background-color 160ms cubic-bezier(0.16,1,0.3,1), box-shadow 160ms cubic-bezier(0.16,1,0.3,1); } .ds-button-danger:hover { background: var(--danger-action-hover, #830e2e); border-color: var(--danger-action-hover, #830e2e); box-shadow: 0 3px 8px rgba(159, 18, 57, 0.24); } .ds-button-danger:focus-visible { outline: 2px solid var(--primary, #1e66f5); outline-offset: 2px; }"
     },
     {
-      "name": "Ghost Button",
+      "name": "Disabled Button",
       "kind": "button",
-      "refersTo": "button-ghost",
-      "description": "Quiet transparent control for dismissal and tertiary navigation.",
-      "html": "<button class=\"ds-button-ghost\">Cancel</button>",
-      "css": ".ds-button-ghost { min-height: 38px; padding: 0.48rem 1.1rem; border: 1.5px solid transparent; border-radius: 6px; background: transparent; color: #6b7280; font-family: system-ui, sans-serif; font-size: 0.825rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease; } .ds-button-ghost:hover { background: rgba(30,102,245,0.08); color: #1e66f5; } .ds-button-ghost:active { background: rgba(30,102,245,0.12); } .ds-button-ghost:focus-visible { outline: 2px solid #1e66f5; outline-offset: 2px; }"
+      "refersTo": "button-disabled",
+      "description": "Full-opacity disabled state — a blocked control still has to be readable, because why it is blocked is the next question.",
+      "html": "<button class=\"ds-button-disabled\" disabled>Print 24 labels</button>",
+      "css": ".ds-button-disabled { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0.48rem 1.15rem; border: 1px solid var(--neutral-border, #e5e7eb); border-radius: var(--rounded-md, 6px); background: var(--neutral-subtle, #f0f0f0); color: var(--neutral-text-muted, #6b7280); font-family: system-ui, sans-serif; font-size: 0.825rem; font-weight: 600; letter-spacing: 0.012em; opacity: 1; cursor: not-allowed; }"
     },
     {
       "name": "Text Field",
       "kind": "input",
       "refersTo": "input-standard",
-      "description": "Clinical white input with a strong boundary and connected label.",
-      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Template code</span><input class=\"ds-field-input\" value=\"LAB_LABEL\" /></label>",
-      "css": ".ds-field { display: flex; flex-direction: column; gap: 0.35rem; font-family: system-ui, sans-serif; } .ds-field-label { color: #6b7280; font-size: 0.75rem; font-weight: 600; } .ds-field-input { min-height: 38px; padding: 0.5rem 0.7rem; border: 1.5px solid #d1d5db; border-radius: 6px; background: #fff; color: #374151; font: 400 0.875rem/1.5 system-ui, sans-serif; transition: border-color 0.15s ease, box-shadow 0.15s ease; } .ds-field-input:hover { border-color: #9399b2; } .ds-field-input:focus { outline: none; border-color: #1e66f5; box-shadow: 0 0 0 3px rgba(30,102,245,0.15); }"
+      "description": "Standard 38px field. Focus shifts the border and adds a translucent halo on the field itself.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"ward-3-label-printer\" aria-label=\"Printer name\" />",
+      "css": ".ds-input { width: 100%; min-width: 0; min-height: 38px; padding: 0.5rem 0.7rem; border: 1px solid var(--neutral-border-strong, #d1d5db); border-radius: var(--rounded-md, 6px); background: var(--neutral-surface, #ffffff); color: var(--neutral-text, #374151); font-family: system-ui, sans-serif; font-size: 0.875rem; line-height: 1.5; transition: border-color 150ms ease, box-shadow 150ms ease; } .ds-input::placeholder { color: var(--neutral-text-muted, #6b7280); opacity: 1; } .ds-input:hover { border-color: var(--neutral-text-muted, #6b7280); } .ds-input:focus-visible { border-color: var(--primary, #1e66f5); outline: 2px solid color-mix(in srgb, var(--primary, #1e66f5) 38%, transparent); outline-offset: 1px; } .ds-input[aria-invalid=\"true\"] { border-color: var(--state-danger-text, #991b1b); }"
     },
     {
       "name": "Filter Chip",
       "kind": "chip",
       "refersTo": "filter-chip",
-      "description": "Pill-shaped categorical filter with a visibly pressed state.",
-      "html": "<button class=\"ds-filter-chip ds-filter-chip-selected\" aria-pressed=\"true\">Published <strong>18</strong></button>",
-      "css": ".ds-filter-chip { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.25rem 0.6rem; border: 1px solid #e5e7eb; border-radius: 9999px; background: #fff; color: #6b7280; font-family: system-ui, sans-serif; font-size: 0.75rem; font-weight: 600; cursor: pointer; } .ds-filter-chip:hover { border-color: #1e66f5; color: #1e66f5; } .ds-filter-chip-selected { border-color: #1e66f5; background: #eff6ff; color: #1d4ed8; } .ds-filter-chip:focus-visible { outline: 2px solid #1e66f5; outline-offset: 2px; }"
+      "description": "The pill reserved for filtering and toggling; exposes aria-pressed. Never a primary button.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"false\">Urgent</button><button class=\"ds-chip is-selected\" aria-pressed=\"true\">Failed</button>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 34px; padding: 0.25rem 0.7rem; margin-right: 0.5rem; border: 1px solid var(--neutral-border-strong, #d1d5db); border-radius: var(--rounded-pill, 9999px); background: var(--neutral-surface, #ffffff); color: var(--neutral-text-muted, #6b7280); font-family: system-ui, sans-serif; font-size: 0.75rem; font-weight: 650; white-space: nowrap; cursor: pointer; transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease; } .ds-chip:hover { border-color: var(--primary, #1e66f5); color: var(--primary, #1e66f5); } .ds-chip.is-selected { border-color: color-mix(in srgb, var(--primary, #1e66f5) 40%, var(--neutral-border, #e5e7eb)); background: var(--state-info-surface, #eff6ff); color: var(--primary-hover, #1654d1); } .ds-chip:focus-visible { outline: 2px solid var(--primary, #1e66f5); outline-offset: 2px; }"
     },
     {
-      "name": "Status Badge",
+      "name": "Job Status Badge",
       "kind": "chip",
       "refersTo": "status-badge",
-      "description": "Literal outlined job status with contrast-safe text and ring.",
-      "html": "<span class=\"ds-status-badge\">SUCCESS</span>",
-      "css": ".ds-status-badge { display: inline-block; padding: 3px 10px; border: 1.5px solid #166534; border-radius: 9999px; background: transparent; color: #166534; font-family: system-ui, sans-serif; font-size: 0.7rem; font-weight: 700; line-height: 1; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }"
+      "description": "Outlined pill carrying the literal server status. Border and text share one contrast-safe color; the fill stays transparent.",
+      "html": "<span class=\"ds-status ds-status--success\">SUCCESS</span><span class=\"ds-status ds-status--unverified\">UNVERIFIED</span><span class=\"ds-status ds-status--failed\">FAILED</span>",
+      "css": ".ds-status { display: inline-flex; align-items: center; justify-content: center; min-height: 24px; padding: 3px 9px; margin-right: 0.5rem; border: 1.5px solid currentcolor; border-radius: var(--rounded-pill, 9999px); background: transparent; font-family: system-ui, sans-serif; font-size: 0.75rem; font-weight: 600; line-height: 1.2; letter-spacing: 0.025em; } .ds-status--success { color: var(--status-success, #166534); } .ds-status--unverified { color: var(--status-unverified, #92400e); } .ds-status--failed { color: var(--status-failed, #9f1239); }"
+    },
+    {
+      "name": "Device Status Indicator",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Device or service condition — a separate axis from job status. A dot plus the condition as text, so meaning never rests on color.",
+      "html": "<span class=\"ds-device ds-device--ok\"><span class=\"ds-device__dot\"></span>Idle</span><span class=\"ds-device ds-device--down\"><span class=\"ds-device__dot\"></span>Offline</span><span class=\"ds-device ds-device--unknown\"><span class=\"ds-device__dot\"></span>Unknown</span>",
+      "css": ".ds-device { display: inline-flex; align-items: center; gap: 0.35rem; margin-right: 1rem; font-family: system-ui, sans-serif; font-size: 0.75rem; font-weight: 650; } .ds-device__dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: currentcolor; flex: 0 0 auto; } .ds-device--ok { color: var(--device-ok, #2d6a2d); } .ds-device--down { color: var(--device-down, #9f1239); } .ds-device--unknown { color: var(--device-unknown, #6b7280); }"
+    },
+    {
+      "name": "Metric Tile",
+      "kind": "card",
+      "refersTo": "metric-tile",
+      "description": "At-a-glance count. Tone comes from the value, not the concept — a zero UNVERIFIED count is an ordinary tile.",
+      "html": "<div class=\"ds-metric\"><div class=\"ds-metric__value\">128</div><div class=\"ds-metric__label\">Printed today</div></div><div class=\"ds-metric ds-metric--attention\"><div class=\"ds-metric__value\">3</div><div class=\"ds-metric__label\"><span class=\"ds-metric__dot\"></span>Unverified</div></div>",
+      "css": ".ds-metric { display: inline-grid; gap: 0.35rem; min-width: 11rem; padding: 1rem; margin-right: 0.75rem; border: 1px solid var(--neutral-border, #e5e7eb); border-radius: var(--rounded-lg, 8px); background: var(--neutral-surface, #ffffff); font-family: system-ui, sans-serif; } .ds-metric__value { color: var(--neutral-deep, #1e1e2e); font-size: 2rem; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; } .ds-metric__label { display: flex; align-items: center; gap: 0.35rem; color: var(--neutral-text-muted, #6b7280); font-size: 0.75rem; font-weight: 600; } .ds-metric__dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: currentcolor; } .ds-metric--attention { border-color: color-mix(in srgb, var(--state-warning-text, #92400e) 35%, var(--neutral-border, #e5e7eb)); background: var(--state-warning-surface, #fef3c7); color: var(--state-warning-text, #92400e); } .ds-metric--attention .ds-metric__value, .ds-metric--attention .ds-metric__label { color: var(--state-warning-text, #92400e); }"
+    },
+    {
+      "name": "Evidence Canvas",
+      "kind": "custom",
+      "refersTo": "code-canvas",
+      "description": "The one sanctioned dark surface: a line-numbered editor for authored template bodies and JSON payloads.",
+      "html": "<div class=\"ds-canvas\"><div class=\"ds-canvas__gutter\"><span>1</span><span>2</span><span>3</span><span>4</span></div><pre class=\"ds-canvas__field\">{\n  \"jobId\": \"prt_01H9\",\n  \"status\": \"UNVERIFIED\"\n}</pre></div>",
+      "css": ".ds-canvas { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr); min-width: 0; overflow: hidden; border: 1px solid var(--canvas-edge, #334155); border-radius: var(--rounded-lg, 8px); background: var(--canvas-ink, #111827); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.8rem; line-height: 1.65; } .ds-canvas__gutter { display: flex; flex-direction: column; align-items: flex-end; padding: 0.75rem 0.5rem; border-right: 1px solid var(--canvas-edge, #334155); background: var(--canvas-gutter, #0f172a); color: var(--canvas-line, #94a3b8); user-select: none; } .ds-canvas__field { margin: 0; padding: 0.75rem; color: var(--canvas-text, #e5e7eb); caret-color: var(--canvas-caret, #93c5fd); white-space: pre; overflow-x: auto; } .ds-canvas:focus-within { border-color: var(--primary, #1e66f5); } .ds-canvas[data-invalid] { border-color: var(--state-danger-text, #991b1b); }"
     },
     {
       "name": "Panel Card",
       "kind": "card",
       "refersTo": "card-panel",
-      "description": "Flat white reading surface separated from the page by a quiet border.",
-      "html": "<section class=\"ds-panel-card\"><h3>Template library</h3><p>Find, assess, and safely maintain existing templates.</p></section>",
-      "css": ".ds-panel-card { padding: 1.25rem; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; color: #374151; font-family: system-ui, sans-serif; } .ds-panel-card h3 { margin: 0 0 0.5rem; color: #1e1e2e; font-size: 1rem; font-weight: 600; } .ds-panel-card p { margin: 0; font-size: 0.875rem; line-height: 1.5; }"
+      "description": "The default reading surface: flat, border-defined, 8px, on Page Gray.",
+      "html": "<section class=\"ds-panel\"><header class=\"ds-panel__header\"><h3 class=\"ds-panel__title\">Route policy</h3></header><p class=\"ds-panel__description\">Jobs matching this policy are dispatched to the ward-3 label printer.</p></section>",
+      "css": ".ds-panel { display: block; min-width: 0; padding: 1.25rem; border: 1px solid var(--neutral-border, #e5e7eb); border-radius: var(--rounded-lg, 8px); background: var(--neutral-surface, #ffffff); box-shadow: none; font-family: system-ui, sans-serif; } .ds-panel__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; } .ds-panel__title { margin: 0; color: var(--neutral-deep, #1e1e2e); font-size: 1rem; font-weight: 600; line-height: 1.4; } .ds-panel__description { max-width: 72ch; margin: 0; color: var(--neutral-text-muted, #6b7280); font-size: 0.875rem; line-height: 1.5; }"
     },
     {
       "name": "Navigation Item",
       "kind": "nav",
-      "refersTo": "nav-link-active",
-      "description": "Dark-rail destination with a reinforced active marker.",
-      "html": "<a class=\"ds-nav-item ds-nav-item-active\" href=\"#\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" aria-hidden=\"true\"><path d=\"M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5zM8 8h8M8 12h8M8 16h5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"/></svg><span>Templates</span></a>",
-      "css": ".ds-nav-item { position: relative; display: flex; align-items: center; gap: 0.5rem; padding: 0.38rem 0.6rem 0.38rem 0.85rem; border-radius: 4px; background: transparent; color: rgba(205,214,244,0.8); font-family: system-ui, sans-serif; font-size: 0.85rem; line-height: 1.5; text-decoration: none; transition: background-color 0.15s ease, color 0.15s ease; } .ds-nav-item::before { content: ''; position: absolute; left: 0; top: 20%; bottom: 20%; width: 3px; border-radius: 0 2px 2px 0; background: #1e66f5; opacity: 0; } .ds-nav-item:hover { background: rgba(255,255,255,0.08); color: #fff; } .ds-nav-item-active { background: rgba(30,102,245,0.15); color: #fff; font-weight: 600; } .ds-nav-item-active::before { opacity: 1; } .ds-nav-item:focus-visible { outline: 2px solid #89b4fa; outline-offset: 0; }"
+      "refersTo": "nav-link",
+      "description": "Rail item on Deep Navy. Active state pairs a translucent blue band with a 3px leading marker, so orientation never rests on color alone.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav__link\" href=\"#\">Job Queue</a><a class=\"ds-nav__link is-active\" href=\"#\">Printers</a><a class=\"ds-nav__link\" href=\"#\">Templates</a></nav>",
+      "css": ".ds-nav { display: flex; flex-direction: column; gap: 0.125rem; width: 200px; padding: 1rem 0.75rem; background: var(--nav-bg, #1e1e2e); font-family: system-ui, sans-serif; } .ds-nav__link { position: relative; display: flex; align-items: center; min-height: 38px; padding: 0.38rem 0.6rem 0.38rem 0.85rem; border-radius: var(--rounded-sm, 4px); color: rgba(205, 214, 244, 0.8); font-size: 0.85rem; font-weight: 400; text-decoration: none; transition: background-color 150ms ease, color 150ms ease; } .ds-nav__link::before { content: ''; position: absolute; left: 0; top: 50%; width: 3px; height: 60%; border-radius: 0 2px 2px 0; background: var(--primary, #1e66f5); transform: translateY(-50%) scaleY(0); opacity: 0; transition: transform 200ms cubic-bezier(0.16,1,0.3,1), opacity 200ms; } .ds-nav__link:hover { background: rgba(255, 255, 255, 0.08); color: #ffffff; } .ds-nav__link.is-active { background: rgba(30, 102, 245, 0.15); color: #ffffff; font-weight: 600; } .ds-nav__link.is-active::before { transform: translateY(-50%) scaleY(1); opacity: 1; } .ds-nav__link:focus-visible { outline: 2px solid var(--nav-active, #89b4fa); outline-offset: 0; }"
     },
     {
-      "name": "Confirmation Dialog",
+      "name": "Alert",
       "kind": "custom",
-      "refersTo": "card-panel",
-      "description": "Floating confirmation panel for actions with operational or physical consequence.",
-      "html": "<div class=\"ds-dialog\" role=\"dialog\" aria-labelledby=\"ds-dialog-title\"><h2 id=\"ds-dialog-title\">Confirm physical print</h2><p>This action will produce 2 physical copies on Ward Printer 3.</p><div class=\"ds-dialog-actions\"><button class=\"ds-dialog-cancel\">Cancel</button><button class=\"ds-dialog-confirm\">Print 2 copies</button></div></div>",
-      "css": ".ds-dialog { width: min(560px, 100%); padding: 1.5rem; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; color: #374151; box-shadow: 0 8px 24px rgba(0,0,0,0.08); font-family: system-ui, sans-serif; } .ds-dialog h2 { margin: 0 0 0.5rem; color: #1e1e2e; font-size: 1rem; } .ds-dialog p { margin: 0; font-size: 0.875rem; line-height: 1.5; } .ds-dialog-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.25rem; } .ds-dialog button { min-height: 38px; padding: 0.48rem 1.1rem; border-radius: 6px; font: 600 0.825rem system-ui, sans-serif; cursor: pointer; } .ds-dialog-cancel { border: 1.5px solid #d1d5db; background: #fff; color: #1e1e2e; } .ds-dialog-confirm { border: 1.5px solid #9f1239; background: #9f1239; color: #fff; } .ds-dialog button:hover { opacity: 0.88; } .ds-dialog button:focus-visible { outline: 2px solid #1e66f5; outline-offset: 2px; }"
+      "refersTo": null,
+      "description": "Pale semantic surface with dark semantic text. Errors and warnings are assertive; success and info are polite status regions.",
+      "html": "<div class=\"ds-alert ds-alert--warning\" role=\"alert\"><div><strong class=\"ds-alert__title\">Printer readiness unknown</strong><p class=\"ds-alert__message\">The runner has not reported since 14:02. Printing is blocked until readiness is confirmed.</p></div></div>",
+      "css": ".ds-alert { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; padding: 0.75rem; border: 1px solid #d9a441; border-radius: var(--rounded-lg, 8px); background: #fffbeb; color: #854d0e; font-family: system-ui, sans-serif; } .ds-alert__title { display: block; font-size: 0.875rem; font-weight: 600; } .ds-alert__message { margin: 0.15rem 0 0; font-size: 0.85rem; line-height: 1.5; overflow-wrap: anywhere; } .ds-alert--error { border-color: var(--semantic-error, #f38ba8); background: #fef2f2; color: var(--state-danger-text, #991b1b); } .ds-alert--info { border-color: var(--semantic-info, #89b4fa); background: var(--state-info-surface, #eff6ff); color: var(--state-info-text, #1e40af); }"
     }
   ],
   "narrative": {
     "northStar": "The Lab Notebook",
-    "overview": "PrintOps feels like a well-kept clinical notebook: precise, calm, and trustworthy. Every element is a deliberate record, placed for rapid scanning rather than decoration. The interface recedes behind the operator's task while keeping physical-output consequences unmistakable.\n\nThe system is light-first and restrained. Familiar system typography, compact controls, quiet borders, and flat reading surfaces suit long shifts under fluorescent hospital lighting. Brand character comes from disciplined blue accents, exact spacing, bilingual resilience, and honest operational states—not visual spectacle.\n\nMotion is limited to short state feedback and spatial transitions that explain where an overlay or drawer came from. All motion has an instant reduced-motion fallback. The visual system rejects flashy SaaS gradients, terminal-dense data walls, generic component-library styling, and dark-first interfaces.",
+    "overview": "PrintOps feels like a well-kept clinical notebook: precise, calm, and trustworthy. Every element is a deliberate record, placed for rapid scanning rather than decoration. The interface recedes behind the operator's task while keeping physical-output consequences unmistakable.\n\nThe system is light-first and restrained. Familiar system typography, compact controls, quiet borders, and flat reading surfaces suit long shifts under fluorescent hospital lighting. Brand character comes from disciplined blue accents, exact spacing, bilingual resilience, and honest operational states — not visual spectacle. Every route is built from the same anatomy: a bounded measure, a ruled header, a body of surfaces, and an optional detail and footer region beneath it. Two pages of the same kind should differ in content, never in skeleton.\n\nThe notebook has two papers. Most of the product is light: white surfaces on page gray, read at a glance. Where the operator authors or inspects exact machine text — a template body, a webhook payload — the surface flips to the Evidence Canvas, a dark, line-numbered field that says this is literal, and whitespace counts. Motion is limited to short state feedback and spatial transitions that explain where an overlay or drawer came from, with a global reduced-motion fallback. The visual system rejects flashy SaaS gradients, terminal-dense data walls, generic component-library styling, and dark application chrome.",
     "keyCharacteristics": [
-      "Light-first surfaces tuned for clinical workstations",
+      "Light-first surfaces tuned for clinical workstations, with one sanctioned dark canvas for authored code",
+      "A single route anatomy — bounded measure, ruled header, body, detail, footer — shared by every page",
       "Flat-by-default depth with elevation reserved for overlays, drawers, and consequential controls",
       "System-native sans-serif typography with monospace reserved for technical evidence",
-      "One action-blue family plus explicit semantic state colors",
+      "One action-blue family, plus separate axes for job status and device condition",
       "Restrained surface corners with pills reserved for compact status and filtering",
-      "Keyboard-complete controls, 44px touch targets, and equal English/Thai support"
+      "Keyboard-complete controls, 44px touch targets, forced-colors support, and equal English/Thai support"
     ],
     "rules": [
       {
@@ -859,8 +1076,18 @@
         "section": "colors"
       },
       {
+        "name": "The Dilution Rule",
+        "body": "New shades of an existing role are produced with color-mix() against --primary, --neutral-surface, or a state token — never typed as a fresh hex. A literal color in a stylesheet is a claim that no existing token could express it, and that claim is almost always false.",
+        "section": "colors"
+      },
+      {
         "name": "The Literal Status Rule",
-        "body": "Never merge, rename, or imply a server status through color alone. Preserve the literal label, pair it with a contrast-safe outline or explicit text, and keep `UNVERIFIED` visually distinct from `FAILED`.",
+        "body": "Never merge, rename, or imply a server status through color alone. Preserve the literal label, pair it with a contrast-safe outline or explicit text, and keep UNVERIFIED visually distinct from FAILED.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Axes Rule",
+        "body": "Job status and device condition are different vocabularies and must never borrow each other's colors or components. StatusBadge is for jobs; StatusIndicator and StatusDot are for devices and services.",
         "section": "colors"
       },
       {
@@ -880,17 +1107,27 @@
       },
       {
         "name": "The Thai Integrity Rule",
-        "body": "Uppercase and letter-spacing are optional Latin treatments, never global label requirements. Thai glyph clusters must remain unmodified and layouts must tolerate longer localized copy.",
+        "body": "Uppercase and letter-spacing are Latin-only treatments and are opt-in, never structural. Table headers, field labels, fieldset legends, and nav group headings all render at natural case with no tracking — the earlier uppercase treatment was removed because it does nothing for Thai and breaks its glyph clusters. The caps prop on Text exists for Latin strings the product controls; it must never be applied to localized copy.",
+        "section": "typography"
+      },
+      {
+        "name": "The Wrapping Rule",
+        "body": "Operational strings wrap; they do not disappear. Cells, descriptions, and labels use overflow-wrap: anywhere and text-overflow: clip rather than an ellipsis, so a truncated identifier can never be mistaken for a complete one.",
         "section": "typography"
       },
       {
         "name": "The One Task Per Mobile View Rule",
-        "body": "On narrow screens, show the list or the focused maintenance task—not both side by side. Navigation back to the parent context must remain explicit.",
+        "body": "On narrow screens, show the list or the focused maintenance task — not both side by side. Navigation back to the parent context must remain explicit.",
         "section": "layout"
       },
       {
         "name": "The Touch Floor Rule",
-        "body": "Interactive targets are at least 44px on coarse pointers and mobile widths, even when their desktop visual footprint remains compact.",
+        "body": "Interactive targets are at least 44px on coarse pointers and below 1024px, even when their desktop visual footprint remains compact. Text inputs additionally take font-size: max(1rem, 16px) there, because iOS zooms anything smaller.",
+        "section": "layout"
+      },
+      {
+        "name": "The One Skeleton Rule",
+        "body": "A new page composes PageScaffold, PageHeader, PageSection, and PageFooter. It does not invent a competing page frame, and it does not add another global stylesheet to correct one.",
         "section": "layout"
       },
       {
@@ -904,28 +1141,40 @@
         "section": "elevation"
       },
       {
+        "name": "The Rule Line Rule",
+        "body": "Within a page, separation is a 1px border in Border Gray — under the header, above the detail and footer regions, between table rows, around every panel. Depth is for things that leave the page; rules are for things that structure it.",
+        "section": "elevation"
+      },
+      {
         "name": "The Restrained Corner Rule",
-        "body": "Use 4–8px corners for ordinary surfaces and controls. Use full pills only for status or filtering, never for primary buttons or large containers.",
+        "body": "Use 4–8px corners for ordinary surfaces and controls, 12px for floating overlays, and full pills only for status or filtering — never for primary buttons or large containers.",
         "section": "shapes"
       }
     ],
     "dos": [
-      "Do use White reading surfaces on Page Gray and quiet borders for primary structure.",
-      "Do preserve literal operational states, especially `UNVERIFIED`, and pair every status color with text, outline, shape, or icon.",
+      "Do compose new pages from PageScaffold, PageHeader, PageSection, and PageFooter, and new surfaces from the primitives exported by components/ui/index.ts.",
+      "Do reference tokens as var(--token) and derive new shades with color-mix() against an existing token.",
+      "Do use White reading surfaces on Page Gray, with 1px rules for in-page structure and shadows only for surfaces that leave the page.",
+      "Do keep job status and device condition on separate components and separate color axes.",
+      "Do preserve literal operational states, especially UNVERIFIED, and pair every status color with text, outline, shape, or icon.",
       "Do keep proof generation and physical printing visibly separate; generating or refreshing a proof must never trigger output.",
       "Do require a distinct confirmation for every physical print and block printing while printer readiness is offline or unknown.",
-      "Do use shared Button, Dialog, Alert, FormField, PageState, and StatusBadge primitives where they fit.",
-      "Do maintain visible focus, keyboard operation, 44px touch targets, reduced-motion behavior, and bilingual EN/TH resilience.",
+      "Do set min-width: 0 on flex and grid children and minmax(0, 1fr) on grid tracks, and let operational strings wrap instead of truncating.",
+      "Do maintain visible focus, keyboard operation, 44px touch targets, reduced-motion behavior, forced-colors support, and bilingual EN/TH resilience.",
       "Do use mobile cards or focused next-step views when a dense desktop table or split workspace would compete for attention."
     ],
     "donts": [
-      "Don't use gradients, decorative glows, oversized display type, or animation as decoration.",
+      "Don't write a literal hex, rem, or shadow value into a stylesheet when a token expresses it. #1e66f5 is var(--primary).",
+      "Don't add another global override stylesheet to correct a page. Fix the shared component, or scope the fix to the feature that owns it.",
+      "Don't invent a competing page frame, a fifth breakpoint for one surface, or a one-off font size.",
+      "Don't use color gradients, decorative glows, oversized display type, or animation as decoration. The auth graph-paper field is the single sanctioned exception and does not generalize.",
+      "Don't extend the Evidence Canvas beyond authored code and payload editing. Application chrome, dashboards, tables, and forms stay light.",
       "Don't create terminal-dense dashboards or expose expert payload controls as the default operator workflow.",
-      "Don't default to dark mode in fluorescent clinical environments.",
-      "Don't invent new accent colors or arbitrary one-off font sizes when a token already serves the role.",
-      "Don't use color as the only communicator or lower contrast for secondary operational text.",
+      "Don't uppercase or letter-space anything that can hold localized copy — table headers, field labels, legends, nav headings, or badge text.",
+      "Don't use color as the only communicator, or lower contrast for secondary operational text.",
       "Don't place shadows on ordinary table rows, section headings, or static cards.",
       "Don't use pill-shaped primary buttons or large rounded containers; pills belong to compact status and filtering.",
+      "Don't dim a disabled control until its label is unreadable — a disabled state still has to explain itself.",
       "Don't truncate critical identifiers or safety copy without a discoverable full value."
     ]
   }

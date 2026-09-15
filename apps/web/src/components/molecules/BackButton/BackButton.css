@@ -1,0 +1,10 @@
+.ops-back-button {
+  align-self: flex-start;
+  margin-bottom: var(--spacing-md);
+  padding-left: var(--spacing-sm);
+  padding-right: var(--spacing-sm);
+}
+
+.ops-back-button .action-icon {
+  flex: 0 0 auto;
+}

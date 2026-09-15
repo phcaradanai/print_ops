@@ -51,4 +51,23 @@ if (f.existsSync(runnerExe)) {
   console.warn('[bundle] The desktop app will start without printer discovery support.');
 }
 
+// ── External OTA updater (must survive the Desktop process it replaces) ────
+const updaterExe = '../updater-go/printops-updater.exe';
+if (f.existsSync(updaterExe)) {
+  f.cpSync(updaterExe, path.join(d, 'printops-updater.exe'));
+  console.log('[bundle] Copied printops-updater.exe');
+} else {
+  console.warn('[bundle] WARNING: printops-updater.exe not found — run the desktop build first');
+}
+
+const publicKeyFile = process.env.PRINTOPS_OTA_PUBLIC_KEY_FILE;
+const publicKeyPath = path.join(d, 'ota-public-key.txt');
+if (publicKeyFile && f.existsSync(publicKeyFile)) {
+  f.cpSync(publicKeyFile, publicKeyPath);
+} else if (process.env.PRINTOPS_OTA_PUBLIC_KEY?.trim()) {
+  f.writeFileSync(publicKeyPath, `${process.env.PRINTOPS_OTA_PUBLIC_KEY.trim()}\n`);
+} else if (!f.existsSync(publicKeyPath)) {
+  f.writeFileSync(publicKeyPath, 'unconfigured\n');
+}
+
 console.log('[bundle] Resources prepared successfully');

@@ -6,7 +6,7 @@ import {
 } from '@printerops/shared';
 
 /**
- * Renders a barcode or QR code to a PNG data URI, for embedding directly in
+ * Renders a barcode or QR code to a vector SVG data URI, for embedding directly in
  * HTML print payloads and in the dashboard's template/paper-profile preview
  * (regardless of the template's engine — the preview always shows a real,
  * scannable graphic so an operator can verify it before publishing).
@@ -25,7 +25,8 @@ const SYMBOLOGY_TO_BCID: Record<BarcodeSymbology, string> = {
 export interface BarcodeRenderOptions {
   /** Bar height in mm for 1D symbologies. Ignored for QR. Default 12mm. */
   heightMm?: number;
-  /** Print human-readable text beneath a 1D barcode. Default true. */
+  /** Print human-readable text beneath a 1D barcode. Default false so the
+   * configured physical field height is reserved for bars, not hidden text. */
   includeText?: boolean;
   /** Side length in mm for QR codes. HTML uses a vector image in an exact CSS
    *  mm box; native printer languages round this once to the nearest dot. */
@@ -68,7 +69,7 @@ export function qrGeometry(data: string, symbolSizeMm: number): QrGeometry {
 }
 
 /**
- * Renders `data` as the requested kind and returns a `data:image/png;base64,...`
+ * Renders `data` as the requested kind and returns a vector data URI
  * URI. Throws if the data cannot be encoded in the requested symbology (e.g.
  * non-numeric data for EAN-13) — callers should catch and fall back to
  * showing the raw text plus a warning, the same way template rendering
@@ -92,17 +93,18 @@ export async function renderBarcodeDataUri(
   // bwip-js rejects an explicit `undefined` for any option key (it checks the
   // key's presence, not just its value) — so QR options must omit `height`/
   // `includetext` entirely rather than setting them to undefined.
-  const buffer = await bwipjs.toBuffer(
-    {
-      bcid,
-      text: data,
-      scale: 3,
-      height: opts?.heightMm ?? 12,
-      includetext: opts?.includeText ?? true,
-      textxalign: 'center',
-    },
-  );
-  return `data:image/png;base64,${buffer.toString('base64')}`;
+  const svg = bwipjs.toSVG({
+    bcid,
+    text: data,
+    scale: 1,
+    height: opts?.heightMm ?? 12,
+    includetext: opts?.includeText ?? false,
+    textxalign: 'center',
+  });
+  // A 1D field has a configured physical bounding box. Keep the barcode
+  // vector sharp while allowing its value-dependent natural width to fill it.
+  const crispSvg = svg.replace('<svg ', '<svg shape-rendering="crispEdges" preserveAspectRatio="none" ');
+  return `data:image/svg+xml;base64,${Buffer.from(crispSvg, 'utf8').toString('base64')}`;
 }
 
 /**

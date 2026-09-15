@@ -17,6 +17,8 @@ import { InMemoryWebhookEndpointRepository, InMemoryWebhookRoutePolicyRepository
 import { InMemoryImportedDesignRepository } from './infra/repos/in-memory-imported-design.repo.js';
 import { InMemoryIntakeAttemptRepository } from './infra/repos/in-memory-intake-attempt.repo.js';
 import { InMemoryWebhookCallbackAttemptRepository } from './infra/repos/in-memory-webhook-callback-attempt.repo.js';
+import { InMemoryPrinterPaperCalibrationRepository } from './infra/repos/in-memory-printer-paper-calibration.repo.js';
+import { InMemoryOtaUpdateStateRepository } from './infra/repos/in-memory-ota-state.repo.js';
 
 import { SqlitePrinterRepository } from './infra/repos/sqlite/sqlite-printer.repo.js';
 import { SqliteJobRepository } from './infra/repos/sqlite/sqlite-job.repo.js';
@@ -32,6 +34,8 @@ import { SqlitePrinterTemplateBindingRepository } from './infra/repos/sqlite/sql
 import { SqliteWebhookEndpointRepository } from './infra/repos/sqlite/sqlite-webhook-endpoint.repo.js';
 import { SqliteWebhookRoutePolicyRepository } from './infra/repos/sqlite/sqlite-webhook-route-policy.repo.js';
 import { SqliteImportedDesignRepository } from './infra/repos/sqlite/sqlite-imported-design.repo.js';
+import { SqlitePrinterPaperCalibrationRepository } from './infra/repos/sqlite/sqlite-printer-paper-calibration.repo.js';
+import { SqliteOtaUpdateStateRepository } from './infra/repos/sqlite/sqlite-ota-state.repo.js';
 
 import { InMemoryEventBus } from './infra/eventbus/in-memory-eventbus.js';
 import { InMemoryJobQueue } from './infra/queue/in-memory-queue.js';
@@ -88,13 +92,14 @@ import {
 import { retryPolicyFromEnv } from './services/callback-retry-policy.js';
 import { paperProfileImportRoutes } from './routes/v1/paper-profile-imports.routes.js';
 import { sandboxRoutes } from './routes/v1/sandbox.routes.js';
+import { printerCalibrationRoutes } from './routes/v1/printer-calibration.routes.js';
 import { printIntakeConfigFromEnv, type PrintIntakeConfig } from './infra/nats/print-intake.js';
 import { NatsConnectionManager } from './infra/nats/nats-connection-manager.js';
 import { v1PrintFlowRoutes } from './routes/v1/print-flow.routes.js';
 import { join, dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { initDatabase, getDb } from './infra/db/sqlite.js';
-import { pruneOldRecords, retentionDaysFromEnv, retentionMaxRowsFromEnv } from './infra/db/retention.js';
+import { pruneOldRecords, retentionArchiveDirFromEnv, retentionDaysFromEnv, retentionMaxRowsFromEnv } from './infra/db/retention.js';
 import { ReprintJobService } from './services/reprint-job.service.js';
 import { IntakeOutcomeCallbackService } from './services/intake-outcome-callback.service.js';
 import { runtimeArchitectureFromEnv } from './infra/runtime-architecture.js';
@@ -102,8 +107,14 @@ import { hashPassword } from './infra/auth/password.js';
 import { serviceAccountRoutes } from './routes/v1/service-accounts.routes.js';
 import { databaseBackupRoutes } from './routes/v1/database-backup.routes.js';
 import { readinessRoutes } from './routes/v1/readiness.routes.js';
+import { otaRoutes } from './routes/v1/ota.routes.js';
 import { emitPrintJobTerminal } from './services/emit-terminal-event.js';
 import { LocalPrintScheduler } from './services/local-print-scheduler.js';
+import { OtaUpdateService, otaConfigFromEnv } from './services/ota-update.service.js';
+import { PrintAdmissionGate } from './services/print-admission-gate.js';
+import { FileOtaArtifactStateStore } from './services/ota-artifact-state.js';
+import { ExternalUpdaterInstaller, externalUpdaterConfigured, type ExternalUpdaterConfig } from './services/external-updater-installer.js';
+import { FileOtaPolicyStateStore, OtaUpdatePolicyWorker } from './services/ota-update-policy.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -167,8 +178,10 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         paths: [
           'req.headers.authorization',
           'req.headers.x-api-key',
+          'req.headers.x-printops-ota-token',
           'req.body.password',
           'req.body.passwordConfirmation',
+          'req.body.authorizationPassword',
           'req.body.secret',
           'req.body.apiKey',
           'req.body.callbackSecret',
@@ -269,38 +282,6 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const useSqlite = dbMode === 'sqlite';
   if (useSqlite) await initDatabase();
 
-  // Bound the growth of jobs/traces/audit_logs on long-running installs (see
-  // infra/db/retention.ts) — this gateway is not the system of record for
-  // print/job history, so a short window (default 7 days / 1000 rows,
-  // whichever is smaller) is enough. Runs once at boot and then daily;
-  // disable with PRINTOPS_RETENTION_DAYS=0 and PRINTOPS_RETENTION_MAX_ROWS=0.
-  let retentionTimer: ReturnType<typeof setInterval> | undefined;
-  if (useSqlite) {
-    const retentionDays = retentionDaysFromEnv();
-    const retentionMaxRows = retentionMaxRowsFromEnv();
-    const runRetentionSweep = () => {
-      try {
-        const result = pruneOldRecords(getDb(), { retentionDays, maxRows: retentionMaxRows });
-        if (result.jobsDeleted > 0 || result.auditLogsDeleted > 0) {
-          app.log.info(
-            { retentionDays, retentionMaxRows, ...result },
-            'retention sweep: pruned rows past the retention window/row cap',
-          );
-        }
-      } catch (err) {
-        app.log.error({ err }, 'retention sweep failed');
-      }
-    };
-    runRetentionSweep();
-    if (retentionDays > 0 || retentionMaxRows > 0) {
-      retentionTimer = setInterval(runRetentionSweep, 24 * 60 * 60 * 1000);
-      retentionTimer.unref?.();
-      app.addHook('onClose', async () => {
-        if (retentionTimer) clearInterval(retentionTimer);
-      });
-    }
-  }
-
   const printerRepo = useSqlite ? new SqlitePrinterRepository() : new InMemoryPrinterRepository();
   const jobRepo = useSqlite ? new SqliteJobRepository() : new InMemoryJobRepository();
   const traceRepo = useSqlite ? new SqliteTraceRepository() : new InMemoryTraceRepository();
@@ -311,10 +292,14 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const discoveredPrinterRepo = useSqlite ? new SqliteDiscoveredPrinterRepository() : new InMemoryDiscoveredPrinterRepository();
   const templateRepo = useSqlite ? new SqlitePrintTemplateRepository() : new InMemoryPrintTemplateRepository();
   const paperRepo = useSqlite ? new SqlitePaperProfileRepository() : new InMemoryPaperProfileRepository();
+  const calibrationRepo = useSqlite ? new SqlitePrinterPaperCalibrationRepository() : new InMemoryPrinterPaperCalibrationRepository();
   const bindingRepo = useSqlite ? new SqlitePrinterTemplateBindingRepository() : new InMemoryPrinterTemplateBindingRepository();
   const webhookEndpointRepo = useSqlite ? new SqliteWebhookEndpointRepository() : new InMemoryWebhookEndpointRepository();
   const webhookPolicyRepo = useSqlite ? new SqliteWebhookRoutePolicyRepository() : new InMemoryWebhookRoutePolicyRepository();
   const importedDesignRepo = useSqlite ? new SqliteImportedDesignRepository() : new InMemoryImportedDesignRepository();
+  const otaStateRepo = useSqlite
+    ? new SqliteOtaUpdateStateRepository()
+    : new InMemoryOtaUpdateStateRepository();
   // Diagnostic ring buffer of print-flow intake attempts (NATS + HTTP), capped
   // at 500 entries — deliberately in-memory only in both DB modes, since this
   // is an operational log for "what just happened", not durable business data.
@@ -334,6 +319,144 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     onHandlerError: (event, err) => app.log.error({ err, eventType: event.eventType }, 'event subscriber failed'),
   });
   const queue = new InMemoryJobQueue();
+  const initialOtaState = await otaStateRepo.get();
+  const printAdmissionGate = new PrintAdmissionGate();
+  const otaMaintenanceStates = new Set([
+    'INSTALLING',
+    'INSTALLING_COMPLETE',
+    'HEALTH_CHECK',
+    'ROLLING_BACK',
+    'RESTART_PENDING',
+    'ROLLBACK_FAILED',
+  ]);
+  if (otaMaintenanceStates.has(initialOtaState.state)) {
+    // A process restart during an external handoff must fail closed: the new
+    // API cannot accept a print until the updater reports a terminal outcome.
+    printAdmissionGate.pauseMaintenance();
+  }
+  let localPrintScheduler: LocalPrintScheduler | undefined;
+  const otaConfig = otaConfigFromEnv();
+  const externalUpdaterConfig: ExternalUpdaterConfig | undefined = otaConfig.updaterPath
+    && otaConfig.updaterRequestDirectory
+    && otaConfig.updaterStatePath
+    && otaConfig.installRoot
+    && otaConfig.desktopPath
+    && otaConfig.desktopPid
+    && otaConfig.healthToken
+    ? {
+        executablePath: otaConfig.updaterPath,
+        requestDirectory: otaConfig.updaterRequestDirectory,
+        statePath: otaConfig.updaterStatePath,
+        installRoot: otaConfig.installRoot,
+        desktopPath: otaConfig.desktopPath,
+        desktopPid: otaConfig.desktopPid,
+        apiUrl: otaConfig.apiUrl ?? 'http://127.0.0.1:31415',
+        healthToken: otaConfig.healthToken,
+        publicKey: otaConfig.publicKey,
+        requireSignature: otaConfig.requireSignature === true,
+         healthCheckTimeoutMs: otaConfig.healthCheckTimeoutMs ?? 20_000,
+         shutdownTimeoutMs: otaConfig.updaterShutdownTimeoutMs ?? 30_000,
+         handoffDelayMs: otaConfig.updaterHandoffDelayMs ?? 500,
+         databasePath: otaConfig.databasePath,
+         currentSchemaVersion: otaConfig.currentSchemaVersion,
+       }
+    : undefined;
+  const externalUpdater = externalUpdaterConfig && externalUpdaterConfigured(externalUpdaterConfig)
+    ? new ExternalUpdaterInstaller(externalUpdaterConfig)
+    : undefined;
+  const otaUpdateService = new OtaUpdateService({
+    state: otaStateRepo,
+    config: otaConfig,
+    queue,
+    jobs: jobRepo,
+    admission: printAdmissionGate,
+    schedulerSettled: () => localPrintScheduler?.settled() ?? Promise.resolve(),
+    eventBusSettled: () => eventBus.settled(),
+    artifactState: otaConfig.artifactStatePath
+      ? new FileOtaArtifactStateStore(otaConfig.artifactStatePath)
+      : undefined,
+    installer: externalUpdater,
+  });
+  const otaPolicyWorker = new OtaUpdatePolicyWorker({
+    service: otaUpdateService,
+    config: {
+      enabled: otaConfig.enabled && otaConfig.autoUpdateEnabled === true && Boolean(externalUpdater),
+      checkIntervalMs: otaConfig.autoUpdateCheckIntervalMs ?? 6 * 60 * 60 * 1_000,
+      jitterMs: otaConfig.autoUpdateJitterMs ?? 5 * 60 * 1_000,
+      retryBaseMs: otaConfig.autoUpdateRetryBaseMs ?? 60 * 1_000,
+      retryMaxMs: otaConfig.autoUpdateRetryMaxMs ?? 6 * 60 * 60 * 1_000,
+      maxFailures: otaConfig.autoUpdateMaxFailures ?? 5,
+    },
+    stateStore: otaConfig.policyStatePath
+      ? new FileOtaPolicyStateStore(otaConfig.policyStatePath)
+      : undefined,
+    logger: {
+      info: (context, message) => app.log.info(context, message),
+      warn: (context, message) => app.log.warn(context, message),
+      error: (context, message) => app.log.error(context, message),
+    },
+  });
+
+  // Reconcile a terminal native-updater result before the first request can
+  // arrive. The gate is initially fail-closed for an interrupted handoff;
+  // a successful/rolled-back callback may have been delivered while the API
+  // was restarting, so startup must consume the persisted outcome itself too.
+  try {
+    await otaUpdateService.getStatus();
+  } catch (error) {
+    app.log.warn({ error }, 'OTA startup reconciliation could not complete');
+  }
+
+  // Bound the growth of jobs/traces/audit_logs on long-running installs (see
+  // infra/db/retention.ts) — this gateway is not the system of record for
+  // print/job history, so a hot window (default 14 days, age-based only) is
+  // enough; pruned rows are archived to <db dir>/archive first. Runs once at
+  // boot (queue is empty here — rehydration happens later) and then daily,
+  // deferring while the queue is busy. Disable with PRINTOPS_RETENTION_DAYS=0
+  // and PRINTOPS_RETENTION_MAX_ROWS=0.
+  let retentionTimer: ReturnType<typeof setInterval> | undefined;
+  let retentionRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  if (useSqlite) {
+    const retentionDays = retentionDaysFromEnv();
+    const retentionMaxRows = retentionMaxRowsFromEnv();
+    const retentionArchiveDir = retentionArchiveDirFromEnv();
+    const runRetentionSweep = async () => {
+      // Idle-only: the sweep rewrites the whole sql.js file, so it must not
+      // compete with active printing. A busy queue defers to a short retry
+      // instead of skipping a whole day (product decision, 2026-08-03).
+      try {
+        if ((await queue.size()) > 0) {
+          app.log.info('retention sweep deferred: print queue is not idle; retrying in 10 minutes');
+          retentionRetryTimer = setTimeout(() => { void runRetentionSweep(); }, 10 * 60 * 1000);
+          retentionRetryTimer.unref?.();
+          return;
+        }
+        const result = pruneOldRecords(getDb(), {
+          retentionDays,
+          maxRows: retentionMaxRows,
+          archiveDir: retentionArchiveDir,
+        });
+        if (result.jobsDeleted > 0 || result.auditLogsDeleted > 0) {
+          app.log.info(
+            { retentionDays, retentionMaxRows, retentionArchiveDir, ...result },
+            'retention sweep: archived and pruned rows past the retention window',
+          );
+        }
+      } catch (err) {
+        app.log.error({ err }, 'retention sweep failed (nothing was pruned if archiving failed)');
+      }
+    };
+    void runRetentionSweep();
+    if (retentionDays > 0 || retentionMaxRows > 0) {
+      retentionTimer = setInterval(() => { void runRetentionSweep(); }, 24 * 60 * 60 * 1000);
+      retentionTimer.unref?.();
+      app.addHook('onClose', async () => {
+        if (retentionTimer) clearInterval(retentionTimer);
+        if (retentionRetryTimer) clearTimeout(retentionRetryTimer);
+      });
+    }
+  }
+
   const exporter = new InMemoryExportAdapter();
   const permissionPolicy = new RbacPermissionPolicy();
   const templateRenderer = new SimpleTemplateRenderer();
@@ -346,7 +469,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // Services
   const createPrinter = new CreatePrinterService(printerRepo, eventBus, auditRepo);
   const getPrinterStatus = new GetPrinterStatusService(printerRepo, registry);
-  const createJob = new CreatePrintJobService(jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus);
+  const createJob = new CreatePrintJobService(jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus, calibrationRepo, paperRepo, printAdmissionGate);
   const reprintJob = new ReprintJobService(
     jobRepo,
     createJob,
@@ -366,6 +489,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     // Lets POST /api/v1/print-jobs accept an optional `endpoint_code` and
     // snapshot that endpoint's callback configuration onto the job.
     webhookEndpointRepo,
+    calibrationRepo,
+    printAdmissionGate,
   );
   // Dynamic printing (the template/profile HTTP route and NATS intake) is a
   // rendered-document flow. Keep its service separate from the legacy
@@ -376,6 +501,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus,
     templateRepo, paperRepo, templateRenderer, intakeAttemptRepo,
     webhookEndpointRepo,
+    calibrationRepo,
+    printAdmissionGate,
   );
   const cancelJob = new CancelJobService(jobRepo, traceRepo, auditRepo, eventBus);
   const executeJob = new ExecuteJobService(jobRepo, printerRepo, traceRepo, auditRepo, queue, eventBus, registry);
@@ -406,6 +533,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     // NATS does connect, this is replaced with a NATS-capable instance below.
     new WebhookCallbackService(app.log, httpCallbackSender, undefined, webhookCallbackAttemptRepo),
     app.log,
+    calibrationRepo,
+    printAdmissionGate,
   );
 
   const resolvePrinterBinding = new ResolvePrinterBindingService(paperRepo, bindingRepo, templateRepo);
@@ -418,6 +547,12 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     // printer_code skipped binding resolution and left code_template unchecked.
     webhookEndpointRepo,
     templateRepo,
+    // Same reasoning as DynamicIntakeService above: an HTTP-capable service
+    // eagerly, so a pure-HTTP endpoint's acceptance callback fires whether or
+    // not the optional NATS consumer ever connects. Replaced with a
+    // NATS-capable instance below when it does.
+    new WebhookCallbackService(app.log, httpCallbackSender, undefined, webhookCallbackAttemptRepo),
+    app.log,
   );
 
   // --- Terminal result callbacks -----------------------------------------
@@ -433,9 +568,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     jobs: jobRepo,
     deliveries: callbackDeliveryRepo,
     http: resultCallbackHttpSender,
-    nats: (subject, body) => {
+    nats: (subject, body, opts) => {
       if (!resultCallbackNats) throw new Error('NATS transport is not connected');
-      return resultCallbackNats(subject, body);
+      return resultCallbackNats(subject, body, opts);
     },
     attemptLog: webhookCallbackAttemptRepo,
     logger: app.log,
@@ -463,7 +598,6 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // Desktop mode owns a local, in-process worker so every queued job uses the
   // same driver-rendered Windows adapter as Sandbox. The Go runner remains the
   // discovery agent; it must not RAW-send HTML/JSON to an IPP office printer.
-  let localPrintScheduler: LocalPrintScheduler | undefined;
   if (process.env['PRINTOPS_LOCAL_WORKER'] === 'true') {
     // ACCEPTED/VALIDATED are pre-dispatch states. A crash in job creation can
     // leave them behind before the durable QUEUED transition; no page can have
@@ -578,37 +712,52 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   // must not pause an already provisioned integration after a restart.
   const apiKeyHook = buildApiKeyAuth(serviceAccountRepo);
 
-  // A persistent store must never be re-seeded as a new instance on every
-  // desktop start; doing so duplicates sample data and can overwrite records.
-  const devSeedEnabled = process.env['PRINTOPS_DEV_SEED'] === 'true';
-  const shouldSeedDemoData = devSeedEnabled && (!useSqlite || (await userRepo.findAll({ limit: 1 })).length === 0);
+  // The default role accounts are the initial sign-in path for both local
+  // development and packaged installations. Keep the existing environment
+  // variable as an explicit opt-out so a deployment can still require owner
+  // setup instead. A persistent store must never be re-seeded as a new
+  // instance on every desktop start; doing so duplicates sample data and can
+  // overwrite records.
+  const defaultAccountsEnabled = process.env['PRINTOPS_DEV_SEED'] !== 'false';
+  const devFixturesEnabled = process.env['PRINTOPS_DEV_SEED'] === 'true';
+  const shouldSeedDemoData = devFixturesEnabled && (!useSqlite || (await userRepo.findAll({ limit: 1 })).length === 0);
 
-  const devPasswordHash = devSeedEnabled ? await hashPassword('Dev-password1!') : undefined;
-  if (devSeedEnabled) {
+  const defaultPasswordHash = defaultAccountsEnabled ? await hashPassword('Dev-password1!') : undefined;
+  if (defaultAccountsEnabled) {
     for (const user of [
       { email: 'sysadmin@printerops.local', name: 'Sysadmin', role: 'OWNER' as const },
       { email: 'admin@printerops.local', name: 'Admin', role: 'ADMIN' as const },
       { email: 'user@printerops.local', name: 'User', role: 'OPERATOR' as const },
       { email: 'viewer@printerops.local', name: 'Viewer', role: 'VIEWER' as const },
     ]) {
-      if (!(await userRepo.findByEmail(user.email))) {
+      const existing = await userRepo.findByEmail(user.email);
+      if (!existing) {
         userRepo.seed({
           id: generateId(),
           email: user.email,
           name: user.name,
-          passwordHash: devPasswordHash,
+          passwordHash: defaultPasswordHash,
           role: user.role,
           isActive: true,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
+        continue;
+      }
+      // Legacy databases from before credential hardening stored a placeholder
+      // hash ("123456") that verifyPassword rejects, and owner bootstrap may
+      // have deactivated the non-owner default accounts. Re-hash and reactivate so
+      // the documented default credentials keep working after an upgrade instead of
+      // stranding the dev accounts in an unloggable state.
+      if (!existing.passwordHash?.startsWith('scrypt$') || !existing.isActive) {
+        await userRepo.update(existing.id, { passwordHash: defaultPasswordHash, isActive: true });
       }
     }
   }
 
   // Seed dev service account
   const devKey = DEV_API_KEY;
-  if (devSeedEnabled && !(await serviceAccountRepo.findBySourceSystem('integration-service'))) {
+  if (devFixturesEnabled && !(await serviceAccountRepo.findBySourceSystem('integration-service'))) {
     serviceAccountRepo.seed({
       id: generateId(),
       name: 'Dev Integration Service',
@@ -629,14 +778,14 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   if (shouldSeedDemoData) {
   await printerRepo.create({
     code: 'LAB_LABEL_01',
-    name: 'Lab Label Printer (EPSON L15160)',
+    name: "Lab Label Printer (Datamax-O'Neil I-4208)",
     location: 'Lab Room A',
     protocol: 'windows_spooler',
-    connectionUri: 'spooler://sandbox-runner/' + encodeURIComponent('EPSON4F6A3C (L15160 Series)'),
+    connectionUri: 'spooler://sandbox-runner/' + encodeURIComponent("Datamax-O'Neil I-4208"),
     isActive: true,
     allowedTemplates: ['default-label', 'barcode-label', 'patient-label', 'LAB_LABEL_DEFAULT', 'BARCODE_LABEL_DEFAULT', 'TEST_LABEL'],
     maxCopiesPerJob: 10,
-    metadata: { model: 'FakeZebra', dpi: 203 },
+    metadata: { model: "Datamax-O'Neil I-4208", dpi: 203, mediaSensor: 'gap' },
   });
 
   await printerRepo.create({
@@ -660,7 +809,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     marginBottomMm: 2,
     marginLeftMm: 2,
     dpi: 203,
-    orientation: 'portrait',
+    orientation: 'landscape',
     unit: 'mm',
   });
 
@@ -674,7 +823,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     marginBottomMm: 2,
     marginLeftMm: 2,
     dpi: 203,
-    orientation: 'portrait',
+    orientation: 'landscape',
     unit: 'mm',
   });
 
@@ -742,7 +891,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     marginBottomMm: 2,
     marginLeftMm: 2,
     dpi: 203,
-    orientation: 'portrait',
+    orientation: 'landscape',
     unit: 'mm',
   });
 
@@ -827,7 +976,11 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
 
   // Health check (no auth). /api is the canonical dashboard namespace; the
   // root alias remains for runner/deployment compatibility.
-  const health = async () => ({ status: 'ok', uptime: process.uptime() });
+  const health = async () => ({
+    status: 'ok',
+    uptime: process.uptime(),
+    version: process.env['PRINTOPS_APP_VERSION'] ?? 'development',
+  });
   app.get('/health', health);
   app.get('/api/health', health);
 
@@ -850,7 +1003,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
 
   // Routes — external API v1
   await app.register(async (v1) => {
-    await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, acceptExternalJob, cancelJob, executeJob, apiKeyHook, intakeLog: intakeAttemptRepo, intakeCallbacks: intakeOutcomeCallbacks });
+    await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, dynamicPrint, cancelJob, executeJob, apiKeyHook, intakeLog: intakeAttemptRepo, intakeCallbacks: intakeOutcomeCallbacks });
     await v1PrinterPrintRoutes(v1, { dynamicPrint, apiKeyHook, intakeLog: intakeAttemptRepo, intakeCallbacks: intakeOutcomeCallbacks });
     await v1PrintFlowRoutes(v1, { printIntake: printIntakeCfg, natsStatus: () => natsManager.getStatus(), natsTest: () => natsManager.testConnection(), intakeLog: intakeAttemptRepo, runtimeArchitecture });
     await v1PrinterRoutes(v1, { printers: printerRepo, getPrinterStatus, apiKeyHook });
@@ -858,6 +1011,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
     await v1RunnerJobRoutes(v1, { jobs: jobRepo, printers: printerRepo, traces: traceRepo, audit: auditRepo, events: eventBus });
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
+    await printerCalibrationRoutes(v1, { calibrations: calibrationRepo, printers: printerRepo, papers: paperRepo, audit: auditRepo, createJob, executeJob });
     await sandboxRoutes(v1, { sandbox: sandboxSvc, connectivity: connectivitySvc, audit: auditRepo });
     await webhookRoutes(v1, { endpoints: webhookEndpointRepo, policies: webhookPolicyRepo, templates: templateRepo, papers: paperRepo, renderer: templateRenderer, intake: dynamicIntake, audit: auditRepo, createJob, executeJob, getPrinterStatus, logger: app.log, callbackSender: httpCallbackSender, callbackNats: routeNatsPublisher, callbackAttemptLog: webhookCallbackAttemptRepo, callbackDeliveries: callbackDeliveryRepo });
     await paperProfileImportRoutes(v1, { importService: importPaperProfile });
@@ -876,23 +1030,42 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       callbackAttempts: webhookCallbackAttemptRepo,
       callbackDeliveries: callbackDeliveryRepo,
       audit: auditRepo,
+      internalToken: otaConfig.healthToken,
     });
+    await otaRoutes(v1, { service: otaUpdateService, internalToken: otaConfig.healthToken });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
   if (printIntakeCfg) {
+    // Acceptance notifications stay on Core publish: they are explicitly
+    // best-effort, single-shot, and have no delivery record or retry worker
+    // behind them, so a PubAck would have nothing to change.
     const natsPublisherLocal: NatsPublisher = (subject, payload) => natsManager.publish(subject, payload);
     dynamicIntake.setCallbackService(new WebhookCallbackService(app.log, httpCallbackSender, natsPublisherLocal, webhookCallbackAttemptRepo));
-    resultCallbackNats = natsPublisherLocal;
+    // The NATS print-intake consumer submits through dynamicPrint, so its
+    // acceptance callbacks need the same NATS-capable sender.
+    dynamicPrint.setCallbackService(new WebhookCallbackService(app.log, httpCallbackSender, natsPublisherLocal, webhookCallbackAttemptRepo));
+    // Terminal RESULT callbacks are the ones with a durable delivery record and
+    // a retry worker, so they use JetStream and report the guarantee they
+    // actually obtained.
+    resultCallbackNats = async (subject, payload, opts) => {
+      if (opts.mode === 'CORE') {
+        natsManager.publish(subject, payload);
+        return { acknowledged: false };
+      }
+      return natsManager.publishJetStream(subject, payload, { msgId: opts.msgId });
+    };
   }
   natsManager.start();
   app.addHook('onClose', async () => { await natsManager.stop(); });
+  otaPolicyWorker.start();
+  app.addHook('onClose', async () => { otaPolicyWorker.stop(); });
 
   // Landing page — serve Vite index.html if available, otherwise inline UI
   app.get('/', async (_req, reply) => {
     const index = readSpaIndex();
     if (index) return reply.type('text/html').send(index);
     // Fallback inline UI
-    return reply.type('text/html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PrinterOps</title><style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#1e1e2e;color:#cdd6f4}a{color:#89b4fa}</style></head><body><div style="text-align:center;max-width:400px"><h1 style="font-size:2rem;margin-bottom:.5rem">🖨️ PrinterOps</h1><p style="color:#9ca3af">Print Gateway — API + Dashboard</p><div style="margin:2rem 0"><p>✅ API running on port ${process.env['PORT'] ?? 3001}</p><p>📋 <a href="/api/v1/templates">Templates</a> · <a href="/api/v1/sandbox/run">Sandbox</a></p><p>🔌 <a href="/api/v1/connectivity/report">Connectivity Report</a></p></div></div></body></html>`);
+    return reply.type('text/html').send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PrintOps</title><style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#1e1e2e;color:#cdd6f4}a{color:#89b4fa}</style></head><body><div style="text-align:center;max-width:400px"><h1 style="font-size:2rem;margin-bottom:.5rem">🖨️ PrintOps</h1><p style="color:#9ca3af">Print Gateway — API + Dashboard</p><div style="margin:2rem 0"><p>✅ API running on port ${process.env['PORT'] ?? 3001}</p><p>📋 <a href="/api/v1/templates">Templates</a> · <a href="/api/v1/sandbox/run">Sandbox</a></p><p>🔌 <a href="/api/v1/connectivity/report">Connectivity Report</a></p></div></div></body></html>`);
   });
 
   // Serve static files (JS, CSS, assets) for unmatched GET/HEAD

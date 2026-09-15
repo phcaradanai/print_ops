@@ -1,0 +1,44 @@
+/* Sort control inside a table header.
+   A header that sorts has to look and behave like a control, but it must not
+   grow its own type scale or color — it inherits the header cell's, so a sorted
+   table still reads as the same table. */
+.ui-data-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.ui-data-sort:hover {
+  color: var(--primary);
+}
+
+.ui-data-sort:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--rounded-sm);
+}
+
+/* The unsorted glyph is a hint, not information — it recedes until the column
+   is actually sorted, at which point it carries the direction alongside
+   aria-sort. */
+.ui-data-sort__mark {
+  font-size: 0.9em;
+  line-height: 1;
+  color: var(--neutral-text-muted);
+}
+
+.ui-data-sort__mark[data-direction='none'] {
+  opacity: 0.45;
+}
+
+.ui-data-sort__mark:not([data-direction='none']) {
+  color: var(--primary);
+}

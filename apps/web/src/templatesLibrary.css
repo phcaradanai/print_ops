@@ -1,0 +1,125 @@
+/* UX-01 Templates library visual remediation.
+ *
+ * This layer is intentionally scoped to `.templates-page`. It improves the
+ * resource-library composition without changing template/editor behaviour or
+ * leaking page-specific decisions into the shared components.
+ */
+
+.templates-page {
+  --tpl-library-accent: var(--primary-strong, #2563eb);
+  --tpl-library-border: var(--neutral-border, #e5e7eb);
+  --tpl-library-surface: var(--neutral-surface, #ffffff);
+  --tpl-library-subtle: #f8fafc;
+}
+
+/* Header actions read as one control surface instead of four loose controls. */
+.templates-page .tpl-page-tools {
+  flex: 1 1 42rem;
+  justify-content: flex-end;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--tpl-library-border);
+  border-radius: var(--rounded-lg);
+  background: var(--tpl-library-surface);
+  box-shadow: var(--shadow-subtle);
+}
+
+.templates-page .tpl-page-tools > .ui-input-group,
+.templates-page .tpl-page-tools > .ui-input {
+  flex: 1 1 24rem;
+  min-width: min(22rem, 100%);
+}
+
+.templates-page .tpl-page-tools .ui-input-group {
+  border-radius: var(--rounded-md);
+}
+
+.templates-page .tpl-page-tools .ui-input:focus-visible,
+.templates-page .tpl-page-tools .ui-button:focus-visible {
+  position: relative;
+  z-index: 1;
+}
+
+.templates-page .tpl-list .ui-data-table-frame {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.templates-page .tpl-list .data-table,
+.templates-page .tpl-list .ui-data-table {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.templates-page .tpl-list .data-table thead,
+.templates-page .tpl-list .ui-data-table thead {
+  border-bottom-color: var(--tpl-library-accent);
+}
+
+.templates-page .tpl-list .data-table th,
+.templates-page .tpl-list .ui-data-table th {
+  background: var(--neutral-paper);
+  color: #475569;
+  font-size: 0.72rem;
+  letter-spacing: 0.025em;
+}
+
+.templates-page .tpl-list .data-table td,
+.templates-page .tpl-list .ui-data-table td {
+  padding-block: 0.85rem;
+}
+
+.templates-page .tpl-list tbody tr.is-selected td {
+  background: var(--state-info-surface);
+}
+
+.templates-page .tpl-list tbody tr.is-selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--tpl-library-accent);
+}
+
+.templates-page .tpl-list td:first-child .ui-mono {
+  color: #1e3a8a;
+  font-weight: 700;
+}
+
+.templates-page > .page-header {
+  margin-block: calc(var(--spacing-sm) * -1) var(--spacing-sm);
+}
+
+@media (max-width: 1024px) {
+  .templates-page .tpl-page-tools {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, auto));
+    width: 100%;
+    justify-content: start;
+  }
+
+  .templates-page .tpl-page-tools > .ui-input-group,
+  .templates-page .tpl-page-tools > .ui-input {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .templates-page .tpl-page-tools {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .templates-page .tpl-page-tools > .ui-button {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .templates-page .tpl-page-tools > .ui-button:last-of-type {
+    grid-column: 1 / -1;
+  }
+
+  .templates-page .tpl-pagination > .ui-select {
+    width: 100%;
+    min-height: 44px;
+  }
+}

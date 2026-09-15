@@ -42,6 +42,9 @@ export async function v1PrinterPrintRoutes(
         copies?: number;
         priority?: JobPriority;
         metadata?: Record<string, unknown>;
+        rotate?: number;
+        flipHorizontal?: boolean;
+        flipVertical?: boolean;
         /** Optional webhook endpoint whose callback config receives this job's
          *  terminal print result. Omitting it keeps the previous behaviour
          *  (no result callback) exactly. */
@@ -87,6 +90,9 @@ export async function v1PrinterPrintRoutes(
             payload: body.payload ?? {},
             copies: body.copies,
             priority: body.priority,
+            rotate: body.rotate,
+            flipHorizontal: body.flipHorizontal,
+            flipVertical: body.flipVertical,
             metadata: body.metadata,
             endpoint_code: body.endpoint_code,
           },

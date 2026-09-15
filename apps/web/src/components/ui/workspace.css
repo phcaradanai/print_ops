@@ -1,0 +1,426 @@
+/*
+ * Workspace vocabulary — token-only.
+ *
+ * Every value here resolves through a custom property. If a workspace needs a
+ * measurement this file does not have, the fix is a token or a prop, not a
+ * feature stylesheet that outranks this one.
+ */
+
+/* ── Evidence Canvas ─────────────────────────────────────────────────────── */
+
+.ui-editor-canvas {
+  --editor-canvas-min: 18rem;
+  --editor-canvas-font-size: var(--font-mono-size);
+  --editor-canvas-line-height: 1.65;
+  /* One resolved pixel height per row, shared by the gutter and the field.
+     Numbering only stays true while both agree on this exact value. */
+  --editor-canvas-row: calc(var(--editor-canvas-font-size) * var(--editor-canvas-line-height));
+  --editor-canvas-pad: var(--spacing-md);
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--canvas-edge);
+  border-radius: var(--rounded-lg);
+  background: var(--canvas-ink);
+  font-family: var(--font-mono-family);
+  font-size: var(--editor-canvas-font-size);
+  line-height: var(--editor-canvas-line-height);
+}
+
+.ui-editor-canvas:focus-within {
+  border-color: var(--primary);
+  outline: 2px solid color-mix(in srgb, var(--primary) 38%, transparent);
+  outline-offset: 1px;
+}
+
+/* Invalid must survive focus: a payload that stopped parsing while you are
+   still typing in it is exactly when the state matters most. */
+.ui-editor-canvas[data-invalid],
+.ui-editor-canvas[data-invalid]:focus-within {
+  border-color: var(--state-danger-text);
+}
+
+.ui-editor-canvas[data-invalid]:focus-within {
+  outline-color: color-mix(in srgb, var(--state-danger-text) 38%, transparent);
+}
+
+.ui-editor-canvas__gutter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 0;
+  padding: var(--editor-canvas-pad) var(--spacing-sm);
+  overflow: hidden;
+  border-right: 1px solid var(--canvas-edge);
+  background: var(--canvas-gutter);
+  color: var(--canvas-line);
+  font-family: inherit;
+  font-size: var(--editor-canvas-font-size);
+  line-height: var(--editor-canvas-line-height);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+/* Each numeral occupies exactly one row box. Without this the numbers are only
+   incidentally aligned — any sheet that nudges the field's line-height sends
+   them drifting further apart the further down the file you read. */
+.ui-editor-canvas__gutter > span {
+  display: block;
+  height: var(--editor-canvas-row);
+  flex: 0 0 auto;
+}
+
+/* Descendant selector (0,2,0) so this outranks `.ops-page textarea` (0,1,1) in
+   layoutSystem.css, which was repainting the canvas field white and left the
+   dark gutter stranded beside it. */
+.ui-editor-canvas .ui-editor-canvas__field {
+  min-width: 0;
+  min-height: var(--editor-canvas-min);
+  padding: var(--editor-canvas-pad);
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  background: var(--canvas-ink);
+  color: var(--canvas-text);
+  caret-color: var(--canvas-caret);
+  font-family: inherit;
+  font-size: var(--editor-canvas-font-size);
+  line-height: var(--editor-canvas-line-height);
+  resize: vertical;
+  tab-size: 2;
+  /* Never wrap: one logical line must stay one visual row, or the gutter is
+     lying. Long lines scroll sideways instead. */
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+
+/* iOS zooms any field under 16px. Raise the shared variable rather than the
+   field alone, so the gutter grows with it and the rows stay in register. */
+@media (max-width: 1024px), (pointer: coarse) {
+  .ui-editor-canvas {
+    --editor-canvas-font-size: 1rem;
+  }
+}
+
+.ui-editor-canvas .ui-editor-canvas__field::placeholder {
+  color: var(--canvas-line);
+  opacity: 1;
+}
+
+.ui-editor-canvas .ui-editor-canvas__field::selection {
+  background: color-mix(in srgb, var(--primary) 42%, transparent);
+  color: var(--neutral-surface);
+}
+
+.ui-editor-canvas .ui-editor-canvas__field:disabled {
+  color: var(--canvas-line);
+  cursor: not-allowed;
+}
+
+/* ── Workspace split ─────────────────────────────────────────────────────── */
+
+.ui-workspace-split {
+  display: grid;
+  min-width: 0;
+  gap: var(--page-section-gap);
+  align-items: start;
+}
+
+.ui-workspace-split--balanced {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.ui-workspace-split--aside-narrow {
+  grid-template-columns: minmax(0, 1fr) minmax(14rem, 20rem);
+}
+
+/* Templates and Paper Profiles had settled on 1.65/0.85 and 1.35–1.75/0.65 for
+   the same decision. One value, wide enough that a label preview is legible
+   rather than merely present. */
+.ui-workspace-split--aside-preview {
+  grid-template-columns: minmax(0, 1.6fr) minmax(21rem, 0.75fr);
+}
+
+.ui-workspace-split--aside-wide {
+  grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
+}
+
+.ui-workspace-split__primary,
+.ui-workspace-split__aside {
+  min-width: 0;
+}
+
+@media (max-width: 1100px) {
+  .ui-workspace-split,
+  .ui-workspace-split--balanced,
+  .ui-workspace-split--aside-narrow,
+  .ui-workspace-split--aside-preview,
+  .ui-workspace-split--aside-wide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Workspace bar ───────────────────────────────────────────────────────── */
+
+.ui-workspace-bar {
+  position: sticky;
+  z-index: 20;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg);
+  background: var(--neutral-surface);
+  flex-wrap: wrap;
+}
+
+.ui-workspace-bar--top {
+  top: 0;
+  margin-bottom: var(--spacing-lg);
+}
+
+.ui-workspace-bar--bottom {
+  bottom: max(var(--spacing-sm), env(safe-area-inset-bottom, 0px));
+  margin-top: var(--spacing-lg);
+  box-shadow: var(--shadow-subtle);
+}
+
+.ui-workspace-bar__identity {
+  display: flex;
+  flex: 1 1 16rem;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-sm);
+  overflow-wrap: anywhere;
+}
+
+.ui-workspace-bar__status {
+  min-width: 0;
+  color: var(--neutral-text-muted);
+  font-size: var(--font-label-size);
+  overflow-wrap: anywhere;
+}
+
+.ui-workspace-bar__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  margin-inline-start: auto;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1024px) {
+  .ui-workspace-bar {
+    align-items: stretch;
+  }
+
+  .ui-workspace-bar__actions {
+    margin-inline-start: 0;
+    justify-content: flex-start;
+  }
+
+  .ui-workspace-bar__actions > * {
+    min-height: 44px;
+  }
+}
+
+/* ── Collapsible section ─────────────────────────────────────────────────── */
+
+.ui-collapsible {
+  min-width: 0;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg);
+  background: var(--neutral-surface);
+}
+
+.ui-collapsible__header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding-inline-end: var(--spacing-md);
+}
+
+.ui-collapsible__toggle {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--control-height-standard);
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 0;
+  border-radius: var(--rounded-lg);
+  background: transparent;
+  color: var(--neutral-deep);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.ui-collapsible__toggle:hover {
+  background: var(--neutral-subtle);
+}
+
+.ui-collapsible__toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.ui-collapsible__chevron {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--neutral-text-muted);
+  transition: transform 150ms ease;
+}
+
+.ui-collapsible.is-open .ui-collapsible__chevron {
+  transform: rotate(90deg);
+}
+
+.ui-collapsible__leading {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  color: var(--neutral-text-muted);
+}
+
+.ui-collapsible__copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.1rem;
+}
+
+.ui-collapsible__title {
+  font-size: var(--font-subheading-size);
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.ui-collapsible__description {
+  max-width: 72ch;
+  color: var(--neutral-text-muted);
+  font-size: var(--font-label-size);
+  font-weight: 400;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.ui-collapsible__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.ui-collapsible__panel {
+  display: grid;
+  min-width: 0;
+  gap: var(--spacing-md);
+  padding: 0 var(--spacing-md) var(--spacing-md);
+  border-top: 1px solid var(--neutral-border);
+  padding-top: var(--spacing-md);
+}
+
+.ui-collapsible__panel[hidden] {
+  display: none;
+}
+
+/* ── Token list ──────────────────────────────────────────────────────────── */
+
+.ui-token-list {
+  display: grid;
+  min-width: 0;
+  gap: var(--spacing-xs);
+}
+
+.ui-token-list__row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
+.ui-token-list__chip {
+  flex: 0 0 auto;
+  font-family: var(--font-mono-family);
+}
+
+.ui-token-list__description {
+  min-width: 0;
+  color: var(--neutral-text-muted);
+  font-size: var(--font-label-size);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* ── Color field ─────────────────────────────────────────────────────────── */
+
+.ui-color-field {
+  display: grid;
+  min-width: 0;
+  gap: var(--spacing-xs);
+}
+
+.ui-color-field__controls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.ui-color-field__swatch {
+  flex: 0 0 auto;
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
+  padding: 0;
+  border: 1px solid var(--neutral-border-strong);
+  border-radius: var(--rounded-md);
+  background: var(--neutral-surface);
+  cursor: pointer;
+}
+
+.ui-color-field__swatch::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.ui-color-field__swatch::-webkit-color-swatch {
+  border: 0;
+  border-radius: var(--rounded-sm);
+}
+
+.ui-color-field__swatch::-moz-color-swatch {
+  border: 0;
+  border-radius: var(--rounded-sm);
+}
+
+.ui-color-field__swatch:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.ui-color-field__value {
+  flex: 1 1 7rem;
+  min-width: 0;
+}
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .ui-color-field__swatch {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-collapsible__chevron {
+    transition: none;
+  }
+}

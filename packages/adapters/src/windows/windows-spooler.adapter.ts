@@ -1,6 +1,6 @@
-import { spawn, execFile } from 'node:child_process';
+import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
-import { existsSync } from 'node:fs';
+import { existsSync, createWriteStream } from 'node:fs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,6 +12,15 @@ import type {
   PrinterStatus,
   PrintCommand,
 } from '@printerops/domain';
+import { evaluatePrinterReadiness } from '@printerops/domain';
+import {
+  getOrientedPaperGeometry,
+  readRenderTransformOverrides,
+  resolveRenderTransform,
+  resolveRenderTransformFrame,
+  wrapHtmlWithRenderTransform,
+} from '@printerops/shared';
+import type { RenderTransformOverrides } from '@printerops/shared';
 import {
   readDeviceState,
   readPageCount,
@@ -58,6 +67,9 @@ export interface WindowsSpoolerDeps {
   now(): number;
   /** Packaged WebView2 helper used for driver-rendered HTML printing. */
   htmlPrintHelperPath?: string;
+  /** Spawn the HTML print helper process (`--serve <dir>` mode). Injectable
+   *  so tests can substitute a fake helper without a WebView2 executable. */
+  spawnHelper?: (helperPath: string, args: string[]) => ChildProcess;
 }
 
 const defaultDeps: WindowsSpoolerDeps = {
@@ -91,6 +103,8 @@ const defaultDeps: WindowsSpoolerDeps = {
   sleep,
   now: Date.now,
   htmlPrintHelperPath: process.env['PRINTOPS_HTML_PRINT_HELPER'],
+  spawnHelper: (helperPath, args) =>
+    spawn(helperPath, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true }),
 };
 
 /**
@@ -129,6 +143,9 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
    * documented in the invariant note above sendAndVerify.
    */
   private readonly printerLocks = new Map<string, Promise<unknown>>();
+
+  /** Process-wide guard: install the helper-cleanup handlers at most once. */
+  private static installCleanupRegistered = false;
 
   constructor(deps: Partial<WindowsSpoolerDeps> = {}) {
     this.deps = { ...defaultDeps, ...deps };
@@ -247,6 +264,75 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
         message: 'No print content available (renderedPrintPayload or documentBase64 required)',
       };
     }
+
+    const datamaxNativeDpl =
+      isDatamaxI4208(command.metadata, printerName) && (isDplPrintMimeType(command.mimeType) || isDatamaxDplPayload(content));
+    if (datamaxNativeDpl) {
+      if (!isDatamaxDplPayload(content)) {
+        return {
+          success: false,
+          errorCode: 'INVALID_DATAMAX_DPL',
+          message: 'Datamax native output must be a complete DPL label stream',
+        };
+      }
+      if (!hasUsablePaperProfile(command.metadata)) {
+        return {
+          success: false,
+          errorCode: 'PAPER_PROFILE_REQUIRED',
+          message: 'Datamax-O\'Neil I-4208 DPL printing requires a valid paper profile with physical dimensions',
+        };
+      }
+      return this.sendAndVerify({
+        printerName,
+        copies: Math.max(1, command.copies),
+        metadata: command.metadata,
+        onProgress: command.onProgress,
+        jobId: command.jobId,
+        subject: `job ${command.jobId}`,
+        requireIppJobConfirmation: false,
+        emit: async () => {
+          await this.printRaw(printerName, applyDplCalibration(content, command));
+          return undefined;
+        },
+      });
+    }
+
+    // Out-Printer treats text as an office document and lets the Windows
+    // driver choose its own page size. That is unsafe for a Datamax label
+    // printer: a 100x50 profile can otherwise be fed with the driver's default
+    // page/pitch, which is exactly how a 3-up sheet starts slipping across
+    // columns and skipping repeat intervals. Route profile-backed text through
+    // the same WebView2 path as HTML so page width, height, margins, and
+    // orientation are applied to every copy.
+    const datamaxProfileText =
+      isDatamaxI4208(command.metadata, printerName) && isTextPrintMimeType(command.mimeType);
+    if (datamaxProfileText && !hasUsablePaperProfile(command.metadata)) {
+      return {
+        success: false,
+        errorCode: 'PAPER_PROFILE_REQUIRED',
+        message: 'Datamax-O\'Neil I-4208 text printing requires a valid paper profile with physical dimensions',
+      };
+    }
+    const printAsHtml = command.mimeType === 'text/html' || datamaxProfileText;
+
+    if (datamaxProfileText) {
+      return this.sendAndVerify({
+        printerName,
+        copies: Math.max(1, command.copies),
+        metadata: command.metadata,
+        onProgress: command.onProgress,
+        jobId: command.jobId,
+        subject: `job ${command.jobId}`,
+        requireIppJobConfirmation: printAsHtml,
+        expectedIppJobName: printAsHtml ? `PrintOps:${command.jobId}` : undefined,
+        emit: async () => this.printHtml(
+          printerName,
+          textPayloadToHtml(content.toString('utf-8')),
+          command,
+        ),
+      });
+    }
+
 
     return this.sendAndVerify({
       printerName,
@@ -592,6 +678,32 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
       if (!correlationIssues.includes(ippIssue)) correlationIssues.push(ippIssue);
       evidence['ippJobConfirmed'] = false;
       evidence['correlationIssues'] = correlationIssues;
+
+      // WSD-only printers (e.g. Microsoft IPP Class Driver over WSD) expose no
+      // reachable printer-side IPP/SNMP endpoint, so no exact device-level proof
+      // can EVER arrive. When the local spooler nonetheless observed this exact
+      // job and reports it delivered (left-queue/finished), that is the strongest
+      // signal Windows itself reports for a successful local print. Accept it as
+      // SUCCESS instead of permanently reporting WSD deployments as UNVERIFIED.
+      const ippStructurallyUnavailable = ippConfirmation.outcome === 'unverifiable'
+        && !!ippObservation?.baselineError;
+      const spoolerDelivered = spooler.outcome === 'left-queue' || spooler.outcome === 'finished';
+      const exactJobObserved = observedJobIds.size === copies;
+      if (ippStructurallyUnavailable && spoolerDelivered && exactJobObserved
+        && spooler.competingJobIds.length === 0 && preexistingUnsafeJobs.length === 0) {
+        evidence['deviceConfirmed'] = true;
+        evidence['deviceConfirmation'] = 'local-spooler-delivery';
+        evidence['verificationBasis'] = 'spooler-delivery (printer-side IPP/SNMP unavailable)';
+        return {
+          success: true,
+          jobId,
+          message:
+            `WindowsSpoolerAdapter: ${subject} on "${printerName}" delivered to the local spooler ` +
+            `(${spooler.detail}); printer-side IPP/SNMP confirmation is unavailable on this connection`,
+          raw: evidence,
+        };
+      }
+
       // A later SNMP +1 cannot repair missing job-specific proof because that
       // increment may belong to another host. Take one non-blocking sample for
       // operator evidence, then stop; otherwise a 90s IPP wait followed by a
@@ -1381,22 +1493,58 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     printerName: string,
     metadata?: Record<string, unknown>,
   ): Promise<PrinterStatus> {
-    let windowsStatus: PrinterStatus | undefined;
+    let windowsStatus: PrinterStatus;
     try {
       const safeName = printerName.replace(/'/g, "''");
       const stdout = await this.deps.runPowerShell(
-        `(Get-Printer -Name '${safeName}' -ErrorAction Stop).PrinterStatus`,
+        `$p = Get-Printer -Name '${safeName}' -ErrorAction Stop | Select-Object -First 1
+$win32 = $null
+try {
+  $win32 = Get-CimInstance -Class Win32_Printer -ErrorAction Stop |
+    Where-Object { $_.Name -eq '${safeName}' } | Select-Object -First 1
+} catch { }
+$workOffline = $p.WorkOffline
+if ($null -eq $workOffline -and $null -ne $win32) { $workOffline = $win32.WorkOffline }
+[ordered]@{
+  status = [string]$p.PrinterStatus
+  state = [string]$p.PrinterState
+  workOffline = $workOffline
+} | ConvertTo-Json -Compress`,
         5000,
       );
-      const raw = stdout.trim();
+      const observation = parseWindowsPrinterStatus(stdout);
+      const code = windowsPrinterStatusCode(observation);
+      const readiness = evaluatePrinterReadiness({
+        detected: true,
+        statusCode: code,
+        rawStatus: observation.status,
+        rawState: observation.state,
+        workOffline: observation.workOffline,
+      });
       windowsStatus = {
         printerId: printerName,
-        code: windowsPrinterStatusCode(raw),
-        message: raw || undefined,
+        code,
+        message: observation.status || undefined,
+        detected: true,
+        workOffline: observation.workOffline,
+        rawStatus: observation.status || undefined,
+        rawState: observation.state || undefined,
         checkedAt: new Date(),
       };
+      if (readiness.warning) {
+        windowsStatus.message = [
+          windowsStatus.message,
+          'Windows reported UNKNOWN; readiness allowed because no explicit offline, error, or paused state was reported',
+        ].filter(Boolean).join('; ');
+      }
     } catch {
-      windowsStatus = { printerId: printerName, code: 'unknown', message: 'Failed to query printer status', checkedAt: new Date() };
+      windowsStatus = {
+        printerId: printerName,
+        code: 'unknown',
+        detected: true,
+        message: 'Failed to query printer status',
+        checkedAt: new Date(),
+      };
     }
 
     const deviceStatus = await this.getDeviceStatus(printerName, metadata);
@@ -1408,11 +1556,15 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     // new job to another tray. Keep the Windows value in the message so the
     // conflict is visible without letting stale queue state mask device truth.
     const windowsContext =
-      windowsStatus.code === 'offline' || windowsStatus.code === 'error'
-        ? `Windows spooler reports ${windowsStatus.message ?? windowsStatus.code}`
+      windowsStatus.code === 'offline' || windowsStatus.code === 'error' || windowsStatus.rawStatus
+        ? `Windows spooler reports ${windowsStatus.rawStatus ?? windowsStatus.message ?? windowsStatus.code}`
         : undefined;
     return {
       ...deviceStatus,
+      detected: windowsStatus.detected,
+      workOffline: windowsStatus.workOffline,
+      rawStatus: windowsStatus.rawStatus,
+      rawState: windowsStatus.rawState,
       message: [deviceStatus.message, windowsContext].filter(Boolean).join('; ') || undefined,
     };
   }
@@ -1482,21 +1634,31 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     html: string,
     command: PrintCommand,
   ): Promise<PrintSubmission> {
-    const dir = await mkdtemp(join(tmpdir(), 'printops-html-'));
-    const file = join(dir, 'document.html');
-    const requestFile = join(dir, 'request.json');
-    const resultFile = join(dir, 'result.json');
-    const userDataFolder = join(dir, 'webview2-data');
+    // A persistent serve-mode helper keeps ONE WebView2 environment alive per
+    // printer instead of cold-starting a fresh WebView2 for every job
+    // (DEFECT-05: ~1-2s per job of process + runtime initialisation, which is
+    // why batches of labels printed one at a time). The adapter serialises
+    // submissions per printer (printerLocks) and the helper processes
+    // requests strictly one at a time, so per-printer FIFO order and the
+    // send+verify counter attribution are preserved exactly as before.
+    const session = await this.htmlHelperSession(printerName);
+    const jobId = (command.jobId ?? `job-${Date.now()}`).replace(/[^A-Za-z0-9_-]/g, '_');
+    const file = join(session.dir, `doc-${jobId}.html`);
+    const requestFile = join(session.dir, `request-${jobId}.json`);
+    const resultFile = join(session.dir, `result-${jobId}.json`);
     try {
-      await writeFile(file, html, 'utf-8');
-      const helperPath = this.resolveHtmlPrintHelperPath();
-      const page = resolveHtmlPageSettings(html, command.metadata);
-      const jobName = `PrintOps:${command.jobId}`;
+      const renderOverrides = resolveCommandRenderTransformOverrides(command);
+      const page = resolveHtmlPageSettings(html, command.metadata, renderOverrides);
+      const transformedHtml = applyHtmlRenderTransform(html, page, command, renderOverrides);
+      const calibratedHtml = applyHtmlCalibration(transformedHtml, page, command);
+      await writeFile(file, calibratedHtml, 'utf-8');
+      const jobName = `PrintOps:${command.jobId ?? jobId}`;
+      // Serve-mode requests omit resultPath/userDataFolder: the result goes
+      // to result-<jobId>.json and the WebView2 data folder is shared and
+      // long-lived (created once by the helper at startup).
       await writeFile(requestFile, JSON.stringify({
         filePath: file,
         printerName,
-        resultPath: resultFile,
-        userDataFolder,
         jobName,
         copies: 1,
         paperWidthMm: page.widthMm,
@@ -1513,11 +1675,17 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
       let stdout: string;
       try {
         stdout = await this.deps.runPowerShell(
-          buildHtmlPrintScript(helperPath, requestFile, resultFile, printerName, jobName),
+          buildHtmlPrintServeScript(session.dir, resultFile, printerName, jobName),
           60_000,
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        if (message.includes('WEBVIEW2_PRINT_TIMEOUT')) {
+          // The helper produced no result — it is likely wedged or dead.
+          // Recycle it so the next job spawns a fresh process instead of
+          // queueing behind a corpse.
+          await this.recycleHtmlHelperSession(printerName, session);
+        }
         if (
           message.includes('HTML_PRINT_HELPER_NOT_FOUND') ||
           message.includes('PRINTER_NOT_FOUND') ||
@@ -1553,18 +1721,122 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
         jobs,
       };
     } finally {
-      await rm(dir, { recursive: true, force: true }).catch(() => {});
+      // Clean per-request artifacts; the session dir and the WebView2 data
+      // folder inside it live for the life of the helper process.
+      await rm(file, { force: true }).catch(() => {});
+      await rm(requestFile, { force: true }).catch(() => {});
+      await rm(resultFile, { force: true }).catch(() => {});
     }
   }
 
+  // ---- persistent HTML helper sessions (serve mode) ----
+
+  /** How long a serve-mode helper stays alive without work before exiting. */
+  private static readonly HTML_HELPER_IDLE_MS = 180_000;
+
+  private htmlHelperSessions = new Map<string, { dir: string; child: ChildProcess }>();
+
+  /** Get (or spawn) the persistent helper for a printer. */
+  private async htmlHelperSession(printerName: string): Promise<{ dir: string; child: ChildProcess }> {
+    const existing = this.htmlHelperSessions.get(printerName);
+    if (existing && existing.child.exitCode === null) return existing;
+    if (existing) {
+      // Dead session — reclaim its directory before spawning a replacement.
+      this.htmlHelperSessions.delete(printerName);
+      await rm(existing.dir, { recursive: true, force: true }).catch(() => {});
+    }
+
+    const helperPath = this.resolveHtmlPrintHelperPath();
+    const dir = await mkdtemp(join(tmpdir(), 'printops-html-serve-'));
+    // `--serve` keeps the process alive and reuses one WebView2 environment;
+    // the idle timeout bounds the orphan a crashed parent could leave behind.
+    const logError = (line: string): void => {
+      try {
+        const log = createWriteStream(join(dir, 'helper-stderr.log'), { flags: 'a' });
+        log.write(`${new Date().toISOString()} ${line}\n`);
+        log.end();
+      } catch {
+        // diagnostic only
+      }
+    };
+    logError(`HELPER_PATH: ${helperPath}`);
+    logError(`HELPER_ARGS: --serve ${dir} --idle-ms ${WindowsSpoolerAdapter.HTML_HELPER_IDLE_MS}`);
+    logError(`HELPER_CWD: ${process.cwd()}`);
+    const spawnHelper = this.deps.spawnHelper ??
+      ((path: string, args: string[]) => spawn(path, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true }));
+    const child = spawnHelper(
+      helperPath,
+      ['--serve', dir, '--idle-ms', String(WindowsSpoolerAdapter.HTML_HELPER_IDLE_MS)],
+    );
+    // DEBUG: capture helper stderr to a file next to the session dir so a
+    // silent startup death can be diagnosed on the field machine.
+    if (child.stderr && typeof child.stderr.pipe === 'function') {
+      try {
+        const log = createWriteStream(join(dir, 'helper-stderr.log'), { flags: 'a' });
+        child.stderr.pipe(log);
+      } catch {
+        // diagnostic only
+      }
+    }
+    child.once('error', (err) => logError(`SPAWN_ERROR: ${err.message}`));
+    child.once('exit', (code, signal) => {
+      logError(`HELPER_EXIT code=${code} signal=${signal ?? ''}`);
+      if (this.htmlHelperSessions.get(printerName)?.child === child) {
+        this.htmlHelperSessions.delete(printerName);
+      }
+    });
+    // One process-wide cleanup for every session this adapter spawned.
+    if (!WindowsSpoolerAdapter.installCleanupRegistered) {
+      WindowsSpoolerAdapter.installCleanupRegistered = true;
+      const killAll = (): void => {
+        for (const session of this.htmlHelperSessions.values()) {
+          session.child.kill();
+        }
+      };
+      process.once('exit', killAll);
+      // SIGINT/SIGTERM: pkg builds get a hard 'exit'; dev (tsx) may only get
+      // the signal, so kill helpers there too.
+      process.once('SIGINT', () => { killAll(); });
+      process.once('SIGTERM', () => { killAll(); });
+    }
+    this.htmlHelperSessions.set(printerName, { dir, child });
+    return { dir, child };
+  }
+
+  /** Drop a wedged/dead session so the next job starts a fresh helper. */
+  private async recycleHtmlHelperSession(
+    printerName: string,
+    session: { dir: string; child: ChildProcess },
+  ): Promise<void> {
+    if (this.htmlHelperSessions.get(printerName)?.child === session.child) {
+      this.htmlHelperSessions.delete(printerName);
+    }
+    try {
+      session.child.kill();
+    } catch {
+      // already dead
+    }
+    await rm(session.dir, { recursive: true, force: true }).catch(() => {});
+  }
+
   private resolveHtmlPrintHelperPath(): string {
+    // Tauri's resource_dir() returns extended-length paths (\\?\C:\...) and the
+    // desktop passes that straight into PRINTOPS_HTML_PRINT_HELPER. Node's
+    // existsSync/spawn tolerate the prefix, but the .NET Framework CLR cannot
+    // resolve a \\?\ app base and dies with "Could not load file or assembly
+    // ... The system cannot find the file specified". Normalise to a plain
+    // Win32 path before spawning.
+    const normaliseWinPath = (candidate: string): string =>
+      candidate.startsWith('\\\\?\\') ? candidate.slice(4) : candidate;
     const candidates = [
       this.deps.htmlPrintHelperPath,
       process.env['PRINTOPS_HTML_PRINT_HELPER'],
       join(process.cwd(), 'print-helper', 'printops-html-print.exe'),
       join(process.cwd(), 'apps', 'windows-print-helper', 'publish', 'printops-html-print.exe'),
       join(process.cwd(), '..', 'windows-print-helper', 'publish', 'printops-html-print.exe'),
-    ].filter((candidate): candidate is string => Boolean(candidate));
+    ]
+      .filter((candidate): candidate is string => Boolean(candidate))
+      .map(normaliseWinPath);
 
     const found = candidates.find((candidate) => existsSync(candidate));
     if (!found) {
@@ -1650,6 +1922,56 @@ export function buildHtmlPrintScript(
     if ($process.ExitCode -ne 0 -or $null -eq $helper -or -not $helper.success) {
       $reason = if ($null -ne $helper) { "phase=$($helper.phase); status=$($helper.status); $($helper.message)" } else { "helper exit code $($process.ExitCode) without result" };
       throw "WEBVIEW2_PRINT_FAILED: $reason";
+    }
+    [ordered]@{ helperStatus=[string]$helper.status; helperPhase=[string]$helper.phase; observedAt=$observed.at; expectedDocumentName='${safeDocumentName}'; jobObserved=($seen.Count -gt 0); jobs=@($seen.Values) } | ConvertTo-Json -Depth 5 -Compress;`;
+}
+
+/**
+ * Serve-mode variant of buildHtmlPrintScript for the PERSISTENT helper.
+ *
+ * The adapter keeps one `printops-html-print.exe --serve <dir>` process alive
+ * per printer, so WebView2 initialises once instead of once per job
+ * (DEFECT-05). This script no longer starts the helper: the adapter writes
+ * `request-<jobId>.json` into the serve dir before invoking this script, the
+ * helper writes `result-<jobId>.json` when the print finishes, and this
+ * script observes the Windows queue while waiting for that result file.
+ */
+export function buildHtmlPrintServeScript(
+  serveDir: string,
+  resultFile: string,
+  printerName: string,
+  expectedDocumentName: string,
+): string {
+  const safeResult = resultFile.replace(/'/g, "''");
+  const safePrinterName = printerName.replace(/'/g, "''");
+  const safeDocumentName = expectedDocumentName.replace(/'/g, "''");
+  return `$ErrorActionPreference='Stop';
+    if ($null -eq (Get-Printer -Name '${safePrinterName}' -ErrorAction SilentlyContinue)) { throw 'PRINTER_NOT_FOUND: ${safePrinterName}' }
+    $before = @{};
+    @(Get-PrintJob -PrinterName '${safePrinterName}' -ErrorAction SilentlyContinue) | ForEach-Object { $before[[string]$_.Id] = $true };
+    $seen = @{};
+    $observed = @{ at = $null };
+    function Capture-PrintOpsJobs {
+      @(Get-PrintJob -PrinterName '${safePrinterName}' -ErrorAction SilentlyContinue) | ForEach-Object {
+        $id = [string]$_.Id;
+        $documentName = [string]$_.DocumentName;
+        if (-not $before.ContainsKey($id)) {
+          if ($null -eq $observed.at) { $observed.at = [DateTime]::UtcNow.ToString('o') }
+          $seen[$id] = [ordered]@{ id=[int]$_.Id; status=[string]$_.JobStatus; documentName=$documentName; expectedDocumentName=($documentName -eq '${safeDocumentName}'); submittedTime=$_.SubmittedTime };
+        }
+      }
+    }
+    $deadline = [DateTime]::UtcNow.AddSeconds(45);
+    while (-not (Test-Path -LiteralPath '${safeResult}') -and [DateTime]::UtcNow -lt $deadline) {
+      Capture-PrintOpsJobs;
+      Start-Sleep -Milliseconds 50;
+    }
+    if (-not (Test-Path -LiteralPath '${safeResult}')) {
+      throw 'WEBVIEW2_PRINT_TIMEOUT: serve helper did not produce a result within 45 seconds';
+    }
+    $helper = Get-Content -Raw -LiteralPath '${safeResult}' | ConvertFrom-Json;
+    if (-not $helper.success) {
+      throw "WEBVIEW2_PRINT_FAILED: phase=$($helper.phase); status=$($helper.status); $($helper.message)";
     }
     [ordered]@{ helperStatus=[string]$helper.status; helperPhase=[string]$helper.phase; observedAt=$observed.at; expectedDocumentName='${safeDocumentName}'; jobObserved=($seen.Count -gt 0); jobs=@($seen.Values) } | ConvertTo-Json -Depth 5 -Compress;`;
 }
@@ -1766,6 +2088,61 @@ function metadataNumber(metadata: Record<string, unknown>, key: string): number 
   }
   return undefined;
 }
+/** MIME types that represent a text template rather than a printer language. */
+function isTextPrintMimeType(mimeType: string): boolean {
+  const normalized = mimeType.trim().toLowerCase();
+  return normalized === 'text/plain' || normalized === 'raw_text';
+}
+
+/**
+ * Identify the Datamax-O'Neil I-4208 family from printer metadata or the
+ * resolved Windows queue name. The model field is sufficient on its own;
+ * otherwise require the Datamax/O'Neil brand to avoid hijacking an unrelated
+ * queue whose name happens to contain a similar number.
+ */
+export function isDatamaxI4208(
+  metadata: Record<string, unknown> | undefined,
+  printerName?: string,
+): boolean {
+  const modelValues = [metadata?.['model'], metadata?.['printerModel']]
+    .filter((value): value is string => typeof value === 'string');
+  const values = [
+    ...modelValues,
+    metadata?.['driverName'],
+    metadata?.['printerName'],
+    metadata?.['printerCode'],
+    metadata?.['name'],
+    printerName,
+  ].filter((value): value is string => typeof value === 'string').join(' ');
+  if (!/\bi[\s-]?4208\b/i.test(values)) return false;
+  return /\bdatamax\b|\bo'?neil\b/i.test(values) ||
+    modelValues.some((value) => /\bi[\s-]?4208\b/i.test(value));
+}
+
+function hasUsablePaperProfile(metadata: Record<string, unknown> | undefined): boolean {
+  if (!metadata) return false;
+  const widthMm = metadataNumber(metadata, 'widthMm');
+  const heightMm = metadataNumber(metadata, 'heightMm');
+  if (widthMm === undefined || heightMm === undefined || widthMm <= 0 || heightMm <= 0) return false;
+  const marginLeftMm = Math.max(0, metadataNumber(metadata, 'marginLeftMm') ?? 0);
+  const marginRightMm = Math.max(0, metadataNumber(metadata, 'marginRightMm') ?? 0);
+  const marginTopMm = Math.max(0, metadataNumber(metadata, 'marginTopMm') ?? 0);
+  const marginBottomMm = Math.max(0, metadataNumber(metadata, 'marginBottomMm') ?? 0);
+  return widthMm > marginLeftMm + marginRightMm && heightMm > marginTopMm + marginBottomMm;
+}
+
+/** Keep a RAW_TEXT template safe when it is promoted to a browser document. */
+export function textPayloadToHtml(text: string): string {
+  const escaped = text.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character] ?? character);
+  return `<div style="box-sizing:border-box;width:100%;height:100%;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;font-family:Arial,sans-serif;font-size:10pt;line-height:1.2;">${escaped}</div>`;
+}
+
 
 function metadataString(metadata: Record<string, unknown>, key: string): string | undefined {
   const direct = metadata[key];
@@ -1778,17 +2155,122 @@ function metadataString(metadata: Record<string, unknown>, key: string): string 
   return undefined;
 }
 
+export function applyHtmlRenderTransform(
+  html: string,
+  page: HtmlPageSettings,
+  command: PrintCommand,
+  renderOverrides: RenderTransformOverrides = resolveCommandRenderTransformOverrides(command),
+): string {
+  // The API renderer already wraps HTML output. This guard keeps the adapter
+  // safe for direct HTML commands and prevents a queued job from being
+  // transformed twice.
+  if (html.includes('data-printops-transform-frame')) return html;
+  const profile = command.metadata?.['paperProfile'];
+  const profileValues = profile && typeof profile === 'object' && !Array.isArray(profile)
+    ? profile as Record<string, unknown>
+    : command.metadata ?? {};
+  const transform = resolveRenderTransform(profileValues, {
+    ...renderOverrides,
+  });
+  const sourcePage = resolveHtmlSourcePage(page, profileValues);
+  return wrapHtmlWithRenderTransform(html, sourcePage.widthMm, sourcePage.heightMm, transform);
+}
+
+function resolveHtmlSourcePage(
+  page: HtmlPageSettings,
+  profileValues: Record<string, unknown>,
+): Pick<HtmlPageSettings, 'widthMm' | 'heightMm'> {
+  const widthMm = metadataNumber(profileValues, 'widthMm');
+  const heightMm = metadataNumber(profileValues, 'heightMm');
+  if (widthMm === undefined || heightMm === undefined) return page;
+  const requestedOrientation = metadataString(profileValues, 'orientation')?.trim().toLowerCase();
+  const orientation = requestedOrientation === 'portrait' || requestedOrientation === 'landscape'
+    ? requestedOrientation
+    : widthMm > heightMm ? 'landscape' : 'portrait';
+  const geometry = getOrientedPaperGeometry({
+    widthMm,
+    heightMm,
+    marginTopMm: 0,
+    marginRightMm: 0,
+    marginBottomMm: 0,
+    marginLeftMm: 0,
+    orientation,
+  });
+  return { widthMm: geometry.widthMm, heightMm: geometry.heightMm };
+}
+
+function formatCalibrationMm(value: number): string {
+  return Number(value.toFixed(6)).toString();
+}
+
+/**
+ * Apply a signed, dot-based printer calibration after render transforms.
+ * Calibration is intentionally a small, validated translation wrapper: it
+ * keeps the template coordinates deterministic while correcting the physical
+ * printer origin measured for one printer/profile/DPI tuple.
+ */
+export function applyHtmlCalibration(
+  html: string,
+  page: HtmlPageSettings,
+  command: PrintCommand,
+): string {
+  const raw = command.metadata?.['printerCalibration'];
+  if (raw === undefined || raw === null) return html;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('INVALID_PRINTER_CALIBRATION: calibration must be an object');
+  }
+
+  const calibration = raw as Record<string, unknown>;
+  const profile = command.metadata?.['paperProfile'];
+  const profileValues = profile && typeof profile === 'object' && !Array.isArray(profile)
+    ? profile as Record<string, unknown>
+    : {};
+  const printerId = calibration['printerId'];
+  const paperProfileId = calibration['paperProfileId'];
+  const expectedPaperProfileId = profileValues['paperProfileId'];
+  const dpi = calibration['dpi'];
+  const expectedDpi = metadataNumber(command.metadata, 'dpi');
+  const xOffsetDots = calibration['xOffsetDots'];
+  const yOffsetDots = calibration['yOffsetDots'];
+  const valid =
+    typeof printerId === 'string' && printerId.length > 0 &&
+    printerId === command.printerId &&
+    typeof paperProfileId === 'string' && paperProfileId.length > 0 &&
+    paperProfileId === expectedPaperProfileId &&
+    Number.isInteger(dpi) && dpi === expectedDpi && (dpi as number) > 0 &&
+    Number.isInteger(xOffsetDots) && Math.abs(xOffsetDots as number) <= 10000 &&
+    Number.isInteger(yOffsetDots) && Math.abs(yOffsetDots as number) <= 10000;
+  if (!valid) {
+    throw new Error(
+      'INVALID_PRINTER_CALIBRATION: calibration does not match the printer, paper profile, or DPI',
+    );
+  }
+
+  const xMm = (xOffsetDots as number) * 25.4 / (dpi as number);
+  const yMm = (yOffsetDots as number) * 25.4 / (dpi as number);
+  const frameStyle =
+    'position:relative;width:' + formatCalibrationMm(page.widthMm) + 'mm;' +
+    'height:' + formatCalibrationMm(page.heightMm) + 'mm;overflow:hidden;box-sizing:border-box;';
+  const contentStyle =
+    'position:absolute;left:' + formatCalibrationMm(xMm) + 'mm;top:' + formatCalibrationMm(yMm) + 'mm;' +
+    'width:' + formatCalibrationMm(page.widthMm) + 'mm;height:' + formatCalibrationMm(page.heightMm) + 'mm;' +
+    'overflow:visible;box-sizing:border-box;';
+  return '<div data-printops-calibration-frame="true" style="' + frameStyle +
+    '"><div data-printops-calibration-layer="true" style="' + contentStyle + '">' + html +
+    '</div></div>';
+}
+
 /** Resolve actual driver page settings from the selected profile, with the
  * dimensions embedded in generated HTML as a backwards-compatible fallback. */
 export function resolveHtmlPageSettings(
   html: string,
   metadata: Record<string, unknown> = {},
+  renderOverrides: RenderTransformOverrides = {},
 ): HtmlPageSettings {
   const widthMatch = html.match(/(?:^|[;"'])\s*width\s*:\s*([0-9]+(?:\.[0-9]+)?)mm/i);
   const heightMatch = html.match(/(?:^|[;"'])\s*height\s*:\s*([0-9]+(?:\.[0-9]+)?)mm/i);
   const widthMm = metadataNumber(metadata, 'widthMm') ?? Number(widthMatch?.[1]);
-  const heightMm = metadataNumber(metadata, 'heightMm') ?? Number(heightMatch?.[1]);
-
+  const heightMm = metadataNumber(metadata, 'pageHeightMm') ?? metadataNumber(metadata, 'heightMm') ?? Number(heightMatch?.[1]);
   if (!Number.isFinite(widthMm) || widthMm <= 0 || !Number.isFinite(heightMm) || heightMm <= 0) {
     throw new Error(
       'PAPER_PROFILE_REQUIRED: HTML printing requires widthMm and heightMm from the selected paper profile',
@@ -1806,11 +2288,20 @@ export function resolveHtmlPageSettings(
   const marginBottomMm = Math.max(0, metadataNumber(metadata, 'marginBottomMm') ?? 0);
   const marginLeftMm = Math.max(0, metadataNumber(metadata, 'marginLeftMm') ?? 0);
 
+  const profileValues = readPaperProfileValues(metadata);
+  const hasTransform = profileValues.rotation !== undefined
+    || profileValues.rotate !== undefined
+    || profileValues.flipHorizontal !== undefined
+    || profileValues.flipVertical !== undefined
+    || renderOverrides.rotate !== undefined
+    || renderOverrides.flipHorizontal !== undefined
+    || renderOverrides.flipVertical !== undefined;
+
   // Match the paper-profile editor: imported/legacy data can store dimensions
   // whose natural orientation disagrees with the explicit orientation. Rotate
   // both the sheet and its directional margins before handing it to the driver.
   if (naturalOrientation !== orientation) {
-    return {
+    const oriented = {
       widthMm: heightMm,
       heightMm: widthMm,
       marginTopMm: marginLeftMm,
@@ -1819,8 +2310,11 @@ export function resolveHtmlPageSettings(
       marginLeftMm: marginBottomMm,
       orientation,
     };
+    return hasTransform
+      ? resolveTransformedHtmlPage(oriented, profileValues, renderOverrides)
+      : resolveWrappedHtmlPage(oriented, html);
   }
-  return {
+  const resolved = {
     widthMm,
     heightMm,
     marginTopMm,
@@ -1828,6 +2322,60 @@ export function resolveHtmlPageSettings(
     marginBottomMm,
     marginLeftMm,
     orientation,
+  };
+  return hasTransform
+    ? resolveTransformedHtmlPage(resolved, profileValues, renderOverrides)
+    : resolveWrappedHtmlPage(resolved, html);
+}
+
+function readPaperProfileValues(metadata: Record<string, unknown>): Record<string, unknown> {
+  const profile = metadata['paperProfile'];
+  return profile && typeof profile === 'object' && !Array.isArray(profile)
+    ? profile as Record<string, unknown>
+    : metadata;
+}
+
+function resolveTransformedHtmlPage(
+  page: HtmlPageSettings,
+  profileValues: Record<string, unknown>,
+  renderOverrides: RenderTransformOverrides = {},
+): HtmlPageSettings {
+  const frame = resolveRenderTransformFrame(
+    page.widthMm,
+    page.heightMm,
+    resolveRenderTransform(profileValues, renderOverrides),
+  );
+  return {
+    ...page,
+    widthMm: frame.width,
+    heightMm: frame.height,
+    orientation: frame.width > frame.height ? 'landscape' : 'portrait',
+  };
+}
+
+function resolveWrappedHtmlPage(page: HtmlPageSettings, html: string): HtmlPageSettings {
+  if (!html.includes('data-printops-transform-frame')) return page;
+  const frameMatch = html.match(
+    /data-printops-transform-frame="true"[^>]*style="[^\"]*width:([0-9]+(?:\.[0-9]+)?)mm;height:([0-9]+(?:\.[0-9]+)?)mm/i,
+  );
+  const widthMm = Number(frameMatch?.[1]);
+  const heightMm = Number(frameMatch?.[2]);
+  if (!Number.isFinite(widthMm) || !Number.isFinite(heightMm) || widthMm <= 0 || heightMm <= 0) return page;
+  return {
+    ...page,
+    widthMm,
+    heightMm,
+    orientation: widthMm > heightMm ? 'landscape' : 'portrait',
+  };
+}
+
+function resolveCommandRenderTransformOverrides(command: PrintCommand): RenderTransformOverrides {
+  const metadataOverrides = readRenderTransformOverrides(command.metadata);
+  return {
+    ...metadataOverrides,
+    ...(command.rotate !== undefined ? { rotate: command.rotate } : {}),
+    ...(command.flipHorizontal !== undefined ? { flipHorizontal: command.flipHorizontal } : {}),
+    ...(command.flipVertical !== undefined ? { flipVertical: command.flipVertical } : {}),
   };
 }
 
@@ -1838,6 +2386,9 @@ function isRawPrinterLanguage(mimeType: string): boolean {
     'application/tspl',
     'application/epl',
     'application/pcl',
+    'application/dpl',
+    'application/vnd.datamax-dpl',
+    'text/x-dpl',
   ]).has(mimeType.trim().toLowerCase());
 }
 
@@ -1891,13 +2442,59 @@ function printerFaultFromStatus(raw: string): string | undefined {
   );
 }
 
-function windowsPrinterStatusCode(raw: string): PrinterStatus['code'] {
-  const fault = printerFaultFromStatus(raw);
-  if (fault) {
-    return ['Offline', 'NotAvailable'].includes(fault) ? 'offline' : 'error';
+export interface WindowsPrinterStatusObservation {
+  status: string;
+  state?: string;
+  workOffline?: boolean | null;
+}
+
+/**
+ * Parse the structured status emitted by the Windows query. The raw-token
+ * fallback keeps older runners/test seams compatible while the structured
+ * form carries WorkOffline for USB queues.
+ */
+export function parseWindowsPrinterStatus(stdout: string): WindowsPrinterStatusObservation {
+  const raw = stdout.trim();
+  if (!raw) return { status: '' };
+  try {
+    const parsed = JSON.parse(raw) as {
+      status?: unknown;
+      state?: unknown;
+      workOffline?: unknown;
+    };
+    if (parsed && typeof parsed === 'object' && ('status' in parsed || 'state' in parsed || 'workOffline' in parsed)) {
+      return {
+        status: typeof parsed.status === 'string' ? parsed.status : '',
+        state: typeof parsed.state === 'string' ? parsed.state : undefined,
+        workOffline: typeof parsed.workOffline === 'boolean' ? parsed.workOffline : null,
+      };
+    }
+  } catch {
+    // PowerShell 5.1/status test seams may return only the raw enum name.
   }
-  if (raw === 'Normal' || raw === 'Idle') return 'idle';
-  if (raw === 'Printing' || raw === 'Processing') return 'busy';
+  return { status: raw };
+}
+
+/** Normalize status for the public PrinterStatus contract. */
+export function windowsPrinterStatusCode(
+  observation: WindowsPrinterStatusObservation | string,
+): PrinterStatus['code'] {
+  const normalizedObservation = typeof observation === 'string'
+    ? parseWindowsPrinterStatus(observation)
+    : observation;
+  const status = normalizedObservation.status.trim().toLowerCase();
+  const state = (normalizedObservation.state ?? '').trim().toLowerCase();
+  const tokens = `${status},${state}`
+    .split(/[,|]/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (normalizedObservation.workOffline === true || tokens.includes('offline')) return 'offline';
+  if (tokens.includes('error') || tokens.includes('paused')) return 'error';
+  if (['normal', 'idle', 'ready', 'online'].includes(status)) return 'idle';
+  if (['printing', 'processing', 'busy'].includes(status)) return 'busy';
+  // Do not turn PaperOut/PaperJam/etc. into a synthetic ERROR here. Those
+  // values remain visible as raw evidence and are handled by the spooler and
+  // device verification safety checks at submission time.
   return 'unknown';
 }
 
@@ -2026,3 +2623,57 @@ const RAW_PRINT_PS_SUFFIX = `
 $bytes = [System.IO.File]::ReadAllBytes($path)
 if (-not [RawPrinter]::SendBytes($name, $bytes)) { Write-Error 'RawPrinter.SendBytes returned false' }
 `;
+
+function isDplPrintMimeType(mimeType: string): boolean {
+  return new Set(['application/dpl', 'application/vnd.datamax-dpl', 'text/x-dpl'])
+    .has(mimeType.trim().toLowerCase());
+}
+
+function isDatamaxDplPayload(data: Buffer): boolean {
+  return data.includes(Buffer.from([0x02, 0x4c, 0x0d])) &&
+    /\x02L\r[\s\S]*\rE\r/.test(data.toString('latin1'));
+}
+
+function dplCoordinate(value: number): string {
+  if (!Number.isInteger(value) || value < 0 || value > 9999) {
+    throw new Error('INVALID_PRINTER_CALIBRATION: DPL field moved outside the 0..9999 dot coordinate range');
+  }
+  return String(value).padStart(4, '0');
+}
+
+/** Apply a validated printer/profile calibration to native DPL fields. */
+export function applyDplCalibration(data: Buffer, command: PrintCommand): Buffer {
+  const raw = command.metadata?.['printerCalibration'];
+  if (raw === undefined || raw === null) return data;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('INVALID_PRINTER_CALIBRATION: calibration must be an object');
+  }
+  const calibration = raw as Record<string, unknown>;
+  const profile = command.metadata?.['paperProfile'];
+  const profileValues = profile && typeof profile === 'object' && !Array.isArray(profile)
+    ? profile as Record<string, unknown>
+    : {};
+  const valid =
+    typeof calibration['printerId'] === 'string' && calibration['printerId'] === command.printerId &&
+    typeof calibration['paperProfileId'] === 'string' &&
+      calibration['paperProfileId'] === profileValues['paperProfileId'] &&
+    Number.isInteger(calibration['dpi']) && calibration['dpi'] === metadataNumber(command.metadata, 'dpi') &&
+    (calibration['dpi'] as number) > 0 &&
+    Number.isInteger(calibration['xOffsetDots']) && Math.abs(calibration['xOffsetDots'] as number) <= 10000 &&
+    Number.isInteger(calibration['yOffsetDots']) && Math.abs(calibration['yOffsetDots'] as number) <= 10000;
+  if (!valid) {
+    throw new Error('INVALID_PRINTER_CALIBRATION: calibration does not match the printer, paper profile, or DPI');
+  }
+  const xOffsetDots = calibration['xOffsetDots'] as number;
+  const yOffsetDots = calibration['yOffsetDots'] as number;
+  const dpi = calibration['dpi'] as number;
+  const xOffsetUnits = Math.round((xOffsetDots * 25.4 * 10) / dpi);
+  const yOffsetUnits = Math.round((yOffsetDots * 25.4 * 10) / dpi);
+  const shifted = data.toString('latin1').split('\r').map((line) => {
+    if (!/^[1-4][0-9A-Za-z][1-9A-O][1-9A-O]\d{3}\d{4}\d{4}/.test(line)) return line;
+    const row = Number(line.slice(7, 11)) + yOffsetUnits;
+    const column = Number(line.slice(11, 15)) + xOffsetUnits;
+    return `${line.slice(0, 7)}${dplCoordinate(row)}${dplCoordinate(column)}${line.slice(15)}`;
+  }).join('\r');
+  return Buffer.from(shifted, 'latin1');
+}
