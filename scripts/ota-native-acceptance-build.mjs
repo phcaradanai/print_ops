@@ -365,7 +365,11 @@ function main() {
   assert(bSchema === aSchema + 1, `native acceptance requires B schema A+1 (${aSchema} -> ${bSchema})`);
 
   const sourceCommit = gitOutput(['rev-parse', 'HEAD']);
-  assert(gitOutput(['status', '--porcelain', '--untracked-files=no']) === '', 'tracked worktree must be clean for native provenance');
+  const trackedWorktreeStatus = gitOutput(['status', '--porcelain', '--untracked-files=no']);
+  assert(
+    trackedWorktreeStatus === '',
+    `tracked worktree must be clean for native provenance${trackedWorktreeStatus ? `: ${trackedWorktreeStatus.replace(/\r?\n/g, '; ')}` : ''}`,
+  );
   const privateKey = privateKeyFromText(signingKeyText);
   resetOutput();
   const { publicKey, publicKeyPath } = writeAcceptancePublicKey(privateKey);
