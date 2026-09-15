@@ -93,6 +93,15 @@ function gitOutput(args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
 }
 
+function gitStatusOutput() {
+  // Keep porcelain's two-character status prefix intact; trim() would remove
+  // the leading space from an unstaged modification and corrupt the path.
+  return execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], {
+    cwd: root,
+    encoding: 'utf8',
+  }).trimEnd();
+}
+
 function restoreGeneratedTauriFiles() {
   for (const relativePath of generatedTauriFiles) {
     const contents = execFileSync('git', ['show', `HEAD:${relativePath}`], { cwd: root });
@@ -101,7 +110,7 @@ function restoreGeneratedTauriFiles() {
 }
 
 function normalizePreexistingGeneratedTauriChanges() {
-  const status = gitOutput(['status', '--porcelain', '--untracked-files=no']);
+  const status = gitStatusOutput();
   if (!status) return [];
 
   const changedPaths = status
@@ -121,7 +130,7 @@ function normalizePreexistingGeneratedTauriChanges() {
 
   restoreGeneratedTauriFiles();
   assert(
-    gitOutput(['status', '--porcelain', '--untracked-files=no']) === '',
+    gitStatusOutput() === '',
     'could not restore Tauri-generated tracked files to the source commit',
   );
   return changedPaths;
@@ -379,7 +388,7 @@ function writeEvidence({ publicKey, publicKeyPath, artifacts, sourceCommit, norm
     generatedAt: new Date().toISOString(),
     source: {
       commit: sourceCommit,
-      trackedWorktreeClean: gitOutput(['status', '--porcelain', '--untracked-files=no']) === '',
+      trackedWorktreeClean: gitStatusOutput() === '',
       branch: gitOutput(['branch', '--show-current']),
       generatedTauriFilesNormalized: normalizedGeneratedTauriFiles,
     },
@@ -464,7 +473,7 @@ function main() {
     brokenManifest,
   });
   assert(
-    gitOutput(['status', '--porcelain', '--untracked-files=no']) === '',
+    gitStatusOutput() === '',
     'tracked worktree is not clean after restoring Tauri-generated files',
   );
   writeEvidence({ publicKey, publicKeyPath, sourceCommit, artifacts: artifactEvidence, normalizedGeneratedTauriFiles });
