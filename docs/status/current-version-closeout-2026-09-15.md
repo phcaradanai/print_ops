@@ -4,18 +4,18 @@
 
 **PASS — candidate closed and ready for Web Control handoff.**
 
-Web Control implementation is not included. The frozen implementation candidate and the closeout metadata head are:
+Web Control implementation is not included. The frozen release implementation candidate is:
 
 - Implementation SHA: `c29ce1b1578ff797945ae934847dee66d321bd72`
-- Closeout/head SHA: `06c6e0b2906b9999f988cd286a5d08edb89fdfd3` (documentation-only commit on top of the implementation)
 - Branch: `mvp_nippon`
 - Baseline SHA: `f66b36ff57380624f6bb44204ae26100685d6186`
 - Integration PR: [#22](https://github.com/phcaradanai/print_ops/pull/22)
 - Base branch/SHA: `main` / `b7a92fbec9be0d5d329aa860357bddd0879af45a`
-- PR head: `mvp_nippon` / `06c6e0b2906b9999f988cd286a5d08edb89fdfd3`
+- Implementation PR head: `mvp_nippon` / `c29ce1b1578ff797945ae934847dee66d321bd72`
 - PR state: open, ready for review, `MERGEABLE`, `CLEAN`; not merged
 
-PR #22 is the existing, explicitly scoped Webhooks integration vehicle. Its title/body are unambiguous and its final checks are green, so no duplicate PR was created. The branch comparison is diverged from `main` by one commit (`262` ahead, `1` behind; merge base `d5c7f339a7256d7cf04b6f6ca016c676b13e898d`). Formal GitHub approval and merge remain an integration-governance step; merging was not performed.
+The closeout and handoff records are documentation-only commits on top of the implementation candidate. PR #22 is the existing, explicitly scoped Webhooks integration vehicle. Its title/body are unambiguous and its final checks are green, so no duplicate PR was created. The branch comparison is diverged from `main` by one commit (`262` ahead, `1` behind; merge base `d5c7f339a7256d7cf04b6f6ca016c676b13e898d`). Formal GitHub approval and merge remain an integration-governance step; merging was not performed.
+
 
 ## Root cause and smallest fix
 

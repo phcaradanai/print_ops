@@ -3,7 +3,7 @@
 ## Stable starting point
 
 - Recommended branch: `mvp_nippon`
-- Recommended SHA: `06c6e0b2906b9999f988cd286a5d08edb89fdfd3` (documentation-only closeout head; implementation SHA `c29ce1b1578ff797945ae934847dee66d321bd72`)
+- Recommended SHA: `c29ce1b1578ff797945ae934847dee66d321bd72` (frozen implementation candidate; closeout records are documentation-only commits on top)
 - Recommended workspace version: `0.1.28`
 - Integration PR: #22, base `main`, currently ready for review and not merged
 - Do not start from a moving worktree or from an earlier failed Webhooks run.
