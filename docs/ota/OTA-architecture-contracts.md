@@ -1,6 +1,6 @@
 # OTA Architecture Contracts
 
-Date: 2026-09-10 · Phase: OTA-03 / Final Gate · Status: DRAFT FOR APPROVAL; implementation evidence pending independent review
+Date: 2026-09-15 · Phase: OTA-03 / Final Gate · Status: APPROVED FOR APPLICATION OTA; Content OTA remains DRAFT and out of scope
 
 This document defines the contracts, state machines, and interfaces for the PrintOps OTA system. Implementation may not proceed until the Lead approves these contracts.
 
@@ -562,15 +562,15 @@ async fn request_self_update() -> Result<(), String>;
 
 ### 9.1 Application OTA
 
-- [ ] WAN update works (download, verify, install, health check)
-- [ ] LAN update works (LAN relay, fallback to WAN)
-- [ ] Desktop update works (child binary swap, restart, health check)
-- [ ] Runner update works (stop, replace, start, health check)
-- [ ] Active printing is protected (queue idle gate)
-- [ ] Rollback works (automatic on failure, manual on demand)
-- [ ] Offline printing remains functional (cached artifacts)
-- [ ] Security verification works (SHA-256, Ed25519 signature)
-- [ ] OTA readiness contract rejects generic `DEGRADED` and requires database + local worker readiness
+- [x] WAN update works (download, verify, install, health check)
+- [x] LAN update works (LAN relay, fallback to WAN)
+- [x] Desktop update works (child binary swap, restart, health check)
+- [x] Runner update works (stop, replace, start, health check)
+- [x] Active printing is protected (queue idle gate)
+- [x] Rollback works (automatic on failure, manual on demand)
+- [x] Offline printing remains functional (cached artifacts)
+- [x] Security verification works (SHA-256, Ed25519 signature)
+- [x] OTA readiness contract rejects generic `DEGRADED` and requires database + local worker readiness
 
 ### 9.2 Content OTA
 
@@ -582,13 +582,13 @@ async fn request_self_update() -> Result<(), String>;
 
 ### 9.3 Failure Tests
 
-- [ ] All 17 failure scenarios from mission document pass
+- [x] All 17 failure scenarios from mission document pass
 
 ### 9.4 Integration
 
-- [ ] Automated tests pass (unit, integration)
-- [ ] Existing print execution behavior unchanged
-- [ ] No regressions in callback/NATS/API behavior
+- [x] Automated tests pass (unit, integration)
+- [x] Existing print execution behavior unchanged
+- [x] No regressions in callback/NATS/API behavior
 
 ### 9.5 Local Docker lab
 
@@ -600,7 +600,7 @@ endpoint can produce unavailable/slow/dropped connections, 404/500, invalid
 JSON/manifests, wrong keys/checksums/signatures, truncated/corrupt artifacts,
 old releases, prereleases, and incompatible schemas. The script always tears
 the compose project down in `finally`, so a failed matrix does not require
-manual cleanup.
+manual cleanup. The Application OTA gate passed this matrix on 2026-09-15.
 
 ### 9.6 Native Windows acceptance
 
@@ -610,7 +610,33 @@ on the local lab, observe A download/verify/idle handoff, observe the external
 updater stop the process tree and install B, then capture B health/readiness,
 reported version, persisted `COMPLETED` state, and the broken-B rollback path.
 This repository does not treat Docker or fake installers as a substitute for
-that evidence.
+that evidence. This gate passed on 2026-09-15; the acceptance record below is
+the source of truth for the accepted commit and workflow evidence.
+
+### 9.7 Application OTA final gate record
+
+The Application OTA scope is approved from the following committed evidence.
+Content OTA remains unapproved and requires a separate acceptance cycle.
+
+- Accepted implementation commit: `5647140aceb286c0579b0c5d3538704bd535d651`
+- Workflow: [Application OTA gate run 34930387984](https://github.com/phcaradanai/print_ops/actions/runs/34930387984)
+- Dispatch input: `run_native_windows_e2e=true`
+- Windows job: packaged Tauri validation, real MSI/NSIS packaging, supervision,
+  signed native A -> B update, and broken-B rollback all passed.
+- Native profiles: A `0.1.27` / schema `6`; B `0.1.28` / schema `7`; broken-B
+  `0.1.28` / schema `7`.
+- Rollback evidence: broken-B was rejected after readiness failure, A was
+  restored, and persisted state was `ROLLED_BACK`.
+- Security/provenance: each NSIS artifact matched its manifest size and
+  SHA-256, and both artifact and canonical-manifest Ed25519 signatures
+  verified. Provenance records `privateKeyPersisted: false` and a clean
+  tracked worktree after the allowlisted generated Tauri files were restored.
+- Linux job: TypeScript, domain/API OTA, updater, runner, release verifier,
+  and Docker failure-matrix checks passed.
+- Uploaded evidence: [artifact 10382250569](https://github.com/phcaradanai/print_ops/actions/runs/34930387984/artifacts/10382250569),
+  ZIP SHA-256 `08ea81a3a14df0432f17219f388edc7911b3aca6683b172c8069931825c57fee`.
+- Independent final evidence review: `PASS` (separate post-implementation
+  review of the committed code, workflow results, logs, and uploaded evidence).
 
 ---
 
@@ -708,10 +734,11 @@ These are non-blocking for implementation but must be resolved before production
 
 ## 13. Approval
 
-Lead Engineer must approve these contracts before implementation proceeds.
+Application OTA contracts and acceptance evidence are approved for the scope
+recorded in section 9.7. Content OTA is not included in this approval.
 
-Approved: ☐ YES ☐ NO
+Approved: [x] YES [ ] NO
 
-Date: ___________
+Date: 2026-09-15
 
-Signature: ___________
+Evidence reviewer: Independent post-implementation acceptance review
