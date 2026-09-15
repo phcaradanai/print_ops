@@ -103,10 +103,13 @@ function gitStatusOutput() {
 }
 
 function restoreGeneratedTauriFiles() {
-  for (const relativePath of generatedTauriFiles) {
-    const contents = execFileSync('git', ['show', `HEAD:${relativePath}`], { cwd: root });
-    writeFileSync(join(root, relativePath), contents);
-  }
+  execFileSync('git', [
+    'restore',
+    '--source=HEAD',
+    '--worktree',
+    '--',
+    ...generatedTauriFiles,
+  ], { cwd: root, stdio: 'ignore' });
 }
 
 function normalizePreexistingGeneratedTauriChanges() {
