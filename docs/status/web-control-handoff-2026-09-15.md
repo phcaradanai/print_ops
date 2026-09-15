@@ -19,7 +19,7 @@
 ## Deferred items
 
 - Formal GitHub review/approval and merge of PR #22.
-- The hosted SQLite exclusive-lock test showed a transient `PRINTOPS_DB_LOCKED` race during two retries; the final complete workflow passed and no test was weakened.
+- The hosted SQLite exclusive-lock test showed an intermittent `PRINTOPS_DB_LOCKED` race during isolated retries; the final complete workflow passed and no test was weakened.
 - Web Control itself: no implementation, routes, UI, or schema changes are included in this handoff.
 
 Use the exact frozen SHA above until PR #22 is formally merged; if it is merged first, record the merge commit before beginning Web Control.
