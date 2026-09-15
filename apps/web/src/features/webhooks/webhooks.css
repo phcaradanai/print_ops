@@ -395,6 +395,11 @@
   min-width: 0;
 }
 
+.webhook-template-guide .ui-text {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .webhook-template-guide .ui-code-block {
   max-height: 18rem;
 }

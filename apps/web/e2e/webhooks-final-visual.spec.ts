@@ -179,57 +179,11 @@ async function settleResponsiveNav(page: Page) {
 }
 
 async function expectNoPageOverflow(page: Page) {
-  const overflow = await page.locator('.app-main').evaluate((element) => {
-    const describe = (candidate: HTMLElement) => {
-      const rect = candidate.getBoundingClientRect();
-      const style = window.getComputedStyle(candidate);
-      return {
-        tag: candidate.tagName.toLowerCase(),
-        className: String(candidate.className).slice(0, 160),
-        rect: {
-          left: Math.round(rect.left),
-          right: Math.round(rect.right),
-          width: Math.round(rect.width),
-        },
-        scrollWidth: candidate.scrollWidth,
-        clientWidth: candidate.clientWidth,
-        offsetWidth: candidate.offsetWidth,
-        width: style.width,
-        minWidth: style.minWidth,
-        display: style.display,
-        position: style.position,
-        overflowX: style.overflowX,
-        flexShrink: style.flexShrink,
-        gridTemplateColumns: style.gridTemplateColumns,
-      };
-    };
-    const mainRect = element.getBoundingClientRect();
-    const candidates = [element, ...Array.from(element.querySelectorAll<HTMLElement>('*'))];
-    const descendants = candidates.slice(1);
-    const offenders = descendants
-      .map((candidate) => ({ candidate, rect: candidate.getBoundingClientRect() }))
-      .filter(({ rect }) => rect.right > Math.ceil(mainRect.right) + 1)
-      .sort((left, right) => right.rect.right - left.rect.right)
-      .slice(0, 8)
-      .map(({ candidate }) => describe(candidate));
-    const widest = candidates
-      .filter((candidate) => candidate.scrollWidth > candidate.clientWidth + 1)
-      .sort((left, right) => right.scrollWidth - left.scrollWidth)
-      .slice(0, 30)
-      .map((candidate) => describe(candidate));
-    const parent = element.parentElement;
-    return {
-      viewport: { innerWidth: window.innerWidth, documentWidth: document.documentElement.clientWidth },
-      main: describe(element),
-      parent: parent ? describe(parent) : null,
-      offenders,
-      widest,
-    };
-  });
-  expect(
-    overflow.main.scrollWidth,
-    `Horizontal overflow: ${JSON.stringify(overflow, null, 2)}`,
-  ).toBeLessThanOrEqual(overflow.main.clientWidth + 1);
+  const size = await page.locator('.app-main').evaluate((element) => ({
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth,
+  }));
+  expect(size.scrollWidth).toBeLessThanOrEqual(size.clientWidth + 1);
 }
 
 async function screenshot(page: Page, name: string) {
