@@ -58,7 +58,7 @@ export class WebControlRegistryService {
         deviceId: 'pending',
         action: 'device.enrollment_token_created',
         requestedAt: new Date(),
-        metadata: { token: token.token, siteId: token.siteId, expiresAt: token.expiresAt.toISOString() },
+        metadata: { tokenPreview: `${token.token.slice(0, 10)}...`, siteId: token.siteId, expiresAt: token.expiresAt.toISOString() },
       });
     }
     return token;
@@ -188,8 +188,13 @@ export class WebControlRegistryService {
   }
 
   async listDevices(filter?: DeviceRegistryFilter): Promise<DeviceRecord[]> {
-    const devices = await this.deviceRegistry.findAll(filter);
-    return devices.map((d) => this.applyDynamicConnectionState(d));
+    const repoFilter = filter ? { ...filter, connectionState: undefined } : undefined;
+    const devices = await this.deviceRegistry.findAll(repoFilter);
+    const enriched = devices.map((d) => this.applyDynamicConnectionState(d));
+    if (filter?.connectionState) {
+      return enriched.filter((d) => d.connectionState === filter.connectionState);
+    }
+    return enriched;
   }
 
   private applyDynamicConnectionState(device: DeviceRecord): DeviceRecord {

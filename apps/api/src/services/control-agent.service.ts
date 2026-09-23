@@ -125,11 +125,11 @@ export class PrintOpsControlAgent {
       return { accepted: false, reason: 'RECOVERY_REQUIRED' };
     }
 
-    // 5. Concurrency check: only one OTA operation at a time
+    // 5. Concurrency check: only one OTA operation at a time (synchronously set flag)
     if (this.isProcessingCommand) {
       return { accepted: false, reason: 'DEVICE_BUSY' };
     }
-
+    this.isProcessingCommand = true;
     // Acknowledge acceptance
     await this.emitTransition(envelope.command_id, 'ACCEPTED', {
       targetVersion: envelope.target_version,
@@ -146,7 +146,6 @@ export class PrintOpsControlAgent {
   }
 
   private async executeCommand(envelope: ControlCommandEnvelope): Promise<void> {
-    this.isProcessingCommand = true;
     try {
       switch (envelope.type) {
         case 'OTA_CHECK':
@@ -222,11 +221,23 @@ export class PrintOpsControlAgent {
       return;
     }
 
-    // Check print safety
-    const printStatus = this.getPrintStatus();
+    // Check print safety: wait until printer is truly idle
+    let printStatus = this.getPrintStatus();
     if (printStatus.state === 'PRINTING' || printStatus.queueDepth > 0) {
       this.logger?.info('Printer is active; waiting for idle before installing OTA');
       await this.emitTransition(envelope.command_id, 'WAITING_FOR_IDLE', { targetVersion: version });
+
+      const timeoutMs = 60_000;
+      const startTime = Date.now();
+      while (printStatus.state === 'PRINTING' || printStatus.queueDepth > 0) {
+        if (Date.now() - startTime > timeoutMs) {
+          throw new AppError('OTA_IDLE_TIMEOUT', 'Timed out waiting for printer to become idle', 409);
+        }
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 100);
+        });
+        printStatus = this.getPrintStatus();
+      }
     }
 
     try {
@@ -239,9 +250,9 @@ export class PrintOpsControlAgent {
       }
 
       await this.emitTransition(envelope.command_id, 'RESTARTING', { targetVersion: version });
-      // When external updater takes over and restarts process, state reconciliation occurs
-      // on startup. If this point returns without process exit, complete transition:
-      await this.emitTransition(envelope.command_id, 'COMPLETED', { targetVersion: version });
+      if (installResult.state !== 'RESTART_PENDING') {
+        await this.emitTransition(envelope.command_id, 'COMPLETED', { targetVersion: version });
+      }
     } catch (err) {
       const status = await this.otaService.getStatus();
       const otaState = status.state.state;

@@ -1,7 +1,7 @@
 import {
   AckPolicy, DeliverPolicy, ReplayPolicy, connect,
   nanos,
-  type JsMsg, type Consumer, type ConsumerInfo, type JetStreamManager, type NatsConnection,
+  type Msg, type JsMsg, type Consumer, type ConsumerInfo, type JetStreamManager, type NatsConnection,
 } from 'nats';
 import type { DynamicPrintService } from '../../services/dynamic-print.service.js';
 import type { IntakeAttemptRepositoryPort } from '@printerops/domain';
@@ -182,7 +182,8 @@ export class NatsConnectionManager {
   private runPromise?: Promise<void>;
   private status: NatsRuntimeStatus;
   private messages?: AsyncIterable<JsMsg> & { close?: () => Promise<void | Error> };
-
+  private controlSubscriptions: Array<{ subject: string; handler: (data: unknown) => void }> = [];
+  private activeCoreSubscriptions: Array<{ sub: { unsubscribe: () => void } }> = [];
   constructor(
     private readonly cfg: PrintIntakeConfig | undefined,
     private readonly deps: {
@@ -247,6 +248,33 @@ export class NatsConnectionManager {
     await this.runPromise?.catch(() => {});
     this.connection = undefined;
     this.runPromise = undefined;
+  }
+
+  /**
+   * Register a handler for inbound Core NATS messages on `subject`.
+   * If the connection is already live the subscription is created immediately;
+   * otherwise it is replayed on every reconnect.
+   */
+  subscribeControl(subject: string, handler: (data: unknown) => void): void {
+    this.controlSubscriptions.push({ subject, handler });
+    if (this.connection && !this.connection.isClosed()) {
+      this.startCoreSubscription(this.connection, subject, handler);
+    }
+  }
+
+  private startCoreSubscription(nc: NatsConnection, subject: string, handler: (data: unknown) => void): void {
+    const sub = nc.subscribe(subject);
+    this.activeCoreSubscriptions.push({ sub });
+    void (async () => {
+      try {
+        for await (const msg of sub as AsyncIterable<Msg>) {
+          try {
+            const data: unknown = JSON.parse(new TextDecoder().decode(msg.data));
+            handler(data);
+          } catch { /* ignore malformed message */ }
+        }
+      } catch { /* sub closed */ }
+    })();
   }
 
   publish(subject: string, payload: Record<string, unknown>): void {
@@ -356,6 +384,11 @@ export class NatsConnectionManager {
           lastErrorMessage: undefined,
         };
         this.deps.logger.info({ server: redactNatsUrl(this.cfg.url), clientId: this.cfg.clientId }, 'NATS core connection ready');
+        // Restart any registered Core subscriptions after (re)connect
+        this.activeCoreSubscriptions = [];
+        for (const { subject, handler } of this.controlSubscriptions) {
+          this.startCoreSubscription(nc, subject, handler);
+        }
         this.status = { ...this.status, lastErrorStage: 'JETSTREAM_SETUP' };
         await this.setupConsumer(nc);
         retry = 0;

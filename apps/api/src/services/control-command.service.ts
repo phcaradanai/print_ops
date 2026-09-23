@@ -160,8 +160,12 @@ export class ControlCommandService {
         if (event.state === 'ACCEPTED') {
           patch.status = 'ACCEPTED';
           patch.acceptedAt = new Date(event.timestamp);
-        } else if (event.state === 'COMPLETED' || event.state === 'ROLLED_BACK') {
+        } else if (event.state === 'COMPLETED') {
           patch.status = 'COMPLETED';
+          patch.completedAt = new Date(event.timestamp);
+        } else if (event.state === 'ROLLED_BACK') {
+          patch.status = command.type === 'OTA_ROLLBACK' ? 'COMPLETED' : 'FAILED';
+          patch.failureReason = command.type === 'OTA_INSTALL' ? 'Rolled back after installation failure' : undefined;
           patch.completedAt = new Date(event.timestamp);
         } else if (
           event.state === 'INSTALL_FAILED' ||

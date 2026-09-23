@@ -382,6 +382,7 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
         }),
         eventPublisher: async (subject, event) => {
           publishedEvents.push({ subject, event });
+          if (event.state === 'WAITING_FOR_IDLE') isPrinting = false;
           await commandService.handleDeviceEvent(event);
         },
       });

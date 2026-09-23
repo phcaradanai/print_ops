@@ -1056,6 +1056,13 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   if (deviceIdentityStore.isEnrolled()) {
     controlAgent.startHeartbeat();
     app.addHook('onClose', async () => { controlAgent.stopHeartbeat(); });
+    if (printIntakeCfg) {
+      const identity = deviceIdentityStore.getIdentity();
+      const commandSubject = `printops.control.command.${identity.deviceId}`;
+      natsManager.subscribeControl(commandSubject, (data) => {
+        void controlAgent.handleCommand(data as import('@printerops/domain').ControlCommandEnvelope, {});
+      });
+    }
   }
 
   // Health check (no auth). /api is the canonical dashboard namespace; the

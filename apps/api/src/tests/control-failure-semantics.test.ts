@@ -180,6 +180,7 @@ describe('Phase 9 — Failure Semantics & Robustness', () => {
       }),
       eventPublisher: async (subject, event) => {
         recordedEvents.push(event);
+        if (event.state === 'WAITING_FOR_IDLE') isPrinting = false;
       },
     });
 
