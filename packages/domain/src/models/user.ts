@@ -1,6 +1,6 @@
 export type Role = 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER';
 
-export const APP_PAGES = ['/', '/printers', '/jobs', '/runners', '/templates', '/paper-profiles', '/discovered-printers', '/diagnostics', '/template-sandbox', '/webhooks', '/route-policies', '/printer-bindings', '/print-flow', '/audit-logs', '/users', '/export', '/settings'] as const;
+export const APP_PAGES = ['/', '/printers', '/jobs', '/runners', '/templates', '/paper-profiles', '/discovered-printers', '/diagnostics', '/template-sandbox', '/webhooks', '/route-policies', '/printer-bindings', '/print-flow', '/audit-logs', '/users', '/export', '/settings', '/control/devices', '/control/releases'] as const;
 export type AppPage = typeof APP_PAGES[number];
 
 export type Permission =
@@ -39,7 +39,9 @@ export type Permission =
   | 'sandbox:send-test-print'
   | 'sandbox:run'
   | 'ota:read'
-  | 'ota:manage';
+  | 'ota:manage'
+  | 'control:read'
+  | 'control:manage';
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   OWNER: [
@@ -53,6 +55,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'webhook:read', 'webhook:create', 'webhook:update', 'webhook:test', 'webhook:disable',
     'sandbox:access', 'sandbox:render-preview', 'sandbox:send-test-print', 'sandbox:run',
     'ota:read', 'ota:manage',
+    'control:read', 'control:manage',
   ],
   ADMIN: [
     'printer:read', 'printer:create', 'printer:update', 'printer:control',
@@ -64,6 +67,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'webhook:read', 'webhook:create', 'webhook:update', 'webhook:test', 'webhook:disable',
     'sandbox:run',
     'ota:read', 'ota:manage',
+    'control:read', 'control:manage',
   ],
   OPERATOR: [
     'printer:read', 'printer:control',
@@ -73,6 +77,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'template:read',
     'paper-profile:read',
     'ota:read',
+    'control:read',
   ],
   VIEWER: [
     'printer:read',
@@ -82,6 +87,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'template:read',
     'paper-profile:read',
     'ota:read',
+    'control:read',
   ],
 };
 

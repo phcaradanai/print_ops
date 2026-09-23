@@ -36,6 +36,20 @@ import { SqliteWebhookRoutePolicyRepository } from './infra/repos/sqlite/sqlite-
 import { SqliteImportedDesignRepository } from './infra/repos/sqlite/sqlite-imported-design.repo.js';
 import { SqlitePrinterPaperCalibrationRepository } from './infra/repos/sqlite/sqlite-printer-paper-calibration.repo.js';
 import { SqliteOtaUpdateStateRepository } from './infra/repos/sqlite/sqlite-ota-state.repo.js';
+import {
+  InMemoryDeviceRegistryRepository,
+  InMemoryEnrollmentTokenRepository,
+  InMemoryControlCommandRepository,
+  InMemoryReleaseCatalogRepository,
+  InMemoryControlAuditRepository,
+} from './infra/repos/in-memory-control.repo.js';
+import {
+  SqliteDeviceRegistryRepository,
+  SqliteEnrollmentTokenRepository,
+  SqliteControlCommandRepository,
+  SqliteReleaseCatalogRepository,
+  SqliteControlAuditRepository,
+} from './infra/repos/sqlite/sqlite-control.repo.js';
 
 import { InMemoryEventBus } from './infra/eventbus/in-memory-eventbus.js';
 import { InMemoryJobQueue } from './infra/queue/in-memory-queue.js';
@@ -115,6 +129,13 @@ import { PrintAdmissionGate } from './services/print-admission-gate.js';
 import { FileOtaArtifactStateStore } from './services/ota-artifact-state.js';
 import { ExternalUpdaterInstaller, externalUpdaterConfigured, type ExternalUpdaterConfig } from './services/external-updater-installer.js';
 import { FileOtaPolicyStateStore, OtaUpdatePolicyWorker } from './services/ota-update-policy.js';
+import { controlRoutes } from './routes/v1/control.routes.js';
+import { WebControlRegistryService } from './services/web-control-registry.service.js';
+import { ReleaseCatalogService } from './services/release-catalog.service.js';
+import { ControlCommandService } from './services/control-command.service.js';
+import { PrintOpsControlAgent } from './services/control-agent.service.js';
+import { DeviceIdentityStore } from './services/device-identity.js';
+import { CURRENT_SCHEMA_VERSION } from './infra/db/sqlite.schema.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -315,6 +336,11 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const callbackDeliveryRepo = useSqlite
     ? new SqliteCallbackDeliveryRepository()
     : new InMemoryCallbackDeliveryRepository();
+  const controlDeviceRepo = useSqlite ? new SqliteDeviceRegistryRepository() : new InMemoryDeviceRegistryRepository();
+  const controlTokenRepo = useSqlite ? new SqliteEnrollmentTokenRepository() : new InMemoryEnrollmentTokenRepository();
+  const controlCommandRepo = useSqlite ? new SqliteControlCommandRepository() : new InMemoryControlCommandRepository();
+  const controlReleaseRepo = useSqlite ? new SqliteReleaseCatalogRepository() : new InMemoryReleaseCatalogRepository();
+  const controlAuditRepo = useSqlite ? new SqliteControlAuditRepository() : new InMemoryControlAuditRepository();
   const eventBus = new InMemoryEventBus({
     onHandlerError: (event, err) => app.log.error({ err, eventType: event.eventType }, 'event subscriber failed'),
   });
@@ -973,6 +999,64 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     ),
   );
   natsManager.setIntakeCallbacks(intakeOutcomeCallbacks);
+  const webControlRegistry = new WebControlRegistryService({
+    deviceRegistry: controlDeviceRepo,
+    enrollmentTokens: controlTokenRepo,
+    audit: controlAuditRepo,
+    config: {
+      natsUrl: printIntakeCfg?.url,
+    },
+  });
+  const releaseCatalogService = new ReleaseCatalogService({
+    releases: controlReleaseRepo,
+  });
+  const controlCommandService = new ControlCommandService({
+    commands: controlCommandRepo,
+    devices: controlDeviceRepo,
+    audit: controlAuditRepo,
+    natsPublisher: routeNatsPublisher
+      ? async (subject, payload, opts) => {
+          if (natsManager && opts?.msgId) {
+            const res = await natsManager.publishJetStream(subject, payload, { msgId: opts.msgId });
+            return { acknowledged: res.acknowledged };
+          }
+          await natsManager.publish(subject, payload);
+          return { acknowledged: true };
+        }
+      : undefined,
+  });
+
+  const deviceIdentityStore = new DeviceIdentityStore({
+    appVersion: process.env['PRINTOPS_APP_VERSION'] ?? '0.1.28',
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+  });
+  const controlAgent = new PrintOpsControlAgent({
+    identityStore: deviceIdentityStore,
+    otaService: otaUpdateService,
+    printAdmissionGate,
+    getPrintStatus: () => ({
+      state: printAdmissionGate.isMaintenanceActive() ? 'PAUSED' : 'IDLE',
+      queueDepth: 0,
+      readiness: 'READY',
+    }),
+    eventPublisher: async (subject, event) => {
+      if (routeNatsPublisher) {
+        await routeNatsPublisher(subject, event as unknown as Record<string, unknown>);
+      }
+      await controlCommandService.handleDeviceEvent(event);
+    },
+    heartbeatPublisher: async (subject, heartbeat) => {
+      if (routeNatsPublisher) {
+        await routeNatsPublisher(subject, heartbeat as unknown as Record<string, unknown>);
+      }
+      await webControlRegistry.recordHeartbeat(heartbeat);
+    },
+    logger: app.log,
+  });
+  if (deviceIdentityStore.isEnrolled()) {
+    controlAgent.startHeartbeat();
+    app.addHook('onClose', async () => { controlAgent.stopHeartbeat(); });
+  }
 
   // Health check (no auth). /api is the canonical dashboard namespace; the
   // root alias remains for runner/deployment compatibility.
@@ -1033,6 +1117,12 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       internalToken: otaConfig.healthToken,
     });
     await otaRoutes(v1, { service: otaUpdateService, internalToken: otaConfig.healthToken });
+    await controlRoutes(v1, {
+      registry: webControlRegistry,
+      commands: controlCommandService,
+      releases: releaseCatalogService,
+      audit: controlAuditRepo,
+    });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
   if (printIntakeCfg) {

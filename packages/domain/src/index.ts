@@ -17,6 +17,7 @@ export * from './models/callback-delivery.js';
 export * from './models/sandbox.js';
 export * from './models/connectivity.js';
 export * from './models/ota.js';
+export * from './models/control.js';
 
 // Events
 export * from './events/index.js';

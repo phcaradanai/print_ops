@@ -43,6 +43,18 @@ import type {
   ContentType,
   UpdateState,
 } from '../models/ota.js';
+import type {
+  DeviceRecord,
+  CreateDeviceRecordInput,
+  DeviceHeartbeatPayload,
+  EnrollmentToken,
+  CreateEnrollmentTokenInput,
+  ControlCommandRecord,
+  CreateControlCommandInput,
+  ReleaseCatalogRecord,
+  CreateReleaseCatalogInput,
+  ControlAuditRecord,
+} from '../models/control.js';
 
 export interface ListOptions {
   limit?: number;
@@ -269,4 +281,57 @@ export interface ContentHistoryRepositoryPort {
   create(input: Omit<ContentHistoryRecord, 'id'>): Promise<ContentHistoryRecord>;
   findByType(contentType: ContentType, limit?: number): Promise<ContentHistoryRecord[]>;
   findByTypeAndVersion(contentType: ContentType, version: number): Promise<ContentHistoryRecord | undefined>;
+}
+
+export interface DeviceRegistryFilter {
+  siteId?: string;
+  status?: string;
+  connectionState?: string;
+  otaState?: string;
+}
+
+export interface DeviceRegistryRepositoryPort {
+  findById(deviceId: string): Promise<DeviceRecord | undefined>;
+  findByInstallationId(installationId: string): Promise<DeviceRecord | undefined>;
+  findAll(filter?: DeviceRegistryFilter): Promise<DeviceRecord[]>;
+  create(input: CreateDeviceRecordInput): Promise<DeviceRecord>;
+  update(deviceId: string, patch: Partial<DeviceRecord>): Promise<DeviceRecord>;
+  recordHeartbeat(deviceId: string, heartbeat: DeviceHeartbeatPayload): Promise<DeviceRecord>;
+  delete(deviceId: string): Promise<void>;
+}
+
+export interface EnrollmentTokenRepositoryPort {
+  create(input: CreateEnrollmentTokenInput): Promise<EnrollmentToken>;
+  findByToken(token: string): Promise<EnrollmentToken | undefined>;
+  consume(token: string, deviceId: string): Promise<boolean>;
+  delete(token: string): Promise<void>;
+}
+
+export interface ControlCommandRepositoryPort {
+  create(input: CreateControlCommandInput): Promise<ControlCommandRecord>;
+  findById(commandId: string): Promise<ControlCommandRecord | undefined>;
+  findByIdempotencyKey(deviceId: string, idempotencyKey: string): Promise<ControlCommandRecord | undefined>;
+  findByDeviceId(deviceId: string, opts?: ListOptions): Promise<ControlCommandRecord[]>;
+  update(commandId: string, patch: Partial<ControlCommandRecord>): Promise<ControlCommandRecord>;
+}
+
+export interface ReleaseCatalogFilter {
+  platform?: string;
+  channel?: string;
+  status?: string;
+}
+
+export interface ReleaseCatalogRepositoryPort {
+  create(input: CreateReleaseCatalogInput): Promise<ReleaseCatalogRecord>;
+  findById(id: string): Promise<ReleaseCatalogRecord | undefined>;
+  findByVersion(version: string, platform?: string): Promise<ReleaseCatalogRecord | undefined>;
+  findAll(filter?: ReleaseCatalogFilter): Promise<ReleaseCatalogRecord[]>;
+  update(id: string, patch: Partial<ReleaseCatalogRecord>): Promise<ReleaseCatalogRecord>;
+  delete(id: string): Promise<void>;
+}
+
+export interface ControlAuditRepositoryPort {
+  record(audit: Omit<ControlAuditRecord, 'id'>): Promise<ControlAuditRecord>;
+  findByDeviceId(deviceId: string, opts?: ListOptions): Promise<ControlAuditRecord[]>;
+  findAll(opts?: ListOptions): Promise<ControlAuditRecord[]>;
 }

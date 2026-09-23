@@ -108,7 +108,7 @@ describe('page layout contract', () => {
   const pages = collectPageSources();
 
   it('finds every route module declared in App.tsx', () => {
-    expect(pages.length).toBe(19);
+    expect(pages.length).toBe(22);
   });
 
   it('composes every route through PageLayout/PageScaffold with no raw landmarks', () => {

@@ -41,6 +41,9 @@ const Webhooks = lazy(() => import('./pages/Webhooks.js'));
 const RoutePolicies = lazy(() => import('./pages/RoutePolicies.js'));
 const PrinterBindings = lazy(() => import('./pages/PrinterBindings.js'));
 const PrintFlowBindings = lazy(() => import('./pages/PrintFlowBindings.js'));
+const WebControlDevices = lazy(() => import('./pages/WebControlDevices.js'));
+const WebControlDeviceDetail = lazy(() => import('./pages/WebControlDeviceDetail.js'));
+const WebControlReleases = lazy(() => import('./pages/WebControlReleases.js'));
 
 const MOBILE_NAV_QUERY = '(max-width: 1024px)';
 const DEFAULT_LOGIN_EMAIL = 'sysadmin@printerops.local';
@@ -115,6 +118,18 @@ const NAV_ITEMS: NavItem[] = [
     key: 'nav.paperProfiles',
     roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
     group: 'operations',
+  },
+  {
+    to: '/control/devices',
+    key: 'nav.controlDevices',
+    roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
+    group: 'operations',
+  },
+  {
+    to: '/control/releases',
+    key: 'nav.controlReleases',
+    roles: ['OWNER', 'ADMIN', 'OPERATOR'],
+    group: 'admin',
   },
 
   // ----- Settings & Admin (collapsible, role-gated) -----
@@ -695,6 +710,9 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
           <Route path="/users" element={<UsersRoles />} />
           <Route path="/export" element={<ExportCenter />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/control/devices" element={<WebControlDevices />} />
+          <Route path="/control/devices/:id" element={<WebControlDeviceDetail />} />
+          <Route path="/control/releases" element={<WebControlReleases />} />
           </Routes>
         </Suspense>}
       </main>

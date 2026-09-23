@@ -21,6 +21,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/runners', key: 'nav.runners', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
   { to: '/templates', key: 'nav.templates', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
   { to: '/paper-profiles', key: 'nav.paperProfiles', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
+  { to: '/control/devices', key: 'nav.controlDevices', roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'], group: 'operations' },
   // Admin
   { to: '/discovered-printers', key: 'nav.discovery', roles: ['OWNER', 'ADMIN'], group: 'admin' },
   { to: '/diagnostics', key: 'nav.diagnostics', roles: ['OWNER', 'ADMIN', 'OPERATOR'], group: 'admin' },
@@ -33,6 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/users', key: 'nav.usersRoles', roles: ['OWNER'], group: 'admin' },
   { to: '/export', key: 'nav.export', roles: ['OWNER', 'ADMIN'], group: 'admin' },
   { to: '/settings', key: 'nav.settings', roles: ['OWNER', 'ADMIN'], group: 'admin' },
+  { to: '/control/releases', key: 'nav.controlReleases', roles: ['OWNER', 'ADMIN', 'OPERATOR'], group: 'admin' },
 ];
 
 function filterNavItems(role: Role): NavItem[] {
@@ -60,8 +62,8 @@ function splitNavItems(items: NavItem[]): { opsItems: NavItem[]; adminItems: Nav
 }
 
 describe('role-filtered navigation', () => {
-  it('OWNER sees all 17 items', () => {
-    expect(filterNavItems('OWNER')).toHaveLength(17);
+  it('OWNER sees all 19 items', () => {
+    expect(filterNavItems('OWNER')).toHaveLength(19);
   });
 
   it('print-flow is OWNER-only (sysadmin)', () => {
@@ -112,16 +114,16 @@ describe('navigation grouping', () => {
     expect(groups[1].group).toBe('admin');
   });
 
-  it('operations group contains 6 items', () => {
+  it('operations group contains 7 items', () => {
     const items = filterNavItems('OWNER');
     const { opsItems } = splitNavItems(items);
-    expect(opsItems).toHaveLength(6);
+    expect(opsItems).toHaveLength(7);
   });
 
-  it('admin group contains 11 items for owner', () => {
+  it('admin group contains 12 items for owner', () => {
     const items = filterNavItems('OWNER');
     const { adminItems } = splitNavItems(items);
-    expect(adminItems).toHaveLength(11);
+    expect(adminItems).toHaveLength(12);
   });
 
   it('viewer only gets operations group', () => {

@@ -21,6 +21,8 @@ const en: TranslationDict = {
   'nav.usersRoles': 'Users & Roles',
   'nav.export': 'Export',
   'nav.settings': 'Settings',
+  'nav.controlDevices': 'Devices',
+  'nav.controlReleases': 'Releases',
 
   // Navigation groups
   'nav.group.operations': 'Operator Workflow',
@@ -1480,6 +1482,8 @@ const th: TranslationDict = {
   'nav.usersRoles': 'ผู้ใช้และบทบาท',
   'nav.export': 'ส่งออก',
   'nav.settings': 'การตั้งค่า',
+  'nav.controlDevices': 'อุปกรณ์',
+  'nav.controlReleases': 'เวอร์ชันอัปเดต',
 
   // Navigation groups
   'nav.group.operations': 'ขั้นตอนปฏิบัติงาน',

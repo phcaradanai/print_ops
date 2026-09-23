@@ -1015,6 +1015,130 @@ field ที่ยืนยันจาก route code ว่าจำเป็�
 - ในแพ็กเกจ Windows ตัวทำงาน API ภายในเครื่องเป็นผู้ดำเนินงานพิมพ์ผ่าน TypeScript `WindowsSpoolerAdapter` ส่วน Go runner ใช้ค้นหาเครื่องพิมพ์และส่ง heartbeat เท่านั้น
 - production service account, key rotation, network setup, และ deployment steps ยัง TBD / ต้องยืนยัน
 
+## Web Control OTA
+
+PrintOps Web Control OTA enables authorized operators to monitor distributed print stations and orchestrate cryptographically verified over-the-air updates from a central management console.
+
+### Architecture
+
+```text
+Web Control UI
+      │
+      ▼
+Web Control API
+      │
+      ├── Device Registry (devices, heartbeats, online/stale/offline)
+      ├── Release Catalog (signed manifests & artifact references)
+      ├── OTA Command Service (idempotent, expiring envelopes)
+      └── Audit Store (full lifecycle audit trail)
+      │
+      ▼
+NATS JetStream management plane (printops.control.*)
+      │
+      ▼
+PrintOps Control Agent (runs on device, outbound connection only)
+      │ localhost
+      ▼
+Existing Local OTA Engine (OtaUpdateService)
+      │
+      ▼
+External Updater (printops-updater breakaway process)
+```
+
+**Print Safety Invariant**:
+```text
+OTA waits for printing.
+Printing never waits for Web Control.
+```
+Web Control sends **intent**, never a forced installation. The local PrintOps device remains the final authority for active printing, queue draining, maintenance admission, health validation, and rollback.
+
+### Setup
+
+Configure the following environment variables across services:
+
+| Component | Variable | Description |
+| --- | --- | --- |
+| Web Control / API | `PRINTOPS_CONTROL_NATS_URL` | NATS broker URL for control plane (e.g. `nats://127.0.0.1:4222`) |
+| Web Control / API | `DB_MODE` | Persistence mode (`sqlite` for disk or `memory` for test) |
+| Local PrintOps Device | `PRINTOPS_DEVICE_IDENTITY_PATH` | Path to persistent device identity JSON (default: `./data/device-identity.json`) |
+| Local PrintOps Device | `PRINTOPS_SITE_ID` | Site/hospital branch identifier (e.g. `hospital-ward-1`) |
+| Local PrintOps Device | `PRINTOPS_OTA_ENABLED` | Set `true` to enable OTA functionality |
+| Local PrintOps Device | `PRINTOPS_OTA_REQUIRE_SIGNATURE`| Set `true` to enforce Ed25519 signature verification |
+| Local PrintOps Device | `PRINTOPS_OTA_PUBLIC_KEY` | Hex or PEM public key for release signature verification |
+
+*Security Note*: Private release signing keys are never deployed to Web Control or print stations. Release signing occurs exclusively in the offline release pipeline.
+
+### How To Use
+
+1. **Install/Enroll PrintOps Device**:
+   - In Web Control, open **Devices** and click **Generate Enrollment Token** for the target site.
+   - On the device, supply the one-time token during initial setup or via `POST /api/v1/control/enroll`.
+   - The device stores its unique `deviceId` and secret `deviceToken` in local persistent storage.
+2. **Confirm Device Appears Online**:
+   - In Web Control, verify the device reports `ONLINE` with active runner and print readiness status.
+3. **Publish / Register a Signed Release**:
+   - Open **Releases** and click **Register Signed Release**.
+   - Provide version, channel, platform, schema version, manifest URL, artifact URL, SHA-256 hash, and Ed25519 signature.
+4. **Select Device & Request Update**:
+   - In **Devices**, select the target station to open **Device Detail**.
+   - Review current version, latest compatible release, and current print state.
+   - Click **Request Update**. Review the explicit confirmation dialog:
+     > *The update will begin only when the local PrintOps instance reaches a safe point.*
+   - Click **Confirm Update Request**.
+5. **Observe Progress & Verification**:
+   - Observe real-time state transitions: `ACCEPTED` → `DOWNLOADING` → `VERIFIED` → `WAITING_FOR_IDLE` → `INSTALLING` → `RESTARTING` → `COMPLETED`.
+   - If readiness fails post-install, the updater automatically rolls back binary and SQLite database, reporting `ROLLED_BACK`.
+
+### Failure Behavior
+
+- **Device Offline**: Web Control marks device `OFFLINE`. Command submission is rejected with `DEVICE_OFFLINE`; offline devices never falsely appear to accept commands.
+- **NATS Outage**: Local printing and local queue processing continue completely uninterrupted. The local Control Agent logs a warning and reconnects with exponential backoff.
+- **Web Control Unavailable**: Print station continues standalone operation. Local HTTP intake, runner execution, and printer adapters function normally.
+- **Active Printing During Update**: The device transitions to `WAITING_FOR_IDLE`. Current print jobs complete; OTA begins only when the queue drains and the print admission gate signals idle.
+- **Update Verification Failure**: If manifest or artifact SHA-256 or Ed25519 signature check fails, the device aborts before handoff, records `VERIFY_FAILED`, and leaves existing binaries active.
+- **Health Check Failure**: The updater restores the previous application binary and rolls back SQLite database schema. Device transitions to `ROLLED_BACK`.
+- **Rollback Failure**: If rollback fails, device transitions to `ROLLBACK_FAILED` and `RECOVERY_REQUIRED`. Further remote commands are hard-blocked until physical resolution.
+
+### Development & Testing
+
+Run the verified test suites:
+
+```bash
+# Unit & Integration Tests: Device Identity & Enrollment
+npx vitest run src/tests/device-identity.test.ts src/tests/device-enrollment.test.ts -r apps/api
+
+# SQLite Schema v8 Persistence & Repositories
+npx vitest run src/tests/sqlite-control-repo.test.ts -r apps/api
+
+# Management Command Plane & Control Agent Bridge
+npx vitest run src/tests/control-command-plane.test.ts -r apps/api
+
+# Release Catalog Service Tests
+npx vitest run src/tests/release-catalog.test.ts -r apps/api
+
+# Control API Routes & RBAC Tests
+npx vitest run src/tests/control-api.test.ts -r apps/api
+
+# Complete Failure Semantics & Robustness Matrix (8/8 scenarios)
+npx vitest run src/tests/control-failure-semantics.test.ts -r apps/api
+
+# Web Control UI Tests & Web Build
+npm run test -w @printerops/web
+npm run build -w @printerops/web
+
+# Real Windows End-to-End Acceptance Suite (Success path, Rollback path, Outage matrix)
+node scripts/web-control-ota-e2e.mjs
+```
+
+### Security
+
+- **Role-Based Access Control (RBAC)**: Server-enforced via JWT. `control:read` / `ota:read` for viewing devices and releases; `control:manage` / `ota:manage` for issuing update commands and registering releases.
+- **Per-Device Authentication**: Devices authenticate with distinct high-entropy secrets (`devtok_...`) compared using timing-safe comparisons. Secrets are hashed (SHA-256/scrypt) in storage and never returned in UI responses.
+- **Outbound-Only Connections**: Devices connect outbound to NATS; local HTTP ports are never exposed to the WAN.
+- **Cryptographic Release Provenance**: Manifests and binary artifacts are signed with Ed25519 offline. Devices verify signatures locally; compromised Web Control cannot force unverified binaries onto devices.
+- **Local-Only Recovery**: The `/api/v1/ota/recovery` endpoint is restricted to localhost (`127.0.0.1` / `::1`) with local token auth and is never exposed to remote control.
+- **Audit Logging**: Every command issuance, device enrollment, and OTA state transition is recorded in `control_audit_logs` with actor, device, command ID, versions, and timestamp. Sensitive credentials are redacted from logs.
+
 ## More Documentation
 
 - `docs/operations/local-dev.md`

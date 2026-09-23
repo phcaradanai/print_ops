@@ -1,6 +1,6 @@
 import type { Database } from 'sql.js';
 
-export const CURRENT_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = 8;
 
 export function schemaVersion(db: Database): number {
   const result = db.exec('PRAGMA user_version');
@@ -52,6 +52,7 @@ export function runSchemaMigration(db: Database): void {
     if (fromVersion < 5) migrateVersionFourToFive(db);
     if (fromVersion < 6) migrateVersionFiveToSix(db);
     if (fromVersion < 7) migrateVersionSixToSeven(db);
+    if (fromVersion < 8) migrateVersionSevenToEight(db);
     db.run(`PRAGMA user_version=${CURRENT_SCHEMA_VERSION}`);
     db.run('COMMIT');
   } catch (error) {
@@ -158,6 +159,114 @@ function migrateVersionSixToSeven(db: Database): void {
     ensureColumn(db, 'print_templates', 'source_version', 'INTEGER');
     ensureColumn(db, 'print_templates', 'content_hash', 'TEXT');
   }
+}
+
+/**
+ * Web Control & Remote Management: persistent device registry, enrollment tokens,
+ * command plane, release catalog, and control audit logs.
+ */
+function migrateVersionSevenToEight(db: Database): void {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS control_devices (
+      device_id TEXT PRIMARY KEY NOT NULL,
+      installation_id TEXT NOT NULL UNIQUE,
+      site_id TEXT NOT NULL,
+      hostname TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      architecture TEXT NOT NULL,
+      app_version TEXT NOT NULL,
+      schema_version INTEGER NOT NULL,
+      runner_version TEXT NOT NULL,
+      runner_status TEXT,
+      print_readiness_summary TEXT,
+      enrolled_at TEXT NOT NULL,
+      last_seen_at TEXT,
+      connection_state TEXT NOT NULL DEFAULT 'ONLINE',
+      print_state TEXT NOT NULL DEFAULT 'IDLE',
+      ota_state TEXT NOT NULL DEFAULT 'IDLE',
+      last_ota_operation TEXT,
+      device_token_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      display_name TEXT
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_devices_site ON control_devices(site_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_devices_state ON control_devices(connection_state)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_devices_ota ON control_devices(ota_state)');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS control_enrollment_tokens (
+      token TEXT PRIMARY KEY NOT NULL,
+      site_id TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      consumed_at TEXT,
+      consumed_by_device_id TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_tokens_site ON control_enrollment_tokens(site_id)');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS control_commands (
+      command_id TEXT PRIMARY KEY NOT NULL,
+      device_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      target_version TEXT,
+      requested_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      requested_by TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      accepted_at TEXT,
+      completed_at TEXT,
+      terminal_state TEXT,
+      failure_reason TEXT,
+      UNIQUE(device_id, idempotency_key)
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_commands_device ON control_commands(device_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_commands_status ON control_commands(status)');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS control_releases (
+      id TEXT PRIMARY KEY NOT NULL,
+      version TEXT NOT NULL,
+      channel TEXT NOT NULL DEFAULT 'stable',
+      platform TEXT NOT NULL DEFAULT 'windows-x64',
+      architecture TEXT NOT NULL DEFAULT 'x64',
+      schema_version INTEGER NOT NULL,
+      manifest_ref TEXT NOT NULL,
+      artifact_ref TEXT NOT NULL,
+      sha256 TEXT NOT NULL,
+      signature TEXT NOT NULL,
+      min_supported_version TEXT NOT NULL DEFAULT '0.1.0',
+      status TEXT NOT NULL DEFAULT 'AVAILABLE',
+      release_notes TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE(version, platform)
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_releases_version ON control_releases(version)');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS control_audit_logs (
+      id TEXT PRIMARY KEY NOT NULL,
+      actor TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      command_id TEXT,
+      action TEXT NOT NULL,
+      source_version TEXT,
+      target_version TEXT,
+      requested_at TEXT NOT NULL,
+      accepted_at TEXT,
+      terminal_state TEXT,
+      failure_reason TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_audit_device ON control_audit_logs(device_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_audit_action ON control_audit_logs(action)');
 }
 function migrateVersionZeroToOne(db: Database): void {
   db.run(`
