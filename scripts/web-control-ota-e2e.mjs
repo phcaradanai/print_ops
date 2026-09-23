@@ -235,6 +235,7 @@ try {
     }),
     eventPublisher: async (subject, event) => {
       recordedTransitions.push(event.state);
+      if (event.state === 'WAITING_FOR_IDLE') isPrintingActive = false;
       await commandService.handleDeviceEvent(event);
     },
     heartbeatPublisher: async (subject, heartbeat) => {
@@ -265,8 +266,7 @@ try {
   assert(recordedTransitions.includes('WAITING_FOR_IDLE'), 'Failed to emit WAITING_FOR_IDLE during active printing!');
   console.log('  2.5 Print Safety confirmed: OTA deferred to WAITING_FOR_IDLE, print not interrupted');
 
-  // Printing finishes, update completes
-  isPrintingActive = false;
+  // Printer became idle once WAITING_FOR_IDLE was emitted (flipped in eventPublisher above)
   assert(recordedTransitions.includes('INSTALLING'), 'Missing INSTALLING transition');
   assert(recordedTransitions.includes('RESTARTING'), 'Missing RESTARTING transition');
   assert(recordedTransitions.includes('COMPLETED'), 'Missing COMPLETED transition');
