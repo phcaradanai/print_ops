@@ -1,8 +1,28 @@
-import type { DeviceIdentity } from '@printerops/domain';
+import type {
+  ControlCommandType,
+  ControlOtaTransitionEvent,
+  DeviceIdentity,
+  OtaTransitionState,
+} from '@printerops/domain';
 import { generateId } from '@printerops/shared';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import os from 'node:os';
+
+export type DeviceCommandReplayStatus = 'PROCESSING' | 'PROCESSED';
+
+export interface StoredDeviceCommand {
+  commandId: string;
+  idempotencyKey?: string;
+  commandType?: ControlCommandType;
+  targetVersion?: string;
+  lastAuthoritativeOtaState?: OtaTransitionState;
+  lastAuthoritativeOtaAt?: string;
+  lastLocalOtaState?: string;
+  replayStatus: DeviceCommandReplayStatus;
+  executionStarted?: boolean;
+  executionStartedAt?: string;
+}
 
 export interface StoredDeviceIdentity {
   installationId: string;
@@ -14,6 +34,9 @@ export interface StoredDeviceIdentity {
   platform?: string;
   architecture?: string;
   createdAt: string;
+  currentControlCommandId?: string;
+  controlCommands?: StoredDeviceCommand[];
+  controlEventOutbox?: ControlOtaTransitionEvent[];
 }
 
 export interface DeviceIdentityOptions {
@@ -62,6 +85,9 @@ export class DeviceIdentityStore {
             platform: process.platform,
             architecture: process.arch,
             createdAt: parsed.createdAt || new Date().toISOString(),
+            currentControlCommandId: parsed.currentControlCommandId,
+            controlCommands: Array.isArray(parsed.controlCommands) ? parsed.controlCommands : undefined,
+            controlEventOutbox: Array.isArray(parsed.controlEventOutbox) ? parsed.controlEventOutbox : undefined,
           };
         }
       }
@@ -88,6 +114,126 @@ export class DeviceIdentityStore {
       mkdirSync(dir, { recursive: true });
     }
     writeFileSync(this.filePath, JSON.stringify(data, null, 2), 'utf-8');
+  }
+
+  getControlCommand(commandId: string, idempotencyKey?: string): StoredDeviceCommand | undefined {
+    const commands = this.identity.controlCommands ?? [];
+    for (let index = commands.length - 1; index >= 0; index -= 1) {
+      const command = commands[index]!;
+      if (command.commandId === commandId
+        || (idempotencyKey && command.idempotencyKey === idempotencyKey)) {
+        return command;
+      }
+    }
+    return undefined;
+  }
+
+  markControlCommandStarted(commandId: string): void {
+    const controlCommands = [...(this.identity.controlCommands ?? [])];
+    const index = controlCommands.findIndex((command) => command.commandId === commandId);
+    if (index < 0) throw new Error(`Cannot mark unknown control command ${commandId} as started`);
+    const command = controlCommands[index]!;
+    if (command.executionStarted) return;
+    controlCommands[index] = {
+      ...command,
+      executionStarted: true,
+      executionStartedAt: new Date().toISOString(),
+    };
+    this.identity = { ...this.identity, controlCommands };
+    this.save(this.identity);
+  }
+  resumeDeferredControlCommand(commandId: string): void {
+    const controlCommands = [...(this.identity.controlCommands ?? [])];
+    const index = controlCommands.findIndex((command) => command.commandId === commandId);
+    if (index < 0) throw new Error(`Cannot resume unknown control command ${commandId}`);
+    const command = controlCommands[index]!;
+    if (!command.executionStarted
+      || command.lastAuthoritativeOtaState !== 'WAITING_FOR_IDLE'
+      || command.lastLocalOtaState !== 'WAITING_FOR_IDLE') {
+      throw new Error(`Control command ${commandId} is not a persisted deferred install`);
+    }
+    controlCommands[index] = {
+      ...command,
+      executionStarted: false,
+      executionStartedAt: undefined,
+    };
+    this.identity = { ...this.identity, controlCommands };
+    this.save(this.identity);
+  }
+
+  getCurrentControlCommand(): StoredDeviceCommand | undefined {
+    const commandId = this.identity.currentControlCommandId;
+    return commandId
+      ? this.identity.controlCommands?.find((command) => command.commandId === commandId)
+      : undefined;
+  }
+
+  getPendingControlEvents(): ControlOtaTransitionEvent[] {
+    return [...(this.identity.controlEventOutbox ?? [])];
+  }
+
+  persistControlTransitions(
+    events: ControlOtaTransitionEvent[],
+    command?: {
+      idempotencyKey?: string;
+      commandType?: ControlCommandType;
+      targetVersion?: string;
+      localOtaState?: string;
+    },
+  ): void {
+    const controlCommands = [...(this.identity.controlCommands ?? [])];
+    let currentControlCommandId = this.identity.currentControlCommandId;
+
+    for (const event of events) {
+      if (!event.commandId) continue;
+      const index = controlCommands.findIndex((entry) => entry.commandId === event.commandId);
+      const previous = index >= 0 ? controlCommands[index]! : undefined;
+      const commandType = command?.commandType ?? previous?.commandType;
+      const terminal = event.state === 'COMPLETED'
+        || event.state === 'INSTALL_FAILED'
+        || event.state === 'HEALTH_CHECK_FAILED'
+        || event.state === 'ROLLED_BACK'
+        || event.state === 'ROLLBACK_FAILED'
+        || event.state === 'RECOVERY_REQUIRED'
+        || (event.state === 'VERIFIED' && commandType === 'OTA_DOWNLOAD');
+      const next: StoredDeviceCommand = {
+        commandId: event.commandId,
+        idempotencyKey: command?.idempotencyKey ?? previous?.idempotencyKey,
+        commandType,
+        targetVersion: event.targetVersion ?? command?.targetVersion ?? previous?.targetVersion,
+        lastAuthoritativeOtaState: event.state,
+        lastAuthoritativeOtaAt: event.timestamp,
+        lastLocalOtaState: command?.localOtaState ?? previous?.lastLocalOtaState,
+        replayStatus: terminal ? 'PROCESSED' : previous?.replayStatus ?? 'PROCESSING',
+        executionStarted: previous?.executionStarted ?? false,
+        executionStartedAt: previous?.executionStartedAt,
+      };
+      if (index >= 0) controlCommands[index] = next;
+      else controlCommands.push(next);
+      if (event.state === 'ACCEPTED' || currentControlCommandId === event.commandId) {
+        currentControlCommandId = event.commandId;
+      }
+    }
+
+    const knownEventIds = new Set((this.identity.controlEventOutbox ?? []).map((event) => event.eventId));
+    const newEvents = events.filter((event) => !knownEventIds.has(event.eventId));
+    this.identity = {
+      ...this.identity,
+      currentControlCommandId,
+      controlCommands,
+      controlEventOutbox: [...(this.identity.controlEventOutbox ?? []), ...newEvents],
+    };
+    this.save(this.identity);
+  }
+
+  acknowledgeControlEvent(eventId: string): void {
+    const pending = this.identity.controlEventOutbox ?? [];
+    if (!pending.some((event) => event.eventId === eventId)) return;
+    this.identity = {
+      ...this.identity,
+      controlEventOutbox: pending.filter((event) => event.eventId !== eventId),
+    };
+    this.save(this.identity);
   }
 
   getInstallationId(): string {
@@ -137,12 +283,13 @@ export class DeviceIdentityStore {
 
   clearEnrollment(): void {
     this.identity = {
-      installationId: this.identity.installationId,
-      siteId: this.identity.siteId,
+      ...this.identity,
+      deviceId: undefined,
+      deviceToken: undefined,
+      enrolledAt: undefined,
       hostname: os.hostname(),
       platform: process.platform,
       architecture: process.arch,
-      createdAt: this.identity.createdAt,
     };
     this.save(this.identity);
   }

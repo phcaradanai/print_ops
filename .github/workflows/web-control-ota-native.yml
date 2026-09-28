@@ -1,0 +1,289 @@
+name: Web Control native OTA acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-control-ota-native-hardware
+  cancel-in-progress: false
+
+jobs:
+  native-acceptance:
+    name: Isolated Windows x64 native acceptance
+    runs-on: [self-hosted, windows, x64, web-control-ota-native]
+    environment: web-control-ota-native
+    timeout-minutes: 120
+    env:
+      PRINTOPS_CONTROL_NATS_URL: nats://127.0.0.1:4222
+      PRINTOPS_CONTROL_NATS_STREAM: PRINTOPS_CONTROL
+      PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER: ${{ vars.PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER }}
+      PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_CODE: ${{ vars.PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_CODE }}
+      PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_DRIVER: ${{ vars.PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_DRIVER }}
+      PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_PORT: ${{ vars.PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_PORT }}
+      PRINTOPS_CONTROL_NATIVE_A_INSTALLER: ${{ vars.PRINTOPS_CONTROL_NATIVE_A_INSTALLER }}
+      PRINTOPS_CONTROL_NATIVE_A_MANIFEST: ${{ vars.PRINTOPS_CONTROL_NATIVE_A_MANIFEST }}
+      PRINTOPS_CONTROL_NATIVE_A_VERSION: ${{ vars.PRINTOPS_CONTROL_NATIVE_A_VERSION }}
+      PRINTOPS_CONTROL_NATIVE_A_SCHEMA_VERSION: ${{ vars.PRINTOPS_CONTROL_NATIVE_A_SCHEMA_VERSION }}
+      PRINTOPS_CONTROL_NATIVE_A_PROVENANCE: ${{ vars.PRINTOPS_CONTROL_NATIVE_A_PROVENANCE }}
+      PRINTOPS_CONTROL_NATIVE_BASELINE_COMMIT: ${{ vars.PRINTOPS_CONTROL_NATIVE_BASELINE_COMMIT }}
+      PRINTOPS_CONTROL_NATIVE_BASELINE_ARTIFACT_SHA256: ${{ vars.PRINTOPS_CONTROL_NATIVE_BASELINE_ARTIFACT_SHA256 }}
+      PRINTOPS_CONTROL_NATIVE_EVIDENCE_DIR: ${{ runner.temp }}\web-control-ota-native-evidence
+      PRINTOPS_OTA_NATIVE_OUTPUT_DIR: ${{ runner.temp }}\web-control-ota-native-build
+      PRINTOPS_OTA_NATIVE_EVIDENCE_DIR: ${{ runner.temp }}\web-control-ota-native-evidence
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject untrusted dispatch refs before secret-bearing steps
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REPOSITORY -cne 'phcaradanai/print_ops') { throw "Unexpected repository: $env:GITHUB_REPOSITORY" }
+          if ($env:GITHUB_REF -cnotin @('refs/heads/feature/web-control', 'refs/heads/main')) { throw "Untrusted workflow_dispatch ref: $env:GITHUB_REF" }
+
+      - name: Check native prerequisites and A baseline compatibility
+        id: preflight
+        shell: pwsh
+        env:
+          PRINTOPS_CONTROL_NATIVE_RUNNER_CONFIRMATION: ${{ secrets.PRINTOPS_CONTROL_NATIVE_RUNNER_CONFIRMATION }}
+          PRINTOPS_CONTROL_NATIVE_PRINTER_CONFIRMATION: ${{ secrets.PRINTOPS_CONTROL_NATIVE_PRINTER_CONFIRMATION }}
+          PRINTOPS_CONTROL_NATIVE_PHYSICAL_PRINT_ACK: ${{ secrets.PRINTOPS_CONTROL_NATIVE_PHYSICAL_PRINT_ACK }}
+          PRINTOPS_OTA_NATIVE_SIGNING_KEY: ${{ secrets.PRINTOPS_OTA_NATIVE_SIGNING_KEY }}
+        run: |
+          $evidence = $env:PRINTOPS_CONTROL_NATIVE_EVIDENCE_DIR
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          $issues = [System.Collections.Generic.List[string]]::new()
+          if (-not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -notin @('AMD64', 'x86_64')) { $issues.Add('A self-hosted Windows x64 runner is required.') }
+          if ($env:RUNNER_NAME -match 'Hosted Agent') { $issues.Add('GitHub-hosted runners are not permitted; use the isolated self-hosted runner label.') }
+          if ([string]::IsNullOrWhiteSpace($env:PRINTOPS_CONTROL_NATIVE_RUNNER_CONFIRMATION) -or $env:PRINTOPS_CONTROL_NATIVE_RUNNER_CONFIRMATION -cne 'I_CONFIRM_THIS_ISOLATED_WINDOWS_X64_RUNNER') { $issues.Add('Configure the protected PRINTOPS_CONTROL_NATIVE_RUNNER_CONFIRMATION environment secret to the exact isolated-runner attestation value.') }
+          foreach ($tool in @('node', 'npm', 'git', 'rustc', 'cargo', 'go', 'makensis')) {
+            if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { $issues.Add("Required native build tool is unavailable: $tool") }
+          }
+          if ([string]::IsNullOrWhiteSpace($env:PRINTOPS_OTA_NATIVE_SIGNING_KEY)) { $issues.Add('Configure the protected PRINTOPS_OTA_NATIVE_SIGNING_KEY secret (PKCS#8 Ed25519 private key).') }
+          $selectedPrinter = $null
+          if (-not (Get-Command Get-Printer -ErrorAction SilentlyContinue)) { $issues.Add('Windows PrintManagement Get-Printer is required to validate the configured physical test queue.') }
+          elseif ([string]::IsNullOrWhiteSpace($env:PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER)) { $issues.Add('Configure the PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER environment variable to the exact dedicated physical test queue name.') }
+          else {
+            $selectedPrinter = Get-Printer -Name $env:PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER -ErrorAction SilentlyContinue
+            if (-not $selectedPrinter) { $issues.Add('The configured safe test printer does not exist in the Windows print spooler.') }
+            elseif ($selectedPrinter.Name -cne $env:PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER) { $issues.Add('The spooler queue name does not exactly match the protected physical test queue setting.') }
+            elseif ([string]::IsNullOrWhiteSpace([string]$selectedPrinter.DriverName) -or [string]::IsNullOrWhiteSpace([string]$selectedPrinter.PortName)) { $issues.Add('The configured physical test queue has no identifiable spooler driver or device port.') }
+            elseif ((@($selectedPrinter.Name, $selectedPrinter.DriverName, $selectedPrinter.PortName) -join ' ') -match '(?i)(Microsoft Print to PDF|Microsoft XPS Document Writer|OneNote|Fax|CutePDF|doPDF|PDFCreator|PORTPROMPT:|FILE:|NUL:)') { $issues.Add('The configured queue is a virtual or file-backed printer, not an approved physical test printer.') }
+            if ($selectedPrinter -and ($selectedPrinter.DriverName -cne $env:PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_DRIVER -or [string]::IsNullOrWhiteSpace($env:PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_DRIVER))) { $issues.Add('The Windows driver does not exactly match the protected physical-device allowlist.') }
+            if ($selectedPrinter -and ($selectedPrinter.PortName -cne $env:PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_PORT -or [string]::IsNullOrWhiteSpace($env:PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_PORT))) { $issues.Add('The Windows port does not exactly match the protected physical-device allowlist.') }
+          }
+          if ([string]::IsNullOrWhiteSpace($env:PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_CODE)) { $issues.Add('Configure PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_CODE for the isolated API printer record.') }
+          if ([string]::IsNullOrWhiteSpace($env:PRINTOPS_CONTROL_NATIVE_PRINTER_CONFIRMATION) -or $env:PRINTOPS_CONTROL_NATIVE_PRINTER_CONFIRMATION -cne $env:PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER) { $issues.Add('The protected printer confirmation secret must exactly equal the configured safe test printer name.') }
+          if ($env:PRINTOPS_CONTROL_NATIVE_PHYSICAL_PRINT_ACK -cne 'I_ACKNOWLEDGE_ONE_PHYSICAL_ACCEPTANCE_PRINT') { $issues.Add('Configure the protected PRINTOPS_CONTROL_NATIVE_PHYSICAL_PRINT_ACK secret to explicitly authorize one marked test print on the configured safe printer.') }
+          $archiveA = @(
+            $env:PRINTOPS_CONTROL_NATIVE_A_INSTALLER,
+            $env:PRINTOPS_CONTROL_NATIVE_A_MANIFEST,
+            $env:PRINTOPS_CONTROL_NATIVE_A_VERSION,
+            $env:PRINTOPS_CONTROL_NATIVE_A_SCHEMA_VERSION,
+            $env:PRINTOPS_CONTROL_NATIVE_A_PROVENANCE,
+            $env:PRINTOPS_CONTROL_NATIVE_BASELINE_COMMIT,
+            $env:PRINTOPS_CONTROL_NATIVE_BASELINE_ARTIFACT_SHA256
+          )
+          if (@($archiveA | Where-Object { [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0) {
+            $issues.Add('Archived control-capable A and its policy-pinned provenance/digest are mandatory; configure installer, manifest, stable version, schema, provenance, source commit, and SHA-256.')
+          }
+          if ($env:PRINTOPS_CONTROL_NATIVE_A_VERSION -notmatch '^\d+\.\d+\.\d+$') { $issues.Add('Archived A version must be an explicit stable x.y.z release.') }
+          elseif ([version]$env:PRINTOPS_CONTROL_NATIVE_A_VERSION -le [version]'0.1.28') { $issues.Add('Archived A must be newer than v0.1.28; bootstrap a control-capable release locally before remote OTA acceptance.') }
+          if ($env:PRINTOPS_CONTROL_NATIVE_BASELINE_ARTIFACT_SHA256 -notmatch '^[0-9a-fA-F]{64}$') { $issues.Add('Archived A requires the policy-pinned 64-character installer SHA-256.') }
+          $baselineSourceCommit = [string]$env:PRINTOPS_CONTROL_NATIVE_BASELINE_COMMIT
+          if ($baselineSourceCommit -notmatch '^[0-9a-fA-F]{40}$') { $issues.Add('Archived A requires its policy-pinned 40-character source commit.') }
+          elseif ($baselineSourceCommit -ieq '4ea6cdd76f19f2f4babdc2a7de0311dd0a6fec51') { $issues.Add('Production A v0.1.28 predates the Web Control device command agent; deploy a control-capable bootstrap release locally and pin its source commit as A.') }
+          $port = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 4222)
+          try { $port.Start(); $port.Stop() } catch { $issues.Add('Loopback TCP 4222 is occupied; acceptance requires its own isolated local NATS server.') }
+          $toolsReady = -not ($issues | Where-Object { $_ -match 'Required native build tool|Windows x64 runner|GitHub-hosted' })
+          $toolsReadyText = ([string]$toolsReady).ToLowerInvariant()
+          $canBuild = $toolsReady -and $issues.Count -eq 0
+          $canBuildText = ([string]$canBuild).ToLowerInvariant()
+          "tools_ready=$toolsReadyText" >> $env:GITHUB_OUTPUT
+          "can_build=$canBuildText" >> $env:GITHUB_OUTPUT
+          [ordered]@{ generatedAt = [DateTime]::UtcNow.ToString('o'); status = if ($issues.Count) { 'BLOCKED' } else { 'READY' }; issues = @($issues); runner = $env:RUNNER_NAME; arch = $env:PROCESSOR_ARCHITECTURE; printerName = $env:PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER; printerDriver = if ($selectedPrinter) { $selectedPrinter.DriverName } else { $null }; printerPort = if ($selectedPrinter) { $selectedPrinter.PortName } else { $null } } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $evidence 'workflow-preflight.json')
+          if ($issues.Count) { Write-Warning ($issues -join [Environment]::NewLine) }
+
+      - name: Download and start pinned NATS with JetStream
+        id: nats
+        if: steps.preflight.outputs.can_build == 'true'
+        shell: pwsh
+        run: |
+          $version = '2.11.8'
+          $natsRoot = Join-Path $env:RUNNER_TEMP "web-control-ota-native-nats-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          if (Test-Path -LiteralPath $natsRoot) { throw "Refusing to reuse existing native NATS data directory: $natsRoot" }
+          $zip = Join-Path $natsRoot "nats-server-v$version-windows-amd64.zip"
+          New-Item -ItemType Directory -Force -Path $natsRoot, (Join-Path $natsRoot 'store') | Out-Null
+          $url = "https://github.com/nats-io/nats-server/releases/download/v$version/nats-server-v$version-windows-amd64.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          $expectedSha256 = '3dd98465626e8c6ed92a784ef13c3f956c7e87fbbb4ee86cc198e377565eaeaf'
+          $actualSha256 = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualSha256 -cne $expectedSha256) { throw "Pinned NATS archive SHA-256 mismatch: $actualSha256" }
+          [ordered]@{ version = $version; releaseUrl = $url; archive = [IO.Path]::GetFileName($zip); expectedSha256 = $expectedSha256; observedSha256 = $actualSha256 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $env:PRINTOPS_CONTROL_NATIVE_EVIDENCE_DIR 'nats-artifact.json')
+          $server = Get-ChildItem -LiteralPath $natsRoot -Filter 'nats-server.exe' -Recurse -File | Select-Object -First 1
+          if (-not $server) { throw "Pinned nats-server $version archive did not contain nats-server.exe" }
+          $data = Join-Path $natsRoot 'store'
+          $stdout = Join-Path $env:PRINTOPS_CONTROL_NATIVE_EVIDENCE_DIR 'nats-server.log'
+          $stderr = Join-Path $env:PRINTOPS_CONTROL_NATIVE_EVIDENCE_DIR 'nats-server-error.log'
+          $process = Start-Process -FilePath $server.FullName -ArgumentList @('-js', '-sd', $data, '-p', '4222', '--http_port', '8222') -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          $pidFile = Join-Path $env:PRINTOPS_CONTROL_NATIVE_EVIDENCE_DIR 'nats-server.pid'
+          $process.Id | Set-Content -LiteralPath $pidFile
+          $deadline = [DateTime]::UtcNow.AddSeconds(45)
+          do {
+            try { $varz = Invoke-RestMethod -Uri 'http://127.0.0.1:8222/varz' -TimeoutSec 2; break } catch { Start-Sleep -Milliseconds 500 }
+          } while ([DateTime]::UtcNow -lt $deadline)
+          if (-not $varz -or $varz.version -ne $version -or -not $varz.jetstream) { throw "Pinned local NATS $version did not report healthy JetStream readiness" }
+          "PRINTOPS_CONTROL_NATIVE_NATS_SERVER_PATH=$($server.FullName)" >> $env:GITHUB_ENV
+          "PRINTOPS_CONTROL_NATIVE_NATS_STORE_PATH=$data" >> $env:GITHUB_ENV
+          "PRINTOPS_CONTROL_NATIVE_NATS_PID_FILE=$pidFile" >> $env:GITHUB_ENV
+          $env:PRINTOPS_CONTROL_NATIVE_NATS_VERSION = $version
+
+      - name: Install locked workspace dependencies
+        id: dependencies
+        if: steps.preflight.outputs.can_build == 'true'
+        shell: pwsh
+        run: npm ci
+      - name: Create isolated PRINTOPS_CONTROL JetStream stream
+        id: stream
+        if: steps.dependencies.outcome == 'success' && steps.nats.outcome == 'success'
+        shell: pwsh
+        run: |
+          $natsRoot = Join-Path $env:RUNNER_TEMP "web-control-ota-native-nats-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          @'
+          import { connect, nanos, RetentionPolicy, StorageType } from 'nats';
+          const nc = await connect({ servers: 'nats://127.0.0.1:4222', timeout: 4000 });
+          try {
+            const jsm = await nc.jetstreamManager();
+            const stream = 'PRINTOPS_CONTROL';
+            await jsm.streams.add({ name: stream, subjects: ['printops.control.>'], storage: StorageType.File, retention: RetentionPolicy.Limits, max_age: nanos(24 * 60 * 60 * 1000), max_msgs: 100000 });
+            const info = await jsm.streams.info(stream);
+            if (!info.config.subjects.includes('printops.control.>')) throw new Error('isolated control stream subject mismatch');
+            console.log(JSON.stringify({ stream, subjects: info.config.subjects, storage: info.config.storage, messages: info.state.messages }));
+          } finally { await nc.drain(); }
+          '@ | Set-Content -LiteralPath (Join-Path $natsRoot 'provision-stream.mjs') -Encoding utf8
+          node (Join-Path $natsRoot 'provision-stream.mjs') 2>&1 | Tee-Object -FilePath (Join-Path $env:PRINTOPS_CONTROL_NATIVE_EVIDENCE_DIR 'nats-stream-provision.log')
+          if ($LASTEXITCODE -ne 0) { throw 'Could not provision isolated PRINTOPS_CONTROL JetStream stream' }
+
+      - name: Build signed native acceptance artifacts
+        id: native-build
+        if: steps.preflight.outputs.can_build == 'true' && steps.dependencies.outcome == 'success' && steps.stream.outcome == 'success'
+        continue-on-error: true
+        shell: pwsh
+        env:
+          PRINTOPS_OTA_NATIVE_SIGNING_KEY: ${{ secrets.PRINTOPS_OTA_NATIVE_SIGNING_KEY }}
+          PRINTOPS_OTA_NATIVE_SKIP_A_OVERLAY: '1'
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:PRINTOPS_CONTROL_NATIVE_A_VERSION)) { $env:PRINTOPS_OTA_NATIVE_A_VERSION = $env:PRINTOPS_CONTROL_NATIVE_A_VERSION }
+          if (-not [string]::IsNullOrWhiteSpace($env:PRINTOPS_CONTROL_NATIVE_A_SCHEMA_VERSION)) { $env:PRINTOPS_OTA_NATIVE_A_SCHEMA_VERSION = $env:PRINTOPS_CONTROL_NATIVE_A_SCHEMA_VERSION }
+          npm run build:ota-native-acceptance 2>&1 | Tee-Object -FilePath (Join-Path $env:PRINTOPS_CONTROL_NATIVE_EVIDENCE_DIR 'native-build.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $envFile = Join-Path $env:PRINTOPS_OTA_NATIVE_OUTPUT_DIR 'native-e2e.env'
+          if (-not (Test-Path -LiteralPath $envFile -PathType Leaf)) { throw 'Native builder did not emit its artifact environment file' }
+          $map = @{}
+          foreach ($line in Get-Content -LiteralPath $envFile) {
+            $parts = $line -split '=', 2
+            if ($parts.Count -eq 2) { $map[$parts[0]] = $parts[1] }
+          }
+          $exports = @{
+            PRINTOPS_CONTROL_NATIVE_B_INSTALLER = $map['PRINTOPS_OTA_NATIVE_B_INSTALLER']
+            PRINTOPS_CONTROL_NATIVE_B_MANIFEST = $map['PRINTOPS_OTA_NATIVE_B_MANIFEST']
+            PRINTOPS_CONTROL_NATIVE_BROKEN_INSTALLER = $map['PRINTOPS_OTA_NATIVE_BROKEN_INSTALLER']
+            PRINTOPS_CONTROL_NATIVE_BROKEN_MANIFEST = $map['PRINTOPS_OTA_NATIVE_BROKEN_MANIFEST']
+            PRINTOPS_CONTROL_NATIVE_B_VERSION = $map['PRINTOPS_OTA_NATIVE_B_VERSION']
+            PRINTOPS_CONTROL_NATIVE_B_SCHEMA_VERSION = $map['PRINTOPS_OTA_NATIVE_B_SCHEMA_VERSION']
+            PRINTOPS_CONTROL_NATIVE_PUBLIC_KEY_FILE = $map['PRINTOPS_OTA_NATIVE_PUBLIC_KEY_FILE']
+            PRINTOPS_CONTROL_NATIVE_PROVENANCE = Join-Path $env:PRINTOPS_OTA_NATIVE_OUTPUT_DIR 'provenance.json'
+          }
+          foreach ($name in $exports.Keys) { if ($exports[$name]) { "$name=$($exports[$name])" >> $env:GITHUB_ENV } }
+
+      - name: Run native Web Control acceptance driver
+        id: acceptance
+        shell: pwsh
+        if: always()
+        continue-on-error: true
+        env:
+          PRINTOPS_CONTROL_NATIVE_RUNNER_CONFIRMATION: ${{ secrets.PRINTOPS_CONTROL_NATIVE_RUNNER_CONFIRMATION }}
+          PRINTOPS_CONTROL_NATIVE_PRINTER_CONFIRMATION: ${{ secrets.PRINTOPS_CONTROL_NATIVE_PRINTER_CONFIRMATION }}
+          PRINTOPS_CONTROL_NATIVE_PHYSICAL_PRINT_ACK: ${{ secrets.PRINTOPS_CONTROL_NATIVE_PHYSICAL_PRINT_ACK }}
+        run: |
+          $driver = Join-Path $env:GITHUB_WORKSPACE 'scripts/web-control-native-acceptance.ps1'
+          if (-not (Test-Path -LiteralPath $driver -PathType Leaf)) { throw "Native acceptance driver missing: $driver" }
+          & $driver 2>&1 | Tee-Object -FilePath (Join-Path $env:PRINTOPS_CONTROL_NATIVE_EVIDENCE_DIR 'native-driver-console.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve native evidence and clean workflow-owned NATS state
+        if: always()
+        shell: pwsh
+        run: |
+          $evidence = $env:PRINTOPS_CONTROL_NATIVE_EVIDENCE_DIR
+          if (Test-Path -LiteralPath $evidence) {
+            Get-ChildItem -LiteralPath $evidence -Recurse -File | ForEach-Object { Write-Host "evidence: $($_.FullName) ($($_.Length) bytes)" }
+          }
+          if ($env:PRINTOPS_CONTROL_NATIVE_NATS_PID_FILE -and (Test-Path -LiteralPath $env:PRINTOPS_CONTROL_NATIVE_NATS_PID_FILE)) {
+            $natsPid = [int](Get-Content -LiteralPath $env:PRINTOPS_CONTROL_NATIVE_NATS_PID_FILE -Raw)
+            $natsProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$natsPid"
+            if ($natsProcess -and [IO.Path]::GetFullPath([string]$natsProcess.ExecutablePath) -cne [IO.Path]::GetFullPath($env:PRINTOPS_CONTROL_NATIVE_NATS_SERVER_PATH)) {
+              throw 'Refusing to stop a process that is not the workflow-pinned NATS executable.'
+            }
+            if ($natsProcess) {
+              Stop-Process -Id $natsPid -Force -ErrorAction Stop
+              $deadline = [DateTime]::UtcNow.AddSeconds(15)
+              while ((Get-Process -Id $natsPid -ErrorAction SilentlyContinue) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 250 }
+              if (Get-Process -Id $natsPid -ErrorAction SilentlyContinue) { throw 'Workflow-owned NATS process did not stop; refusing to delete its JetStream store.' }
+            }
+          }
+          if ($env:PRINTOPS_CONTROL_NATIVE_NATS_STORE_PATH) {
+            $natsRoot = [IO.Path]::GetFullPath((Split-Path -Parent $env:PRINTOPS_CONTROL_NATIVE_NATS_STORE_PATH))
+            $expectedRoot = [IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP "web-control-ota-native-nats-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"))
+            if ($natsRoot -cne $expectedRoot) { throw "Refusing to delete unexpected NATS store root: $natsRoot" }
+            if (Test-Path -LiteralPath $natsRoot) { Remove-Item -LiteralPath $natsRoot -Recurse -Force -ErrorAction Stop }
+          }
+
+      - name: Upload acceptance reports, signed installers, manifests, and logs
+        id: evidence-upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-control-ota-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/web-control-ota-native-evidence/**
+            ${{ runner.temp }}/web-control-ota-native-build/b/*.exe
+            ${{ runner.temp }}/web-control-ota-native-build/b/ota-manifest.json
+            ${{ runner.temp }}/web-control-ota-native-build/broken-b/*.exe
+            ${{ runner.temp }}/web-control-ota-native-build/broken-b/ota-manifest.json
+            ${{ runner.temp }}/web-control-ota-native-build/provenance.json
+            ${{ vars.PRINTOPS_CONTROL_NATIVE_A_INSTALLER }}
+            ${{ vars.PRINTOPS_CONTROL_NATIVE_A_MANIFEST }}
+            ${{ vars.PRINTOPS_CONTROL_NATIVE_A_PROVENANCE }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Fail closed when native acceptance did not pass
+        if: always()
+        shell: pwsh
+        run: |
+          $report = Join-Path $env:PRINTOPS_CONTROL_NATIVE_EVIDENCE_DIR 'native-acceptance-summary.json'
+          if ('${{ steps.acceptance.outcome }}' -ne 'success') { throw 'Web Control native OTA acceptance did not pass; inspect the uploaded report for BLOCKED/FAIL evidence.' }
+          if ('${{ steps.evidence-upload.outcome }}' -ne 'success') { throw 'Acceptance evidence upload failed; no PASS result can be published.' }
+          if (-not (Test-Path -LiteralPath $report -PathType Leaf)) { throw 'Web Control native OTA acceptance report is absent; no PASS result can be inferred.' }
+          $summary = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+          if ($summary.overallStatus -ne 'PASS') { throw "Web Control native OTA acceptance status is $($summary.overallStatus), not PASS." }
+          if ($summary.evidenceCaptureStatus -ne 'PASS') { throw "Native acceptance evidence capture status is $($summary.evidenceCaptureStatus), not PASS." }
+          $requiredScenarios = @('commandEnrollmentTransport', 'signedAToBUpdate', 'restartReconnectAndTerminalCompletion', 'activePrintWait', 'rollbackRecovery', 'webUiAction', 'transportResilience', 'commandSafety', 'trustBoundary', 'recoveryHardStop')
+          $missingScenarios = @($requiredScenarios | Where-Object {
+            $scenario = $summary.scenarios.PSObject.Properties[[string]$_]
+            -not $scenario -or $scenario.Value.status -ne 'PASS'
+          })
+          if ($missingScenarios.Count -gt 0) { throw "Native acceptance has unpassed required scenarios: $($missingScenarios -join ', ')." }
+          foreach ($label in @('A', 'B', 'brokenB')) {
+            $artifactProperty = $summary.artifacts.PSObject.Properties[[string]$label]
+            $artifact = if ($artifactProperty) { $artifactProperty.Value } else { $null }
+            if (-not $artifact -or -not (Test-Path -LiteralPath $artifact.installerPath -PathType Leaf)) { throw "Required signed $label installer is absent from native acceptance evidence." }
+          }
+          foreach ($name in @('native-acceptance-summary.json', 'workflow-preflight.json', 'native-driver-console.log', 'nats-artifact.json', ('nsis-a-to-b-' + $env:GITHUB_RUN_ID + '.log'), ('nsis-rollback-recovery-' + $env:GITHUB_RUN_ID + '.log'))) {
+            if (-not (Test-Path -LiteralPath (Join-Path $env:PRINTOPS_CONTROL_NATIVE_EVIDENCE_DIR $name) -PathType Leaf)) { throw "Required acceptance evidence is missing: $name" }
+          }

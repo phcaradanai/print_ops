@@ -6,6 +6,7 @@ import {
 } from '../infra/repos/in-memory-control.repo.js';
 import { WebControlRegistryService } from '../services/web-control-registry.service.js';
 import { ConflictError, NotFoundError } from '@printerops/shared';
+import { signControlMessageWithToken } from '../services/control-message-auth.js';
 
 describe('WebControlRegistryService - Enrollment & Identity', () => {
   let deviceRepo: InMemoryDeviceRegistryRepository;
@@ -154,6 +155,25 @@ describe('WebControlRegistryService - Enrollment & Identity', () => {
     const authSuccess = await service.authenticateDevice(enrolled.deviceId, enrolled.deviceToken);
     expect(authSuccess).not.toBeNull();
     expect(authSuccess?.deviceId).toBe(enrolled.deviceId);
+
+    const heartbeat = { deviceId: enrolled.deviceId, state: 'IDLE', currentVersion: '0.1.28' };
+    const signedHeartbeat = signControlMessageWithToken(enrolled.deviceToken, heartbeat);
+    const authenticatedMessage = await service.authenticateDeviceMessage(
+      enrolled.deviceId,
+      signedHeartbeat.payload,
+      signedHeartbeat.signature,
+    );
+    expect(authenticatedMessage?.deviceId).toBe(enrolled.deviceId);
+    await expect(
+      service.authenticateDeviceMessage(
+        enrolled.deviceId,
+        { ...heartbeat, deviceId: 'dev_other' },
+        signedHeartbeat.signature,
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      service.authenticateDeviceMessage(enrolled.deviceId, heartbeat, 'bad-signature'),
+    ).resolves.toBeNull();
 
     // Wrong token
     const authWrong = await service.authenticateDevice(enrolled.deviceId, 'devtok_wrong_secret_123');

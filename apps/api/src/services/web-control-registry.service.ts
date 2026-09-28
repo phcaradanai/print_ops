@@ -11,7 +11,9 @@ import type {
   ControlAuditRepositoryPort,
 } from '@printerops/domain';
 import { AppError, ConflictError, NotFoundError, ValidationError, generateId } from '@printerops/shared';
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { hashDeviceToken, verifyControlMessage } from './control-message-auth.js';
+export { hashDeviceToken } from './control-message-auth.js';
 
 export interface WebControlRegistryConfig {
   natsUrl?: string;
@@ -24,10 +26,6 @@ export interface WebControlRegistryDeps {
   enrollmentTokens: EnrollmentTokenRepositoryPort;
   audit?: ControlAuditRepositoryPort;
   config?: WebControlRegistryConfig;
-}
-
-export function hashDeviceToken(token: string): string {
-  return createHash('sha256').update(token.trim()).digest('hex');
 }
 
 export class WebControlRegistryService {
@@ -171,6 +169,19 @@ export class WebControlRegistryService {
     }
 
     return device;
+  }
+
+  async authenticateDeviceMessage(deviceId: string, payload: unknown, signature: string): Promise<DeviceRecord | null> {
+    if (
+      !payload
+      || typeof payload !== 'object'
+      || Array.isArray(payload)
+      || !('deviceId' in payload)
+      || payload.deviceId !== deviceId
+    ) return null;
+    const device = await this.deviceRegistry.findById(deviceId);
+    if (!device || device.status !== 'ACTIVE') return null;
+    return verifyControlMessage(device.deviceTokenHash, payload, signature) ? device : null;
   }
 
   async recordHeartbeat(payload: DeviceHeartbeatPayload): Promise<DeviceRecord> {

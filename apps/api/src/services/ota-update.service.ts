@@ -24,6 +24,7 @@ import { pipeline } from 'node:stream/promises';
 import type { PrintAdmissionGatePort } from './print-admission-gate.js';
 import type { OtaArtifactStateStorePort } from './ota-artifact-state.js';
 import { isExternalUpdaterTerminalPhase, readExternalUpdaterState } from './ota-updater-state.js';
+import { CURRENT_SCHEMA_VERSION } from '../infra/db/sqlite.schema.js';
 
 const ARTIFACT_COMPONENTS = ['desktop', 'runner', 'api'] as const;
 const ARTIFACT_PLATFORMS = ['windows-x64', 'node-bundle'] as const;
@@ -36,7 +37,7 @@ const DEFAULT_QUEUE_POLL_MS = 5_000;
 const DEFAULT_HEALTH_CHECK_TIMEOUT_MS = 20_000;
 const DEFAULT_UPDATER_SHUTDOWN_TIMEOUT_MS = 30_000;
 const DEFAULT_UPDATER_HANDOFF_DELAY_MS = 500;
-const DEFAULT_SCHEMA_VERSION = 7;
+const DEFAULT_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION;
 const DEFAULT_AUTO_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 const DEFAULT_AUTO_UPDATE_JITTER_MS = 5 * 60 * 1_000;
 const DEFAULT_AUTO_UPDATE_RETRY_BASE_MS = 60 * 1_000;
@@ -145,12 +146,14 @@ export interface DownloadUpdateResult {
   signatureVerification: 'verified' | 'deferred';
 }
 
+export type OtaInstallProgressState = 'WAITING_FOR_IDLE' | 'INSTALLING' | 'RESTART_PENDING';
 export interface OtaInstallRequest {
   version: string;
   component?: ArtifactComponent;
   platform?: ArtifactPlatform;
   /** Automatic policy uses a non-blocking idle/defer protocol. */
   mode?: 'manual' | 'automatic';
+  onProgress?: (state: OtaInstallProgressState) => void | Promise<void>;
 }
 
 export interface OtaInstallInput {
@@ -784,6 +787,35 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     };
   }
 
+  async getPrintSystemStatus(): Promise<{
+    state: 'IDLE' | 'PRINTING' | 'PAUSED' | 'ERROR';
+    queueDepth: number;
+    readiness: string;
+  }> {
+    const metrics = this.deps.queue
+      ? await this.deps.queue.getMetrics()
+      : { size: 0, inflight: 0 };
+    const activeJobs = this.deps.jobs
+      ? await Promise.all(
+        NON_TERMINAL_JOB_STATUSES.map((status) => this.deps.jobs!.findAll({ status })),
+      )
+      : [];
+    const activeJobCount = activeJobs.reduce((count, jobs) => count + jobs.length, 0);
+    const printingJobs = activeJobs[NON_TERMINAL_JOB_STATUSES.indexOf('PRINTING')]?.length ?? 0;
+    const maintenanceActive = this.deps.admission?.isMaintenanceActive() ?? false;
+
+    return {
+      state: metrics.inflight > 0 || printingJobs > 0
+        ? 'PRINTING'
+        : maintenanceActive
+          ? 'PAUSED'
+          : 'IDLE',
+      queueDepth: Math.max(metrics.size + metrics.inflight, activeJobCount),
+      readiness: maintenanceActive ? 'MAINTENANCE' : 'READY',
+    };
+  }
+
+
   async checkForUpdate(): Promise<UpdateCheckResult> {
     if (!this.deps.config.enabled) {
       return {
@@ -1007,6 +1039,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           startedAt,
           errorMessage: null,
         });
+        await request.onProgress?.('WAITING_FOR_IDLE');
         if (automatic && !(await this.printSystemIsIdle())) return deferred();
 
         if (this.deps.admission) {
@@ -1029,6 +1062,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
         }
 
         await this.deps.state.update({ state: 'INSTALLING' });
+        await request.onProgress?.('INSTALLING');
         installStarted = true;
         const launch = await this.deps.installer!.install(staged);
         if (launch && launch.kind === 'external') {
@@ -1036,6 +1070,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           // the Desktop process. The external bootstrapper owns the rest of
           // INSTALL → HEALTH_CHECK → ROLLBACK and persists its outcome.
           await this.deps.state.update({ state: 'RESTART_PENDING' });
+          await request.onProgress?.('RESTART_PENDING');
           maintenanceTransferred = true;
           return {
             installed: false,

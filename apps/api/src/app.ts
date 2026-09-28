@@ -59,6 +59,7 @@ import { buildApiKeyAuth, hashApiKey, apiKeyPrefix } from './infra/middleware/ap
 import { SimpleTemplateRenderer } from './infra/template/simple-template-renderer.js';
 
 import { AdapterRegistry, FakePrinterAdapter, WindowsSpoolerAdapter } from '@printerops/adapters';
+import type { ControlCommandEnvelope, ControlOtaTransitionEvent, DeviceHeartbeatPayload } from '@printerops/domain';
 import { generateId } from '@printerops/shared';
 
 import { CreatePrinterService } from './services/create-printer.service.js';
@@ -109,6 +110,11 @@ import { sandboxRoutes } from './routes/v1/sandbox.routes.js';
 import { printerCalibrationRoutes } from './routes/v1/printer-calibration.routes.js';
 import { printIntakeConfigFromEnv, type PrintIntakeConfig } from './infra/nats/print-intake.js';
 import { NatsConnectionManager } from './infra/nats/nats-connection-manager.js';
+import {
+  controlPlaneTransportConfigFromEnv,
+  startControlPlaneTransport,
+  type ControlPlaneTransport,
+} from './infra/nats/control-plane-transport.js';
 import { v1PrintFlowRoutes } from './routes/v1/print-flow.routes.js';
 import { join, dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -135,6 +141,7 @@ import { ReleaseCatalogService } from './services/release-catalog.service.js';
 import { ControlCommandService } from './services/control-command.service.js';
 import { PrintOpsControlAgent } from './services/control-agent.service.js';
 import { DeviceIdentityStore } from './services/device-identity.js';
+import { signControlMessageWithToken, verifyControlMessageWithToken } from './services/control-message-auth.js';
 import { CURRENT_SCHEMA_VERSION } from './infra/db/sqlite.schema.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
@@ -187,6 +194,24 @@ const resultCallbackHttpSender: CallbackHttpSender = async (url, body, opts) => 
     clearTimeout(timer);
   }
 };
+
+function parseSignedControlMessage(
+  value: Record<string, unknown>,
+): { payload: Record<string, unknown>; signature: string } | undefined {
+  const payload = value['payload'];
+  const signature = value['signature'];
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || typeof signature !== 'string') {
+    return undefined;
+  }
+  return { payload: payload as Record<string, unknown>, signature };
+}
+
+function deviceIdFromControlSubject(subject: string, kind: 'event' | 'heartbeat'): string | undefined {
+  const prefix = `printops.control.${kind}.`;
+  if (!subject.startsWith(prefix)) return undefined;
+  const deviceId = subject.slice(prefix.length);
+  return deviceId && !deviceId.includes('.') ? deviceId : undefined;
+}
 
 // __dirname is available in the CJS bundle produced by esbuild/pkg
 declare var __dirname: string;
@@ -999,12 +1024,33 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     ),
   );
   natsManager.setIntakeCallbacks(intakeOutcomeCallbacks);
+  const deviceIdentityStore = new DeviceIdentityStore({
+    appVersion: process.env['PRINTOPS_APP_VERSION'] ?? '0.1.28',
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+  });
+  const enrolledIdentity = deviceIdentityStore.getIdentity();
+  const controlRole = process.env['PRINTOPS_CONTROL_ROLE']
+    ?? (deviceIdentityStore.isEnrolled() ? 'device' : 'control-plane');
+  if (controlRole !== 'device' && controlRole !== 'control-plane') {
+    throw new Error('PRINTOPS_CONTROL_ROLE must be "device" or "control-plane"');
+  }
+  if (controlRole === 'device' && !deviceIdentityStore.isEnrolled()) {
+    throw new Error('PRINTOPS_CONTROL_ROLE=device requires an enrolled device identity');
+  }
+  const controlTransportConfig = process.env['PRINTOPS_CONTROL_NATS_URL']
+    ? controlRole === 'device'
+      ? controlPlaneTransportConfigFromEnv({ role: 'device', deviceId: enrolledIdentity.deviceId! })
+      : controlPlaneTransportConfigFromEnv({ role: 'control-plane' })
+    : undefined;
+  let controlPlaneTransport: ControlPlaneTransport | undefined;
+  let deviceControlTransport: ControlPlaneTransport | undefined;
+
   const webControlRegistry = new WebControlRegistryService({
     deviceRegistry: controlDeviceRepo,
     enrollmentTokens: controlTokenRepo,
     audit: controlAuditRepo,
     config: {
-      natsUrl: printIntakeCfg?.url,
+      natsUrl: process.env['PRINTOPS_CONTROL_NATS_URL'],
     },
   });
   const releaseCatalogService = new ReleaseCatalogService({
@@ -1014,56 +1060,117 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     commands: controlCommandRepo,
     devices: controlDeviceRepo,
     audit: controlAuditRepo,
-    natsPublisher: routeNatsPublisher
+    natsPublisher: controlRole === 'control-plane' && controlTransportConfig
       ? async (subject, payload, opts) => {
-          if (natsManager && opts?.msgId) {
-            const res = await natsManager.publishJetStream(subject, payload, { msgId: opts.msgId });
-            return { acknowledged: res.acknowledged };
+          if (!controlPlaneTransport || !opts?.msgId) {
+            throw new Error('control JetStream transport is not ready for command publication');
           }
-          await natsManager.publish(subject, payload);
+          await controlPlaneTransport.publishCommand(subject, payload, opts.msgId);
           return { acknowledged: true };
         }
       : undefined,
   });
-
-  const deviceIdentityStore = new DeviceIdentityStore({
-    appVersion: process.env['PRINTOPS_APP_VERSION'] ?? '0.1.28',
-    schemaVersion: CURRENT_SCHEMA_VERSION,
-  });
   const controlAgent = new PrintOpsControlAgent({
     identityStore: deviceIdentityStore,
     otaService: otaUpdateService,
-    printAdmissionGate,
-    getPrintStatus: () => ({
-      state: printAdmissionGate.isMaintenanceActive() ? 'PAUSED' : 'IDLE',
-      queueDepth: 0,
-      readiness: 'READY',
-    }),
+    getPrintStatus: () => otaUpdateService.getPrintSystemStatus(),
     eventPublisher: async (subject, event) => {
-      if (routeNatsPublisher) {
-        await routeNatsPublisher(subject, event as unknown as Record<string, unknown>);
+      const deviceToken = deviceIdentityStore.getDeviceToken();
+      if (!deviceControlTransport || !deviceToken) {
+        throw new Error('control JetStream transport is not ready for device event publication');
       }
-      await controlCommandService.handleDeviceEvent(event);
+      const signed = signControlMessageWithToken(deviceToken, event);
+      await deviceControlTransport.publishEvent(
+        subject,
+        signed as unknown as Record<string, unknown>,
+        event.eventId,
+      );
     },
     heartbeatPublisher: async (subject, heartbeat) => {
-      if (routeNatsPublisher) {
-        await routeNatsPublisher(subject, heartbeat as unknown as Record<string, unknown>);
+      const deviceToken = deviceIdentityStore.getDeviceToken();
+      if (!deviceControlTransport || !deviceToken) {
+        throw new Error('control JetStream transport is not ready for heartbeat publication');
       }
-      await webControlRegistry.recordHeartbeat(heartbeat);
+      const signed = signControlMessageWithToken(deviceToken, heartbeat);
+      await deviceControlTransport.publishHeartbeat(
+        subject,
+        signed as unknown as Record<string, unknown>,
+        `heartbeat-${heartbeat.deviceId}-${heartbeat.timestamp}`,
+      );
     },
     logger: app.log,
   });
-  if (deviceIdentityStore.isEnrolled()) {
+
+  if (controlTransportConfig && controlRole === 'control-plane') {
+    controlPlaneTransport = await startControlPlaneTransport(controlTransportConfig, {
+      onEvent: async (message, subject) => {
+        const signed = parseSignedControlMessage(message);
+        const deviceId = deviceIdFromControlSubject(subject, 'event');
+        if (!signed || !deviceId) {
+          app.log.warn({ subject }, 'discarding malformed control event');
+          return;
+        }
+        const authenticated = await webControlRegistry.authenticateDeviceMessage(
+          deviceId,
+          signed.payload,
+          signed.signature,
+        );
+        if (!authenticated) {
+          app.log.warn({ subject }, 'discarding unauthenticated control event');
+          return;
+        }
+        await controlCommandService.handleDeviceEvent(signed.payload as unknown as ControlOtaTransitionEvent);
+      },
+      onHeartbeat: async (message, subject) => {
+        const signed = parseSignedControlMessage(message);
+        const deviceId = deviceIdFromControlSubject(subject, 'heartbeat');
+        if (!signed || !deviceId) {
+          app.log.warn({ subject }, 'discarding malformed control heartbeat');
+          return;
+        }
+        const authenticated = await webControlRegistry.authenticateDeviceMessage(
+          deviceId,
+          signed.payload,
+          signed.signature,
+        );
+        if (!authenticated) {
+          app.log.warn({ subject }, 'discarding unauthenticated control heartbeat');
+          return;
+        }
+        await webControlRegistry.recordHeartbeat(signed.payload as unknown as DeviceHeartbeatPayload);
+      },
+    }, { logger: app.log, allowOfflineStartup: true });
+  } else if (controlTransportConfig && controlRole === 'device') {
+    const deviceId = enrolledIdentity.deviceId!;
+    deviceControlTransport = await startControlPlaneTransport(controlTransportConfig, {
+      onCommand: async (message, subject) => {
+        if (subject !== `printops.control.command.${deviceId}`) {
+          app.log.warn({ subject }, 'discarding command delivered on an unexpected subject');
+          return;
+        }
+        const signed = parseSignedControlMessage(message);
+        const deviceToken = deviceIdentityStore.getDeviceToken();
+        if (!signed || !deviceToken || !verifyControlMessageWithToken(
+          deviceToken,
+          signed.payload,
+          signed.signature,
+        )) {
+          app.log.warn({ subject }, 'discarding unauthenticated control command');
+          return;
+        }
+        const command = signed.payload as unknown as ControlCommandEnvelope;
+        await controlAgent.handleCommand(command, { waitForCompletion: true });
+      },
+    }, { logger: app.log, allowOfflineStartup: true });
     controlAgent.startHeartbeat();
-    app.addHook('onClose', async () => { controlAgent.stopHeartbeat(); });
-    if (printIntakeCfg) {
-      const identity = deviceIdentityStore.getIdentity();
-      const commandSubject = `printops.control.command.${identity.deviceId}`;
-      natsManager.subscribeControl(commandSubject, (data) => {
-        void controlAgent.handleCommand(data as import('@printerops/domain').ControlCommandEnvelope, {});
-      });
-    }
+  } else if (deviceIdentityStore.isEnrolled()) {
+    app.log.info('control agent is offline: PRINTOPS_CONTROL_NATS_URL is not configured');
   }
+  app.addHook('onClose', async () => {
+    controlAgent.stopHeartbeat();
+    await deviceControlTransport?.stop();
+    await controlPlaneTransport?.stop();
+  });
 
   // Health check (no auth). /api is the canonical dashboard namespace; the
   // root alias remains for runner/deployment compatibility.

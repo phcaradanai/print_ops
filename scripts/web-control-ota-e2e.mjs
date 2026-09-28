@@ -1,20 +1,15 @@
 #!/usr/bin/env node
 /**
- * PrintOps Web Control OTA — End-to-End Acceptance Test
+ * PrintOps Web Control OTA — Simulated Integration Regression (Not Native Acceptance)
  *
- * Proves:
- * 1. Success Path (Web Control -> Device -> Safe Print -> Download -> Verify -> Install -> COMPLETED)
- * 2. Rollback Path (Web Control -> Broken Target -> Install -> Health Check Fail -> Rollback -> ROLLED_BACK)
- * 3. Failure & Safety Scenarios:
- *    - Web Control outage (printing continues)
- *    - NATS outage (printing continues, remote degrades)
- *    - Device offline (no false acceptance)
- *    - Active printing (WAITING_FOR_IDLE, zero print interruption)
- *    - Duplicate command (single execution)
- *    - Expired command (rejected)
- *    - Wrong-device command (ignored)
- *    - Invalid signature (rejected, never activated)
- *    - Rollback failure (RECOVERY_REQUIRED, remote blocked)
+ * Exercises service behavior only:
+ * - In-memory control repositories and a fake command publisher.
+ * - A temporary identity JSON file reopened by a new store instance.
+ * - Direct Control Agent calls with mocked local OTA outcomes.
+ * - Command expiry, target, offline, idempotency, and recovery-state checks.
+ *
+ * Does not connect to NATS, launch Web Control or a Windows installation, or
+ * perform real download, install, restart, rollback, or release verification.
  */
 
 import { generateKeyPairSync, sign } from 'node:crypto';
@@ -39,9 +34,6 @@ import {
   ReleaseCatalogService,
 } from '../apps/api/dist/services/release-catalog.service.js';
 import {
-  PrintAdmissionGate,
-} from '../apps/api/dist/services/print-admission-gate.js';
-import {
   InMemoryDeviceRegistryRepository,
   InMemoryControlCommandRepository,
   InMemoryControlAuditRepository,
@@ -50,18 +42,18 @@ import {
 } from '../apps/api/dist/infra/repos/in-memory-control.repo.js';
 
 console.log('===============================================================');
-console.log(' PRINTOPS WEB CONTROL OTA — REAL END-TO-END ACCEPTANCE SUITE  ');
-console.log('===============================================================\n');
+console.log(' PRINTOPS WEB CONTROL OTA — SIMULATED INTEGRATION REGRESSION ');
+console.log('                  NOT NATIVE ACCEPTANCE                    ');
 
 const testDir = mkdtempSync(join(tmpdir(), 'printops-e2e-control-'));
 const identityPath = join(testDir, 'device-identity.json');
 
-// Generate Ed25519 signing keypair for acceptance releases
+// Use an ephemeral signing key for the simulated release record only.
 const { privateKey, publicKey } = generateKeyPairSync('ed25519');
 const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
 
 console.log('✓ Initialized ephemeral test environment at', testDir);
-console.log('✓ Generated Ed25519 cryptographic release signing keypair\n');
+console.log('✓ Generated ephemeral test signing keypair (not a release key)\n');
 
 try {
   // ─────────────────────────────────────────────────────────────────────────────
@@ -77,28 +69,28 @@ try {
     deviceRegistry: deviceRepo,
     enrollmentTokens: tokenRepo,
     audit: auditRepo,
-    config: { natsUrl: 'nats://127.0.0.1:4222' },
+    config: { natsUrl: 'nats://simulation.invalid:4222' },
   });
 
   const releaseCatalog = new ReleaseCatalogService({
     releases: releaseRepo,
   });
 
-  const publishedNatsCommands = [];
+  const capturedCommands = [];
   const commandService = new ControlCommandService({
     commands: commandRepo,
     devices: deviceRepo,
     audit: auditRepo,
     natsPublisher: async (subject, payload) => {
-      publishedNatsCommands.push({ subject, payload });
+      capturedCommands.push({ subject, payload });
       return { acknowledged: true };
     },
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // SCENARIO 1: Enrollment & Identity Persistence
+  // SCENARIO 1: Enrollment & Identity Store Reload
   // ─────────────────────────────────────────────────────────────────────────────
-  console.log('[SCENARIO 1] Device Identity & One-Time Enrollment');
+  console.log('[SCENARIO 1] Simulated Device Identity & Enrollment');
 
   // 1. Generate one-time enrollment token
   const enrollmentToken = await registryService.createEnrollmentToken({
@@ -117,9 +109,9 @@ try {
   });
   const installationId = identityStore.getInstallationId();
   assert(installationId.startsWith('inst_'), 'Invalid installation ID');
-  console.log('  1.2 Device generated persistent installation ID:', installationId);
+  console.log('  1.2 Test identity store generated installation ID:', installationId);
 
-  // 3. Device executes one-time bootstrap enrollment
+  // 3. Enroll through the registry service directly
   const enrollmentRes = await registryService.enrollDevice({
     enrollmentToken: enrollmentToken.token,
     installationId,
@@ -134,7 +126,7 @@ try {
   const deviceId = enrollmentRes.deviceId;
   identityStore.recordEnrollment(deviceId, enrollmentRes.deviceToken, 'hospital-ward-1');
   assert(identityStore.isEnrolled(), 'Device should be marked enrolled');
-  console.log('  1.3 Device successfully enrolled with deviceId:', deviceId);
+  console.log('  1.3 Registry service enrolled test device:', deviceId);
 
   // 4. Verify token cannot be re-used (one-time protection)
   let replayBlocked = false;
@@ -153,20 +145,20 @@ try {
     replayBlocked = true;
   }
   assert(replayBlocked, 'Enrollment token replay was not blocked!');
-  console.log('  1.4 Replay attack blocked: token cannot be reused');
+  console.log('  1.4 Registry service rejected reuse of the enrollment token');
 
-  // 5. Verify identity persistence across process restart
-  const restartedStore = new DeviceIdentityStore({ storagePath: identityPath });
-  assert.equal(restartedStore.getInstallationId(), installationId, 'InstallationId mutated after restart');
-  assert.equal(restartedStore.getDeviceId(), deviceId, 'DeviceId lost after restart');
-  console.log('  1.5 Restart simulation verified: exact identity restored from disk\n');
+  // 5. Reopen the temporary identity file with a new store instance.
+  const reopenedStore = new DeviceIdentityStore({ storagePath: identityPath });
+  assert.equal(reopenedStore.getInstallationId(), installationId, 'InstallationId changed after reopening the store');
+  assert.equal(reopenedStore.getDeviceId(), deviceId, 'DeviceId missing after reopening the store');
+  console.log('  1.5 Temporary identity-file reopen check passed\n');
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // SCENARIO 2: Success Path OTA
+  // SCENARIO 2: Mocked Success-Path OTA State Flow
   // ─────────────────────────────────────────────────────────────────────────────
-  console.log('[SCENARIO 2] Native Success-Path OTA Update');
+  console.log('[SCENARIO 2] Simulated Success-Path OTA State Flow');
 
-  // Register signed release v0.1.29
+  // Register a simulated release catalog record for v0.1.29.
   const releaseSha256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
   const releaseSignature = sign(null, Buffer.from(releaseSha256, 'hex'), privateKey).toString('base64');
 
@@ -184,13 +176,15 @@ try {
     status: 'AVAILABLE',
     releaseNotes: 'General availability update with performance enhancements',
   });
-  console.log('  2.1 Registered signed release v0.1.29 in Release Catalog');
+  console.log('  2.1 Test release record registered in the in-memory catalog');
 
-  // Setup mock local OTA service tracking state machine
+  // Use a mock local OTA service that returns controlled outcomes and state.
   let currentLocalVersion = '0.1.28';
   let localOtaState = 'IDLE';
   const recordedTransitions = [];
 
+  // This mock emits the same progress contract as the local OTA engine.
+  let installAttempts = 0;
   const mockOtaService = {
     getStatus: async () => ({
       enabled: true,
@@ -206,9 +200,17 @@ try {
     checkForUpdate: async () => ({ enabled: true, available: true, latestVersion: '0.1.29' }),
     downloadUpdate: async ({ version }) => {
       localOtaState = 'VERIFIED';
-      return { downloaded: true, version, bytes: 45000000, sha256: releaseSha256, source: 'wan' };
+      return { downloaded: true, version, component: 'desktop', platform: 'windows-x64', bytes: 45000000, sha256: releaseSha256, source: 'wan' };
     },
-    installUpdate: async ({ version }) => {
+    installUpdate: async ({ version, onProgress }) => {
+      installAttempts += 1;
+      localOtaState = 'WAITING_FOR_IDLE';
+      await onProgress?.('WAITING_FOR_IDLE');
+      if (installAttempts === 1) {
+        return { installed: false, version, state: 'WAITING_FOR_IDLE', deferred: true };
+      }
+      localOtaState = 'INSTALLING';
+      await onProgress?.('INSTALLING');
       localOtaState = 'COMPLETED';
       currentLocalVersion = version;
       return { installed: true, version, state: 'COMPLETED' };
@@ -221,13 +223,11 @@ try {
     applyRecovery: async () => {},
   };
 
-  const printAdmissionGate = new PrintAdmissionGate();
   let isPrintingActive = true; // active printing initially!
 
   const controlAgent = new PrintOpsControlAgent({
     identityStore,
     otaService: mockOtaService,
-    printAdmissionGate,
     getPrintStatus: () => ({
       state: isPrintingActive ? 'PRINTING' : 'IDLE',
       queueDepth: isPrintingActive ? 2 : 0,
@@ -243,8 +243,8 @@ try {
     },
   });
 
-  // Operator requests update via Web Control
-  console.log('  2.2 Operator issues OTA_INSTALL command from Web Control for version 0.1.29');
+  // Call the command service directly; there is no Web Control UI in this test.
+  console.log('  2.2 Direct command-service call requests OTA_INSTALL for version 0.1.29');
   const installCmd = await commandService.issueCommand({
     deviceId,
     type: 'OTA_INSTALL',
@@ -254,33 +254,36 @@ try {
     expiresInSeconds: 600,
   });
   assert.equal(installCmd.status, 'DELIVERED');
-  console.log('  2.3 Command dispatched via NATS subject: printops.control.command.' + deviceId);
+  console.log('  2.3 Fake publisher captured command subject: printops.control.command.' + deviceId);
 
-  // Agent receives command while printer is active
-  console.log('  2.4 Agent ingests command while printer is actively printing...');
-  const envelope = publishedNatsCommands[0].payload;
+  // Pass the captured envelope directly to the in-process control agent.
+  console.log('  2.4 Call the test Control Agent directly with the captured command...');
+  const envelope = capturedCommands[0].payload.payload;
   const agentRes = await controlAgent.handleCommand(envelope, { waitForCompletion: true });
-  assert(agentRes.accepted, 'Command was rejected by agent');
+  assert(agentRes.accepted, `Command was rejected by agent: ${agentRes.reason ?? 'unknown reason'}`);
 
-  // Verify WAITING_FOR_IDLE was emitted
-  assert(recordedTransitions.includes('WAITING_FOR_IDLE'), 'Failed to emit WAITING_FOR_IDLE during active printing!');
-  console.log('  2.5 Print Safety confirmed: OTA deferred to WAITING_FOR_IDLE, print not interrupted');
+  assert(recordedTransitions.includes('WAITING_FOR_IDLE'), 'Failed to emit WAITING_FOR_IDLE during simulated active printing!');
+  assert.equal(
+    recordedTransitions.filter((state) => state === 'WAITING_FOR_IDLE').length,
+    1,
+    'Repeated deferred install attempts must not flood WAITING_FOR_IDLE events',
+  );
+  console.log('  2.5 State-machine assertion: simulated deferred install reported WAITING_FOR_IDLE once');
 
-  // Printer became idle once WAITING_FOR_IDLE was emitted (flipped in eventPublisher above)
   assert(recordedTransitions.includes('INSTALLING'), 'Missing INSTALLING transition');
-  assert(recordedTransitions.includes('RESTARTING'), 'Missing RESTARTING transition');
   assert(recordedTransitions.includes('COMPLETED'), 'Missing COMPLETED transition');
+  assert(!recordedTransitions.includes('RESTARTING'), 'A synchronous COMPLETED result must not imply a restart');
 
-  // Verify Web Control device registry synchronized to COMPLETED and version 0.1.29
+  // Check the in-memory registry state updated by the direct service callback.
   const syncedDevice = await registryService.getDevice(deviceId);
-  assert.equal(syncedDevice.otaState, 'COMPLETED', 'Web Control did not reflect COMPLETED');
-  assert.equal(syncedDevice.connectionState, 'ONLINE', 'Device connection state dropped');
-  console.log('  2.6 Authoritative Web Control synchronization confirmed: device is COMPLETED at v0.1.29\n');
+  assert.equal(syncedDevice.otaState, 'COMPLETED', 'In-memory registry did not reflect COMPLETED');
+  assert.equal(syncedDevice.connectionState, 'ONLINE', 'In-memory device state changed unexpectedly');
+  console.log('  2.6 In-memory registry reflects COMPLETED at v0.1.29\n');
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // SCENARIO 3: Rollback Path
+  // SCENARIO 3: Mocked Rollback State
   // ─────────────────────────────────────────────────────────────────────────────
-  console.log('[SCENARIO 3] Rollback Path on Broken Release & Health Check Failure');
+  console.log('[SCENARIO 3] Mocked OTA Failure and Rollback-State Handling');
 
   // Setup broken release B
   const brokenOtaService = {
@@ -296,12 +299,12 @@ try {
       stagedArtifact: null,
     }),
     checkForUpdate: async () => ({ enabled: true, available: true, latestVersion: '0.1.30-broken' }),
-    downloadUpdate: async ({ version }) => ({ downloaded: true, version, bytes: 45000000, sha256: 'shaBroken', source: 'wan' }),
+    downloadUpdate: async ({ version }) => ({ downloaded: true, version, component: 'desktop', platform: 'windows-x64', bytes: 45000000, sha256: 'shaBroken', source: 'wan' }),
     installUpdate: async () => {
-      // Simulate: installation succeeded, but health check failed -> automated updater rolled back
+      // Return a simulated health-check failure after setting the mocked rollback outcome.
       localOtaState = 'ROLLED_BACK';
       currentLocalVersion = '0.1.28';
-      throw new Error('HEALTH_CHECK_FAILED: Probe endpoint returned HTTP 500');
+      throw new Error('HEALTH_CHECK_FAILED: Simulated probe failure');
     },
     rollbackUpdate: async () => {
       localOtaState = 'ROLLED_BACK';
@@ -315,7 +318,6 @@ try {
   const rollbackAgent = new PrintOpsControlAgent({
     identityStore,
     otaService: brokenOtaService,
-    printAdmissionGate,
     getPrintStatus: () => ({ state: 'IDLE', queueDepth: 0, readiness: 'READY' }),
     eventPublisher: async (subject, event) => {
       rollbackTransitions.push(event.state);
@@ -323,8 +325,8 @@ try {
     },
   });
 
-  console.log('  3.1 Operator requests installation of broken release 0.1.30-broken');
-  publishedNatsCommands.length = 0;
+  console.log('  3.1 Direct command-service call requests the simulated broken target');
+  capturedCommands.length = 0;
   const brokenCmd = await commandService.issueCommand({
     deviceId,
     type: 'OTA_INSTALL',
@@ -334,18 +336,18 @@ try {
     expiresInSeconds: 600,
   });
 
-  const brokenEnvelope = publishedNatsCommands[0].payload;
+  const brokenEnvelope = capturedCommands[0].payload.payload;
   await rollbackAgent.handleCommand(brokenEnvelope, { waitForCompletion: true });
 
-  assert(rollbackTransitions.includes('ROLLED_BACK'), 'Device failed to transition to ROLLED_BACK');
+  assert(rollbackTransitions.includes('ROLLED_BACK'), 'Control Agent failed to emit ROLLED_BACK');
   const rolledBackDevice = await registryService.getDevice(deviceId);
-  assert.equal(rolledBackDevice.otaState, 'ROLLED_BACK', 'Web Control did not reflect ROLLED_BACK');
-  console.log('  3.2 Automated Rollback confirmed: readiness failure reverted binary + DB, Web shows ROLLED_BACK\n');
+  assert.equal(rolledBackDevice.otaState, 'ROLLED_BACK', 'In-memory registry did not reflect ROLLED_BACK');
+  console.log('  3.2 Mocked OTA outcome produced ROLLED_BACK; in-memory registry reflected that state\n');
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // SCENARIO 4: Rollback Failure & RECOVERY_REQUIRED Hard Stop
+  // SCENARIO 4: Simulated Rollback Failure and Recovery Guard
   // ─────────────────────────────────────────────────────────────────────────────
-  console.log('[SCENARIO 4] ROLLBACK_FAILED Hard Stop & RECOVERY_REQUIRED');
+  console.log('[SCENARIO 4] Simulated ROLLBACK_FAILED and RECOVERY_REQUIRED');
 
   let fatalOtaState = 'IDLE';
   const fatalOtaService = {
@@ -360,9 +362,10 @@ try {
       state: { state: fatalOtaState, targetVersion: '0.1.30', updatedAt: new Date(), retryCount: 0 },
       stagedArtifact: null,
     }),
+    downloadUpdate: async ({ version }) => ({ downloaded: true, version, component: 'desktop', platform: 'windows-x64', bytes: 45000000, sha256: 'shaFatal', source: 'wan' }),
     installUpdate: async () => {
       fatalOtaState = 'ROLLBACK_FAILED';
-      throw new Error('FATAL: Database restoration corrupt during rollback');
+      throw new Error('FATAL: Simulated failure from the mocked OTA service');
     },
   };
 
@@ -376,7 +379,7 @@ try {
     },
   });
 
-  publishedNatsCommands.length = 0;
+  capturedCommands.length = 0;
   const fatalCmd = await commandService.issueCommand({
     deviceId,
     type: 'OTA_INSTALL',
@@ -386,12 +389,12 @@ try {
     expiresInSeconds: 600,
   });
 
-  await fatalAgent.handleCommand(publishedNatsCommands[0].payload, { waitForCompletion: true });
+  await fatalAgent.handleCommand(capturedCommands[0].payload.payload, { waitForCompletion: true });
   assert(fatalTransitions.includes('ROLLBACK_FAILED'), 'Missing ROLLBACK_FAILED');
   assert(fatalTransitions.includes('RECOVERY_REQUIRED'), 'Missing RECOVERY_REQUIRED');
-  console.log('  4.1 Emitted ROLLBACK_FAILED and RECOVERY_REQUIRED transitions');
+  console.log('  4.1 Control Agent emitted ROLLBACK_FAILED and RECOVERY_REQUIRED');
 
-  // Verify that any further remote install commands are BLOCKED
+  // Verify the command service blocks another install in this simulated state.
   let furtherInstallBlocked = false;
   try {
     await commandService.issueCommand({
@@ -406,12 +409,12 @@ try {
     assert(err.message.includes('blocked'), 'Unexpected block message: ' + err.message);
   }
   assert(furtherInstallBlocked, 'Remote install should be completely blocked in RECOVERY_REQUIRED state!');
-  console.log('  4.2 Hard-stop confirmed: further remote commands are strictly blocked\n');
+  console.log('  4.2 Service-level check: another command was blocked in RECOVERY_REQUIRED\n');
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // SCENARIO 5: Outages & Failure Modes
+  // SCENARIO 5: Service-Level Command Guards
   // ─────────────────────────────────────────────────────────────────────────────
-  console.log('[SCENARIO 5] Comprehensive Outage Matrix');
+  console.log('[SCENARIO 5] Simulated Command Guard and Idempotency Checks');
 
   // 5.1 Device Offline Guard
   await deviceRepo.update(deviceId, {
@@ -434,11 +437,23 @@ try {
     assert.equal(err.code, 'DEVICE_OFFLINE');
   }
   assert(offlineCommandRejected, 'Offline device must not accept commands');
-  console.log('  5.1 Device offline: command rejected with DEVICE_OFFLINE (no false acceptance)');
+  console.log('  5.1 In-memory offline device: command service rejected OTA_INSTALL');
 
   // 5.2 Expired command
   await deviceRepo.update(deviceId, { connectionState: 'ONLINE', lastSeenAt: new Date() });
-  const expiredRes = await controlAgent.handleCommand({
+  // Isolate guard checks from the earlier recovery-required command state.
+  const guardIdentityStore = new DeviceIdentityStore({
+    storagePath: join(testDir, 'device-identity-command-guards.json'),
+    appVersion: '0.1.28',
+    schemaVersion: 8,
+  });
+  guardIdentityStore.recordEnrollment(deviceId, enrollmentRes.deviceToken, 'hospital-ward-1');
+  const guardAgent = new PrintOpsControlAgent({
+    identityStore: guardIdentityStore,
+    otaService: mockOtaService,
+  });
+
+  const expiredRes = await guardAgent.handleCommand({
     command_id: 'cmd_exp_1',
     device_id: deviceId,
     type: 'OTA_INSTALL',
@@ -450,10 +465,10 @@ try {
   });
   assert.equal(expiredRes.accepted, false);
   assert.equal(expiredRes.reason, 'COMMAND_EXPIRED');
-  console.log('  5.2 Expired command: agent rejected without executing');
+  console.log('  5.2 Direct Control Agent call rejected an expired command');
 
   // 5.3 Wrong-device command
-  const wrongDevRes = await controlAgent.handleCommand({
+  const wrongDevRes = await guardAgent.handleCommand({
     command_id: 'cmd_wrong_1',
     device_id: 'dev_some_other_station',
     type: 'OTA_INSTALL',
@@ -465,10 +480,10 @@ try {
   });
   assert.equal(wrongDevRes.accepted, false);
   assert.equal(wrongDevRes.reason, 'DEVICE_ID_MISMATCH');
-  console.log('  5.3 Device mismatch: command targeting another station ignored');
+  console.log('  5.3 Direct Control Agent call rejected a command for another device');
 
   // 5.4 Duplicate command
-  publishedNatsCommands.length = 0;
+  capturedCommands.length = 0;
   const dup1 = await commandService.issueCommand({
     deviceId,
     type: 'OTA_CHECK',
@@ -482,12 +497,12 @@ try {
     idempotencyKey: 'idem_dup_key_99',
   });
   assert.equal(dup1.commandId, dup2.commandId, 'Duplicate idempotency key created multiple commands');
-  assert.equal(publishedNatsCommands.length, 1, 'Duplicate command published multiple times');
-  console.log('  5.4 Idempotency confirmed: duplicate command returned existing record without re-publishing');
+  assert.equal(capturedCommands.length, 1, 'Duplicate command published more than once to fake publisher');
+  console.log('  5.4 Idempotency check: existing command returned; fake publisher captured one command');
 
   console.log('\n===============================================================');
-  console.log(' ALL E2E ACCEPTANCE GATES PASSED (100% SUCCESS)                ');
-  console.log(' PASS — WEB CONTROL OTA READY FOR REAL USE                    ');
+  console.log(' SIMULATION ASSERTIONS PASSED — NOT NATIVE ACCEPTANCE          ');
+  console.log(' WEB CONTROL NATIVE ACCEPTANCE PENDING                      ');
   console.log('===============================================================\n');
 
 } finally {

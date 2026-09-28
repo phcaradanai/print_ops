@@ -11,6 +11,7 @@ import {
   parseReleaseManifest,
   type OtaInstallerPort,
   type OtaConfig,
+  type OtaInstallProgressState,
 } from '../services/ota-update.service.js';
 import { PrintAdmissionGate } from '../services/print-admission-gate.js';
 import { FileOtaArtifactStateStore } from '../services/ota-artifact-state.js';
@@ -109,6 +110,53 @@ describe('parseReleaseManifest', () => {
 });
 
 describe('OtaUpdateService', () => {
+
+  it('reports the live queue and maintenance state for device control heartbeats', async () => {
+    const config = await makeConfig();
+    const admission = new PrintAdmissionGate();
+    let activeStatus: string | undefined = 'PRINTING';
+    let metrics = {
+      size: 1,
+      inflight: 1,
+      oldestEnqueuedAt: null,
+      oldestPriority: null,
+      avgWaitMs: null,
+    };
+    const queue = { getMetrics: vi.fn(async () => metrics) } as never;
+    const jobs = {
+      findAll: vi.fn(async ({ status }: { status: string }) =>
+        status === activeStatus ? [{}] : []),
+    } as never;
+    const service = new OtaUpdateService({
+      state: new InMemoryOtaUpdateStateRepository(),
+      config,
+      queue,
+      jobs,
+      admission,
+    });
+
+    await expect(service.getPrintSystemStatus()).resolves.toEqual({
+      state: 'PRINTING',
+      queueDepth: 2,
+      readiness: 'READY',
+    });
+
+    activeStatus = 'QUEUED';
+    metrics = { ...metrics, size: 0, inflight: 0 };
+    await expect(service.getPrintSystemStatus()).resolves.toEqual({
+      state: 'IDLE',
+      queueDepth: 1,
+      readiness: 'READY',
+    });
+
+    admission.pauseMaintenance();
+    await expect(service.getPrintSystemStatus()).resolves.toEqual({
+      state: 'PAUSED',
+      queueDepth: 1,
+      readiness: 'MAINTENANCE',
+    });
+  });
+
   it('tries LAN first and falls back to WAN when LAN is unavailable', async () => {
     const calls: string[] = [];
     const config = await makeConfig({ lanRelayUrl: 'http://lan.example/ota' });
@@ -229,12 +277,16 @@ describe('OtaUpdateService', () => {
         : new Response(artifact, { status: 200, headers: { 'content-length': String(artifact.byteLength) } }),
     });
 
+    const progress: OtaInstallProgressState[] = [];
     await service.downloadUpdate({ version: '0.1.29' });
-    await expect(service.installUpdate({ version: '0.1.29' })).resolves.toMatchObject({
+    await expect(service.installUpdate({
+      version: '0.1.29',
+      onProgress: (state) => { progress.push(state); },
+    })).resolves.toMatchObject({
       installed: true,
       state: 'COMPLETED',
     });
-
+    expect(progress).toEqual(['WAITING_FOR_IDLE', 'INSTALLING']);
     expect(queueReads).toBeGreaterThanOrEqual(3);
     expect(settled).toHaveBeenCalledTimes(2);
     expect(installSawMaintenance).toBe(true);
@@ -270,12 +322,18 @@ describe('OtaUpdateService', () => {
         : new Response(artifact, { status: 200, headers: { 'content-length': String(artifact.byteLength) } }),
     });
 
+    const progress: OtaInstallProgressState[] = [];
     await service.downloadUpdate({ version: '0.1.29' });
-    await expect(service.installUpdate({ version: '0.1.29', mode: 'automatic' })).resolves.toMatchObject({
+    await expect(service.installUpdate({
+      version: '0.1.29',
+      mode: 'automatic',
+      onProgress: (state) => { progress.push(state); },
+    })).resolves.toMatchObject({
       installed: false,
       deferred: true,
       state: 'WAITING_FOR_IDLE',
     });
+    expect(progress).toEqual(['WAITING_FOR_IDLE']);
     expect(installer.install).not.toHaveBeenCalled();
     expect(admission.isMaintenanceActive()).toBe(false);
     await expect(admission.run(async () => 'printing remains available')).resolves.toBe('printing remains available');

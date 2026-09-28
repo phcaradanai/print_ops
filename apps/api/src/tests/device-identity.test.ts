@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import type { ControlOtaTransitionEvent } from '@printerops/domain';
 import { DeviceIdentityStore } from '../services/device-identity.js';
 import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -79,4 +80,48 @@ describe('DeviceIdentityStore', () => {
     expect(store.getDeviceId()).toBeUndefined();
     expect(store.getInstallationId()).toBe(origInstallationId);
   });
+  it('persists OTA command identity and pending transition outbox across restarts', () => {
+    const store = new DeviceIdentityStore({ storagePath: identityPath });
+    const event: ControlOtaTransitionEvent = {
+      eventId: 'evt_restart_pending',
+      deviceId: 'dev_test_123',
+      commandId: 'cmd_update_123',
+      state: 'RESTARTING',
+      targetVersion: '0.1.29',
+      currentVersion: '0.1.28',
+      timestamp: new Date().toISOString(),
+    };
+    const acceptedEvent: ControlOtaTransitionEvent = {
+      ...event,
+      eventId: 'evt_command_accepted',
+      state: 'ACCEPTED',
+    };
+    store.persistControlTransitions([acceptedEvent], {
+      idempotencyKey: 'idem_update_123',
+      commandType: 'OTA_INSTALL',
+      targetVersion: '0.1.29',
+    });
+    store.persistControlTransitions([event], { localOtaState: 'RESTART_PENDING' });
+    store.markControlCommandStarted('cmd_update_123');
+
+    const restartedStore = new DeviceIdentityStore({ storagePath: identityPath });
+    expect(restartedStore.getCurrentControlCommand()).toMatchObject({
+      commandId: 'cmd_update_123',
+      idempotencyKey: 'idem_update_123',
+      commandType: 'OTA_INSTALL',
+      targetVersion: '0.1.29',
+      lastAuthoritativeOtaState: 'RESTARTING',
+      lastLocalOtaState: 'RESTART_PENDING',
+      replayStatus: 'PROCESSING',
+      executionStarted: true,
+    });
+    expect(restartedStore.getControlCommand('another-command', 'idem_update_123')?.commandId)
+      .toBe('cmd_update_123');
+    expect(restartedStore.getPendingControlEvents()).toEqual([acceptedEvent, event]);
+
+    restartedStore.acknowledgeControlEvent(acceptedEvent.eventId);
+    restartedStore.acknowledgeControlEvent(event.eventId);
+    expect(restartedStore.getPendingControlEvents()).toEqual([]);
+  });
+
 });

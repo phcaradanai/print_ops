@@ -11,6 +11,7 @@ import type {
 } from '@printerops/domain';
 import { BLOCKING_RECOVERY_STATES } from '@printerops/domain';
 import { AppError, ConflictError, NotFoundError, ValidationError } from '@printerops/shared';
+import { signControlMessage } from './control-message-auth.js';
 
 export type ControlNatsPublisher = (
   subject: string,
@@ -25,6 +26,27 @@ export interface ControlCommandServiceDeps {
   natsPublisher?: ControlNatsPublisher;
   offlineThresholdMs?: number; // default 90s
 }
+const transitionOrder: Partial<Record<OtaTransitionState, number>> = {
+  REQUESTED: 0,
+  DELIVERED: 1,
+  ACCEPTED: 2,
+  CHECKING: 3,
+  DOWNLOADING: 4,
+  VERIFIED: 5,
+  WAITING_FOR_IDLE: 6,
+  INSTALLING: 7,
+  RESTARTING: 8,
+  ROLLING_BACK: 9,
+};
+
+const terminalStates: Partial<Record<OtaTransitionState, true>> = {
+  COMPLETED: true,
+  INSTALL_FAILED: true,
+  HEALTH_CHECK_FAILED: true,
+  ROLLED_BACK: true,
+  ROLLBACK_FAILED: true,
+  RECOVERY_REQUIRED: true,
+};
 
 export class ControlCommandService {
   private readonly commands: ControlCommandRepositoryPort;
@@ -81,48 +103,24 @@ export class ControlCommandService {
       );
     }
 
-    // Idempotency check: if command with same idempotency_key already exists for this device
+    // Idempotent retries retry the stable JetStream message ID while PENDING.
     const existing = await this.commands.findByIdempotencyKey(input.deviceId, input.idempotencyKey.trim());
     if (existing) {
-      // Replay safe: return the existing command without creating duplicates
+      if (existing.status === 'PENDING' && this.natsPublisher) {
+        return this.publishPendingCommand(existing, device.deviceTokenHash);
+      }
       return existing;
     }
 
     const command = await this.commands.create(input);
-
-    const envelope: ControlCommandEnvelope = {
-      command_id: command.commandId,
-      device_id: command.deviceId,
-      type: command.type,
-      target_version: command.targetVersion,
-      requested_at: command.requestedAt.toISOString(),
-      expires_at: command.expiresAt.toISOString(),
-      requested_by: command.requestedBy,
-      idempotency_key: command.idempotencyKey,
-    };
-
-    const subject = `printops.control.command.${command.deviceId}`;
-    if (this.natsPublisher) {
-      try {
-        await this.natsPublisher(subject, envelope as unknown as Record<string, unknown>, {
-          msgId: command.commandId,
-          durable: true,
-        });
-        await this.commands.update(command.commandId, { status: 'DELIVERED' });
-        command.status = 'DELIVERED';
-      } catch (err) {
-        // If NATS publication fails, mark command pending retry or throw
-        await this.commands.update(command.commandId, {
-          status: 'PENDING',
-          failureReason: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
+    const result = this.natsPublisher
+      ? await this.publishPendingCommand(command, device.deviceTokenHash)
+      : command;
 
     if (this.audit) {
       await this.audit.record({
         actor: input.requestedBy,
-        deviceId: command.deviceId,
+        deviceId: input.deviceId,
         commandId: command.commandId,
         action: `control.command_${input.type.toLowerCase()}`,
         sourceVersion: device.appVersion,
@@ -135,51 +133,107 @@ export class ControlCommandService {
       });
     }
 
-    return command;
+    return result;
+  }
+
+  private async publishPendingCommand(
+    command: ControlCommandRecord,
+    deviceTokenHash: string,
+  ): Promise<ControlCommandRecord> {
+    const publisher = this.natsPublisher;
+    if (!publisher) return command;
+
+    const envelope: ControlCommandEnvelope = {
+      command_id: command.commandId,
+      device_id: command.deviceId,
+      type: command.type,
+      target_version: command.targetVersion,
+      requested_at: command.requestedAt.toISOString(),
+      expires_at: command.expiresAt.toISOString(),
+      requested_by: command.requestedBy,
+      idempotency_key: command.idempotencyKey,
+    };
+    const subject = `printops.control.command.${command.deviceId}`;
+    try {
+      const signedEnvelope = signControlMessage(deviceTokenHash, envelope);
+      const ack = await publisher(
+        subject,
+        signedEnvelope as unknown as Record<string, unknown>,
+        { msgId: command.commandId, durable: true },
+      );
+      if (!ack.acknowledged) {
+        throw new AppError(
+          'CONTROL_NATS_NOT_ACKNOWLEDGED',
+          'JetStream did not acknowledge the command message',
+          503,
+        );
+      }
+    } catch {
+      return this.commands.update(command.commandId, { status: 'PENDING' });
+    }
+    return this.commands.update(command.commandId, { status: 'DELIVERED' });
   }
 
   async handleDeviceEvent(event: ControlOtaTransitionEvent): Promise<void> {
     if (!event.deviceId) return;
 
-    // Update device registry with authoritative OTA state
+    const command = event.commandId ? await this.commands.findById(event.commandId) : undefined;
+    if (event.commandId && !command) return;
+    if (command && command.deviceId !== event.deviceId) return;
+    if (
+      command?.targetVersion
+      && (command.type === 'OTA_INSTALL' || command.type === 'OTA_DOWNLOAD')
+      && event.targetVersion !== command.targetVersion
+    ) return;
+    if (command) {
+      const eventAt = Date.parse(event.timestamp);
+      if (!Number.isFinite(eventAt)) return;
+      if (command.completedAt && (
+        !terminalStates[event.state]
+        || eventAt <= command.completedAt.getTime()
+      )) return;
+      if (!command.completedAt && command.terminalState) {
+        const previousOrder = transitionOrder[command.terminalState as OtaTransitionState];
+        const nextOrder = transitionOrder[event.state];
+        if (previousOrder !== undefined && nextOrder !== undefined && nextOrder < previousOrder) return;
+      }
+    }
+
+
+    // Events may be replayed from the durable outbox; only heartbeats prove current liveness.
     await this.devices.update(event.deviceId, {
       otaState: event.state,
       lastOtaOperation: event.commandId ?? event.state,
-      lastSeenAt: new Date(event.timestamp),
-      connectionState: 'ONLINE',
     });
 
     // Update command if event references a command_id
-    if (event.commandId) {
-      const command = await this.commands.findById(event.commandId);
-      if (command) {
-        const patch: Partial<ControlCommandRecord> = {
-          terminalState: event.state,
-        };
+    if (event.commandId && command) {
+      const patch: Partial<ControlCommandRecord> = {
+        terminalState: event.state,
+      };
 
-        if (event.state === 'ACCEPTED') {
-          patch.status = 'ACCEPTED';
-          patch.acceptedAt = new Date(event.timestamp);
-        } else if (event.state === 'COMPLETED') {
-          patch.status = 'COMPLETED';
-          patch.completedAt = new Date(event.timestamp);
-        } else if (event.state === 'ROLLED_BACK') {
-          patch.status = command.type === 'OTA_ROLLBACK' ? 'COMPLETED' : 'FAILED';
-          patch.failureReason = command.type === 'OTA_INSTALL' ? 'Rolled back after installation failure' : undefined;
-          patch.completedAt = new Date(event.timestamp);
-        } else if (
-          event.state === 'INSTALL_FAILED' ||
-          event.state === 'HEALTH_CHECK_FAILED' ||
-          event.state === 'ROLLBACK_FAILED' ||
-          event.state === 'RECOVERY_REQUIRED'
-        ) {
-          patch.status = 'FAILED';
-          patch.failureReason = event.errorMessage ?? event.state;
-          patch.completedAt = new Date(event.timestamp);
-        }
-
-        await this.commands.update(event.commandId, patch);
+      if (event.state === 'ACCEPTED') {
+        patch.status = 'ACCEPTED';
+        patch.acceptedAt = new Date(event.timestamp);
+      } else if (event.state === 'COMPLETED') {
+        patch.status = 'COMPLETED';
+        patch.completedAt = new Date(event.timestamp);
+      } else if (event.state === 'ROLLED_BACK') {
+        patch.status = command.type === 'OTA_ROLLBACK' ? 'COMPLETED' : 'FAILED';
+        patch.failureReason = command.type === 'OTA_INSTALL' ? 'Rolled back after installation failure' : undefined;
+        patch.completedAt = new Date(event.timestamp);
+      } else if (
+        event.state === 'INSTALL_FAILED' ||
+        event.state === 'HEALTH_CHECK_FAILED' ||
+        event.state === 'ROLLBACK_FAILED' ||
+        event.state === 'RECOVERY_REQUIRED'
+      ) {
+        patch.status = 'FAILED';
+        patch.failureReason = event.errorMessage ?? event.state;
+        patch.completedAt = new Date(event.timestamp);
       }
+
+      await this.commands.update(event.commandId, patch);
     }
 
     if (this.audit) {

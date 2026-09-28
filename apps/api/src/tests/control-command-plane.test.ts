@@ -8,8 +8,9 @@ import {
 import { ControlCommandService } from '../services/control-command.service.js';
 import { PrintOpsControlAgent } from '../services/control-agent.service.js';
 import { DeviceIdentityStore } from '../services/device-identity.js';
-import { WebControlRegistryService } from '../services/web-control-registry.service.js';
-import type { OtaStatus, OtaUpdateServicePort } from '../services/ota-update.service.js';
+import { WebControlRegistryService, hashDeviceToken } from '../services/web-control-registry.service.js';
+import { verifyControlMessageWithToken, type SignedControlMessage } from '../services/control-message-auth.js';
+import type { OtaInstallProgressState, OtaStatus, OtaUpdateServicePort } from '../services/ota-update.service.js';
 import type {
   ControlCommandEnvelope,
   ControlOtaTransitionEvent,
@@ -64,8 +65,10 @@ function createMockOtaService(initialState = 'IDLE'): OtaUpdateServicePort {
         source: 'wan',
       };
     }),
-    installUpdate: vi.fn().mockImplementation(async ({ version }) => {
+    installUpdate: vi.fn().mockImplementation(async ({ version, onProgress }) => {
       targetVersion = version;
+      await onProgress?.('WAITING_FOR_IDLE' as OtaInstallProgressState);
+      await onProgress?.('INSTALLING' as OtaInstallProgressState);
       state = 'COMPLETED';
       return {
         installed: true,
@@ -88,6 +91,32 @@ function createMockOtaService(initialState = 'IDLE'): OtaUpdateServicePort {
   } as unknown as OtaUpdateServicePort;
 }
 
+async function issueTestCommandEnvelope(
+  commandService: ControlCommandService,
+  input: {
+    deviceId: string;
+    type: ControlCommandEnvelope['type'];
+    idempotencyKey: string;
+    targetVersion?: string;
+  },
+): Promise<ControlCommandEnvelope> {
+  const command = await commandService.issueCommand({
+    ...input,
+    requestedBy: 'operator@hospital.local',
+    expiresInSeconds: 60,
+  });
+  return {
+    command_id: command.commandId,
+    device_id: command.deviceId,
+    type: command.type,
+    ...(command.targetVersion ? { target_version: command.targetVersion } : {}),
+    requested_at: command.requestedAt.toISOString(),
+    expires_at: command.expiresAt.toISOString(),
+    requested_by: command.requestedBy,
+    idempotency_key: command.idempotencyKey,
+  };
+}
+
 describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
   let deviceRepo: InMemoryDeviceRegistryRepository;
   let commandRepo: InMemoryControlCommandRepository;
@@ -98,11 +127,12 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
   let tempDir: string;
   let identityStore: DeviceIdentityStore;
   let mockOta: OtaUpdateServicePort;
-  let publishedNatsCommands: Array<{ subject: string; payload: ControlCommandEnvelope }> = [];
+  let publishedNatsCommands: Array<{ subject: string; payload: Record<string, unknown> }> = [];
   let publishedEvents: Array<{ subject: string; event: ControlOtaTransitionEvent }> = [];
   let publishedHeartbeats: Array<{ subject: string; heartbeat: DeviceHeartbeatPayload }> = [];
 
   const deviceId = 'dev_station_01';
+  const deviceToken = 'devtok_secret_123';
 
   beforeEach(async () => {
     publishedNatsCommands = [];
@@ -113,7 +143,7 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
     identityStore = new DeviceIdentityStore({
       storagePath: join(tempDir, 'device-identity.json'),
     });
-    identityStore.recordEnrollment(deviceId, 'devtok_secret_123', 'site-hospital-1');
+    identityStore.recordEnrollment(deviceId, deviceToken, 'site-hospital-1');
 
     deviceRepo = new InMemoryDeviceRegistryRepository();
     commandRepo = new InMemoryControlCommandRepository();
@@ -133,7 +163,7 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
       appVersion: '0.1.28',
       schemaVersion: 8,
       runnerVersion: '0.1.28',
-      deviceTokenHash: 'hash123',
+      deviceTokenHash: hashDeviceToken(deviceToken),
     });
 
     registryService = new WebControlRegistryService({
@@ -147,7 +177,7 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
       devices: deviceRepo,
       audit: auditRepo,
       natsPublisher: async (subject, payload) => {
-        publishedNatsCommands.push({ subject, payload: payload as unknown as ControlCommandEnvelope });
+        publishedNatsCommands.push({ subject, payload });
         return { acknowledged: true };
       },
     });
@@ -180,7 +210,10 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
       const pub = publishedNatsCommands[0]!;
       expect(pub.subject).toBe(`printops.control.command.${deviceId}`);
 
-      const envelope: ControlCommandEnvelope = pub.payload;
+      const signed = pub.payload as unknown as SignedControlMessage<ControlCommandEnvelope>;
+      const envelope = signed.payload;
+      expect(verifyControlMessageWithToken(deviceToken, envelope, signed.signature)).toBe(true);
+      expect(JSON.stringify(pub.payload)).not.toContain(deviceToken);
       expect(envelope.command_id).toBe(cmd.commandId);
       expect(envelope.device_id).toBe(deviceId);
       expect(envelope.type).toBe('OTA_INSTALL');
@@ -278,12 +311,17 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
 
       // Transition event published as failed
       expect(publishedEvents.some((e) => e.event.state === 'INSTALL_FAILED')).toBe(true);
+      expect(publishedEvents.find((item) => item.event.state === 'INSTALL_FAILED')?.event.targetVersion)
+        .toBe('0.1.29');
     });
 
     it('agent ignores command intended for a different device', async () => {
       const agent = new PrintOpsControlAgent({
         identityStore,
         otaService: mockOta,
+        eventPublisher: async (subject, event) => {
+          publishedEvents.push({ subject, event });
+        },
       });
 
       const mismatchEnvelope: ControlCommandEnvelope = {
@@ -301,6 +339,9 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
       expect(result.accepted).toBe(false);
       expect(result.reason).toBe('DEVICE_ID_MISMATCH');
       expect(mockOta.installUpdate).not.toHaveBeenCalled();
+      expect(identityStore.getControlCommand(mismatchEnvelope.command_id, mismatchEnvelope.idempotency_key)).toBeUndefined();
+      expect(identityStore.getPendingControlEvents()).toEqual([]);
+      expect(publishedEvents).toEqual([]);
     });
 
     it('maps OTA_CHECK to checkForUpdate() and publishes transitions', async () => {
@@ -313,15 +354,11 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
         },
       });
 
-      const envelope: ControlCommandEnvelope = {
-        command_id: 'cmd_check_01',
-        device_id: deviceId,
+      const envelope = await issueTestCommandEnvelope(commandService, {
+        deviceId,
         type: 'OTA_CHECK',
-        requested_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 60_000).toISOString(),
-        requested_by: 'operator@hospital.local',
-        idempotency_key: 'idem_check_01',
-      };
+        idempotencyKey: 'idem_check_01',
+      });
 
       const res = await agent.handleCommand(envelope, { waitForCompletion: true });
       expect(res.accepted).toBe(true);
@@ -347,16 +384,12 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
         },
       });
 
-      const envelope: ControlCommandEnvelope = {
-        command_id: 'cmd_dl_01',
-        device_id: deviceId,
+      const envelope = await issueTestCommandEnvelope(commandService, {
+        deviceId,
         type: 'OTA_DOWNLOAD',
-        target_version: '0.1.29',
-        requested_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 60_000).toISOString(),
-        requested_by: 'operator@hospital.local',
-        idempotency_key: 'idem_dl_01',
-      };
+        targetVersion: '0.1.29',
+        idempotencyKey: 'idem_dl_01',
+      });
 
       await agent.handleCommand(envelope, { waitForCompletion: true });
 
@@ -370,19 +403,12 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
       expect(dev?.otaState).toBe('VERIFIED');
     });
 
-    it('safe print point: emits WAITING_FOR_IDLE when printer is actively printing', async () => {
-      let isPrinting = true;
+    it('maps actual OTA progress and does not predict RESTARTING from COMPLETED', async () => {
       const agent = new PrintOpsControlAgent({
         identityStore,
         otaService: mockOta,
-        getPrintStatus: () => ({
-          state: isPrinting ? 'PRINTING' : 'IDLE',
-          queueDepth: isPrinting ? 3 : 0,
-          readiness: 'READY',
-        }),
         eventPublisher: async (subject, event) => {
           publishedEvents.push({ subject, event });
-          if (event.state === 'WAITING_FOR_IDLE') isPrinting = false;
           await commandService.handleDeviceEvent(event);
         },
       });
@@ -400,12 +426,12 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
 
       await agent.handleCommand(envelope, { waitForCompletion: true });
 
-      const states = publishedEvents.map((e) => e.event.state);
+      const states = publishedEvents.map(({ event }) => event.state);
       expect(states).toContain('ACCEPTED');
       expect(states).toContain('WAITING_FOR_IDLE');
       expect(states).toContain('INSTALLING');
-      expect(states).toContain('RESTARTING');
       expect(states).toContain('COMPLETED');
+      expect(states).not.toContain('RESTARTING');
     });
 
     it('maps OTA_ROLLBACK to rollbackUpdate() and publishes ROLLED_BACK', async () => {
@@ -418,15 +444,11 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
         },
       });
 
-      const envelope: ControlCommandEnvelope = {
-        command_id: 'cmd_rollback_01',
-        device_id: deviceId,
+      const envelope = await issueTestCommandEnvelope(commandService, {
+        deviceId,
         type: 'OTA_ROLLBACK',
-        requested_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 60_000).toISOString(),
-        requested_by: 'operator@hospital.local',
-        idempotency_key: 'idem_rb_01',
-      };
+        idempotencyKey: 'idem_rb_01',
+      });
 
       await agent.handleCommand(envelope, { waitForCompletion: true });
 

@@ -1017,127 +1017,122 @@ field ที่ยืนยันจาก route code ว่าจำเป็�
 
 ## Web Control OTA
 
-PrintOps Web Control OTA enables authorized operators to monitor distributed print stations and orchestrate cryptographically verified over-the-air updates from a central management console.
+**Status:** The runtime now has separate control-plane and enrolled-device JetStream roles, signed control messages, durable command/event consumers, and PubAck-gated publication. Native Windows Web Control acceptance is still pending; this section separates implemented code from behavior actually exercised and is not a production deployment guide.
 
 ### Architecture
 
-```text
-Web Control UI
-      │
-      ▼
-Web Control API
-      │
-      ├── Device Registry (devices, heartbeats, online/stale/offline)
-      ├── Release Catalog (signed manifests & artifact references)
-      ├── OTA Command Service (idempotent, expiring envelopes)
-      └── Audit Store (full lifecycle audit trail)
-      │
-      ▼
-NATS JetStream management plane (printops.control.*)
-      │
-      ▼
-PrintOps Control Agent (runs on device, outbound connection only)
-      │ localhost
-      ▼
-Existing Local OTA Engine (OtaUpdateService)
-      │
-      ▼
-External Updater (printops-updater breakaway process)
-```
+The central API uses `PRINTOPS_CONTROL_ROLE=control-plane`; an enrolled device uses `PRINTOPS_CONTROL_ROLE=device`. By default, role selection follows whether the local identity is enrolled. Run separate processes for the central control plane and device role. Control traffic is enabled only by the dedicated `PRINTOPS_CONTROL_NATS_URL` plus `PRINTOPS_CONTROL_NATS_STREAM`; generic print-intake NATS settings do not enable it.
 
-**Print Safety Invariant**:
-```text
-OTA waits for printing.
-Printing never waits for Web Control.
-```
-Web Control sends **intent**, never a forced installation. The local PrintOps device remains the final authority for active printing, queue draining, maintenance admission, health validation, and rollback.
+The transport uses JetStream only: the central role publishes per-device commands and consumes durable event/heartbeat streams; the device role consumes a durable command filter scoped to its persisted device ID and publishes signed events/heartbeats. The stream and durable consumers must be provisioned externally. A validated JetStream PubAck marks a command `DELIVERED`; only an authenticated device event can advance it to an accepted or terminal OTA state. A PubAck is not OTA success.
+
+Device messages use an HMAC signature over the JSON payload; the token-derived key is shared by the enrolled device and the central registry. Protect both the API database and the device identity file as credentials. Runtime wiring and unit tests do not prove production network ACLs, TLS, secret protection, Windows restart, or broker acceptance.
+
+This establishes code-level control transport, not the full production chain. Native Web Control acceptance has not yet proven a real installer, restart, reconnection, rollback, or Web Control terminal state through a deployed UI/API and Windows device.
+
+The intended sequence remains operator request → Control API → NATS JetStream → device Control Agent → local OTA service/updater → restart/reconnect → authenticated terminal event.
+
+`scripts/web-control-ota-e2e.mjs` is a **simulated integration regression**, not native acceptance. It uses in-memory control repositories, a fake publisher that captures commands in an array, direct service/agent calls, and mocked OTA outcomes. It does not start the Web Control UI or API host, connect to a NATS broker, or run a Windows installation, updater, restart, or rollback.
+
+The separate `scripts/ota-native-acceptance-build.mjs` and `scripts/ota-native-e2e.ps1` harnesses target native Application OTA. They do not exercise Web Control or NATS and are not Web Control acceptance.
+
+The Application OTA acceptance artifact builder defaults A to the checked-out desktop version and B to its next patch; `PRINTOPS_OTA_NATIVE_A_VERSION` and `PRINTOPS_OTA_NATIVE_B_VERSION` override those labels. A is built from the checked-out source with a schema compatibility overlay, not from the archived `v0.1.28` source tree, so this builder does not by itself prove exact production-baseline code rollback.
+
+**Baseline and schema blockers:** Production `v0.1.28` at `4ea6cdd76f19f2f4babdc2a7de0311dd0a6fec51` is schema 7 and has no Web Control device command agent or subscription. It cannot receive a remote `OTA_INSTALL`; the workflow rejects it instead of substituting a current-source A. A separately archived, signed control-capable release must first be installed locally with operator approval and pinned as A. This branch's control repositories require schema 8, while native acceptance requires B schema A+1 and the current B is also schema 8. Thus bootstrapping A alone cannot satisfy the schema transition: a genuine newer B migration and separately versioned signed artifacts are also required. Do not relabel A as schema 7 or add an empty migration merely to pass the gate. No native workflow run or native acceptance pass exists.
+
+**Print safety:** `OtaUpdateService.getPrintSystemStatus()` now reports local queue, active-print, and maintenance state to the Control Agent; the local OTA engine remains responsible for waiting before maintenance. Service tests cover the reported states and deferred-install transitions. No native acceptance has yet proved a real print finishing, queue preservation, or continued printing during control-plane outages.
+
+OTA progress is reported from persisted local service transitions, including `WAITING_FOR_IDLE`, `INSTALLING`, and external-updater `RESTART_PENDING`; the Control Agent maps only the latter to `RESTARTING` and persists transition events for JetStream retry. Tests cover this mapping, not process replacement or terminal-state reconciliation on a real Windows installation.
 
 ### Setup
 
-Configure the following environment variables across services:
+This is not a validated production setup procedure. Provision an isolated JetStream stream whose subjects capture `printops.control.command.*`, `printops.control.event.*`, and `printops.control.heartbeat.*`; the runtime checks the configured stream and durable filters but does not create or retarget them.
 
-| Component | Variable | Description |
+| Component | Variable | Code-level purpose |
 | --- | --- | --- |
-| Web Control / API | `PRINTOPS_CONTROL_NATS_URL` | NATS broker URL for control plane (e.g. `nats://127.0.0.1:4222`) |
-| Web Control / API | `DB_MODE` | Persistence mode (`sqlite` for disk or `memory` for test) |
-| Local PrintOps Device | `PRINTOPS_DEVICE_IDENTITY_PATH` | Path to persistent device identity JSON (default: `./data/device-identity.json`) |
-| Local PrintOps Device | `PRINTOPS_SITE_ID` | Site/hospital branch identifier (e.g. `hospital-ward-1`) |
-| Local PrintOps Device | `PRINTOPS_OTA_ENABLED` | Set `true` to enable OTA functionality |
-| Local PrintOps Device | `PRINTOPS_OTA_REQUIRE_SIGNATURE`| Set `true` to enforce Ed25519 signature verification |
-| Local PrintOps Device | `PRINTOPS_OTA_PUBLIC_KEY` | Hex or PEM public key for release signature verification |
+| Control API / device | `PRINTOPS_CONTROL_NATS_URL` | Dedicated control-plane NATS endpoint; generic `PRINTOPS_NATS_URL` and `NATS_URL` do not enable this transport |
+| Control API / device | `PRINTOPS_CONTROL_NATS_STREAM` | Required pre-provisioned JetStream stream name |
+| Control API | `PRINTOPS_CONTROL_ROLE` | `control-plane` for central command publication/event consumption, `device` for an enrolled local device process |
+| Control API | `PRINTOPS_CONTROL_EVENTS_DURABLE` / `PRINTOPS_CONTROL_HEARTBEATS_DURABLE` | Optional central durable consumer names |
+| Local PrintOps Device | `PRINTOPS_CONTROL_COMMAND_DURABLE` | Optional command durable; its name must end in `-<deviceId>` |
+| API | `DB_MODE` / `PRINTOPS_DB_PATH` | Select persistence mode and SQLite file path; production control state requires persistent storage |
+| Local PrintOps Device | `PRINTOPS_DEVICE_IDENTITY_PATH` | Device identity JSON path (default: `./data/device-identity.json`) |
+| Local PrintOps Device | `PRINTOPS_SITE_ID` | Default site identifier |
+| Local PrintOps Device | `PRINTOPS_OTA_ENABLED` | Enables the local Application OTA service |
+| Local PrintOps Device | `PRINTOPS_OTA_REQUIRE_SIGNATURE` | Configures whether local OTA requires release signature verification |
+| Local PrintOps Device | `PRINTOPS_OTA_PUBLIC_KEY` | Public key used by the local OTA verification path |
 
-*Security Note*: Private release signing keys are never deployed to Web Control or print stations. Release signing occurs exclusively in the offline release pipeline.
+### Native Acceptance Prerequisites (Not a Production Runbook)
 
-### How To Use
+The manually dispatched `.github/workflows/web-control-ota-native.yml` uses an isolated self-hosted Windows x64 runner and the protected `web-control-ota-native` environment.
 
-1. **Install/Enroll PrintOps Device**:
-   - In Web Control, open **Devices** and click **Generate Enrollment Token** for the target site.
-   - On the device, supply the one-time token during initial setup or via `POST /api/v1/control/enroll`.
-   - The device stores its unique `deviceId` and secret `deviceToken` in local persistent storage.
-2. **Confirm Device Appears Online**:
-   - In Web Control, verify the device reports `ONLINE` with active runner and print readiness status.
-3. **Publish / Register a Signed Release**:
-   - Open **Releases** and click **Register Signed Release**.
-   - Provide version, channel, platform, schema version, manifest URL, artifact URL, SHA-256 hash, and Ed25519 signature.
-4. **Select Device & Request Update**:
-   - In **Devices**, select the target station to open **Device Detail**.
-   - Review current version, latest compatible release, and current print state.
-   - Click **Request Update**. Review the explicit confirmation dialog:
-     > *The update will begin only when the local PrintOps instance reaches a safe point.*
-   - Click **Confirm Update Request**.
-5. **Observe Progress & Verification**:
-   - Observe real-time state transitions: `ACCEPTED` → `DOWNLOADING` → `VERIFIED` → `WAITING_FOR_IDLE` → `INSTALLING` → `RESTARTING` → `COMPLETED`.
-   - If readiness fails post-install, the updater automatically rolls back binary and SQLite database, reporting `ROLLED_BACK`.
+Required protected variables:
+
+- Safe physical test queue allowlist: `PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER`, `PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_CODE`, `PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_DRIVER`, `PRINTOPS_CONTROL_NATIVE_SAFE_PRINTER_PORT`.
+- Archived A installer and signed release evidence: `PRINTOPS_CONTROL_NATIVE_A_INSTALLER`, `PRINTOPS_CONTROL_NATIVE_A_MANIFEST`, `PRINTOPS_CONTROL_NATIVE_A_VERSION`, `PRINTOPS_CONTROL_NATIVE_A_SCHEMA_VERSION`, `PRINTOPS_CONTROL_NATIVE_A_PROVENANCE`, `PRINTOPS_CONTROL_NATIVE_BASELINE_COMMIT`, and `PRINTOPS_CONTROL_NATIVE_BASELINE_ARTIFACT_SHA256`.
+
+Required protected environment secrets: `PRINTOPS_CONTROL_NATIVE_RUNNER_CONFIRMATION`, `PRINTOPS_CONTROL_NATIVE_PRINTER_CONFIRMATION`, `PRINTOPS_CONTROL_NATIVE_PHYSICAL_PRINT_ACK`, and `PRINTOPS_OTA_NATIVE_SIGNING_KEY`. Never place secret values in source control or logs. Archived A must be a signed, control-capable release newer than `v0.1.28`; its manifest and provenance must match the configured source commit and exact installer digest. The native gate does not substitute a current-source A. Its required physical print scenario uses the configured isolated queue.
+
+Deployment also requires a central Control API with persistent SQLite state, pre-provisioned NATS JetStream reachable from both the control API and enrolled Windows device, one-time device enrollment and protected per-device credentials, signed release manifests and NSIS artifacts hosted where the device can download them, the device-side OTA verification public key, and the existing external updater. Network routing must permit the configured API/NATS/artifact paths. Production TLS, broker authentication, per-device NATS ACLs, credential storage protection, and this deployment topology have not been validated here.
+
+The current native workflow and driver are acceptance infrastructure only. No Windows runner, NATS broker, physical queue, signing key, real installer, restart, or rollback run was exercised in this session.
+
+
+### Intended Workflow (Not Natively Accepted)
+
+The intended operator sequence is: enroll the device and verify `ONLINE`, version, and schema; register a platform-compatible signed release; request one device update; observe `CHECKING → DOWNLOADING → VERIFIED → WAITING_FOR_IDLE → INSTALLING → RESTARTING`; then require post-restart readiness and an authenticated `COMPLETED` or `ROLLED_BACK` result. The local print gate remains authoritative; the Web Control UI cannot force maintenance. `RECOVERY_REQUIRED` blocks another remote install until local recovery. This is an intended flow, not a validated GUI runbook or native acceptance: real Windows install/restart, print behavior, reconnect, rollback, and DB restoration remain unproven.
 
 ### Failure Behavior
 
-- **Device Offline**: Web Control marks device `OFFLINE`. Command submission is rejected with `DEVICE_OFFLINE`; offline devices never falsely appear to accept commands.
-- **NATS Outage**: Local printing and local queue processing continue completely uninterrupted. The local Control Agent logs a warning and reconnects with exponential backoff.
-- **Web Control Unavailable**: Print station continues standalone operation. Local HTTP intake, runner execution, and printer adapters function normally.
-- **Active Printing During Update**: The device transitions to `WAITING_FOR_IDLE`. Current print jobs complete; OTA begins only when the queue drains and the print admission gate signals idle.
-- **Update Verification Failure**: If manifest or artifact SHA-256 or Ed25519 signature check fails, the device aborts before handoff, records `VERIFY_FAILED`, and leaves existing binaries active.
-- **Health Check Failure**: The updater restores the previous application binary and rolls back SQLite database schema. Device transitions to `ROLLED_BACK`.
-- **Rollback Failure**: If rollback fails, device transitions to `ROLLBACK_FAILED` and `RECOVERY_REQUIRED`. Further remote commands are hard-blocked until physical resolution.
+The simulated regression checks service-level cases including offline-command rejection, expired and wrong-device commands, idempotency, mocked OTA transitions, and recovery-required blocking. Separate unit/integration tests cover JetStream transport contracts, message signatures, and persistent command/event behavior; they do not substitute for running a native broker/device workflow.
+
+The simulated regression does not start a Web Control UI/API host, NATS broker, real print workload, release verification, Windows installation or restart, or database rollback. Its fake publisher acknowledgement is not a broker PubAck. At runtime, missing NATS/PubAck leaves a command pending; NATS loss does not replace local print execution, and device transition events remain in the local outbox until JetStream acknowledges them. These code paths are not native outage or continuity evidence.
+
+Invalid signed messages are discarded before domain handling. Transport/handler failures remain unacknowledged for retry. Expired and recovery-blocked commands produce persisted local outcomes; wrong-device commands are ignored without writing a foreign command to local replay state. Durable ACK of a mismatched signed payload is not a Web Control terminal result. The installed updater backs up the DB for schema-increasing installs; same-schema rollback does not provide that DB backup and must not be described as database restoration. No native replay, outage, or same-schema recovery run has confirmed these guarantees.
 
 ### Development & Testing
 
-Run the verified test suites:
+Run the focused tests and simulation as appropriate:
 
 ```bash
-# Unit & Integration Tests: Device Identity & Enrollment
+# Device identity & enrollment tests
 npx vitest run src/tests/device-identity.test.ts src/tests/device-enrollment.test.ts -r apps/api
 
-# SQLite Schema v8 Persistence & Repositories
+# SQLite persistence & control repository tests
 npx vitest run src/tests/sqlite-control-repo.test.ts -r apps/api
 
-# Management Command Plane & Control Agent Bridge
+# Management command plane & Control Agent service tests
 npx vitest run src/tests/control-command-plane.test.ts -r apps/api
 
-# Release Catalog Service Tests
+# Release catalog service tests
 npx vitest run src/tests/release-catalog.test.ts -r apps/api
 
-# Control API Routes & RBAC Tests
+# Control API routes & RBAC tests
 npx vitest run src/tests/control-api.test.ts -r apps/api
 
-# Complete Failure Semantics & Robustness Matrix (8/8 scenarios)
+# Control failure-semantics tests
 npx vitest run src/tests/control-failure-semantics.test.ts -r apps/api
 
-# Web Control UI Tests & Web Build
+# Control transport, signed message, and device-event security tests
+npx vitest run src/tests/control-plane-transport.test.ts src/tests/control-message-auth.test.ts src/tests/control-event-security.test.ts -r apps/api
+
+# Web Control UI tests & web build
 npm run test -w @printerops/web
 npm run build -w @printerops/web
 
-# Real Windows End-to-End Acceptance Suite (Success path, Rollback path, Outage matrix)
+# Simulated Web Control service-flow regression (requires apps/api/dist; not native acceptance)
 node scripts/web-control-ota-e2e.mjs
 ```
 
+The native Application OTA harness is separate and does not test Web Control or NATS. The Web Control native workflow is `.github/workflows/web-control-ota-native.yml`, a manually dispatched Windows acceptance lane; no completed run is currently available. Its driver has not implemented five mandatory scenarios: browser-originated update action, transport outages, command replay/expiry/wrong-device safety, invalid release trust boundaries, and persistent recovery hard-stop. They remain `NOT RUN` and prevent any PASS result; source-level and simulated tests do not replace them.
+
 ### Security
 
-- **Role-Based Access Control (RBAC)**: Server-enforced via JWT. `control:read` / `ota:read` for viewing devices and releases; `control:manage` / `ota:manage` for issuing update commands and registering releases.
-- **Per-Device Authentication**: Devices authenticate with distinct high-entropy secrets (`devtok_...`) compared using timing-safe comparisons. Secrets are hashed (SHA-256/scrypt) in storage and never returned in UI responses.
-- **Outbound-Only Connections**: Devices connect outbound to NATS; local HTTP ports are never exposed to the WAN.
-- **Cryptographic Release Provenance**: Manifests and binary artifacts are signed with Ed25519 offline. Devices verify signatures locally; compromised Web Control cannot force unverified binaries onto devices.
-- **Local-Only Recovery**: The `/api/v1/ota/recovery` endpoint is restricted to localhost (`127.0.0.1` / `::1`) with local token auth and is never exposed to remote control.
-- **Audit Logging**: Every command issuance, device enrollment, and OTA state transition is recorded in `control_audit_logs` with actor, device, command ID, versions, and timestamp. Sensitive credentials are redacted from logs.
+- **Code-level access controls:** Control API routes apply permission checks. The central registry stores device-token hashes and uses timing-safe comparison. The device-side `DeviceIdentityStore` writes the enrollment token in plaintext to its identity JSON file; operating-system secret-storage protections have not been validated. Because the current HMAC key is derived from that stored token hash, protect the central database as credential material.
+- **Message authentication:** Commands, heartbeats, and OTA transition events are authenticated with per-device HMAC before domain handling. JetStream deduplicates message IDs only within its configured duplicate window; persistent device command state and the event outbox support operation-level retry/idempotency. This does not prevent arbitrary replay of every previously signed payload. Production NATS authentication, TLS, per-device ACLs, replay testing, and key rotation remain unverified.
+- **Local updater recovery:** The recovery route requires the per-installation token and a loopback request. The simulation does not exercise this route.
+- **Local OTA verification:** The local OTA implementation has configurable release-signature and artifact-hash verification paths. The simulation does not verify a real manifest, artifact, or signing-key process.
+- **Audit records:** Control audit repositories and a SQLite audit table are implemented; the simulation uses an in-memory audit repository and does not demonstrate durable production audit behavior.
+
 
 ## More Documentation
 

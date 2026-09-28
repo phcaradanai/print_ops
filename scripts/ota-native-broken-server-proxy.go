@@ -9,6 +9,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,15 +17,29 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
 
-const (
-	listenAddress   = "127.0.0.1:31415"
-	upstreamAddress = "127.0.0.1:31416"
-)
+const listenAddress = "127.0.0.1:31415"
+
+var upstreamAddress = "127.0.0.1:31416"
+
+func upstreamPort() string {
+	value := os.Getenv("PRINTOPS_OTA_NATIVE_BROKEN_UPSTREAM_PORT")
+	if value == "" {
+		return "31416"
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1024 || port > 65535 || port == 31415 {
+		fmt.Fprintln(os.Stderr, "[ota-native-broken-proxy] invalid isolated upstream port")
+		os.Exit(1)
+	}
+	return value
+}
 
 func setEnv(environment []string, key, value string) []string {
 	prefix := key + "="
@@ -50,6 +65,101 @@ func waitForUpstreamHealth(client *http.Client) error {
 		time.Sleep(250 * time.Millisecond)
 	}
 	return fmt.Errorf("upstream production B health did not become available")
+}
+
+func captureBrokenReadinessEvidence(request *http.Request, client *http.Client) error {
+	evidencePath := os.Getenv("PRINTOPS_OTA_NATIVE_BROKEN_EVIDENCE_FILE")
+	if evidencePath == "" {
+		return fmt.Errorf("PRINTOPS_OTA_NATIVE_BROKEN_EVIDENCE_FILE is not configured")
+	}
+
+	healthResponse, err := client.Get("http://" + upstreamAddress + "/health")
+	if err != nil {
+		return fmt.Errorf("read production B health: %w", err)
+	}
+	healthBody, readErr := io.ReadAll(io.LimitReader(healthResponse.Body, 1<<20))
+	healthResponse.Body.Close()
+	if readErr != nil {
+		return fmt.Errorf("read production B health body: %w", readErr)
+	}
+	var health struct {
+		Version string `json:"version"`
+	}
+	_ = json.Unmarshal(healthBody, &health)
+
+	upstreamRequest, err := http.NewRequestWithContext(
+		request.Context(),
+		request.Method,
+		"http://"+upstreamAddress+request.URL.RequestURI(),
+		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("create production B readiness request: %w", err)
+	}
+	upstreamRequest.Header = request.Header.Clone()
+	readinessResponse, readinessErr := client.Do(upstreamRequest)
+	readinessStatus := 0
+	readinessBody := []byte(nil)
+	if readinessErr == nil {
+		readinessStatus = readinessResponse.StatusCode
+		readinessBody, readErr = io.ReadAll(io.LimitReader(readinessResponse.Body, 1<<20))
+		readinessResponse.Body.Close()
+		if readErr != nil {
+			return fmt.Errorf("read production B readiness body: %w", readErr)
+		}
+	}
+	var readiness struct {
+		OTA struct {
+			Status string `json:"status"`
+			RequiredComponents struct {
+				Database struct {
+					Details struct {
+						SchemaVersion int `json:"schemaVersion"`
+					} `json:"details"`
+				} `json:"database"`
+			} `json:"requiredComponents"`
+		} `json:"ota"`
+	}
+	_ = json.Unmarshal(readinessBody, &readiness)
+	expectedSchema, _ := strconv.Atoi(os.Getenv("PRINTOPS_OTA_NATIVE_EXPECTED_SCHEMA"))
+	ready := healthResponse.StatusCode == http.StatusOK &&
+		health.Version != "" &&
+		readinessStatus == http.StatusOK &&
+		readiness.OTA.Status == "READY" &&
+		expectedSchema > 0 &&
+		readiness.OTA.RequiredComponents.Database.Details.SchemaVersion == expectedSchema
+	evidence := struct {
+		GeneratedAt                  string `json:"generatedAt"`
+		HealthStatusCode             int    `json:"healthStatusCode"`
+		HealthVersion                string `json:"healthVersion"`
+		UpstreamReadinessStatusCode  int    `json:"upstreamReadinessStatusCode"`
+		UpstreamReadinessStatus      string `json:"upstreamReadinessStatus"`
+		UpstreamSchemaVersion        int    `json:"upstreamSchemaVersion"`
+		ExpectedSchemaVersion        int    `json:"expectedSchemaVersion"`
+		ForcedReadinessStatusCode    int    `json:"forcedReadinessStatusCode"`
+		CandidateWasReadyBeforeFault bool   `json:"candidateWasReadyBeforeFault"`
+	}{
+		GeneratedAt:                  time.Now().UTC().Format(time.RFC3339Nano),
+		HealthStatusCode:             healthResponse.StatusCode,
+		HealthVersion:                health.Version,
+		UpstreamReadinessStatusCode:  readinessStatus,
+		UpstreamReadinessStatus:      readiness.OTA.Status,
+		UpstreamSchemaVersion:        readiness.OTA.RequiredComponents.Database.Details.SchemaVersion,
+		ExpectedSchemaVersion:        expectedSchema,
+		ForcedReadinessStatusCode:    http.StatusServiceUnavailable,
+		CandidateWasReadyBeforeFault: ready,
+	}
+	if err := os.MkdirAll(filepath.Dir(evidencePath), 0o700); err != nil {
+		return fmt.Errorf("create broken-B evidence directory: %w", err)
+	}
+	encoded, err := json.MarshalIndent(evidence, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode broken-B evidence: %w", err)
+	}
+	if err := os.WriteFile(evidencePath, append(encoded, '\n'), 0o600); err != nil {
+		return fmt.Errorf("write broken-B evidence: %w", err)
+	}
+	return nil
 }
 
 func copyHeaders(destination http.ResponseWriter, source http.Header) {
@@ -90,6 +200,8 @@ func forwardRequest(destination http.ResponseWriter, request *http.Request, clie
 }
 
 func main() {
+	port := upstreamPort()
+	upstreamAddress = "127.0.0.1:" + port
 	executable, err := os.Executable()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[ota-native-broken-proxy] resolve executable: %v\n", err)
@@ -100,7 +212,7 @@ func main() {
 
 	command := exec.Command(serverPath)
 	command.Dir = resourceDir
-	command.Env = setEnv(os.Environ(), "PORT", "31416")
+	command.Env = setEnv(os.Environ(), "PORT", port)
 	command.Env = setEnv(command.Env, "HOST", "127.0.0.1")
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
@@ -111,17 +223,20 @@ func main() {
 
 	client := &http.Client{Timeout: 2 * time.Second}
 	forwardClient := &http.Client{Timeout: 30 * time.Second}
-	var failedReadiness bool
+	var evidenceOnce sync.Once
 	handler := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/api/v1/system/readiness" {
 			if err := waitForUpstreamHealth(client); err != nil {
 				http.Error(response, err.Error(), http.StatusServiceUnavailable)
 				return
 			}
-			if !failedReadiness {
-				failedReadiness = true
-				fmt.Fprintln(os.Stdout, "[ota-native-broken-proxy] production B health is live; intentionally failing OTA readiness")
-			}
+			evidenceOnce.Do(func() {
+				if err := captureBrokenReadinessEvidence(request, forwardClient); err != nil {
+					fmt.Fprintf(os.Stderr, "[ota-native-broken-proxy] readiness evidence: %v\n", err)
+				} else {
+					fmt.Fprintln(os.Stdout, "[ota-native-broken-proxy] production B health and readiness are live; intentionally returning HTTP 503")
+				}
+			})
 			response.Header().Set("content-type", "application/json")
 			response.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = response.Write([]byte(`{"error":"acceptance-only broken B readiness failure","contract":"printops-ota-v1","status":"NOT_READY"}`))
