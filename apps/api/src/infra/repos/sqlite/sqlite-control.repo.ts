@@ -46,6 +46,11 @@ function rowToDevice(row: Record<string, unknown>): DeviceRecord {
     deviceTokenHash: row['device_token_hash'] as string,
     status: (row['status'] as DeviceRecord['status']) ?? 'ACTIVE',
     displayName: row['display_name'] ? (row['display_name'] as string) : undefined,
+    ...(row['installation_path'] ? { installationPath: row['installation_path'] as string } : {}),
+    ...(row['data_path'] ? { dataPath: row['data_path'] as string } : {}),
+    ...(row['os_version'] ? { osVersion: row['os_version'] as string } : {}),
+    ...(row['ip_addresses_json'] ? { ipAddresses: fromJson(row['ip_addresses_json'], [] as string[]) } : {}),
+    ...(row['capabilities_json'] ? { capabilities: fromJson(row['capabilities_json'], [] as string[]) } : {}),
   };
 }
 
@@ -167,6 +172,11 @@ export class SqliteDeviceRegistryRepository implements DeviceRegistryRepositoryP
     if ('deviceTokenHash' in patch) add('device_token_hash', patch.deviceTokenHash ?? null);
     if ('status' in patch) add('status', patch.status ?? null);
     if ('displayName' in patch) add('display_name', patch.displayName ?? null);
+    if ('installationPath' in patch) add('installation_path', patch.installationPath ?? null);
+    if ('dataPath' in patch) add('data_path', patch.dataPath ?? null);
+    if ('osVersion' in patch) add('os_version', patch.osVersion ?? null);
+    if ('ipAddresses' in patch) add('ip_addresses_json', patch.ipAddresses ? JSON.stringify(patch.ipAddresses) : null);
+    if ('capabilities' in patch) add('capabilities_json', patch.capabilities ? JSON.stringify(patch.capabilities) : null);
 
     if (sets.length > 0) {
       params.push(deviceId);
@@ -184,6 +194,11 @@ export class SqliteDeviceRegistryRepository implements DeviceRegistryRepositoryP
         hostname = ?, platform = ?, architecture = ?, app_version = ?,
         schema_version = ?, runner_version = ?, runner_status = ?,
         print_readiness_summary = ?, print_state = ?, ota_state = ?,
+        installation_path = COALESCE(?, installation_path),
+        data_path = COALESCE(?, data_path),
+        os_version = COALESCE(?, os_version),
+        ip_addresses_json = COALESCE(?, ip_addresses_json),
+        capabilities_json = COALESCE(?, capabilities_json),
         last_ota_operation = COALESCE(?, last_ota_operation),
         last_seen_at = ?, connection_state = 'ONLINE'
        WHERE device_id = ?`,
@@ -198,6 +213,11 @@ export class SqliteDeviceRegistryRepository implements DeviceRegistryRepositoryP
         heartbeat.printReadinessSummary,
         heartbeat.printState,
         heartbeat.otaState,
+        heartbeat.installationPath ?? null,
+        heartbeat.dataPath ?? null,
+        heartbeat.osVersion ?? null,
+        heartbeat.ipAddresses ? toJson(heartbeat.ipAddresses) : null,
+        heartbeat.capabilities ? toJson(heartbeat.capabilities) : null,
         heartbeat.lastOtaOperation ?? null,
         heartbeat.timestamp,
         deviceId,
@@ -276,11 +296,14 @@ export class SqliteEnrollmentTokenRepository implements EnrollmentTokenRepositor
 }
 
 function rowToCommand(row: Record<string, unknown>): ControlCommandRecord {
+  const contentType = row['content_type'] ?? row['payload_content_type'];
+  const contentKey = row['content_key'] ?? row['payload_content_key'];
   return {
     commandId: row['command_id'] as string,
     deviceId: row['device_id'] as string,
     type: row['type'] as ControlCommandRecord['type'],
     targetVersion: row['target_version'] ? (row['target_version'] as string) : undefined,
+    ...(row['manifest_url'] ? { manifestUrl: row['manifest_url'] as string } : {}),
     requestedAt: toDate(row['requested_at']),
     expiresAt: toDate(row['expires_at']),
     requestedBy: row['requested_by'] as string,
@@ -290,6 +313,10 @@ function rowToCommand(row: Record<string, unknown>): ControlCommandRecord {
     completedAt: row['completed_at'] ? toDate(row['completed_at']) : undefined,
     terminalState: row['terminal_state'] ? (row['terminal_state'] as string) : undefined,
     failureReason: row['failure_reason'] ? (row['failure_reason'] as string) : undefined,
+    ...(contentType ? { contentType: contentType as ControlCommandRecord['contentType'] } : {}),
+    ...(contentKey ? { contentKey: contentKey as string } : {}),
+    ...(row['payload_json'] ? { contentPayload: fromJson(row['payload_json'], undefined) as ControlCommandRecord['contentPayload'] } : {}),
+    ...(row['result_payload_json'] ? { resultPayload: fromJson(row['result_payload_json'], undefined) as ControlCommandRecord['resultPayload'] } : {}),
   };
 }
 
@@ -303,20 +330,30 @@ export class SqliteControlCommandRepository implements ControlCommandRepositoryP
 
     db.run(
       `INSERT INTO control_commands (
-        command_id, device_id, type, target_version, requested_at, expires_at,
+        command_id, device_id, type, target_version, manifest_url, content_type, content_key, requested_at, expires_at,
         requested_by, idempotency_key, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')`,
       [
         commandId,
         input.deviceId,
         input.type,
         input.targetVersion ?? null,
+        input.manifestUrl ?? null,
+        input.contentType ?? null,
+        input.contentKey ?? null,
         dateStr(now),
         dateStr(expiresAt),
         input.requestedBy,
         input.idempotencyKey,
       ],
     );
+    if (input.contentPayload && input.contentType && input.contentKey) {
+      db.run(
+        `INSERT INTO control_command_payloads (command_id, content_type, content_key, payload_json)
+         VALUES (?, ?, ?, ?)`,
+        [commandId, input.contentType, input.contentKey, toJson(input.contentPayload)],
+      );
+    }
     const created = await this.findById(commandId);
     if (!created) throw new Error('Failed to create command record');
     return created;
@@ -324,7 +361,12 @@ export class SqliteControlCommandRepository implements ControlCommandRepositoryP
 
   async findById(commandId: string): Promise<ControlCommandRecord | undefined> {
     const db = getDb();
-    const stmt = db.prepare('SELECT * FROM control_commands WHERE command_id = ?');
+    const stmt = db.prepare(`
+      SELECT c.*, p.content_type AS payload_content_type, p.content_key AS payload_content_key, p.payload_json
+      FROM control_commands c
+      LEFT JOIN control_command_payloads p ON p.command_id = c.command_id
+      WHERE c.command_id = ?
+    `);
     stmt.bind([commandId]);
     try {
       if (!stmt.step()) return undefined;
@@ -336,7 +378,12 @@ export class SqliteControlCommandRepository implements ControlCommandRepositoryP
 
   async findByIdempotencyKey(deviceId: string, idempotencyKey: string): Promise<ControlCommandRecord | undefined> {
     const db = getDb();
-    const stmt = db.prepare('SELECT * FROM control_commands WHERE device_id = ? AND idempotency_key = ?');
+    const stmt = db.prepare(`
+      SELECT c.*, p.content_type AS payload_content_type, p.content_key AS payload_content_key, p.payload_json
+      FROM control_commands c
+      LEFT JOIN control_command_payloads p ON p.command_id = c.command_id
+      WHERE c.device_id = ? AND c.idempotency_key = ?
+    `);
     stmt.bind([deviceId, idempotencyKey]);
     try {
       if (!stmt.step()) return undefined;
@@ -351,7 +398,10 @@ export class SqliteControlCommandRepository implements ControlCommandRepositoryP
     const limit = opts?.limit ?? 50;
     const offset = opts?.offset ?? 0;
     const stmt = db.prepare(
-      'SELECT * FROM control_commands WHERE device_id = ? ORDER BY requested_at DESC LIMIT ? OFFSET ?',
+      `SELECT c.*, p.content_type AS payload_content_type, p.content_key AS payload_content_key
+       FROM control_commands c
+       LEFT JOIN control_command_payloads p ON p.command_id = c.command_id
+       WHERE c.device_id = ? ORDER BY c.requested_at DESC LIMIT ? OFFSET ?`,
     );
     stmt.bind([deviceId, limit, offset]);
     const commands: ControlCommandRecord[] = [];
@@ -376,10 +426,12 @@ export class SqliteControlCommandRepository implements ControlCommandRepositoryP
     };
 
     if ('status' in patch) add('status', patch.status ?? null);
+    if ('manifestUrl' in patch) add('manifest_url', patch.manifestUrl ?? null);
     if ('acceptedAt' in patch) add('accepted_at', patch.acceptedAt ? dateStr(patch.acceptedAt) : null);
     if ('completedAt' in patch) add('completed_at', patch.completedAt ? dateStr(patch.completedAt) : null);
     if ('terminalState' in patch) add('terminal_state', patch.terminalState ?? null);
     if ('failureReason' in patch) add('failure_reason', patch.failureReason ?? null);
+    if ('resultPayload' in patch) add('result_payload_json', patch.resultPayload ? toJson(patch.resultPayload) : null);
 
     if (sets.length > 0) {
       params.push(commandId);

@@ -1,6 +1,6 @@
 import type { Database } from 'sql.js';
 
-export const CURRENT_SCHEMA_VERSION = 8;
+export const CURRENT_SCHEMA_VERSION = 9;
 
 export function schemaVersion(db: Database): number {
   const result = db.exec('PRAGMA user_version');
@@ -39,7 +39,17 @@ export function runSchemaMigration(db: Database): void {
       `PRINTOPS_DB_NEWER_SCHEMA: database schema ${fromVersion} is newer than this application supports (${CURRENT_SCHEMA_VERSION}).`,
     );
   }
-  if (fromVersion === CURRENT_SCHEMA_VERSION) return;
+  if (fromVersion === CURRENT_SCHEMA_VERSION) {
+    db.run('BEGIN TRANSACTION');
+    try {
+      ensureOptionalControlExtensions(db);
+      db.run('COMMIT');
+    } catch (error) {
+      try { db.run('ROLLBACK'); } catch { /* retain the original extension error */ }
+      throw error;
+    }
+    return;
+  }
 
   db.run('PRAGMA journal_mode=WAL');
   db.run('PRAGMA foreign_keys=ON');
@@ -53,11 +63,46 @@ export function runSchemaMigration(db: Database): void {
     if (fromVersion < 6) migrateVersionFiveToSix(db);
     if (fromVersion < 7) migrateVersionSixToSeven(db);
     if (fromVersion < 8) migrateVersionSevenToEight(db);
+    if (fromVersion < 9) migrateVersionEightToNine(db);
+    ensureOptionalControlExtensions(db);
     db.run(`PRAGMA user_version=${CURRENT_SCHEMA_VERSION}`);
     db.run('COMMIT');
   } catch (error) {
     try { db.run('ROLLBACK'); } catch { /* retain the original migration error */ }
     throw error;
+  }
+}
+
+/**
+ * Add optional remote-content and inventory columns without advancing the
+ * PrintOps schema version. Older PrintOps binaries can safely ignore these
+ * additive Web Control extensions during rollback.
+ */
+function ensureOptionalControlExtensions(db: Database): void {
+  const hasDevices = db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_devices'")[0]?.values.length === 1;
+  if (hasDevices) {
+    ensureColumn(db, 'control_devices', 'installation_path', 'TEXT');
+    ensureColumn(db, 'control_devices', 'data_path', 'TEXT');
+    ensureColumn(db, 'control_devices', 'os_version', 'TEXT');
+    ensureColumn(db, 'control_devices', 'ip_addresses_json', 'TEXT');
+    ensureColumn(db, 'control_devices', 'capabilities_json', 'TEXT');
+  }
+
+  const hasCommands = db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_commands'")[0]?.values.length === 1;
+  if (hasCommands) {
+    ensureColumn(db, 'control_commands', 'manifest_url', 'TEXT');
+    ensureColumn(db, 'control_commands', 'content_type', 'TEXT');
+    ensureColumn(db, 'control_commands', 'content_key', 'TEXT');
+    ensureColumn(db, 'control_commands', 'result_payload_json', 'TEXT');
+    db.run(`
+      CREATE TABLE IF NOT EXISTS control_command_payloads (
+        command_id TEXT PRIMARY KEY NOT NULL,
+        content_type TEXT NOT NULL,
+        content_key TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        FOREIGN KEY(command_id) REFERENCES control_commands(command_id) ON DELETE CASCADE
+      )
+    `);
   }
 }
 
@@ -268,6 +313,13 @@ function migrateVersionSevenToEight(db: Database): void {
   db.run('CREATE INDEX IF NOT EXISTS idx_control_audit_device ON control_audit_logs(device_id)');
   db.run('CREATE INDEX IF NOT EXISTS idx_control_audit_action ON control_audit_logs(action)');
 }
+
+function migrateVersionEightToNine(db: Database): void {
+  if (db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'users'")[0]?.values.length !== 1) return;
+  ensureColumn(db, 'users', 'recovery_code_hash', 'TEXT');
+  ensureColumn(db, 'users', 'auth_version', 'INTEGER NOT NULL DEFAULT 0');
+}
+
 function migrateVersionZeroToOne(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS printers (

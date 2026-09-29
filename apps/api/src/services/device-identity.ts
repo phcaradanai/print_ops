@@ -62,7 +62,7 @@ export class DeviceIdentityStore {
       './data/device-identity.json'
     );
     this.defaultSiteId = opts.defaultSiteId || process.env['PRINTOPS_SITE_ID'] || 'default-site';
-    this.appVersion = opts.appVersion || process.env['PRINTOPS_APP_VERSION'] || '0.1.28';
+    this.appVersion = opts.appVersion || process.env['PRINTOPS_APP_VERSION'] || '0.1.31';
     this.schemaVersion = opts.schemaVersion ?? 7;
     this.runnerVersion = opts.runnerVersion || process.env['PRINTOPS_RUNNER_VERSION'] || '0.1.28';
 
@@ -189,6 +189,7 @@ export class DeviceIdentityStore {
       const index = controlCommands.findIndex((entry) => entry.commandId === event.commandId);
       const previous = index >= 0 ? controlCommands[index]! : undefined;
       const commandType = command?.commandType ?? previous?.commandType;
+      const isContentCommand = commandType === 'CONTENT_SYNC' || commandType === 'CONTENT_LIST' || commandType === 'CONTENT_PULL';
       const terminal = event.state === 'COMPLETED'
         || event.state === 'INSTALL_FAILED'
         || event.state === 'HEALTH_CHECK_FAILED'
@@ -201,8 +202,8 @@ export class DeviceIdentityStore {
         idempotencyKey: command?.idempotencyKey ?? previous?.idempotencyKey,
         commandType,
         targetVersion: event.targetVersion ?? command?.targetVersion ?? previous?.targetVersion,
-        lastAuthoritativeOtaState: event.state,
-        lastAuthoritativeOtaAt: event.timestamp,
+        lastAuthoritativeOtaState: isContentCommand ? previous?.lastAuthoritativeOtaState : event.state,
+        lastAuthoritativeOtaAt: isContentCommand ? previous?.lastAuthoritativeOtaAt : event.timestamp,
         lastLocalOtaState: command?.localOtaState ?? previous?.lastLocalOtaState,
         replayStatus: terminal ? 'PROCESSED' : previous?.replayStatus ?? 'PROCESSING',
         executionStarted: previous?.executionStarted ?? false,
@@ -210,7 +211,7 @@ export class DeviceIdentityStore {
       };
       if (index >= 0) controlCommands[index] = next;
       else controlCommands.push(next);
-      if (event.state === 'ACCEPTED' || currentControlCommandId === event.commandId) {
+      if (!isContentCommand && (event.state === 'ACCEPTED' || currentControlCommandId === event.commandId)) {
         currentControlCommandId = event.commandId;
       }
     }

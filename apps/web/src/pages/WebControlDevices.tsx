@@ -44,6 +44,11 @@ export interface DeviceListItem {
   lastOtaOperation: string | null;
   status: 'ACTIVE' | 'REVOKED';
   displayName?: string;
+  installationPath?: string;
+  dataPath?: string;
+  osVersion?: string;
+  ipAddresses?: string[];
+  capabilities?: string[];
   latestCompatibleVersion: string | null;
   hasUpdateAvailable: boolean;
 }
@@ -123,6 +128,9 @@ export default function WebControlDevices() {
         </Inline>
       }
     >
+      <Text size="body" tone="muted">
+        Web Control lists enrolled PrintOps installations that report in. It does not scan unregistered devices on the local network.
+      </Text>
       {devicesResource.stale && devicesResource.error != null && (
         <ErrorBanner error={devicesResource.error} onRetry={devicesResource.refresh} />
       )}
@@ -187,7 +195,7 @@ export default function WebControlDevices() {
                 <DataHead>Device</DataHead>
                 <DataHead>Site</DataHead>
                 <DataHead>Online Status</DataHead>
-                <DataHead>Installed Version</DataHead>
+                <DataHead>PrintOps Client Version</DataHead>
                 <DataHead>Latest Compatible</DataHead>
                 <DataHead>Print Status</DataHead>
                 <DataHead>OTA Status</DataHead>

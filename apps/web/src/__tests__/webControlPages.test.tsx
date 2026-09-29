@@ -47,7 +47,7 @@ describe('Web Control UI Workspaces (Phase 7)', () => {
       </LocaleProvider>,
     );
 
-    expect(html).toContain('Release Catalog');
+    expect(html).toContain('PrintOps Client Releases');
     expect(html).toContain('Register Signed Release');
   });
 });

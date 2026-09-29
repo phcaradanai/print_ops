@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { UserRepositoryPort } from '@printerops/domain';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { hashPassword, validatePassword, verifyPassword } from '../infra/auth/password.js';
 
 export async function authRoutes(
@@ -29,6 +29,9 @@ export async function authRoutes(
       : [];
     return { state, ownerEmailHints };
   };
+
+  const createRecoveryCode = () => randomBytes(24).toString('base64url');
+  const hashRecoveryCode = (code: string) => createHash('sha256').update(code).digest('hex');
 
   app.get('/auth/bootstrap', async () => bootstrapState());
 
@@ -90,8 +93,17 @@ export async function authRoutes(
     bootstrapInFlight = operation;
     try {
       const owner = await operation;
-      const token = await reply.jwtSign({ sub: owner.id, role: owner.role, email: owner.email });
-      return { token, user: { id: owner.id, email: owner.email, name: owner.name, role: owner.role, allowedPages: owner.allowedPages } };
+      const recoveryCode = createRecoveryCode();
+      const issued = await deps.users.issuePasswordRecoveryCode(owner.id, hashRecoveryCode(recoveryCode));
+      if (!issued) throw new Error('Could not initialize owner password recovery');
+      const authVersion = await deps.users.getAuthVersion(owner.id);
+      const token = await reply.jwtSign({ sub: owner.id, role: owner.role, email: owner.email, authVersion });
+      reply.header('Cache-Control', 'no-store');
+      return {
+        token,
+        recoveryCode,
+        user: { id: owner.id, email: owner.email, name: owner.name, role: owner.role, allowedPages: owner.allowedPages },
+      };
     } finally {
       bootstrapInFlight = undefined;
     }
@@ -110,8 +122,49 @@ export async function authRoutes(
       return reply.status(401).send({ error: 'Invalid credentials' });
     }
 
-    const token = await reply.jwtSign({ sub: user.id, role: user.role, email: user.email });
+    const authVersion = await deps.users.getAuthVersion(user.id);
+    const token = await reply.jwtSign({ sub: user.id, role: user.role, email: user.email, authVersion });
     return { token, user: { id: user.id, email: user.email, name: user.name, role: user.role, allowedPages: user.allowedPages } };
+  });
+
+  app.post('/auth/recovery-code', { onRequest: [app.authenticate] }, async (req, reply) => {
+    const identity = req.user as { sub?: string };
+    if (!identity.sub) return reply.status(401).send({ error: 'Unauthorized' });
+    const user = await deps.users.findById(identity.sub);
+    if (!user?.isActive) return reply.status(401).send({ error: 'Unauthorized' });
+
+    const recoveryCode = createRecoveryCode();
+    const issued = await deps.users.issuePasswordRecoveryCode(user.id, hashRecoveryCode(recoveryCode));
+    if (!issued) return reply.status(401).send({ error: 'Unauthorized' });
+    reply.header('Cache-Control', 'no-store');
+    return { recoveryCode };
+  });
+
+  app.post('/auth/forgot-password', async (req, reply) => {
+    const body = (req.body ?? {}) as { email?: unknown; recoveryCode?: unknown; newPassword?: unknown };
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const recoveryCode = typeof body.recoveryCode === 'string' ? body.recoveryCode.trim() : '';
+    const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+    const invalidRecovery = () => reply.status(400).send({ error: 'Email or recovery code is invalid' });
+
+    if (!email || email.length > 254 || !email.includes('@') || !/^[A-Za-z0-9_-]{32}$/.test(recoveryCode)) {
+      return invalidRecovery();
+    }
+    const validation = validatePassword(newPassword);
+    if (!validation.valid) return reply.status(400).send({ error: validation.error });
+
+    const nextRecoveryCode = createRecoveryCode();
+    const passwordHash = await hashPassword(newPassword);
+    const reset = await deps.users.resetPasswordWithRecoveryCode(
+      email,
+      hashRecoveryCode(recoveryCode),
+      passwordHash,
+      hashRecoveryCode(nextRecoveryCode),
+    );
+    if (!reset) return invalidRecovery();
+
+    reply.header('Cache-Control', 'no-store');
+    return { passwordUpdated: true, recoveryCode: nextRecoveryCode };
   });
 
   app.post('/auth/runner', async (req, reply) => {

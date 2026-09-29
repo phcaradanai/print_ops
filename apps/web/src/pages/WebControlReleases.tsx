@@ -125,7 +125,7 @@ export default function WebControlReleases() {
 
   return (
     <PageLayout
-      title="Release Catalog"
+      title="PrintOps Client Releases"
       density="compact"
       width="full"
       actions={
@@ -143,6 +143,9 @@ export default function WebControlReleases() {
         </Inline>
       }
     >
+      <Text size="body" tone="muted">
+        Web Control manages software releases for enrolled PrintOps clients. Versions in this catalog belong to PrintOps releases, not Web Control.
+      </Text>
       {releasesResource.stale && releasesResource.error != null && (
         <ErrorBanner error={releasesResource.error} onRetry={releasesResource.refresh} />
       )}

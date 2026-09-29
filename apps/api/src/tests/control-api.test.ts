@@ -169,6 +169,35 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
       },
     });
     expect(releaseRes.statusCode).toBe(201);
+    const releaseId = (releaseRes.json() as { id: string }).id;
+
+    const newerReleaseRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/control/releases',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: {
+        version: '0.1.30',
+        channel: 'stable',
+        platform: 'windows-x64',
+        architecture: 'x64',
+        schemaVersion: 8,
+        manifestRef: 'https://releases.local/manifest-0.1.30.json',
+        artifactRef: 'https://releases.local/artifact-0.1.30.exe',
+        sha256: 'hash130',
+        signature: 'sig130',
+        minSupportedVersion: '0.1.20',
+      },
+    });
+    expect(newerReleaseRes.statusCode).toBe(201);
+
+    const detailRes = await app.inject({
+      method: 'GET',
+      url: `/api/v1/control/devices/${deviceId}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(detailRes.statusCode).toBe(200);
+    expect((detailRes.json() as { compatibleReleases: Array<{ version: string }> }).compatibleReleases.map((item) => item.version))
+      .toEqual(['0.1.30', '0.1.29']);
 
     // 3. Issue OTA command
     const cmdRes = await app.inject({
@@ -182,8 +211,9 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
       },
     });
     expect(cmdRes.statusCode).toBe(202);
-    const cmdJson = cmdRes.json() as { commandId: string; type: string };
+    const cmdJson = cmdRes.json() as { commandId: string; type: string; targetVersion: string };
     expect(cmdJson.commandId).toMatch(/^cmd_/);
+    expect(cmdJson.targetVersion).toBe('0.1.29');
 
     // 4. Query command history
     const historyRes = await app.inject({
@@ -204,5 +234,20 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
     expect(auditRes.statusCode).toBe(200);
     const auditLogs = auditRes.json() as Array<{ action: string }>;
     expect(auditLogs.some((l) => l.action.includes('command'))).toBe(true);
+
+    const revokeRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/control/releases/${releaseId}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { status: 'REVOKED' },
+    });
+    expect(revokeRes.statusCode).toBe(200);
+    const revokedInstall = await app.inject({
+      method: 'POST',
+      url: `/api/v1/control/devices/${deviceId}/commands`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { type: 'OTA_INSTALL', targetVersion: '0.1.29', idempotencyKey: 'idem_revoked_release' },
+    });
+    expect(revokedInstall.statusCode).toBe(409);
   });
 });

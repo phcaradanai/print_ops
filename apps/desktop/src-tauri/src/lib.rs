@@ -92,6 +92,9 @@ const DESKTOP_DISCOVERY_RUNNER_JOBS_ENABLED: bool = false;
 const NATS_SETTINGS_FILE: &str = "nats-settings.json";
 const JWT_SECRET_FILE: &str = "jwt-secret.txt";
 const RUNNER_BOOTSTRAP_SECRET_FILE: &str = "runner-bootstrap-secret.txt";
+const CONTROL_AGENT_BINARY_FILE: &str = "printops-control-agent.exe";
+const CONTROL_AGENT_LOG_FILE: &str = "desktop-control-agent.log";
+const CONTROL_NATS_STREAM: &str = "PRINTOPS_CONTROL";
 const OTA_UPDATER_STATE_FILE: &str = "ota/updater-state.json";
 const OTA_ARTIFACT_STATE_FILE: &str = "ota/staged-artifact.json";
 const OTA_UPDATER_REQUEST_DIR: &str = "ota/requests";
@@ -100,7 +103,7 @@ const OTA_HEALTH_TOKEN_FILE: &str = "ota-health-token.txt";
 
 // These are compile-time build metadata overrides used only by the isolated
 // scripts/ota-native-acceptance-build.mjs profile. Normal production builds
-// inherit the Cargo version and schema 7 exactly as before; no runtime
+// inherit the Cargo version and current SQLite schema; no runtime
 // environment variable can change either value.
 const DESKTOP_APP_VERSION: &str =
     match option_env!("PRINTOPS_BUILD_VERSION") {
@@ -110,7 +113,7 @@ const DESKTOP_APP_VERSION: &str =
 const DESKTOP_DB_SCHEMA_VERSION: &str =
     match option_env!("PRINTOPS_BUILD_DB_SCHEMA_VERSION") {
         Some(value) => value,
-        None => "7",
+        None => "8",
     };
 const NATIVE_ACCEPTANCE_BUILD: bool = option_env!("PRINTOPS_OTA_NATIVE_ACCEPTANCE_BUILD").is_some();
 
@@ -277,6 +280,7 @@ fn load_or_create_ota_health_token(data_dir: &Path, log: &Path) -> String {
 struct ServerPaths {
     res_dir: PathBuf,
     db_path: PathBuf,
+    device_identity_path: PathBuf,
     wasm_path: PathBuf,
     logs_dir: PathBuf,
     app_log: PathBuf,
@@ -316,10 +320,13 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
             DESKTOP_DISCOVERY_RUNNER_JOBS_ENABLED.to_string(),
         )
         .env("PRINTOPS_DB_PATH", &paths.db_path)
+        .env("PRINTOPS_DEVICE_IDENTITY_PATH", &paths.device_identity_path)
         .env("PRINTOPS_LOG_DIR", &paths.logs_dir)
         .env("PRINTOPS_APP_VERSION", DESKTOP_APP_VERSION)
         .env("PRINTOPS_GIT_COMMIT", env!("PRINTOPS_GIT_COMMIT"))
         .env("PRINTOPS_DB_SCHEMA_VERSION", DESKTOP_DB_SCHEMA_VERSION)
+        .env("PRINTOPS_OTA_ENABLED", paths.ota_public_key.is_some().to_string())
+        .env("PRINTOPS_OTA_REQUIRE_SIGNATURE", "true")
         .env("SQL_WASM_PATH", &paths.wasm_path)
         .env("JWT_SECRET", &paths.jwt_secret)
         .env("PRINTOPS_RUNNER_BOOTSTRAP_SECRET", &paths.runner_bootstrap_secret)
@@ -380,6 +387,47 @@ fn build_runner_command(paths: &ServerPaths) -> Command {
         .stdout(out)
         .stderr(err);
     cmd
+}
+
+fn build_control_agent_command(paths: &ServerPaths) -> Command {
+    let (out, err) = child_stdio(&paths.logs_dir.join(CONTROL_AGENT_LOG_FILE));
+    let token_path = paths
+        .db_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(OTA_HEALTH_TOKEN_FILE);
+    let nats_url = std::env::var("PRINTOPS_CONTROL_NATS_URL")
+        .unwrap_or_else(|_| "nats://127.0.0.1:4222".to_string());
+    let stream = std::env::var("PRINTOPS_CONTROL_NATS_STREAM")
+        .unwrap_or_else(|_| CONTROL_NATS_STREAM.to_string());
+
+    let mut cmd = Command::new(paths.res_dir.join(CONTROL_AGENT_BINARY_FILE));
+    cmd.current_dir(&paths.res_dir)
+        .env_remove("PKG_EXECPATH")
+        .env("PRINTOPS_CONTROL_IDENTITY_PATH", &paths.device_identity_path)
+        .env("PRINTOPS_CONTROL_TARGET_TOKEN_PATH", token_path)
+        .env("PRINTOPS_CONTROL_TARGET_URL", SERVER_URL)
+        .env("PRINTOPS_CONTROL_NATS_URL", nats_url)
+        .env("PRINTOPS_CONTROL_NATS_STREAM", stream)
+        .env("PRINTOPS_APP_VERSION", DESKTOP_APP_VERSION)
+        .env("PRINTOPS_RUNNER_VERSION", DESKTOP_APP_VERSION)
+        .env("PRINTOPS_OTA_INSTALL_ROOT", &paths.install_root)
+        .env("PRINTOPS_DB_PATH", &paths.db_path)
+        .stdin(Stdio::null())
+        .stdout(out)
+        .stderr(err);
+    cmd
+}
+
+fn device_identity_is_enrolled(path: &Path) -> bool {
+    let Ok(contents) = fs::read_to_string(path) else { return false };
+    let Ok(identity) = serde_json::from_str::<serde_json::Value>(&contents) else { return false };
+    ["deviceId", "deviceToken"].iter().all(|key| {
+        identity
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty())
+    })
 }
 
 /// Polls the API's health endpoint until it responds 200 or `timeout` elapses.
@@ -447,6 +495,7 @@ fn save_nats_settings(app: tauri::AppHandle, settings: NatsSettings) -> Result<(
 struct AppState {
     server_child: Mutex<Option<Child>>,
     runner_child: Mutex<Option<Child>>,
+    control_agent_child: Mutex<Option<Child>>,
     shutdown: ShutdownGuard,
     paths: ServerPaths,
 }
@@ -758,6 +807,7 @@ pub fn run() {
 
             let server_exe = res_dir.join("server.exe");
             let runner_exe = res_dir.join("printops-runner.exe");
+            let control_agent_exe = res_dir.join(CONTROL_AGENT_BINARY_FILE);
             let wasm_path = res_dir.join("sql-wasm.wasm");
 
             log_line(&app_log, "--- PrintOps desktop starting ---");
@@ -783,6 +833,15 @@ pub fn run() {
                     "printops-runner.exe: {} (exists: {})",
                     runner_exe.display(),
                     runner_exe.exists()
+                ),
+            );
+            log_line(
+                &app_log,
+                &format!(
+                    "{}: {} (exists: {})",
+                    CONTROL_AGENT_BINARY_FILE,
+                    control_agent_exe.display(),
+                    control_agent_exe.exists()
                 ),
             );
 
@@ -863,6 +922,7 @@ pub fn run() {
             let server_paths = ServerPaths {
                 res_dir: res_dir.clone(),
                 db_path: db_path.clone(),
+                device_identity_path: data_dir.join("device-identity.json"),
                 wasm_path: wasm_path.clone(),
                 logs_dir: logs.clone(),
                 app_log: app_log.clone(),
@@ -914,9 +974,33 @@ pub fn run() {
                 None
             };
 
+            // Enrollment writes the identity through the local API. Fresh
+            // installs wait quietly; the supervisor starts the agent after
+            // the identity gains its device credentials.
+            let control_agent_child = if control_agent_exe.exists()
+                && device_identity_is_enrolled(&server_paths.device_identity_path)
+            {
+                spawn_child(
+                    build_control_agent_command(&server_paths),
+                    &server_paths.app_log,
+                    CONTROL_AGENT_BINARY_FILE,
+                )
+            } else {
+                log_line(
+                    &server_paths.app_log,
+                    if control_agent_exe.exists() {
+                        "Control agent waiting for this installation to be enrolled"
+                    } else {
+                        "WARNING: control agent binary not found — remote management unavailable"
+                    },
+                );
+                None
+            };
+
             app.manage(AppState {
                 server_child: Mutex::new(server_child),
                 runner_child: Mutex::new(runner_child),
+                control_agent_child: Mutex::new(control_agent_child),
                 shutdown: ShutdownGuard::default(),
                 paths: server_paths,
             });
@@ -951,6 +1035,16 @@ pub fn run() {
                         &state.paths.app_log,
                         "printops-runner.exe",
                         || build_runner_command(&state.paths),
+                    );
+                }
+                if state.paths.res_dir.join(CONTROL_AGENT_BINARY_FILE).exists()
+                    && device_identity_is_enrolled(&state.paths.device_identity_path)
+                {
+                    restart_exited_child(
+                        &state.control_agent_child,
+                        &state.paths.app_log,
+                        CONTROL_AGENT_BINARY_FILE,
+                        || build_control_agent_command(&state.paths),
                     );
                 }
             });
@@ -1020,6 +1114,7 @@ pub fn run() {
                     if state.shutdown.begin() {
                         log_line(&log, "Desktop exit requested; stopping sidecars before shutdown...");
                         kill_child(&state.runner_child, &log, "runner");
+                        kill_child(&state.control_agent_child, &log, "control agent");
                         kill_child(&state.server_child, &log, "server");
                         log_line(&log, "Sidecars stopped");
                     }

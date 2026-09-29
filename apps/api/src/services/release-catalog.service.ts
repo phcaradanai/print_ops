@@ -112,7 +112,7 @@ export class ReleaseCatalogService {
     return { compatible: true };
   }
 
-  async findLatestCompatibleRelease(device: DeviceRecord): Promise<ReleaseCatalogRecord | null> {
+  async findCompatibleReleases(device: DeviceRecord): Promise<ReleaseCatalogRecord[]> {
     const platform = (device.platform === 'win32' || device.platform === 'windows') ? 'windows-x64' : (device.platform as 'windows-x64' | 'node-bundle');
     const available = await this.releases.findAll({
       status: 'AVAILABLE',
@@ -125,17 +125,17 @@ export class ReleaseCatalogService {
       return diff ?? 0;
     });
 
-    for (const candidate of sorted) {
+    return sorted.filter((candidate) => {
       const { compatible } = this.isCompatible(candidate, {
         appVersion: device.appVersion,
         schemaVersion: device.schemaVersion,
         platform,
       });
-      if (compatible) {
-        return candidate;
-      }
-    }
+      return compatible;
+    });
+  }
 
-    return null;
+  async findLatestCompatibleRelease(device: DeviceRecord): Promise<ReleaseCatalogRecord | null> {
+    return (await this.findCompatibleReleases(device))[0] ?? null;
   }
 }

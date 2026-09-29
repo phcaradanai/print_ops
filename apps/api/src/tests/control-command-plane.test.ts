@@ -12,6 +12,8 @@ import { WebControlRegistryService, hashDeviceToken } from '../services/web-cont
 import { verifyControlMessageWithToken, type SignedControlMessage } from '../services/control-message-auth.js';
 import type { OtaInstallProgressState, OtaStatus, OtaUpdateServicePort } from '../services/ota-update.service.js';
 import type {
+  ControlContentBundle,
+  ControlContentIndex,
   ControlCommandEnvelope,
   ControlOtaTransitionEvent,
   DeviceHeartbeatPayload,
@@ -282,6 +284,125 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
   });
 
   describe('Phase 4 & 5: Control Agent Bridge & State Synchronization', () => {
+    it('lists client paper profiles and templates through the control command plane', async () => {
+      const index: ControlContentIndex = {
+        version: 1,
+        generatedAt: new Date().toISOString(),
+        profiles: [{
+          code: 'CLIENT_LABEL_50',
+          name: 'Client 50 × 30 label',
+          widthMm: 50,
+          heightMm: 30,
+          dpi: 203,
+          orientation: 'landscape',
+          updatedAt: new Date().toISOString(),
+        }],
+        templates: [{
+          templateCode: 'CLIENT_LABEL',
+          name: 'Client label',
+          engine: 'ZPL',
+          status: 'PUBLISHED',
+          paperProfileCode: 'CLIENT_LABEL_50',
+          updatedAt: new Date().toISOString(),
+        }],
+        truncated: false,
+      };
+      const command = await commandService.issueCommand({
+        deviceId,
+        type: 'CONTENT_LIST',
+        requestedBy: 'operator@hospital.local',
+        idempotencyKey: 'idem_content_list_1',
+      });
+      const envelope: ControlCommandEnvelope = {
+        command_id: command.commandId,
+        device_id: deviceId,
+        type: 'CONTENT_LIST',
+        requested_at: command.requestedAt.toISOString(),
+        expires_at: command.expiresAt.toISOString(),
+        requested_by: command.requestedBy,
+        idempotency_key: command.idempotencyKey,
+      };
+      const agent = new PrintOpsControlAgent({
+        identityStore,
+        otaService: mockOta,
+        getClientContentIndex: async () => index,
+        eventPublisher: async (subject, event) => {
+          publishedEvents.push({ subject, event });
+        },
+      });
+
+      await agent.handleCommand(envelope, { waitForCompletion: true });
+      for (const { event } of publishedEvents) await commandService.handleDeviceEvent(event);
+
+      const recorded = await commandService.getCommand(command.commandId);
+      expect(recorded).toMatchObject({ status: 'COMPLETED', resultPayload: { index } });
+      expect((await deviceRepo.findById(deviceId))?.otaState).toBe('IDLE');
+      const completedAudit = (await auditRepo.findByDeviceId(deviceId)).find((entry) =>
+        entry.action === 'content.transition.completed');
+      expect(completedAudit?.metadata).toMatchObject({ resultValidated: true });
+    });
+
+    it('pulls one client template, persists the result, and keeps it out of OTA state and audit metadata', async () => {
+      const privateTemplateBody = '^XA^FDprivate client layout^XZ';
+      const bundle: ControlContentBundle = {
+        version: 1,
+        kind: 'template',
+        key: 'template:CLIENT_LABEL:0123456789abcdef',
+        overwriteExisting: false,
+        publishedBy: 'printops-client-export',
+        template: {
+          templateCode: 'CLIENT_LABEL',
+          name: 'Client label',
+          engine: 'ZPL',
+          content: privateTemplateBody,
+          status: 'PUBLISHED',
+        },
+      };
+      const command = await commandService.issueCommand({
+        deviceId,
+        type: 'CONTENT_PULL',
+        contentType: 'template',
+        contentKey: 'CLIENT_LABEL',
+        requestedBy: 'operator@hospital.local',
+        idempotencyKey: 'idem_content_pull_1',
+      });
+      const envelope: ControlCommandEnvelope = {
+        command_id: command.commandId,
+        device_id: deviceId,
+        type: 'CONTENT_PULL',
+        content_type: 'template',
+        content_key: 'CLIENT_LABEL',
+        requested_at: command.requestedAt.toISOString(),
+        expires_at: command.expiresAt.toISOString(),
+        requested_by: command.requestedBy,
+        idempotency_key: command.idempotencyKey,
+      };
+      const agent = new PrintOpsControlAgent({
+        identityStore,
+        otaService: mockOta,
+        exportClientContent: async (kind, code) => {
+          expect(kind).toBe('template');
+          expect(code).toBe('CLIENT_LABEL');
+          return bundle;
+        },
+        eventPublisher: async (subject, event) => {
+          publishedEvents.push({ subject, event });
+        },
+      });
+
+      await agent.handleCommand(envelope, { waitForCompletion: true });
+      for (const { event } of publishedEvents) await commandService.handleDeviceEvent(event);
+
+      const recorded = await commandService.getCommand(command.commandId);
+      expect(recorded).toMatchObject({ status: 'COMPLETED', resultPayload: { bundle } });
+      expect((await deviceRepo.findById(deviceId))?.otaState).toBe('IDLE');
+      expect(identityStore.getCurrentControlCommand()).toBeUndefined();
+      const completedAudit = (await auditRepo.findByDeviceId(deviceId)).find((entry) =>
+        entry.action === 'content.transition.completed');
+      expect(completedAudit?.metadata).toMatchObject({ contentType: 'template', contentKey: 'CLIENT_LABEL', resultValidated: true });
+      expect(JSON.stringify(completedAudit?.metadata)).not.toContain(privateTemplateBody);
+    });
+
     it('agent checks expiration and rejects expired commands', async () => {
       const agent = new PrintOpsControlAgent({
         identityStore,
@@ -459,6 +580,36 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
 
       const dev = await deviceRepo.findById(deviceId);
       expect(dev?.otaState).toBe('ROLLED_BACK');
+    });
+
+    it('keeps external rollback pending until the updater confirms the outcome', async () => {
+      vi.mocked(mockOta.rollbackUpdate).mockResolvedValueOnce({
+        rolledBack: false,
+        version: '0.1.28',
+        component: 'desktop',
+        platform: 'windows-x64',
+        state: 'RESTART_PENDING',
+      });
+      const agent = new PrintOpsControlAgent({
+        identityStore,
+        otaService: mockOta,
+        eventPublisher: async (subject, event) => {
+          publishedEvents.push({ subject, event });
+          await commandService.handleDeviceEvent(event);
+        },
+      });
+      const envelope = await issueTestCommandEnvelope(commandService, {
+        deviceId,
+        type: 'OTA_ROLLBACK',
+        idempotencyKey: 'idem_rb_external',
+      });
+
+      await agent.handleCommand(envelope, { waitForCompletion: true });
+
+      const states = publishedEvents.map(({ event }) => event.state);
+      expect(states).toContain('RESTARTING');
+      expect(states).not.toContain('ROLLED_BACK');
+      expect((await deviceRepo.findById(deviceId))?.otaState).not.toBe('ROLLED_BACK');
     });
 
     it('publishes periodic heartbeats to printops.control.heartbeat.<deviceId>', async () => {

@@ -54,6 +54,14 @@ export interface DeviceRecord extends DeviceIdentity {
   runnerStatus?: string;
   /** Summary of printer readiness. */
   printReadinessSummary?: string;
+  /** Installation and data locations reported by the local PrintOps service. */
+  installationPath?: string;
+  dataPath?: string;
+  osVersion?: string;
+  /** Non-loopback network addresses reported by the enrolled client. */
+  ipAddresses?: string[];
+  /** Features the installed client can accept over the control channel. */
+  capabilities?: string[];
 }
 
 export interface CreateDeviceRecordInput {
@@ -68,6 +76,11 @@ export interface CreateDeviceRecordInput {
   runnerVersion: string;
   deviceTokenHash: string;
   displayName?: string;
+  installationPath?: string;
+  dataPath?: string;
+  osVersion?: string;
+  ipAddresses?: string[];
+  capabilities?: string[];
 }
 
 export interface EnrollmentToken {
@@ -141,6 +154,11 @@ export interface DeviceHeartbeatPayload {
   otaState: string;
   lastOtaOperation: string | null;
   timestamp: string; // ISO 8601
+  installationPath?: string;
+  dataPath?: string;
+  osVersion?: string;
+  ipAddresses?: string[];
+  capabilities?: string[];
 }
 
 // ─── Phase 3: Separate Management Command Plane ─────────────────────────────
@@ -149,7 +167,75 @@ export type ControlCommandType =
   | 'OTA_CHECK'
   | 'OTA_DOWNLOAD'
   | 'OTA_INSTALL'
-  | 'OTA_ROLLBACK';
+  | 'OTA_ROLLBACK'
+  | 'CONTENT_SYNC'
+  | 'CONTENT_LIST'
+  | 'CONTENT_PULL';
+
+export type ControlContentKind = 'paper-profile' | 'template';
+
+export interface ControlPaperProfileContent {
+  code: string;
+  name: string;
+  widthMm: number;
+  gapMm?: number;
+  heightMm: number;
+  marginTopMm: number;
+  marginRightMm: number;
+  marginBottomMm: number;
+  marginLeftMm: number;
+  dpi: number;
+  orientation: 'portrait' | 'landscape';
+  unit: 'mm' | 'inch';
+  rotation?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
+  layout?: import('./template.js').PaperProfileLayout;
+  fields: import('./template.js').PaperProfileField[];
+}
+
+export interface ControlPrintTemplateContent {
+  templateCode: string;
+  name: string;
+  description?: string;
+  engine: import('./template.js').TemplateEngine;
+  content: string;
+  status: import('./template.js').TemplateStatus;
+  paperProfileCode?: string;
+}
+
+export interface ControlContentBundle {
+  version: 1;
+  kind: ControlContentKind;
+  key: string;
+  overwriteExisting: boolean;
+  publishedBy: string;
+  profile?: ControlPaperProfileContent;
+  template?: ControlPrintTemplateContent;
+}
+
+export interface ControlContentIndex {
+  version: 1;
+  generatedAt: string;
+  profiles: Array<{
+    code: string;
+    name: string;
+    widthMm: number;
+    heightMm: number;
+    dpi: number;
+    orientation: 'portrait' | 'landscape';
+    updatedAt: string;
+  }>;
+  templates: Array<{
+    templateCode: string;
+    name: string;
+    engine: import('./template.js').TemplateEngine;
+    status: import('./template.js').TemplateStatus;
+    paperProfileCode?: string;
+    updatedAt: string;
+  }>;
+  truncated: boolean;
+}
 
 export type ControlCommandStatus =
   | 'PENDING'
@@ -165,10 +251,14 @@ export interface ControlCommandEnvelope {
   device_id: string;
   type: ControlCommandType;
   target_version?: string;
+  manifest_url?: string;
   requested_at: string; // ISO 8601
   expires_at: string; // ISO 8601
   requested_by: string;
   idempotency_key: string;
+  content_type?: ControlContentKind;
+  content_key?: string;
+  content_payload?: ControlContentBundle;
 }
 
 export interface ControlCommandRecord {
@@ -176,6 +266,7 @@ export interface ControlCommandRecord {
   deviceId: string;
   type: ControlCommandType;
   targetVersion?: string;
+  manifestUrl?: string;
   requestedAt: Date;
   expiresAt: Date;
   requestedBy: string;
@@ -185,15 +276,23 @@ export interface ControlCommandRecord {
   completedAt?: Date;
   terminalState?: string;
   failureReason?: string;
+  contentType?: ControlContentKind;
+  contentKey?: string;
+  contentPayload?: ControlContentBundle;
+  resultPayload?: { index?: ControlContentIndex; bundle?: ControlContentBundle };
 }
 
 export interface CreateControlCommandInput {
   deviceId: string;
   type: ControlCommandType;
   targetVersion?: string;
+  manifestUrl?: string;
   expiresInSeconds?: number;
   requestedBy: string;
   idempotencyKey: string;
+  contentType?: ControlContentKind;
+  contentKey?: string;
+  contentPayload?: ControlContentBundle;
 }
 
 // ─── Phase 5: OTA State Synchronization ─────────────────────────────────────

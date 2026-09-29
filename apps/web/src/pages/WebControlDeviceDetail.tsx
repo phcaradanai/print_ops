@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
@@ -22,8 +22,16 @@ import {
   PageLayout,
   Panel,
   Stack,
+  Select,
   Text,
 } from '../components/ui/index.js';
+
+interface CompatibleReleaseOption {
+  version: string;
+  channel?: string;
+  schemaVersion: number;
+  releaseNotes?: string;
+}
 
 interface DeviceDetailData {
   deviceId: string;
@@ -45,12 +53,19 @@ interface DeviceDetailData {
   lastOtaOperation: string | null;
   status: 'ACTIVE' | 'REVOKED';
   displayName?: string;
+  installationPath?: string;
+  dataPath?: string;
+  osVersion?: string;
+  ipAddresses?: string[];
+  capabilities?: string[];
   latestCompatibleVersion: string | null;
   latestCompatibleRelease?: {
     version: string;
+    channel?: string;
     releaseNotes?: string;
     schemaVersion: number;
   } | null;
+  compatibleReleases?: CompatibleReleaseOption[];
   hasUpdateAvailable: boolean;
 }
 
@@ -78,10 +93,23 @@ export default function WebControlDeviceDetail() {
   const [actionType, setActionType] = useState<'INSTALL' | 'ROLLBACK' | 'CHECK'>('INSTALL');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [targetVersion, setTargetVersion] = useState('');
 
   const fetchDevice = useCallback(() => apiFetch<DeviceDetailData>(`/v1/control/devices/${id}`), [id]);
   const deviceResource = useApiResource(fetchDevice, { intervalMs: DETAIL_POLL_MS });
   const device = deviceResource.data;
+  const compatibleReleases = device?.compatibleReleases
+    ?? (device?.latestCompatibleRelease ? [device.latestCompatibleRelease] : []);
+  const latestCompatibleVersion = device?.latestCompatibleVersion
+    ?? compatibleReleases[0]?.version
+    ?? '';
+  const selectedRelease = compatibleReleases.find((release) => release.version === targetVersion);
+
+  useEffect(() => {
+    if (!compatibleReleases.some((release) => release.version === targetVersion)) {
+      setTargetVersion(latestCompatibleVersion);
+    }
+  }, [compatibleReleases, latestCompatibleVersion, targetVersion]);
 
   const fetchCommands = useCallback(() => apiFetch<CommandItem[]>(`/v1/control/devices/${id}/commands`), [id]);
   const commandsResource = useApiResource(fetchCommands, { intervalMs: DETAIL_POLL_MS });
@@ -95,6 +123,10 @@ export default function WebControlDeviceDetail() {
 
   const handleExecuteAction = async () => {
     if (!device) return;
+    if (actionType === 'INSTALL' && !selectedRelease) {
+      setActionError('Select an available compatible release for this device.');
+      return;
+    }
     setIsSubmitting(true);
     setActionError(null);
     try {
@@ -104,8 +136,8 @@ export default function WebControlDeviceDetail() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: 'OTA_INSTALL',
-            targetVersion: device.latestCompatibleVersion,
-            idempotencyKey: `install_${device.deviceId}_${device.latestCompatibleVersion}_${Date.now()}`,
+            targetVersion,
+            idempotencyKey: `install_${device.deviceId}_${targetVersion}_${Date.now()}`,
           }),
         });
       } else if (actionType === 'ROLLBACK') {
@@ -186,7 +218,7 @@ export default function WebControlDeviceDetail() {
 
         {/* Action Command Bar */}
         <Panel padding="md">
-          <Inline gap="md">
+          <Inline gap="md" style={{ justifyContent: 'space-between', alignItems: 'end', flexWrap: 'wrap' }}>
             <Inline gap="xs">
               <Badge tone={onlineTone}>{device.connectionState}</Badge>
               <Badge tone="neutral">Site: {device.siteId}</Badge>
@@ -203,9 +235,29 @@ export default function WebControlDeviceDetail() {
                 Check Update
               </Button>
 
+            </Inline>
+            <Stack gap="xs" style={{ minWidth: '220px' }}>
+              <Text size="label" weight="medium">Target app version</Text>
+              <Select
+                aria-label="Target app version"
+                value={targetVersion}
+                disabled={isOffline || isBusy || compatibleReleases.length === 0 || isRecoveryRequired}
+                onChange={(event) => setTargetVersion(event.target.value)}
+              >
+                {compatibleReleases.length === 0
+                  ? <option value="">No compatible release</option>
+                  : compatibleReleases.map((release) => (
+                    <option key={release.version} value={release.version}>
+                      v{release.version} · {release.channel ?? 'stable'} · schema v{release.schemaVersion}
+                    </option>
+                  ))}
+              </Select>
+              <Text size="label" tone="muted">Only available releases compatible with this client are listed.</Text>
+            </Stack>
+            <Inline gap="xs">
               <Button
                 variant="primary"
-                disabled={isOffline || isBusy || !device.hasUpdateAvailable || isRecoveryRequired}
+                disabled={isOffline || isBusy || !device.hasUpdateAvailable || !selectedRelease || isRecoveryRequired}
                 onClick={() => handleOpenConfirm('INSTALL')}
               >
                 Request Update
@@ -232,10 +284,22 @@ export default function WebControlDeviceDetail() {
               <Mono size="body">{device.installationId}</Mono>
             </CardDetailItem>
             <CardDetailItem label="Hostname / OS">
-              <Text size="body">{device.hostname} ({device.platform} / {device.architecture})</Text>
+              <Text size="body">{device.hostname} ({device.platform} / {device.architecture}{device.osVersion ? ` / ${device.osVersion}` : ''})</Text>
+            </CardDetailItem>
+            <CardDetailItem label="Network Addresses">
+              <Text size="body">{device.ipAddresses?.length ? device.ipAddresses.join(', ') : 'Not reported'}</Text>
+            </CardDetailItem>
+            <CardDetailItem label="PrintOps Installation Path">
+              {device.installationPath ? <Mono size="body">{device.installationPath}</Mono> : <Text size="body" tone="muted">Not reported</Text>}
+            </CardDetailItem>
+            <CardDetailItem label="PrintOps Data Path">
+              {device.dataPath ? <Mono size="body">{device.dataPath}</Mono> : <Text size="body" tone="muted">Not reported</Text>}
+            </CardDetailItem>
+            <CardDetailItem label="Remote Capabilities">
+              <Text size="body">{device.capabilities?.join(', ') || 'OTA only / not reported'}</Text>
             </CardDetailItem>
 
-            <CardDetailItem label="Installed App Version">
+            <CardDetailItem label="PrintOps Client Version">
               <Mono size="body" weight="semibold">v{device.appVersion}</Mono>
             </CardDetailItem>
             <CardDetailItem label="Database Schema Version">
@@ -255,7 +319,7 @@ export default function WebControlDeviceDetail() {
               <Text size="body">{device.lastSeenAt ? formatRelativeTime(t, device.lastSeenAt) : 'Never'}</Text>
             </CardDetailItem>
 
-            <CardDetailItem label="Compatible Target Release">
+            <CardDetailItem label="Latest Compatible Release">
               {device.latestCompatibleVersion ? (
                 <Inline gap="xs">
                   <Mono size="body" tone="warning" weight="semibold">v{device.latestCompatibleVersion}</Mono>
@@ -335,10 +399,18 @@ export default function WebControlDeviceDetail() {
                 <Mono size="body">v{device.appVersion}</Mono>
               </Inline>
               {actionType === 'INSTALL' && (
-                <Inline>
-                  <Text size="body" tone="muted">Target Version: </Text>
-                  <Mono size="body" tone="warning" weight="semibold">v{device.latestCompatibleVersion}</Mono>
-                </Inline>
+                <Stack gap="xs">
+                  <Inline>
+                    <Text size="body" tone="muted">Selected target version: </Text>
+                    <Mono size="body" tone="warning" weight="semibold">v{targetVersion}</Mono>
+                  </Inline>
+                  {selectedRelease && (
+                    <Text size="label" tone="muted">
+                      {selectedRelease.channel ?? 'stable'} channel · schema v{selectedRelease.schemaVersion}
+                      {selectedRelease.releaseNotes ? ` · ${selectedRelease.releaseNotes}` : ''}
+                    </Text>
+                  )}
+                </Stack>
               )}
               <Inline>
                 <Text size="body" tone="muted">Current Print State: </Text>
@@ -358,7 +430,7 @@ export default function WebControlDeviceDetail() {
             </Button>
             <Button
               variant={actionType === 'ROLLBACK' ? 'danger' : 'primary'}
-              disabled={isSubmitting}
+              disabled={isSubmitting || (actionType === 'INSTALL' && !selectedRelease)}
               onClick={handleExecuteAction}
             >
               {isSubmitting ? 'Dispatching…' : actionType === 'INSTALL' ? 'Confirm Update Request' : actionType === 'ROLLBACK' ? 'Confirm Rollback' : 'Check Now'}

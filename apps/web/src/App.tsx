@@ -1,4 +1,4 @@
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
 import {
   lazy,
   Suspense,
@@ -10,7 +10,7 @@ import {
   type ReactNode,
   type FormEvent,
 } from 'react';
-import { bootstrapOwner, getBootstrapState, getCurrentUser, hasSessionToken, login, logout, healthUrl, onUnauthorized, type BootstrapInfo, type SessionUser } from './api/client.js';
+import { bootstrapOwner, getBootstrapState, getCurrentUser, hasSessionToken, issuePasswordRecoveryCode, login, logout, recoverPassword, healthUrl, onUnauthorized, type BootstrapInfo, type SessionUser } from './api/client.js';
 import { SessionProvider } from './api/session.js';
 import { LocaleProvider, useLocale } from './i18n/index.js';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary.js';
@@ -21,6 +21,8 @@ import { Input, Button, FormField } from './components/ui/index.js';
 import webPackage from '../package.json';
 
 export const APP_VERSION = webPackage.version;
+const CONTROL_APP = import.meta.env.VITE_CONTROL_APP === 'true';
+if (CONTROL_APP && typeof document !== 'undefined') document.title = 'Web Control';
 
 const Dashboard = lazy(() => import('./pages/Dashboard.js'));
 const Printers = lazy(() => import('./pages/Printers.js'));
@@ -44,10 +46,12 @@ const PrintFlowBindings = lazy(() => import('./pages/PrintFlowBindings.js'));
 const WebControlDevices = lazy(() => import('./pages/WebControlDevices.js'));
 const WebControlDeviceDetail = lazy(() => import('./pages/WebControlDeviceDetail.js'));
 const WebControlReleases = lazy(() => import('./pages/WebControlReleases.js'));
+const WebControlContent = lazy(() => import('./pages/WebControlContent.js'));
+const AccountSecurity = lazy(() => import('./pages/AccountSecurity.js'));
 
 const MOBILE_NAV_QUERY = '(max-width: 1024px)';
-const DEFAULT_LOGIN_EMAIL = 'sysadmin@printerops.local';
-const DEFAULT_LOGIN_PASSWORD = 'Dev-password1!';
+const DEFAULT_LOGIN_EMAIL = CONTROL_APP ? '' : 'sysadmin@printerops.local';
+const DEFAULT_LOGIN_PASSWORD = CONTROL_APP ? '' : 'Dev-password1!';
 interface OwnerSetupAuthorization {
   email: string;
   password: string;
@@ -126,6 +130,24 @@ const NAV_ITEMS: NavItem[] = [
     group: 'operations',
   },
   {
+    to: '/control/content',
+    key: 'nav.controlContent',
+    roles: ['OWNER', 'ADMIN'],
+    group: 'operations',
+  },
+  {
+    to: '/control/paper-profiles',
+    key: 'nav.controlProfiles',
+    roles: ['OWNER', 'ADMIN'],
+    group: 'operations',
+  },
+  {
+    to: '/control/templates',
+    key: 'nav.controlTemplates',
+    roles: ['OWNER', 'ADMIN'],
+    group: 'operations',
+  },
+  {
     to: '/control/releases',
     key: 'nav.controlReleases',
     roles: ['OWNER', 'ADMIN', 'OPERATOR'],
@@ -200,6 +222,9 @@ const NAV_ITEMS: NavItem[] = [
     group: 'admin',
   },
 ];
+const VISIBLE_NAV_ITEMS = NAV_ITEMS.filter((item) =>
+  CONTROL_APP ? item.to.startsWith('/control/') : !item.to.startsWith('/control/'),
+);
 
 // ----- splash -----
 
@@ -231,8 +256,8 @@ function SplashScreen({ error, onRetry }: { error?: boolean; onRetry?: () => voi
   return (
     <div className="splash-screen">
       <div className="splash-content">
-        <div className="splash-logo">{t('login.title')}</div>
-        <p className="splash-tagline">{t('splash.tagline')}</p>
+        <div className="splash-logo">{CONTROL_APP ? t('control.login.title') : t('login.title')}</div>
+        <p className="splash-tagline">{CONTROL_APP ? t('control.login.subtitle') : t('splash.tagline')}</p>
         <div className="splash-status">{status}</div>
         {error ? (
           <Button onClick={onRetry} variant="secondary" style={{ marginTop: '1rem' }}>
@@ -267,10 +292,15 @@ function LoginView({
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [view, setView] = useState<'login' | 'forgot' | 'recovery-saved'>('login');
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newPasswordConfirmation, setNewPasswordConfirmation] = useState('');
+  const [savedRecoveryCode, setSavedRecoveryCode] = useState<string | null>(null);
 
   useEffect(() => {
     headingRef.current?.focus();
-  }, []);
+  }, [view]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -285,12 +315,104 @@ function LoginView({
     }
   }
 
+  async function submitRecovery(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    if (newPassword !== newPasswordConfirmation) {
+      setError(t('recovery.passwordMismatch'));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await recoverPassword(email, recoveryCode, newPassword);
+      logout();
+      setSavedRecoveryCode(result.recoveryCode);
+      setPassword('');
+      setNewPassword('');
+      setNewPasswordConfirmation('');
+      setView('recovery-saved');
+    } catch (err) {
+      setError(errorMessage(err, t('recovery.resetError')));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (view === 'recovery-saved') {
+    return (
+      <div className="login-screen">
+        <div className="login-panel">
+          <h1 ref={headingRef} tabIndex={-1}>{t('recovery.successTitle')}</h1>
+          <p>{t('recovery.successDescription')}</p>
+          <div className="login-hint" role="status" style={{ overflowWrap: 'anywhere', userSelect: 'all' }}>
+            <code>{savedRecoveryCode}</code>
+          </div>
+          <p className="login-hint">{t('recovery.codeStore')}</p>
+          <Button type="button" onClick={() => setView('login')}>
+            {t('recovery.backToLogin')}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'forgot') {
+    return (
+      <div className="login-screen">
+        <form className="login-panel" onSubmit={(event) => void submitRecovery(event)}>
+          <div>
+            <h1 ref={headingRef} tabIndex={-1}>{t('recovery.forgotTitle')}</h1>
+            <p>{t('recovery.forgotDescription')}</p>
+          </div>
+          <FormField label={t('login.email')} required>
+            {(control) => (
+              <Input {...control} value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="username" maxLength={254} required />
+            )}
+          </FormField>
+          <FormField label={t('recovery.codeLabel')} required>
+            {(control) => (
+              <Input
+                {...control}
+                value={recoveryCode}
+                onChange={(event) => setRecoveryCode(event.target.value.trim())}
+                type="text"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                maxLength={32}
+                required
+              />
+            )}
+          </FormField>
+          <FormField label={t('recovery.newPassword')} required>
+            {(control) => (
+              <Input {...control} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} type="password" autoComplete="new-password" minLength={12} maxLength={128} required />
+            )}
+          </FormField>
+          <FormField label={t('recovery.confirmPassword')} required>
+            {(control) => (
+              <Input {...control} value={newPasswordConfirmation} onChange={(event) => setNewPasswordConfirmation(event.target.value)} type="password" autoComplete="new-password" minLength={12} maxLength={128} required />
+            )}
+          </FormField>
+          {error && <div className="login-error" role="alert">{error}</div>}
+          <Button type="submit" disabled={submitting} busy={submitting} style={{ marginTop: '0.5rem' }}>
+            {submitting ? t('recovery.submitting') : t('recovery.submit')}
+          </Button>
+          <button type="button" className="login-secondary-action" onClick={() => { setError(null); setView('login'); }}>
+            {t('recovery.backToLogin')}
+          </button>
+          <p className="login-hint">{t('recovery.noCodeHelp')}</p>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div className="login-screen">
       <form className="login-panel" onSubmit={(event) => void submit(event)}>
         <div>
-          <h1 ref={headingRef} tabIndex={-1}>{t('login.title')}</h1>
-          <p>{t('login.subtitle')}</p>
+          <h1 ref={headingRef} tabIndex={-1}>{CONTROL_APP ? t('control.login.title') : t('login.title')}</h1>
+          <p>{CONTROL_APP ? t('control.login.subtitle') : t('login.subtitle')}</p>
         </div>
 
         <FormField label={t('login.email')} required>
@@ -341,6 +463,10 @@ function LoginView({
           {submitting ? t('common.signingIn') : t('common.signIn')}
         </Button>
 
+        <button type="button" className="login-secondary-action" onClick={() => { setError(null); setView('forgot'); }}>
+          {t('recovery.forgotLink')}
+        </button>
+
         <div className="login-optional-setup">
           <p>{bootstrap.state === 'READY' ? t('setup.readyNotice') : t('setup.optionalNotice')}</p>
           <button type="button" className="login-secondary-action" onClick={() => onOwnerSetup({ email, password })}>
@@ -375,10 +501,11 @@ function OwnerSetupView({
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [setupRecovery, setSetupRecovery] = useState<{ user: SessionUser; recoveryCode: string } | null>(null);
 
   useEffect(() => {
     headingRef.current?.focus();
-  }, []);
+  }, [setupRecovery]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -388,12 +515,30 @@ function OwnerSetupView({
       const ownerAuthorization = bootstrap.state === 'READY'
         ? { authorizationEmail: authorizationEmail.trim(), authorizationPassword }
         : {};
-      onComplete(await bootstrapOwner({ name, email, password, passwordConfirmation, ...ownerAuthorization }));
+      setSetupRecovery(await bootstrapOwner({ name, email, password, passwordConfirmation, ...ownerAuthorization }));
     } catch (err) {
       setError(errorMessage(err, t('setup.error')));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (setupRecovery) {
+    return (
+      <div className="login-screen">
+        <div className="login-panel">
+          <h1 ref={headingRef} tabIndex={-1}>{t('recovery.setupTitle')}</h1>
+          <p>{t('recovery.setupDescription')}</p>
+          <div className="login-hint" role="status" style={{ overflowWrap: 'anywhere', userSelect: 'all' }}>
+            <code>{setupRecovery.recoveryCode}</code>
+          </div>
+          <p className="login-hint">{t('recovery.codeStore')}</p>
+          <Button type="button" onClick={() => onComplete(setupRecovery.user)}>
+            {t('recovery.setupContinue')}
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -460,7 +605,7 @@ function AppNav({
   const [adminExpanded, setAdminExpanded] = useState(false);
 
   const visibleNav = useMemo(
-    () => NAV_ITEMS.filter((item) => item.roles.includes(user.role) && (user.role === 'OWNER' || !user.allowedPages || user.allowedPages.includes(item.to))),
+    () => VISIBLE_NAV_ITEMS.filter((item) => item.roles.includes(user.role) && (user.role === 'OWNER' || !user.allowedPages || user.allowedPages.includes(item.to))),
     [user],
   );
 
@@ -528,8 +673,8 @@ function AppNav({
   const navContent = (
     <>
       <h2 className="app-nav-brand">
-        <span className="app-brand-name">PrintOps</span>
-        <AppVersionBadge label={t('app.version')} />
+        <span className="app-brand-name">{CONTROL_APP ? 'Web Control' : 'PrintOps'}</span>
+        {!CONTROL_APP && <AppVersionBadge label={t('app.version')} />}
       </h2>
 
       {/* Operations group — always visible */}
@@ -599,6 +744,9 @@ function AppNav({
           <ActionIcon name="logout" />
           {t('common.signOut')}
         </button>
+        <NavLink to="/account/security" className="session-signout-btn" onClick={closeMobile}>
+          {t('recovery.manageNav')}
+        </NavLink>
       </article>
     </>
   );
@@ -622,8 +770,8 @@ function AppNav({
           <span className="nav-toggle-bar" />
         </button>
         <span className="app-header-brand">
-          <span className="app-brand-name">PrintOps</span>
-          <AppVersionBadge label={t('app.version')} />
+          <span className="app-brand-name">{CONTROL_APP ? 'Web Control' : 'PrintOps'}</span>
+          {!CONTROL_APP && <AppVersionBadge label={t('app.version')} />}
         </span>
       </header>
 
@@ -671,7 +819,7 @@ function RequireRoles({
 function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
   const { t } = useLocale();
   const location = useLocation();
-  const pagePath = NAV_ITEMS.find((item) => item.to === '/' ? location.pathname === '/' : location.pathname === item.to || location.pathname.startsWith(item.to + '/'))?.to;
+  const pagePath = VISIBLE_NAV_ITEMS.find((item) => item.to === '/' ? location.pathname === '/' : location.pathname === item.to || location.pathname.startsWith(item.to + '/'))?.to;
   const pageAllowed = user.role === 'OWNER' || !user.allowedPages || !pagePath || user.allowedPages.includes(pagePath);
   return (
     <SessionProvider user={user}>
@@ -684,7 +832,9 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
       <main id="main-content" className="app-main" tabIndex={-1}>
         {!pageAllowed ? <div className="not-authorized" role="alert"><h1>{t('auth.notAuthorized.title')}</h1><p>{t('auth.notAuthorized.message')}</p></div> : <Suspense fallback={<div className="loading-text" role="status">{t('common.loading')}</div>}>
           <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/account/security" element={<AccountSecurity />} />
+          <Route path="/" element={CONTROL_APP ? <Navigate to="/control/devices" replace /> : <Dashboard />} />
+          {!CONTROL_APP && <>
           <Route path="/printers" element={<Printers />} />
           <Route path="/printers/:id" element={<PrinterDetail />} />
           <Route path="/jobs" element={<JobQueue />} />
@@ -710,9 +860,17 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
           <Route path="/users" element={<UsersRoles />} />
           <Route path="/export" element={<ExportCenter />} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/control/devices" element={<WebControlDevices />} />
-          <Route path="/control/devices/:id" element={<WebControlDeviceDetail />} />
-          <Route path="/control/releases" element={<WebControlReleases />} />
+          </>}
+          {CONTROL_APP && <>
+            <Route path="/control/devices" element={<WebControlDevices />} />
+            <Route path="/control/devices/:id" element={<WebControlDeviceDetail />} />
+            <Route path="/control/content" element={<WebControlContent />} />
+            <Route path="/control/templates" element={<Templates />} />
+            <Route path="/control/paper-profiles" element={<PaperProfiles />} />
+            <Route path="/templates" element={<Templates />} />
+            <Route path="/paper-profiles" element={<PaperProfiles />} />
+            <Route path="/control/releases" element={<WebControlReleases />} />
+          </>}
           </Routes>
         </Suspense>}
       </main>

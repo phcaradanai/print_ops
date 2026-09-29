@@ -10,7 +10,7 @@ COPY packages/adapters ./packages/adapters
 COPY apps/web ./apps/web
 
 RUN npm ci --no-audit --no-fund
-RUN npm run build -w apps/web
+RUN VITE_CONTROL_APP=true npm run build -w apps/web
 
 # Serve with nginx
 FROM nginx:alpine

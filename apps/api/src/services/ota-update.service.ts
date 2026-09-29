@@ -132,6 +132,7 @@ export interface DownloadUpdateRequest {
   version: string;
   component?: ArtifactComponent;
   platform?: ArtifactPlatform;
+  manifestUrl?: string;
 }
 
 export interface DownloadUpdateResult {
@@ -151,6 +152,7 @@ export interface OtaInstallRequest {
   version: string;
   component?: ArtifactComponent;
   platform?: ArtifactPlatform;
+  manifestUrl?: string;
   /** Automatic policy uses a non-blocking idle/defer protocol. */
   mode?: 'manual' | 'automatic';
   onProgress?: (state: OtaInstallProgressState) => void | Promise<void>;
@@ -208,7 +210,7 @@ export interface OtaRollbackResult {
 
 export interface OtaUpdateServicePort {
   getStatus(): Promise<OtaStatus>;
-  checkForUpdate(): Promise<UpdateCheckResult>;
+  checkForUpdate(manifestUrl?: string): Promise<UpdateCheckResult>;
   downloadUpdate(request: DownloadUpdateRequest): Promise<DownloadUpdateResult>;
   installUpdate(request: OtaInstallRequest): Promise<OtaInstallResult>;
   rollbackUpdate(): Promise<OtaRollbackResult>;
@@ -655,6 +657,19 @@ function manifestUrlForSource(value: string): string {
   return url.toString();
 }
 
+function validateManifestUrl(value: string): string {
+  if (value.length > 2048) throw new ValidationError('manifestUrl is too long');
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+      throw new Error('unsupported manifest URL');
+    }
+    return url.toString();
+  } catch {
+    throw new ValidationError('manifestUrl must be an absolute http(s) URL without credentials');
+  }
+}
+
 function artifactUrl(manifestUrl: string, value: string): string {
   let url: URL;
   try {
@@ -816,7 +831,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
   }
 
 
-  async checkForUpdate(): Promise<UpdateCheckResult> {
+  async checkForUpdate(manifestUrl?: string): Promise<UpdateCheckResult> {
     if (!this.deps.config.enabled) {
       return {
         enabled: false,
@@ -843,7 +858,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           reason: 'IN_PROGRESS' as const,
         };
       }
-      return this.checkForUpdateInternal();
+      return this.checkForUpdateInternal(manifestUrl);
     });
   }
 
@@ -893,7 +908,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
       const partPath = this.artifactPath(request.version, component, platform) + '.part';
       const finalPath = this.artifactPath(request.version, component, platform);
       try {
-        const resolution = await this.resolveManifest();
+        const resolution = await this.resolveManifest(request.manifestUrl);
         if (resolution.manifest.release.version !== request.version) {
           throw new ConflictError(
             `Requested OTA version ${request.version} is not the available release (${resolution.manifest.release.version})`,
@@ -1009,7 +1024,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
 
       let staged: StagedInstallArtifact;
       try {
-        staged = await this.getStagedInstallArtifact(request.version, component, platform);
+        staged = await this.getStagedInstallArtifact(request.version, component, platform, request.manifestUrl);
       } catch (error) {
         if (error instanceof AppError && error.code === 'OTA_VERIFY_FAILED') {
           await this.recordFailure('VERIFY_FAILED', error);
@@ -1240,7 +1255,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     });
   }
 
-  private async checkForUpdateInternal(): Promise<UpdateCheckResult> {
+  private async checkForUpdateInternal(manifestUrl?: string): Promise<UpdateCheckResult> {
     const startedAt = this.now();
     await this.deps.state.update({
       state: 'CHECKING',
@@ -1249,7 +1264,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
       errorMessage: null,
     });
     try {
-      const resolution = await this.resolveManifest();
+      const resolution = await this.resolveManifest(manifestUrl);
       const manifest = resolution.manifest;
       this.assertManifestCompatible(manifest);
       this.assertManifestTrust(manifest);
@@ -1322,6 +1337,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     version: string,
     component: ArtifactComponent,
     platform: ArtifactPlatform,
+    manifestUrl?: string,
   ): Promise<StagedInstallArtifact> {
     const path = this.artifactPath(version, component, platform);
     const persisted = this.stagedArtifact ?? await this.loadPersistedArtifact();
@@ -1353,7 +1369,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     // The staged path survives an API restart, while the in-memory descriptor
     // does not. Re-read the manifest to recover the expected digest instead of
     // trusting a file merely because its name contains a release version.
-    const resolution = await this.resolveManifest();
+    const resolution = await this.resolveManifest(manifestUrl);
     if (resolution.manifest.release.version !== version) {
       throw new ConflictError(
         `Requested OTA version ${version} is not the available release (${resolution.manifest.release.version})`,
@@ -1452,8 +1468,10 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     return false;
   }
 
-  private async resolveManifest(): Promise<ResolvedManifest> {
-    const candidates = this.sourceCandidates();
+  private async resolveManifest(manifestUrl?: string): Promise<ResolvedManifest> {
+    const candidates = manifestUrl === undefined
+      ? this.sourceCandidates()
+      : [{ kind: 'wan' as const, url: manifestUrlForSource(validateManifestUrl(manifestUrl)) }];
     if (candidates.length === 0) {
       throw new AppError(
         'OTA_NOT_CONFIGURED',

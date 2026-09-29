@@ -1,6 +1,9 @@
 import type {
+  ControlContentBundle,
   ControlCommandEnvelope,
   ControlOtaTransitionEvent,
+  ControlContentIndex,
+  ControlContentKind,
   DeviceHeartbeatPayload,
   DevicePrintState,
   OtaTransitionState,
@@ -8,6 +11,7 @@ import type {
 } from '@printerops/domain';
 import { BLOCKING_RECOVERY_STATES } from '@printerops/domain';
 import { AppError, generateId } from '@printerops/shared';
+import type { ControlContentSyncResult } from './control-content-sync.service.js';
 import type { DeviceIdentityStore } from './device-identity.js';
 import type {
   DownloadUpdateResult,
@@ -16,6 +20,10 @@ import type {
 } from './ota-update.service.js';
 
 const CONTROL_INSTALL_RETRY_DELAY_MS = 1_000;
+function isContentCommand(type: ControlCommandEnvelope['type']): boolean {
+  return type === 'CONTENT_SYNC' || type === 'CONTENT_LIST' || type === 'CONTENT_PULL';
+}
+
 function localTerminalTransition(state: UpdateState): OtaTransitionState | undefined {
   switch (state) {
     case 'COMPLETED': return 'COMPLETED';
@@ -80,6 +88,17 @@ export interface ControlAgentDeps {
   eventPublisher?: EventPublisher;
   heartbeatPublisher?: HeartbeatPublisher;
   getPrintStatus?: ControlAgentPrintStatusProvider;
+  getDeviceInfo?: () => Promise<{
+    hostname?: string;
+    installationPath?: string;
+    dataPath?: string;
+    osVersion?: string;
+    ipAddresses?: string[];
+    capabilities?: string[];
+  } | undefined>;
+  applyContentBundle?: (bundle: ControlContentBundle) => Promise<ControlContentSyncResult>;
+  getClientContentIndex?: () => Promise<ControlContentIndex>;
+  exportClientContent?: (kind: ControlContentKind, code: string) => Promise<ControlContentBundle>;
   logger?: { info: (msg: string, ...args: unknown[]) => void; error: (msg: string, ...args: unknown[]) => void; warn: (msg: string, ...args: unknown[]) => void };
 }
 
@@ -89,6 +108,10 @@ export class PrintOpsControlAgent {
   private readonly eventPublisher?: EventPublisher;
   private readonly heartbeatPublisher?: HeartbeatPublisher;
   private readonly getPrintStatus: ControlAgentPrintStatusProvider;
+  private readonly getDeviceInfo?: ControlAgentDeps['getDeviceInfo'];
+  private readonly applyContentBundle?: ControlAgentDeps['applyContentBundle'];
+  private readonly getClientContentIndex?: ControlAgentDeps['getClientContentIndex'];
+  private readonly exportClientContent?: ControlAgentDeps['exportClientContent'];
   private readonly logger?: ControlAgentDeps['logger'];
   private heartbeatInterval?: NodeJS.Timeout;
   private isProcessingCommand = false;
@@ -100,6 +123,10 @@ export class PrintOpsControlAgent {
     this.eventPublisher = deps.eventPublisher;
     this.heartbeatPublisher = deps.heartbeatPublisher;
     this.getPrintStatus = deps.getPrintStatus ?? (() => ({ state: 'IDLE', queueDepth: 0, readiness: 'READY' }));
+    this.getDeviceInfo = deps.getDeviceInfo;
+    this.applyContentBundle = deps.applyContentBundle;
+    this.getClientContentIndex = deps.getClientContentIndex;
+    this.exportClientContent = deps.exportClientContent;
     this.logger = deps.logger;
     this.startupReconciliation = this.reconcileStartupState();
     void this.startupReconciliation.catch((err) => {
@@ -168,6 +195,33 @@ export class PrintOpsControlAgent {
   private async reconcileStartupState(): Promise<void> {
     await this.flushPendingTransitions();
     const command = this.identityStore.getCurrentControlCommand();
+    if (command?.commandType === 'OTA_ROLLBACK'
+      && command.replayStatus === 'PROCESSING'
+      && command.executionStarted) {
+      const status = await this.otaService.getStatus();
+      const localState = status.state.state;
+      const hasNewOutcome = updaterStateUpdatedAfter(status, command.executionStartedAt);
+      if (hasNewOutcome && localState === 'ROLLED_BACK') {
+        await this.emitTransition(command.commandId, 'ROLLED_BACK', { localOtaState: localState });
+      } else if (hasNewOutcome && localState === 'ROLLBACK_FAILED') {
+        await this.emitTransition(command.commandId, 'RECOVERY_REQUIRED', {
+          localOtaState: localState,
+          errorMessage: status.state.errorMessage ?? 'Rollback failed; manual recovery required',
+        });
+      } else if (hasNewOutcome && (localState === 'RESTART_PENDING' || localState === 'ROLLING_BACK')) {
+        const transition = localState === 'RESTART_PENDING' ? 'RESTARTING' : 'ROLLING_BACK';
+        if (command.lastAuthoritativeOtaState !== transition) {
+          await this.emitTransition(command.commandId, transition, { localOtaState: localState });
+        }
+      } else {
+        await this.emitTransition(command.commandId, 'RECOVERY_REQUIRED', {
+          localOtaState: localState,
+          errorMessage: `Local OTA state ${localState} does not prove a completed rollback`,
+          details: { reason: 'AMBIGUOUS_ROLLBACK_RECOVERY' },
+        });
+      }
+      return;
+    }
     if (!command || command.commandType !== 'OTA_INSTALL' || !command.targetVersion) return;
     const recoveryGate = command.lastAuthoritativeOtaState === 'RECOVERY_REQUIRED';
     if (!recoveryGate && (command.replayStatus !== 'PROCESSING' || !command.executionStarted)) return;
@@ -300,7 +354,7 @@ export class PrintOpsControlAgent {
     await this.ensureStartupReconciled();
 
     const recoveryCommand = this.identityStore.getCurrentControlCommand();
-    if (recoveryCommand?.lastAuthoritativeOtaState === 'RECOVERY_REQUIRED') {
+    if (!isContentCommand(envelope.type) && recoveryCommand?.lastAuthoritativeOtaState === 'RECOVERY_REQUIRED') {
       const existing = this.identityStore.getControlCommand(envelope.command_id, envelope.idempotency_key);
       if (existing?.commandId === envelope.command_id
         && existing.lastAuthoritativeOtaState === 'RECOVERY_REQUIRED') {
@@ -376,7 +430,7 @@ export class PrintOpsControlAgent {
 
     // 3. Check for blocking recovery states
     const currentOtaStatus = await this.otaService.getStatus();
-    if (BLOCKING_RECOVERY_STATES[currentOtaStatus.state.state]) {
+    if (!isContentCommand(envelope.type) && BLOCKING_RECOVERY_STATES[currentOtaStatus.state.state]) {
       const reason = `Device in ${currentOtaStatus.state.state}; remote commands are blocked until resolved locally.`;
       this.logger?.error(reason);
       await this.emitTransition(envelope.command_id, 'RECOVERY_REQUIRED', {
@@ -455,6 +509,15 @@ export class PrintOpsControlAgent {
         case 'OTA_ROLLBACK':
           await this.executeRollback(envelope);
           break;
+        case 'CONTENT_SYNC':
+          await this.executeContentSync(envelope);
+          break;
+        case 'CONTENT_LIST':
+          await this.executeContentList(envelope);
+          break;
+        case 'CONTENT_PULL':
+          await this.executeContentPull(envelope);
+          break;
         default:
           await this.emitTransition(envelope.command_id, 'INSTALL_FAILED', {
             errorMessage: `Unknown command type: ${String(envelope.type)}`,
@@ -475,7 +538,7 @@ export class PrintOpsControlAgent {
     let result: UpdateCheckResult;
     try {
       this.identityStore.markControlCommandStarted(envelope.command_id);
-      result = await this.otaService.checkForUpdate();
+      result = await this.otaService.checkForUpdate(envelope.manifest_url);
     } catch (err) {
       if (err instanceof ControlEventDeliveryError) throw err;
       await this.emitTransition(envelope.command_id, 'INSTALL_FAILED', {
@@ -505,7 +568,7 @@ export class PrintOpsControlAgent {
     let result: DownloadUpdateResult;
     try {
       this.identityStore.markControlCommandStarted(envelope.command_id);
-      result = await this.otaService.downloadUpdate({ version });
+      result = await this.otaService.downloadUpdate({ version, manifestUrl: envelope.manifest_url });
     } catch (err) {
       if (err instanceof ControlEventDeliveryError) throw err;
       await this.emitTransition(envelope.command_id, 'INSTALL_FAILED', {
@@ -559,7 +622,7 @@ export class PrintOpsControlAgent {
         if (lastState !== 'DOWNLOADING') {
           await this.emitTransition(envelope.command_id, 'DOWNLOADING', { targetVersion: version });
         }
-        const downloadResult = await this.otaService.downloadUpdate({ version });
+        const downloadResult = await this.otaService.downloadUpdate({ version, manifestUrl: envelope.manifest_url });
         if (downloadResult.version !== version
           || downloadResult.component !== component
           || downloadResult.platform !== platform) {
@@ -584,6 +647,7 @@ export class PrintOpsControlAgent {
         this.identityStore.markControlCommandStarted(envelope.command_id);
         const installResult = await this.otaService.installUpdate({
           version,
+          manifestUrl: envelope.manifest_url,
           mode: 'automatic',
           onProgress: async (state) => {
             if (state === lastReportedState) return;
@@ -676,7 +740,13 @@ export class PrintOpsControlAgent {
     }
     try {
       this.identityStore.markControlCommandStarted(envelope.command_id);
-      await this.otaService.rollbackUpdate();
+      const result = await this.otaService.rollbackUpdate();
+      if (!result.rolledBack || result.state === 'RESTART_PENDING') {
+        await this.emitTransition(envelope.command_id, 'RESTARTING', {
+          localOtaState: result.state,
+        });
+        return;
+      }
     } catch (err) {
       if (err instanceof ControlEventDeliveryError) throw err;
       const status = await this.otaService.getStatus();
@@ -704,15 +774,95 @@ export class PrintOpsControlAgent {
     });
   }
 
+  private async executeContentSync(envelope: ControlCommandEnvelope): Promise<void> {
+    const bundle = envelope.content_payload;
+    if (!this.applyContentBundle || !bundle
+      || envelope.content_type !== bundle.kind
+      || envelope.content_key !== bundle.key) {
+      await this.emitTransition(envelope.command_id, 'INSTALL_FAILED', {
+        targetVersion: envelope.target_version,
+        errorMessage: 'Content command is missing its authenticated content bundle',
+        details: { reason: 'INVALID_CONTENT_COMMAND' },
+      });
+      return;
+    }
+    try {
+      const result = await this.applyContentBundle(bundle);
+      await this.emitTransition(envelope.command_id, 'COMPLETED', {
+        targetVersion: envelope.target_version,
+        details: { ...result },
+      });
+    } catch (error) {
+      if (error instanceof ControlEventDeliveryError) throw error;
+      await this.emitTransition(envelope.command_id, 'INSTALL_FAILED', {
+        targetVersion: envelope.target_version,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        details: { kind: bundle.kind, key: bundle.key },
+      });
+    }
+  }
+
+  private async executeContentList(envelope: ControlCommandEnvelope): Promise<void> {
+    if (!this.getClientContentIndex) {
+      await this.emitTransition(envelope.command_id, 'INSTALL_FAILED', {
+        errorMessage: 'This PrintOps client does not support content inventory',
+        details: { reason: 'CONTENT_INVENTORY_UNAVAILABLE' },
+      });
+      return;
+    }
+    try {
+      const index = await this.getClientContentIndex();
+      await this.emitTransition(envelope.command_id, 'COMPLETED', { details: { index } });
+    } catch (error) {
+      if (error instanceof ControlEventDeliveryError) throw error;
+      await this.emitTransition(envelope.command_id, 'INSTALL_FAILED', {
+        errorMessage: error instanceof Error ? error.message : String(error),
+        details: { reason: 'CONTENT_INVENTORY_FAILED' },
+      });
+    }
+  }
+
+  private async executeContentPull(envelope: ControlCommandEnvelope): Promise<void> {
+    const kind = envelope.content_type;
+    const code = envelope.content_key;
+    if (!this.exportClientContent || (kind !== 'paper-profile' && kind !== 'template') || !code) {
+      await this.emitTransition(envelope.command_id, 'INSTALL_FAILED', {
+        errorMessage: 'Content pull command is missing a valid content kind or code',
+        details: { reason: 'INVALID_CONTENT_PULL_COMMAND' },
+      });
+      return;
+    }
+    try {
+      const bundle = await this.exportClientContent(kind, code);
+      const bundleCode = bundle.kind === 'paper-profile' ? bundle.profile?.code : bundle.template?.templateCode;
+      if (bundle.kind !== kind || bundleCode !== code || bundle.overwriteExisting !== false) {
+        throw new Error('Client content export did not match the requested item');
+      }
+      await this.emitTransition(envelope.command_id, 'COMPLETED', { details: { bundle } });
+    } catch (error) {
+      if (error instanceof ControlEventDeliveryError) throw error;
+      await this.emitTransition(envelope.command_id, 'INSTALL_FAILED', {
+        errorMessage: error instanceof Error ? error.message : String(error),
+        details: { kind, code },
+      });
+    }
+  }
+
   async buildHeartbeat(): Promise<DeviceHeartbeatPayload> {
     const printStatus = await this.getPrintStatus();
     const otaStatus = await this.otaService.getStatus();
+    let deviceInfo: Awaited<ReturnType<NonNullable<ControlAgentDeps['getDeviceInfo']>>> = undefined;
+    try {
+      deviceInfo = await this.getDeviceInfo?.();
+    } catch (error) {
+      this.logger?.warn('Failed to read local installation details', error);
+    }
 
     return {
       deviceId: this.identity.deviceId,
       installationId: this.identity.installationId,
       siteId: this.identity.siteId,
-      hostname: this.identity.hostname,
+      hostname: deviceInfo?.hostname ?? this.identity.hostname,
       platform: this.identity.platform,
       architecture: this.identity.architecture,
       appVersion: otaStatus.currentVersion,
@@ -724,6 +874,11 @@ export class PrintOpsControlAgent {
       otaState: otaStatus.state.state,
       lastOtaOperation: otaStatus.state.targetVersion,
       timestamp: new Date().toISOString(),
+      ...(deviceInfo?.installationPath ? { installationPath: deviceInfo.installationPath } : {}),
+      ...(deviceInfo?.dataPath ? { dataPath: deviceInfo.dataPath } : {}),
+      ...(deviceInfo?.osVersion ? { osVersion: deviceInfo.osVersion } : {}),
+      ...(deviceInfo?.ipAddresses ? { ipAddresses: deviceInfo.ipAddresses } : {}),
+      capabilities: deviceInfo?.capabilities ?? ['ota'],
     };
   }
 

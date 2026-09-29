@@ -16,7 +16,7 @@ import {
 const SQL_WASM_PATH = createRequire(import.meta.url).resolve('sql.js/dist/sql-wasm.wasm');
 let tempDir: string;
 
-describe('SQLite Control Repositories (Schema v8)', () => {
+describe('SQLite Control Repositories (Schema v9)', () => {
   beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'printops-control-sqlite-'));
     process.env['PRINTOPS_DB_PATH'] = join(tempDir, 'printops.db');
@@ -29,10 +29,10 @@ describe('SQLite Control Repositories (Schema v8)', () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it('migrates schema to version 8 and initializes control tables', () => {
+  it('migrates schema to version 9 and initializes control tables', () => {
     const db = getDb();
     expect(schemaVersion(db)).toBe(CURRENT_SCHEMA_VERSION);
-    expect(CURRENT_SCHEMA_VERSION).toBe(8);
+    expect(CURRENT_SCHEMA_VERSION).toBe(9);
 
     const tables = db
       .exec("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -163,6 +163,44 @@ describe('SQLite Control Repositories (Schema v8)', () => {
     });
     expect(updated.status).toBe('COMPLETED');
     expect(updated.terminalState).toBe('COMPLETED');
+  });
+
+  it('persists client content pull metadata and result payloads', async () => {
+    const repo = new SqliteControlCommandRepository();
+    const command = await repo.create({
+      deviceId: 'dev_sql_001',
+      type: 'CONTENT_PULL',
+      contentType: 'template',
+      contentKey: 'REMOTE_LABEL',
+      requestedBy: 'operator@hospital.local',
+      idempotencyKey: 'idem_content_pull_sqlite',
+    });
+    const resultPayload = {
+      bundle: {
+        version: 1 as const,
+        kind: 'template' as const,
+        key: 'template:REMOTE_LABEL:0123456789abcdef',
+        overwriteExisting: false,
+        publishedBy: 'printops-client-export',
+        template: {
+          templateCode: 'REMOTE_LABEL',
+          name: 'Remote label',
+          engine: 'ZPL' as const,
+          content: '^XA^FDlabel^XZ',
+          status: 'PUBLISHED' as const,
+        },
+      },
+    };
+
+    const updated = await repo.update(command.commandId, {
+      status: 'COMPLETED',
+      resultPayload,
+      completedAt: new Date(),
+      terminalState: 'COMPLETED',
+    });
+    const fromHistory = (await repo.findByDeviceId('dev_sql_001'))[0];
+    expect(updated).toMatchObject({ contentType: 'template', contentKey: 'REMOTE_LABEL', resultPayload });
+    expect(fromHistory).toMatchObject({ contentType: 'template', contentKey: 'REMOTE_LABEL', resultPayload });
   });
 
   it('registers and filters releases in the release catalog', async () => {

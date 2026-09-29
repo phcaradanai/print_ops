@@ -114,6 +114,9 @@ export interface UserRepositoryPort {
   findAll(opts?: ListOptions): Promise<User[]>;
   create(user: Omit<User, 'id' | 'createdAt' | 'updatedAt'>): Promise<User>;
   update(id: string, patch: Partial<User>): Promise<User>;
+  getAuthVersion(id: string): Promise<number>;
+  issuePasswordRecoveryCode(id: string, codeHash: string): Promise<boolean>;
+  resetPasswordWithRecoveryCode(email: string, codeHash: string, passwordHash: string, nextCodeHash: string): Promise<boolean>;
   seed(user: User): void;
 }
 

@@ -2,16 +2,24 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import type {
   ArtifactComponent,
   ArtifactPlatform,
+  ControlContentKind,
 } from '@printerops/domain';
 import type { OtaExternalOutcome, OtaUpdateServicePort } from '../../services/ota-update.service.js';
+import type { ControlContentSyncService } from '../../services/control-content-sync.service.js';
+import type { LocalControlDeviceInfo } from '../../services/control-device-info.service.js';
 import { AppError, ValidationError } from '@printerops/shared';
-import { requireInternalToken, requirePermission } from './permission-guard.js';
+import { requireInternalToken, requirePermissionOrInternal } from './permission-guard.js';
 
 export async function otaRoutes(
   app: FastifyInstance,
-  deps: { service: OtaUpdateServicePort; internalToken?: string },
+  deps: {
+    service: OtaUpdateServicePort & { getPrintSystemStatus(): Promise<{ state: 'IDLE' | 'PRINTING' | 'PAUSED' | 'ERROR'; queueDepth: number; readiness: string }> };
+    internalToken?: string;
+    contentSync?: ControlContentSyncService;
+    deviceInfo?: () => LocalControlDeviceInfo;
+  },
 ): Promise<void> {
-  app.get('/ota/status', { onRequest: [requirePermission('ota:read')] }, async (_req, reply) => {
+  app.get('/ota/status', { onRequest: [requirePermissionOrInternal('ota:read', deps.internalToken)] }, async (_req, reply) => {
     try {
       return reply.send(await deps.service.getStatus());
     } catch (error) {
@@ -19,43 +27,54 @@ export async function otaRoutes(
     }
   });
 
-  app.post('/ota/check', { onRequest: [requirePermission('ota:manage')] }, async (_req, reply) => {
+  app.post('/ota/check', { onRequest: [requirePermissionOrInternal('ota:manage', deps.internalToken)] }, async (req, reply) => {
     try {
-      return reply.send(await deps.service.checkForUpdate());
+      const body = req.body as Record<string, unknown> | undefined;
+      const manifestUrl = body?.['manifestUrl'];
+      if (manifestUrl !== undefined && typeof manifestUrl !== 'string') {
+        throw new ValidationError('manifestUrl must be a string');
+      }
+      return reply.send(await deps.service.checkForUpdate(manifestUrl as string | undefined));
     } catch (error) {
       return sendError(reply, error);
     }
   });
 
-  app.post('/ota/download', { onRequest: [requirePermission('ota:manage')] }, async (req, reply) => {
+  app.post('/ota/download', { onRequest: [requirePermissionOrInternal('ota:manage', deps.internalToken)] }, async (req, reply) => {
     try {
       const body = req.body as Record<string, unknown> | undefined;
       const version = typeof body?.['version'] === 'string' ? body['version'] : '';
       const component = body?.['component'];
       const platform = body?.['platform'];
+      const manifestUrl = body?.['manifestUrl'];
       if (!version.trim()) throw new ValidationError('version is required');
       if (component !== undefined && typeof component !== 'string') {
         throw new ValidationError('component must be a string');
       }
       if (platform !== undefined && typeof platform !== 'string') {
         throw new ValidationError('platform must be a string');
+      }
+      if (manifestUrl !== undefined && typeof manifestUrl !== 'string') {
+        throw new ValidationError('manifestUrl must be a string');
       }
       return reply.send(await deps.service.downloadUpdate({
         version,
         ...(component !== undefined ? { component: component as ArtifactComponent } : {}),
         ...(platform !== undefined ? { platform: platform as ArtifactPlatform } : {}),
+        ...(manifestUrl !== undefined ? { manifestUrl } : {}),
       }));
     } catch (error) {
       return sendError(reply, error);
     }
   });
 
-  app.post('/ota/install', { onRequest: [requirePermission('ota:manage')] }, async (req, reply) => {
+  app.post('/ota/install', { onRequest: [requirePermissionOrInternal('ota:manage', deps.internalToken)] }, async (req, reply) => {
     try {
       const body = req.body as Record<string, unknown> | undefined;
       const version = typeof body?.['version'] === 'string' ? body['version'] : '';
       const component = body?.['component'];
       const platform = body?.['platform'];
+      const manifestUrl = body?.['manifestUrl'];
       if (!version.trim()) throw new ValidationError('version is required');
       if (component !== undefined && typeof component !== 'string') {
         throw new ValidationError('component must be a string');
@@ -63,19 +82,70 @@ export async function otaRoutes(
       if (platform !== undefined && typeof platform !== 'string') {
         throw new ValidationError('platform must be a string');
       }
+      if (manifestUrl !== undefined && typeof manifestUrl !== 'string') {
+        throw new ValidationError('manifestUrl must be a string');
+      }
       return reply.send(await deps.service.installUpdate({
         version,
         ...(component !== undefined ? { component: component as ArtifactComponent } : {}),
         ...(platform !== undefined ? { platform: platform as ArtifactPlatform } : {}),
+        ...(manifestUrl !== undefined ? { manifestUrl } : {}),
       }));
     } catch (error) {
       return sendError(reply, error);
     }
   });
 
-  app.post('/ota/rollback', { onRequest: [requirePermission('ota:manage')] }, async (_req, reply) => {
+  app.post('/ota/rollback', { onRequest: [requirePermissionOrInternal('ota:manage', deps.internalToken)] }, async (_req, reply) => {
     try {
       return reply.send(await deps.service.rollbackUpdate());
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  app.get('/ota/print-status', { onRequest: [requireInternalToken(deps.internalToken)] }, async (_req, reply) => {
+    try {
+      return reply.send(await deps.service.getPrintSystemStatus());
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  app.get('/ota/device-info', { onRequest: [requireInternalToken(deps.internalToken)] }, async (_req, reply) => {
+    return reply.send(deps.deviceInfo?.() ?? { capabilities: ['ota'] });
+  });
+
+  app.post('/ota/content-sync', { onRequest: [requireInternalToken(deps.internalToken)] }, async (req, reply) => {
+    if (!deps.contentSync) return reply.status(503).send({ error: 'Content sync is not configured' });
+    try {
+      const result = await deps.contentSync.applyBundle(req.body);
+      return reply.send(result);
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  app.get('/ota/content-index', { onRequest: [requireInternalToken(deps.internalToken)] }, async (_req, reply) => {
+    if (!deps.contentSync) return reply.status(503).send({ error: 'Content sync is not configured' });
+    try {
+      return reply.send(await deps.contentSync.createClientContentIndex());
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  app.post('/ota/content-export', { onRequest: [requireInternalToken(deps.internalToken)] }, async (req, reply) => {
+    if (!deps.contentSync) return reply.status(503).send({ error: 'Content sync is not configured' });
+    try {
+      const body = req.body as Record<string, unknown> | undefined;
+      const kind = body?.['kind'];
+      const code = typeof body?.['code'] === 'string' ? body['code'].trim() : '';
+      if (kind !== 'paper-profile' && kind !== 'template') {
+        throw new ValidationError('kind must be paper-profile or template');
+      }
+      if (!code || code.length > 128) throw new ValidationError('code must be a non-empty content code up to 128 characters');
+      return reply.send(await deps.contentSync.createClientContentBundle(kind as ControlContentKind, code));
     } catch (error) {
       return sendError(reply, error);
     }

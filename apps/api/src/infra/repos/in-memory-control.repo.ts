@@ -74,7 +74,12 @@ export class InMemoryDeviceRegistryRepository implements DeviceRegistryRepositor
       lastOtaOperation: null,
       deviceTokenHash: input.deviceTokenHash,
       status: 'ACTIVE',
-      displayName: input.displayName,
+      ...(input.displayName ? { displayName: input.displayName } : {}),
+      ...(input.installationPath ? { installationPath: input.installationPath } : {}),
+      ...(input.dataPath ? { dataPath: input.dataPath } : {}),
+      ...(input.osVersion ? { osVersion: input.osVersion } : {}),
+      ...(input.ipAddresses ? { ipAddresses: input.ipAddresses } : {}),
+      ...(input.capabilities ? { capabilities: input.capabilities } : {}),
     };
     this.devices.set(record.deviceId, record);
     return { ...record };
@@ -108,9 +113,19 @@ export class InMemoryDeviceRegistryRepository implements DeviceRegistryRepositor
       runnerVersion: heartbeat.runnerVersion || existing.runnerVersion,
       runnerStatus: heartbeat.runnerStatus,
       printReadinessSummary: heartbeat.printReadinessSummary,
+      installationPath: heartbeat.installationPath ?? existing.installationPath,
+      dataPath: heartbeat.dataPath ?? existing.dataPath,
+      osVersion: heartbeat.osVersion ?? existing.osVersion,
+      ipAddresses: heartbeat.ipAddresses ?? existing.ipAddresses,
+      capabilities: heartbeat.capabilities ?? existing.capabilities,
       printState: heartbeat.printState,
       otaState: heartbeat.otaState,
       lastOtaOperation: heartbeat.lastOtaOperation ?? existing.lastOtaOperation,
+      ...(heartbeat.installationPath ? { installationPath: heartbeat.installationPath } : {}),
+      ...(heartbeat.dataPath ? { dataPath: heartbeat.dataPath } : {}),
+      ...(heartbeat.osVersion ? { osVersion: heartbeat.osVersion } : {}),
+      ...(heartbeat.ipAddresses ? { ipAddresses: heartbeat.ipAddresses } : {}),
+      ...(heartbeat.capabilities ? { capabilities: heartbeat.capabilities } : {}),
       lastSeenAt: new Date(heartbeat.timestamp),
       connectionState: 'ONLINE',
     };
@@ -175,11 +190,15 @@ export class InMemoryControlCommandRepository implements ControlCommandRepositor
       deviceId: input.deviceId,
       type: input.type,
       targetVersion: input.targetVersion,
+      ...(input.manifestUrl ? { manifestUrl: input.manifestUrl } : {}),
       requestedAt: new Date(),
       expiresAt: new Date(Date.now() + ttlSeconds * 1000),
       requestedBy: input.requestedBy,
       idempotencyKey: input.idempotencyKey,
       status: 'PENDING',
+      ...(input.contentType ? { contentType: input.contentType } : {}),
+      ...(input.contentKey ? { contentKey: input.contentKey } : {}),
+      ...(input.contentPayload ? { contentPayload: input.contentPayload } : {}),
     };
     this.commands.set(commandId, record);
     return { ...record };

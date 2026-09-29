@@ -78,6 +78,8 @@ import { DynamicIntakeService } from './services/dynamic-intake.service.js';
 import { ResolvePrinterBindingService } from './services/resolve-printer-binding.service.js';
 import { DynamicPrintService } from './services/dynamic-print.service.js';
 import { ImportPaperProfileService } from './services/import-paper-profile.service.js';
+import { ControlContentSyncService } from './services/control-content-sync.service.js';
+import { getLocalControlDeviceInfo } from './services/control-device-info.service.js';
 import { SandboxService } from './services/sandbox.service.js';
 import { PrinterConnectivityService } from './services/printer-connectivity.service.js';
 
@@ -227,12 +229,15 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
           'req.headers.x-printops-ota-token',
           'req.body.password',
           'req.body.passwordConfirmation',
+          'req.body.newPassword',
+          'req.body.recoveryCode',
           'req.body.authorizationPassword',
           'req.body.secret',
           'req.body.apiKey',
           'req.body.callbackSecret',
           'req.body.payload',
           'res.body.apiKey',
+          'res.body.recoveryCode',
         ],
         censor: '[REDACTED]',
       },
@@ -334,10 +339,32 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const runnerRepo = useSqlite ? new SqliteRunnerRepository() : new InMemoryRunnerRepository();
   const auditRepo = useSqlite ? new SqliteAuditRepository() : new InMemoryAuditRepository();
   const userRepo = useSqlite ? new SqliteUserRepository() : new InMemoryUserRepository();
+  app.addHook('onRequest', async (req, reply) => {
+    const authorization = req.headers.authorization;
+    if (typeof authorization !== 'string' || !/^Bearer\s+/i.test(authorization)) return;
+
+    try {
+      await req.jwtVerify();
+    } catch {
+      // Public routes such as login and recovery must still run; protected
+      // routes perform their normal verification and return the auth error.
+      return;
+    }
+
+    const identity = req.user as { sub?: unknown; authVersion?: unknown };
+    if (typeof identity.sub !== 'string') return;
+    const user = await userRepo.findById(identity.sub);
+    if (!user) return;
+    const authVersion = await userRepo.getAuthVersion(user.id);
+    if (!user.isActive || Number(identity.authVersion ?? 0) !== authVersion) {
+      return reply.status(401).send({ error: 'Session expired. Sign in again.' });
+    }
+  });
   const serviceAccountRepo = useSqlite ? new SqliteServiceAccountRepository() : new InMemoryServiceAccountRepository();
   const discoveredPrinterRepo = useSqlite ? new SqliteDiscoveredPrinterRepository() : new InMemoryDiscoveredPrinterRepository();
   const templateRepo = useSqlite ? new SqlitePrintTemplateRepository() : new InMemoryPrintTemplateRepository();
   const paperRepo = useSqlite ? new SqlitePaperProfileRepository() : new InMemoryPaperProfileRepository();
+  const controlContentSyncService = new ControlContentSyncService(paperRepo, templateRepo);
   const calibrationRepo = useSqlite ? new SqlitePrinterPaperCalibrationRepository() : new InMemoryPrinterPaperCalibrationRepository();
   const bindingRepo = useSqlite ? new SqlitePrinterTemplateBindingRepository() : new InMemoryPrinterTemplateBindingRepository();
   const webhookEndpointRepo = useSqlite ? new SqliteWebhookEndpointRepository() : new InMemoryWebhookEndpointRepository();
@@ -1025,7 +1052,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   );
   natsManager.setIntakeCallbacks(intakeOutcomeCallbacks);
   const deviceIdentityStore = new DeviceIdentityStore({
-    appVersion: process.env['PRINTOPS_APP_VERSION'] ?? '0.1.28',
+    appVersion: process.env['PRINTOPS_APP_VERSION'] ?? '0.1.31',
     schemaVersion: CURRENT_SCHEMA_VERSION,
   });
   const enrolledIdentity = deviceIdentityStore.getIdentity();
@@ -1050,7 +1077,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     enrollmentTokens: controlTokenRepo,
     audit: controlAuditRepo,
     config: {
-      natsUrl: process.env['PRINTOPS_CONTROL_NATS_URL'],
+      natsUrl: process.env['PRINTOPS_CONTROL_PUBLIC_NATS_URL'] ?? process.env['PRINTOPS_CONTROL_NATS_URL'],
     },
   });
   const releaseCatalogService = new ReleaseCatalogService({
@@ -1070,7 +1097,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         }
       : undefined,
   });
-  const controlAgent = new PrintOpsControlAgent({
+  const controlAgent = controlTransportConfig?.role === 'device' ? new PrintOpsControlAgent({
     identityStore: deviceIdentityStore,
     otaService: otaUpdateService,
     getPrintStatus: () => otaUpdateService.getPrintSystemStatus(),
@@ -1099,7 +1126,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       );
     },
     logger: app.log,
-  });
+  }) : undefined;
 
   if (controlTransportConfig && controlRole === 'control-plane') {
     controlPlaneTransport = await startControlPlaneTransport(controlTransportConfig, {
@@ -1159,15 +1186,15 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
           return;
         }
         const command = signed.payload as unknown as ControlCommandEnvelope;
-        await controlAgent.handleCommand(command, { waitForCompletion: true });
+        await controlAgent!.handleCommand(command, { waitForCompletion: true });
       },
     }, { logger: app.log, allowOfflineStartup: true });
-    controlAgent.startHeartbeat();
+    controlAgent!.startHeartbeat();
   } else if (deviceIdentityStore.isEnrolled()) {
     app.log.info('control agent is offline: PRINTOPS_CONTROL_NATS_URL is not configured');
   }
   app.addHook('onClose', async () => {
-    controlAgent.stopHeartbeat();
+    controlAgent?.stopHeartbeat();
     await deviceControlTransport?.stop();
     await controlPlaneTransport?.stop();
   });
@@ -1230,12 +1257,18 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       audit: auditRepo,
       internalToken: otaConfig.healthToken,
     });
-    await otaRoutes(v1, { service: otaUpdateService, internalToken: otaConfig.healthToken });
+    await otaRoutes(v1, {
+      service: otaUpdateService,
+      internalToken: otaConfig.healthToken,
+      contentSync: controlContentSyncService,
+      deviceInfo: getLocalControlDeviceInfo,
+    });
     await controlRoutes(v1, {
       registry: webControlRegistry,
       commands: controlCommandService,
       releases: releaseCatalogService,
       audit: controlAuditRepo,
+      content: controlContentSyncService,
     });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 

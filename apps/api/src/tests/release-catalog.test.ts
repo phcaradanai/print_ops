@@ -198,6 +198,9 @@ describe('ReleaseCatalogService (Phase 6)', () => {
       status: 'ACTIVE',
     };
 
+    const compatible = await service.findCompatibleReleases(mockDevice);
+    expect(compatible.map((release) => release.version)).toEqual(['0.1.31', '0.1.29']);
+
     const latest = await service.findLatestCompatibleRelease(mockDevice);
     expect(latest).toBeDefined();
     // 0.1.31 should be chosen because 0.1.32 minSupportedVersion is 0.1.30

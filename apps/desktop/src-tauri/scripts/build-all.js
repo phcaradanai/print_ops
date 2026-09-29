@@ -129,6 +129,16 @@ step('Copying resources into src-tauri/resources/', () => {
     process.exit(1);
   }
 
+  // Ship the network control worker as a supervised desktop sidecar.
+  const controlAgentExe = path.join(ROOT, 'apps', 'api', 'dist', 'printops-control-agent.exe');
+  if (f.existsSync(controlAgentExe)) {
+    f.cpSync(controlAgentExe, path.join(d, 'printops-control-agent.exe'));
+    console.log('[BUILD] Copied printops-control-agent.exe');
+  } else {
+    console.error('[BUILD] ERROR: printops-control-agent.exe not found!');
+    process.exit(1);
+  }
+
   // Copy static files
   if (f.existsSync(apiStatic)) {
     f.cpSync(apiStatic, path.join(d, 'static'), { recursive: true });

@@ -293,6 +293,31 @@ export async function login(email: string, password: string): Promise<SessionUse
   return data.user;
 }
 
+export async function recoverPassword(email: string, recoveryCode: string, newPassword: string): Promise<{ recoveryCode: string }> {
+  const path = '/auth/forgot-password';
+  let res: Response;
+  try {
+    res = await fetch(apiBase() + '/api' + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, recoveryCode, newPassword }),
+    });
+  } catch (cause) {
+    const error = networkApiError(path, cause);
+    logError('recoverPassword', error);
+    throw error;
+  }
+
+  if (!res.ok) throw await apiErrorFromResponse(res, path);
+  return await res.json() as { recoveryCode: string };
+}
+
+export async function issuePasswordRecoveryCode(): Promise<{ recoveryCode: string }> {
+  const result = await apiFetch<{ recoveryCode: string }>('/auth/recovery-code', { method: 'POST' });
+  if (!result) throw new Error('The server did not return a recovery code.');
+  return result;
+}
+
 export type BootstrapState = 'READY' | 'REQUIRED_NEW' | 'MIGRATION_REQUIRED';
 export interface BootstrapInfo { state: BootstrapState; ownerEmailHints: string[] }
 
@@ -310,7 +335,7 @@ export async function bootstrapOwner(input: {
   passwordConfirmation: string;
   authorizationEmail?: string;
   authorizationPassword?: string;
-}): Promise<SessionUser> {
+}): Promise<{ user: SessionUser; recoveryCode: string }> {
   const path = '/auth/bootstrap';
   const res = await fetch(apiBase() + '/api' + path, {
     method: 'POST',
@@ -318,9 +343,9 @@ export async function bootstrapOwner(input: {
     body: JSON.stringify(input),
   });
   if (!res.ok) throw await apiErrorFromResponse(res, path);
-  const data = await res.json() as { token: string; user: SessionUser };
+  const data = await res.json() as { token: string; user: SessionUser; recoveryCode: string };
   storageSet('token', data.token);
-  return data.user;
+  return { user: data.user, recoveryCode: data.recoveryCode };
 }
 
 export async function getCurrentUser(): Promise<SessionUser> {
