@@ -20,6 +20,10 @@ infra/docker/.ota-public-key.txt
 infra/docker/.control-owner-credentials.txt
 *.log
 *.tmp
+*.tmp.*
+.tmp-*
+*.patch
+.loopx/
 vitest.config.ts.timestamp-*.mjs
 **/printops.db
 coverage/
