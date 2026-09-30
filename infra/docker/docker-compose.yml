@@ -41,6 +41,7 @@ services:
       JWT_SECRET: change-me-in-production
       DB_MODE: sqlite
       PRINTOPS_DATA_DIR: /data
+      PRINTOPS_RELEASES_DIR: /data/releases
       PRINTOPS_DEVICE_IDENTITY_PATH: /data/device-identity.json
       PRINTOPS_DB_PATH: /data/printops.db
     extra_hosts:

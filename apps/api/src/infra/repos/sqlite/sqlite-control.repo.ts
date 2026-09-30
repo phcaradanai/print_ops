@@ -500,6 +500,7 @@ export class SqliteReleaseCatalogRepository implements ReleaseCatalogRepositoryP
         now,
       ],
     );
+    const created = await this.findById(id);
     if (!created) throw new Error('Failed to create release record');
     return created;
   }
