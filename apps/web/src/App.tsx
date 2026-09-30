@@ -87,7 +87,7 @@ export interface ClientControlStatus {
   connectionState: 'ONLINE' | 'DISCONNECTED';
 }
 
-export function ClientControlStatusBadge() {
+export function ClientControlStatusBadge({ iconOnly = true }: { iconOnly?: boolean }) {
   const { t } = useLocale();
   const [status, setStatus] = useState<ClientControlStatus | null>(null);
 
@@ -125,34 +125,49 @@ export function ClientControlStatusBadge() {
       : t('client.control.offlineBadge');
 
   const tooltip = isVisible && isOtaReady
-    ? t('client.control.visibleDesc')
+    ? `${t('client.control.onlineBadge')}: ${t('client.control.visibleDesc')}`
     : isVisible && !isOtaReady
-      ? t('client.control.blockedDesc')
-      : t('client.control.offlineDesc');
+      ? `${t('client.control.blockedBadge')}: ${t('client.control.blockedDesc')}`
+      : `${t('client.control.offlineBadge')}: ${t('client.control.offlineDesc')}`;
 
   return (
     <div
-      className="client-control-status-badge"
+      className="client-control-status-symbol"
       title={tooltip}
+      aria-label={tooltip}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
         gap: '6px',
-        padding: '3px 8px',
+        padding: iconOnly ? '3px 7px' : '3px 8px',
         borderRadius: '9999px',
-        fontSize: '0.72rem',
-        fontWeight: 500,
-        background: isVisible ? 'rgba(16, 185, 129, 0.1)' : 'rgba(148, 163, 184, 0.12)',
-        color: isVisible ? 'var(--color-text, #0f172a)' : 'var(--color-text-muted, #64748b)',
-        border: `1px solid ${isVisible ? 'rgba(16, 185, 129, 0.25)' : 'rgba(148, 163, 184, 0.2)'}`,
+        background: isVisible ? 'rgba(16, 185, 129, 0.12)' : 'rgba(148, 163, 184, 0.12)',
+        border: `1px solid ${isVisible ? 'rgba(16, 185, 129, 0.3)' : 'rgba(148, 163, 184, 0.2)'}`,
         cursor: 'default',
         userSelect: 'none',
       }}
     >
+      <svg
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={dotColor}
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{
+          filter: isVisible && isOtaReady ? 'drop-shadow(0 0 3px rgba(16, 185, 129, 0.6))' : undefined,
+        }}
+        aria-hidden="true"
+      >
+        <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+        {isVisible && isOtaReady && <polyline points="9 13 12 16 15 13" />}
+      </svg>
       <span
         style={{
-          width: '7px',
-          height: '7px',
+          width: '6px',
+          height: '6px',
           borderRadius: '50%',
           backgroundColor: dotColor,
           boxShadow: isVisible && isOtaReady ? '0 0 6px #10b981' : undefined,
@@ -160,7 +175,7 @@ export function ClientControlStatusBadge() {
         }}
         aria-hidden="true"
       />
-      <span>{label}</span>
+      {!iconOnly && <span style={{ fontSize: '0.72rem', color: isVisible ? 'var(--color-text, #0f172a)' : 'var(--color-text-muted, #64748b)' }}>{label}</span>}
     </div>
   );
 }
@@ -771,8 +786,8 @@ function AppNav({
         <AppVersionBadge label={CONTROL_APP ? 'Web Control' : t('app.version')} />
       </h2>
       {!CONTROL_APP && (
-        <div style={{ padding: '0 1rem 0.5rem' }}>
-          <ClientControlStatusBadge />
+        <div style={{ padding: '0 1rem 0.35rem', display: 'flex', alignItems: 'center' }}>
+          <ClientControlStatusBadge iconOnly />
         </div>
       )}
       {/* Operations group — always visible */}
