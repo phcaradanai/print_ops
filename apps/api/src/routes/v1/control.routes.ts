@@ -434,7 +434,7 @@ export async function controlRoutes(
         });
       }
       if (!release) return reply.status(404).send({ error: 'No available release found' });
-      return serveReleaseArtifact(release, req, reply, deps.audit);
+      return serveReleaseArtifact(release, req, reply, deps.audit, deps.storage);
     },
   );
 
@@ -505,6 +505,8 @@ export async function controlRoutes(
         releaseNotes?: string;
         isLts?: boolean;
         isLatest?: boolean;
+        artifactRef?: string;
+        sha256?: string;
       };
       const updated = await deps.releases.updateRelease(id, body);
       return reply.send(updated);

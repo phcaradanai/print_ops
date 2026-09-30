@@ -591,6 +591,8 @@ export class SqliteReleaseCatalogRepository implements ReleaseCatalogRepositoryP
     if ('releaseNotes' in patch) add('release_notes', patch.releaseNotes ?? null);
     if ('isLts' in patch) add('is_lts', patch.isLts ? 1 : 0);
     if ('isLatest' in patch) add('is_latest', patch.isLatest ? 1 : 0);
+    if ('artifactRef' in patch) add('artifact_ref', patch.artifactRef ?? null);
+    if ('sha256' in patch) add('sha256', patch.sha256 ?? null);
 
     if (sets.length > 0) {
       params.push(id);
