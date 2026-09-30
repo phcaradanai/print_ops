@@ -228,6 +228,15 @@ export default function WebControlDeviceDetail() {
             <Inline gap="xs">
               <Badge tone={onlineTone}>{device.connectionState}</Badge>
               <Badge tone="neutral">Site: {device.siteId}</Badge>
+              {device.connectionState === 'ONLINE' && !['ROLLBACK_FAILED', 'RECOVERY_REQUIRED'].includes(device.otaState) && (
+                <Badge tone="success" title="Client is online and reachable for OTA">● OTA Ready</Badge>
+              )}
+              {device.connectionState === 'ONLINE' && ['ROLLBACK_FAILED', 'RECOVERY_REQUIRED'].includes(device.otaState) && (
+                <Badge tone="danger" title="OTA is blocked">▲ OTA Blocked</Badge>
+              )}
+              {device.connectionState !== 'ONLINE' && (
+                <Badge tone="neutral" title="Device is offline">○ No OTA</Badge>
+              )}
               <Badge tone={device.otaState === 'COMPLETED' ? 'success' : 'warning'}>OTA: {device.otaState}</Badge>
               <Badge tone={device.printState === 'PRINTING' ? 'info' : 'neutral'}>Print: {device.printState}</Badge>
             </Inline>

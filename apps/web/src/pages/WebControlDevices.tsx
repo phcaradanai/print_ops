@@ -365,7 +365,24 @@ export default function WebControlDevices() {
                     </DataCell>
                     <DataCell>{dev.siteId}</DataCell>
                     <DataCell>
-                      <Badge tone={onlineTone}>{dev.connectionState}</Badge>
+                      <Stack gap="xs">
+                        <Badge tone={onlineTone}>{dev.connectionState}</Badge>
+                        {dev.connectionState === 'ONLINE' && !['ROLLBACK_FAILED', 'RECOVERY_REQUIRED'].includes(dev.otaState) && (
+                          <Badge tone="success" title="Client is online and reachable for OTA updates">
+                            ● OTA Ready
+                          </Badge>
+                        )}
+                        {dev.connectionState === 'ONLINE' && ['ROLLBACK_FAILED', 'RECOVERY_REQUIRED'].includes(dev.otaState) && (
+                          <Badge tone="danger" title="OTA is blocked due to recovery state">
+                            ▲ OTA Blocked
+                          </Badge>
+                        )}
+                        {dev.connectionState !== 'ONLINE' && (
+                          <Badge tone="neutral" title="Client is offline; cannot receive OTA updates">
+                            ○ No OTA
+                          </Badge>
+                        )}
+                      </Stack>
                     </DataCell>
                     <DataCell>
                       <Mono size="body">v{dev.appVersion}</Mono>

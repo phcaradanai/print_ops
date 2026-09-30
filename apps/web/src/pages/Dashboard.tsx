@@ -11,17 +11,20 @@ import {
   ErrorBanner,
   ErrorState,
   Freshness,
+  Inline,
   LoadingState,
   MetricGrid,
   MetricTile,
   Mono,
   PageLayout,
+  Panel,
   SectionHeading,
   Stack,
   StatusBadge,
   TableEmpty,
   Text,
 } from '../components/ui/index.js';
+import { ClientControlStatusBadge } from '../App.js';
 
 interface Job { id: string; status: string; latency?: { totalLatencyMs?: number } }
 interface Printer { id: string; isActive: boolean }
@@ -111,6 +114,19 @@ export default function Dashboard() {
         <ErrorState error={failed[0]!.error} title={t('page.dashboard.loadFailed')} onRetry={refreshAll} />
       ) : (
         <Stack gap="2xl">
+          <Panel padding="md">
+            <Inline style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <Stack gap="xs">
+                <Inline gap="xs" style={{ alignItems: 'center' }}>
+                  <Text size="body" weight="semibold">{t('client.control.indicator')}</Text>
+                  <ClientControlStatusBadge />
+                </Inline>
+                <Text size="label" tone="muted">
+                  {t('client.control.visibleDesc')}
+                </Text>
+              </Stack>
+            </Inline>
+          </Panel>
           <MetricGrid label={t('page.dashboard.title')}>
             <MetricTile label={t('page.dashboard.activePrinters')} value={activePrinters} tone="accent" />
             <MetricTile label={t('page.dashboard.runnersOnline')} value={onlineRunners} tone="ok" />

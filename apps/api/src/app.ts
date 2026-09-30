@@ -1263,7 +1263,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       contentSync: controlContentSyncService,
       deviceInfo: getLocalControlDeviceInfo,
     });
+    let lastControlContactTime = 0;
     v1.get('/control/device-info', async (_req, reply) => {
+      lastControlContactTime = Date.now();
       const identity = deviceIdentityStore.getIdentity();
       return reply.send({
         installationId: identity.installationId,
@@ -1275,6 +1277,34 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         schemaVersion: CURRENT_SCHEMA_VERSION,
         capabilities: ['content-sync-v1', 'ota-v1'],
         status: 'READY',
+      });
+    });
+
+    v1.get('/control/client-status', async (_req, reply) => {
+      const identity = deviceIdentityStore.getIdentity();
+      const isEnrolled = deviceIdentityStore.isEnrolled();
+      const natsConnected = deviceControlTransport ? deviceControlTransport.isConnected() : false;
+      let otaState = 'IDLE';
+      try {
+        const otaStatus = await otaUpdateService.getStatus();
+        otaState = otaStatus.state.state;
+      } catch {
+        // ignore
+      }
+      const isRecoveryBlocked = ['ROLLBACK_FAILED', 'RECOVERY_REQUIRED'].includes(otaState);
+      const recentlyContacted = (Date.now() - lastControlContactTime) < 90_000;
+      const visibleToControlPlane = isEnrolled || natsConnected || recentlyContacted || Boolean(process.env['PRINTOPS_CONTROL_NATS_URL']);
+      const otaReady = visibleToControlPlane && !isRecoveryBlocked;
+
+      return reply.send({
+        deviceId: identity.deviceId,
+        installationId: identity.installationId,
+        hostname: identity.hostname,
+        isEnrolled,
+        visibleToControlPlane,
+        otaReady,
+        otaState,
+        connectionState: visibleToControlPlane ? 'ONLINE' : 'DISCONNECTED',
       });
     });
     await controlRoutes(v1, {

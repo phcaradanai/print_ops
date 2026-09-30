@@ -99,6 +99,7 @@ export interface ControlPlaneTransport {
   publishCommand(subject: string, payload: Record<string, unknown>, msgId: string): Promise<ControlPlanePublishAck>;
   publishEvent(subject: string, payload: Record<string, unknown>, msgId: string): Promise<ControlPlanePublishAck>;
   publishHeartbeat(subject: string, payload: Record<string, unknown>, msgId: string): Promise<ControlPlanePublishAck>;
+  isConnected(): boolean;
   stop(): Promise<void>;
 }
 
@@ -503,6 +504,10 @@ class ControlPlaneTransportImpl implements ControlPlaneTransport {
     } finally {
       clearInterval(progressTimer);
     }
+  }
+
+  isConnected(): boolean {
+    return Boolean(this.connection && !this.connection.isClosed());
   }
 
   private resolveInitial(): void {

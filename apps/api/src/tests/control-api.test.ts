@@ -431,5 +431,15 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
     });
     expect(discoverRes.statusCode).toBe(200);
     expect((discoverRes.json() as { discoveredCount: number }).discoveredCount).toBe(0);
+
+    // 4. Client status endpoint
+    const statusRes = await app.inject({
+      method: 'GET',
+      url: '/api/v1/control/client-status',
+    });
+    expect(statusRes.statusCode).toBe(200);
+    const clientStatus = statusRes.json();
+    expect(clientStatus && typeof clientStatus === 'object' && 'visibleToControlPlane' in clientStatus).toBe(true);
+    expect(clientStatus && typeof clientStatus === 'object' && 'otaReady' in clientStatus).toBe(true);
   });
 });

@@ -10,7 +10,7 @@ import {
   type ReactNode,
   type FormEvent,
 } from 'react';
-import { bootstrapOwner, getBootstrapState, getCurrentUser, hasSessionToken, issuePasswordRecoveryCode, login, logout, recoverPassword, healthUrl, onUnauthorized, type BootstrapInfo, type SessionUser } from './api/client.js';
+import { apiFetch, bootstrapOwner, getBootstrapState, getCurrentUser, hasSessionToken, issuePasswordRecoveryCode, login, logout, recoverPassword, healthUrl, onUnauthorized, type BootstrapInfo, type SessionUser } from './api/client.js';
 import { SessionProvider } from './api/session.js';
 import { LocaleProvider, useLocale } from './i18n/index.js';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary.js';
@@ -73,6 +73,95 @@ export function AppVersionBadge({ label, version }: { label: string; version?: s
     >
       v{displayVersion}
     </span>
+  );
+}
+
+export interface ClientControlStatus {
+  deviceId?: string;
+  installationId?: string;
+  hostname?: string;
+  isEnrolled: boolean;
+  visibleToControlPlane: boolean;
+  otaReady: boolean;
+  otaState: string;
+  connectionState: 'ONLINE' | 'DISCONNECTED';
+}
+
+export function ClientControlStatusBadge() {
+  const { t } = useLocale();
+  const [status, setStatus] = useState<ClientControlStatus | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchStatus = async () => {
+      try {
+        const res = await apiFetch<ClientControlStatus>('/v1/control/client-status');
+        if (!cancelled && res) setStatus(res);
+      } catch {
+        // development fallback or server starting
+      }
+    };
+    void fetchStatus();
+    const interval = setInterval(() => { void fetchStatus(); }, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const isVisible = Boolean(status?.visibleToControlPlane);
+  const isOtaReady = Boolean(status?.otaReady);
+
+  const dotColor = isVisible && isOtaReady
+    ? '#10b981'
+    : isVisible && !isOtaReady
+      ? '#f59e0b'
+      : '#94a3b8';
+
+  const label = isVisible && isOtaReady
+    ? t('client.control.onlineBadge')
+    : isVisible && !isOtaReady
+      ? t('client.control.blockedBadge')
+      : t('client.control.offlineBadge');
+
+  const tooltip = isVisible && isOtaReady
+    ? t('client.control.visibleDesc')
+    : isVisible && !isOtaReady
+      ? t('client.control.blockedDesc')
+      : t('client.control.offlineDesc');
+
+  return (
+    <div
+      className="client-control-status-badge"
+      title={tooltip}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '3px 8px',
+        borderRadius: '9999px',
+        fontSize: '0.72rem',
+        fontWeight: 500,
+        background: isVisible ? 'rgba(16, 185, 129, 0.1)' : 'rgba(148, 163, 184, 0.12)',
+        color: isVisible ? 'var(--color-text, #0f172a)' : 'var(--color-text-muted, #64748b)',
+        border: `1px solid ${isVisible ? 'rgba(16, 185, 129, 0.25)' : 'rgba(148, 163, 184, 0.2)'}`,
+        cursor: 'default',
+        userSelect: 'none',
+      }}
+    >
+      <span
+        style={{
+          width: '7px',
+          height: '7px',
+          borderRadius: '50%',
+          backgroundColor: dotColor,
+          boxShadow: isVisible && isOtaReady ? '0 0 6px #10b981' : undefined,
+          display: 'inline-block',
+        }}
+        aria-hidden="true"
+      />
+      <span>{label}</span>
+    </div>
   );
 }
 
@@ -681,6 +770,11 @@ function AppNav({
         <span className="app-brand-name">{CONTROL_APP ? 'Web Control' : 'PrintOps'}</span>
         <AppVersionBadge label={CONTROL_APP ? 'Web Control' : t('app.version')} />
       </h2>
+      {!CONTROL_APP && (
+        <div style={{ padding: '0 1rem 0.5rem' }}>
+          <ClientControlStatusBadge />
+        </div>
+      )}
       {/* Operations group — always visible */}
       {opsItems.length > 0 && (
         <div className="nav-group">
@@ -777,6 +871,7 @@ function AppNav({
           <span className="app-brand-name">{CONTROL_APP ? 'Web Control' : 'PrintOps'}</span>
           <AppVersionBadge label={CONTROL_APP ? 'Web Control' : t('app.version')} />
         </span>
+        {!CONTROL_APP && <ClientControlStatusBadge />}
       </header>
 
       {/* Overlay for mobile */}
