@@ -12,6 +12,7 @@ import type { WebControlRegistryService } from '../../services/web-control-regis
 import type { ControlCommandService } from '../../services/control-command.service.js';
 import type { ReleaseCatalogService } from '../../services/release-catalog.service.js';
 import type { ControlContentSyncService } from '../../services/control-content-sync.service.js';
+import type { ReleaseStorageService, MinioStorageConfig } from '../../services/release-storage.service.js';
 import { requirePermission, actor } from './permission-guard.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { createReadStream, existsSync, statSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
@@ -25,6 +26,7 @@ export interface ControlRoutesDeps {
   releases: ReleaseCatalogService;
   audit?: ControlAuditRepositoryPort;
   content?: ControlContentSyncService;
+  storage?: ReleaseStorageService;
 }
 
 export async function controlRoutes(
@@ -454,7 +456,7 @@ export async function controlRoutes(
         });
       }
       if (!release) return reply.status(404).send({ error: 'No available release found' });
-      return serveReleaseArtifact(release, req, reply, deps.audit);
+      return serveReleaseArtifact(release, req, reply, deps.audit, deps.storage);
     },
   );
 
@@ -468,7 +470,7 @@ export async function controlRoutes(
       if (release.status === 'REVOKED') {
         return reply.status(403).send({ error: 'Release has been revoked and cannot be downloaded' });
       }
-      return serveReleaseArtifact(release, req, reply, deps.audit);
+      return serveReleaseArtifact(release, req, reply, deps.audit, deps.storage);
     },
   );
   app.post(
@@ -560,11 +562,19 @@ export async function controlRoutes(
 
       if (body.artifactBase64) {
         const buffer = Buffer.from(body.artifactBase64, 'base64');
-        sha256 = createHash('sha256').update(buffer).digest('hex');
         const filename = body.filename || `PrintOps_Setup_v${body.version || 'unknown'}_${body.platform || 'windows-x64'}.exe`;
-        const destPath = join(releasesDir, filename);
-        writeFileSync(destPath, buffer);
-        artifactRef = destPath;
+        if (deps.storage) {
+          const stored = await deps.storage.saveArtifact(filename, buffer);
+          artifactRef = stored.artifactRef;
+          sha256 = stored.sha256;
+        } else {
+          const releasesDir = process.env['PRINTOPS_RELEASES_DIR'] || resolve(process.cwd(), 'data/releases');
+          mkdirSync(releasesDir, { recursive: true });
+          sha256 = createHash('sha256').update(buffer).digest('hex');
+          const destPath = join(releasesDir, filename);
+          writeFileSync(destPath, buffer);
+          artifactRef = destPath;
+        }
       } else if (body.artifactPath && existsSync(body.artifactPath)) {
         if (!sha256) {
           const fileBuf = readFileSync(body.artifactPath);
@@ -635,6 +645,51 @@ export async function controlRoutes(
       return reply.send(logs);
     },
   );
+
+  app.get(
+    '/control/storage-settings',
+    { onRequest: [requirePermission('control:manage')] },
+    async (_req: FastifyRequest, reply: FastifyReply) => {
+      if (!deps.storage) {
+        return reply.status(503).send({ error: 'Storage service is not configured' });
+      }
+      return reply.send(deps.storage.getConfig());
+    },
+  );
+
+  app.patch(
+    '/control/storage-settings',
+    { onRequest: [requirePermission('control:manage')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      if (!deps.storage) {
+        return reply.status(503).send({ error: 'Storage service is not configured' });
+      }
+      const body = (req.body ?? {}) as {
+        provider?: 'local' | 'minio';
+        localPath?: string;
+        minio?: Partial<MinioStorageConfig>;
+      };
+      const updated = await deps.storage.updateConfig(body);
+      return reply.send(updated);
+    },
+  );
+
+  app.post(
+    '/control/storage-settings/test',
+    { onRequest: [requirePermission('control:manage')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      if (!deps.storage) {
+        return reply.status(503).send({ error: 'Storage service is not configured' });
+      }
+      const body = (req.body ?? {}) as {
+        provider?: 'local' | 'minio';
+        localPath?: string;
+        minio?: Partial<MinioStorageConfig>;
+      };
+      const result = await deps.storage.testConnection(body);
+      return reply.send(result);
+    },
+  );
 }
 function getArtifactFilename(release: ReleaseCatalogRecord): string {
   const ext = release.platform === 'windows-x64' ? '.exe' : '.tar.gz';
@@ -653,6 +708,7 @@ async function serveReleaseArtifact(
   req: FastifyRequest,
   reply: FastifyReply,
   audit?: ControlAuditRepositoryPort,
+  storage?: ReleaseStorageService,
 ): Promise<void> {
   const filename = getArtifactFilename(release);
   const query = (req.query ?? {}) as { stream?: string };
@@ -675,7 +731,28 @@ async function serveReleaseArtifact(
       },
     });
   }
-
+  if (storage) {
+    try {
+      const res = await storage.getArtifactStream(release.artifactRef);
+      if (res.redirectUrl) {
+        return reply.redirect(res.redirectUrl, 302);
+      }
+      if (res.stream) {
+        reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+        reply.header('Content-Type', 'application/octet-stream');
+        if (res.size) {
+          reply.header('Content-Length', res.size);
+        }
+        return reply.send(res.stream);
+      }
+    } catch (err) {
+      if (!isUrl) {
+        return reply.status(404).send({
+          error: `Artifact file not found: ${release.artifactRef}`,
+        });
+      }
+    }
+  }
   if (isUrl) {
     if (query.stream === 'true') {
       try {

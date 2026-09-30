@@ -141,6 +141,9 @@ import { controlRoutes } from './routes/v1/control.routes.js';
 import { WebControlRegistryService } from './services/web-control-registry.service.js';
 import { ReleaseCatalogService } from './services/release-catalog.service.js';
 import { ControlCommandService } from './services/control-command.service.js';
+import { ReleaseStorageService } from './services/release-storage.service.js';
+import { SqliteStorageSettingsRepository } from './infra/repos/sqlite/sqlite-storage-settings.repo.js';
+import { InMemoryStorageSettingsRepository } from './infra/repos/in-memory-storage-settings.repo.js';
 import { PrintOpsControlAgent } from './services/control-agent.service.js';
 import { DeviceIdentityStore } from './services/device-identity.js';
 import { signControlMessageWithToken, verifyControlMessageWithToken } from './services/control-message-auth.js';
@@ -1083,6 +1086,11 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const releaseCatalogService = new ReleaseCatalogService({
     releases: controlReleaseRepo,
   });
+  const storageSettingsRepo = useSqlite
+    ? new SqliteStorageSettingsRepository()
+    : new InMemoryStorageSettingsRepository();
+  const releaseStorageService = new ReleaseStorageService(storageSettingsRepo);
+  await releaseStorageService.initialize();
   const controlCommandService = new ControlCommandService({
     commands: controlCommandRepo,
     devices: controlDeviceRepo,
@@ -1313,6 +1321,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       releases: releaseCatalogService,
       audit: controlAuditRepo,
       content: controlContentSyncService,
+      storage: releaseStorageService,
     });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 

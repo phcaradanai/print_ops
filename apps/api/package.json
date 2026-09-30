@@ -25,6 +25,7 @@
     "@printerops/shared": "*",
     "bwip-js": "^4.11.2",
     "fastify": "^4.28.1",
+    "minio": "^8.0.7",
     "nats": "^2.29.3",
     "sql.js": "^1.14.1"
   },

@@ -441,5 +441,42 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
     const clientStatus = statusRes.json();
     expect(clientStatus && typeof clientStatus === 'object' && 'visibleToControlPlane' in clientStatus).toBe(true);
     expect(clientStatus && typeof clientStatus === 'object' && 'otaReady' in clientStatus).toBe(true);
+
+    // 5. Storage settings endpoints
+    const getStorageRes = await app.inject({
+      method: 'GET',
+      url: '/api/v1/control/storage-settings',
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(getStorageRes.statusCode).toBe(200);
+    const storageJson = getStorageRes.json();
+    expect(storageJson && typeof storageJson === 'object' && 'provider' in storageJson).toBe(true);
+
+    // Dynamically patch storage settings (e.g. localPath)
+    const patchStorageRes = await app.inject({
+      method: 'PATCH',
+      url: '/api/v1/control/storage-settings',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: {
+        localPath: '/data/dynamic-releases',
+      },
+    });
+    expect(patchStorageRes.statusCode).toBe(200);
+    const patchedStorage = patchStorageRes.json();
+    expect(patchedStorage && typeof patchedStorage === 'object' && 'localPath' in patchedStorage ? patchedStorage.localPath : '').toBe('/data/dynamic-releases');
+
+    // Test storage connection endpoint
+    const testStorageRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/control/storage-settings/test',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: {
+        provider: 'local',
+        localPath: './data/test-storage',
+      },
+    });
+    expect(testStorageRes.statusCode).toBe(200);
+    const testResult = testStorageRes.json();
+    expect(testResult && typeof testResult === 'object' && 'ok' in testResult ? testResult.ok : false).toBe(true);
   });
 });

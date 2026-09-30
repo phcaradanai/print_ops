@@ -110,6 +110,23 @@ function ensureOptionalControlExtensions(db: Database): void {
     ensureColumn(db, 'control_releases', 'is_lts', 'INTEGER DEFAULT 0');
     ensureColumn(db, 'control_releases', 'is_latest', 'INTEGER DEFAULT 0');
   }
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS control_storage_settings (
+      id TEXT PRIMARY KEY NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'local',
+      local_path TEXT NOT NULL DEFAULT '/data/releases',
+      minio_endpoint TEXT,
+      minio_port INTEGER DEFAULT 9000,
+      minio_use_ssl INTEGER DEFAULT 0,
+      minio_access_key TEXT,
+      minio_secret_key TEXT,
+      minio_bucket TEXT DEFAULT 'printops-releases',
+      minio_prefix TEXT DEFAULT '',
+      minio_public_url TEXT,
+      updated_at TEXT NOT NULL
+    )
+  `);
 }
 
 /**

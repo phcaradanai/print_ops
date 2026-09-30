@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch, triggerDirectDownload } from '../api/client.js';
 import { compareVersions } from '@printerops/domain';
 import { useLocale } from '../i18n/index.js';
@@ -46,6 +46,21 @@ interface ReleaseItem {
   isLatest?: boolean;
 }
 
+interface StorageSettingsData {
+  provider: 'local' | 'minio';
+  localPath: string;
+  minio: {
+    endPoint: string;
+    port: number;
+    useSSL: boolean;
+    accessKey: string;
+    secretKey: string;
+    bucket: string;
+    prefix: string;
+    publicUrl?: string;
+  };
+}
+
 const RELEASES_POLL_MS = 15_000;
 
 export default function WebControlReleases() {
@@ -90,6 +105,32 @@ export default function WebControlReleases() {
   const [editIsLts, setEditIsLts] = useState(false);
   const [editIsLatest, setEditIsLatest] = useState(false);
   const [editNotes, setEditNotes] = useState('');
+
+  // Storage settings dialog state
+  const [storageModalOpen, setStorageModalOpen] = useState(false);
+  const [storageConfig, setStorageConfig] = useState<StorageSettingsData>({
+    provider: 'local',
+    localPath: '/data/releases',
+    minio: {
+      endPoint: 'localhost',
+      port: 9000,
+      useSSL: false,
+      accessKey: 'minioadmin',
+      secretKey: 'minioadmin',
+      bucket: 'printops-releases',
+      prefix: '',
+      publicUrl: '',
+    },
+  });
+  const [storageTestResult, setStorageTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [storageTesting, setStorageTesting] = useState(false);
+  const [storageSaving, setStorageSaving] = useState(false);
+
+  useEffect(() => {
+    void apiFetch<StorageSettingsData>('/v1/control/storage-settings')
+      .then((data) => { if (data) setStorageConfig(data); })
+      .catch(() => { /* default fallback */ });
+  }, []);
   const fetchReleases = useCallback(() => apiFetch<ReleaseItem[]>('/v1/control/releases'), []);
   const releasesResource = useApiResource(fetchReleases, { intervalMs: RELEASES_POLL_MS });
   const releases = releasesResource.data ?? [];
@@ -276,6 +317,52 @@ export default function WebControlReleases() {
     }
   };
 
+  const handleOpenStorageModal = async () => {
+    setStorageTestResult(null);
+    setStorageModalOpen(true);
+    try {
+      const data = await apiFetch<StorageSettingsData>('/v1/control/storage-settings');
+      if (data) setStorageConfig(data);
+    } catch {
+      // retain local
+    }
+  };
+
+  const handleTestStorage = async () => {
+    setStorageTesting(true);
+    setStorageTestResult(null);
+    try {
+      const result = await apiFetch<{ ok: boolean; message: string }>('/v1/control/storage-settings/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(storageConfig),
+      });
+      setStorageTestResult(result);
+    } catch (err) {
+      setStorageTestResult({ ok: false, message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setStorageTesting(false);
+    }
+  };
+
+  const handleSaveStorage = async () => {
+    setStorageSaving(true);
+    try {
+      const updated = await apiFetch<StorageSettingsData>('/v1/control/storage-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(storageConfig),
+      });
+      setStorageConfig(updated);
+      setStorageModalOpen(false);
+      setDownloadNotice('Storage settings saved successfully.');
+    } catch (err) {
+      setStorageTestResult({ ok: false, message: `Save failed: ${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      setStorageSaving(false);
+    }
+  };
+
   return (
     <PageLayout
       title="PrintOps Client Releases"
@@ -297,6 +384,9 @@ export default function WebControlReleases() {
           <Button variant="secondary" onClick={() => { setRegisterError(null); setRegisterModalOpen(true); }}>
             Register Signed Release
           </Button>
+          <Button variant="secondary" onClick={handleOpenStorageModal}>
+            {t('control.storage.button')}
+          </Button>
           <Freshness
             lastSuccessAt={releasesResource.lastSuccessAt}
             stale={releasesResource.stale}
@@ -316,6 +406,9 @@ export default function WebControlReleases() {
             {t('control.releases.latestAppRelease').replace('{version}', latestAvailableRelease.version)}
           </Badge>
         )}
+        <Badge tone={storageConfig.provider === 'minio' ? 'info' : 'neutral'}>
+          Storage: {storageConfig.provider === 'minio' ? `MinIO (${storageConfig.minio.bucket})` : `Local (${storageConfig.localPath})`}
+        </Badge>
       </Inline>
       {downloadNotice && (
         <Alert tone="info" onDismiss={() => setDownloadNotice(null)}>
@@ -780,6 +873,195 @@ export default function WebControlReleases() {
               <Button variant="primary" disabled={isSubmitting} onClick={handleSaveEdit}>
                 {isSubmitting ? 'Saving…' : 'Save Changes'}
               </Button>
+            </Inline>
+          </Stack>
+        </Stack>
+      </Dialog>
+
+      {/* Storage Settings Dialog */}
+      <Dialog
+        open={storageModalOpen}
+        onClose={() => !storageSaving && setStorageModalOpen(false)}
+        title={t('control.storage.title')}
+      >
+        <Stack gap="lg">
+          <Text size="body" tone="muted">
+            {t('control.storage.desc')}
+          </Text>
+
+          {storageTestResult && (
+            <Alert tone={storageTestResult.ok ? 'success' : 'error'} title={storageTestResult.ok ? 'Connection Verified' : 'Connection Failed'}>
+              {storageTestResult.message}
+            </Alert>
+          )}
+
+          <Stack gap="md">
+            <Stack gap="xs">
+              <Text size="label" weight="medium">{t('control.storage.provider')}</Text>
+              <Inline gap="md">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="storage-provider"
+                    value="minio"
+                    checked={storageConfig.provider === 'minio'}
+                    onChange={() => setStorageConfig({ ...storageConfig, provider: 'minio' })}
+                  />
+                  <strong>{t('control.storage.minio')}</strong>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="storage-provider"
+                    value="local"
+                    checked={storageConfig.provider === 'local'}
+                    onChange={() => setStorageConfig({ ...storageConfig, provider: 'local' })}
+                  />
+                  <span>{t('control.storage.local')}</span>
+                </label>
+              </Inline>
+            </Stack>
+
+            {storageConfig.provider === 'local' ? (
+              <Stack gap="xs">
+                <Text size="label" weight="medium">{t('control.storage.localPath')}</Text>
+                <Input
+                  placeholder="/data/releases"
+                  value={storageConfig.localPath}
+                  onChange={(e) => setStorageConfig({ ...storageConfig, localPath: e.target.value })}
+                />
+                <Text size="label" tone="muted">
+                  Path on the Web Control server host/container where release binaries are saved.
+                </Text>
+              </Stack>
+            ) : (
+              <>
+                <Inline gap="md">
+                  <Stack gap="xs" style={{ flex: 2 }}>
+                    <Text size="label" weight="medium">{t('control.storage.endpoint')}</Text>
+                    <Input
+                      placeholder="minio or localhost"
+                      value={storageConfig.minio.endPoint}
+                      onChange={(e) => setStorageConfig({
+                        ...storageConfig,
+                        minio: { ...storageConfig.minio, endPoint: e.target.value },
+                      })}
+                    />
+                  </Stack>
+                  <Stack gap="xs" style={{ width: '120px' }}>
+                    <Text size="label" weight="medium">{t('control.storage.port')}</Text>
+                    <Input
+                      type="number"
+                      value={storageConfig.minio.port}
+                      onChange={(e) => setStorageConfig({
+                        ...storageConfig,
+                        minio: { ...storageConfig.minio, port: Number(e.target.value) || 9000 },
+                      })}
+                    />
+                  </Stack>
+                </Inline>
+
+                <Inline gap="md">
+                  <Stack gap="xs" style={{ flex: 1 }}>
+                    <Text size="label" weight="medium">{t('control.storage.bucket')}</Text>
+                    <Input
+                      placeholder="printops-releases"
+                      value={storageConfig.minio.bucket}
+                      onChange={(e) => setStorageConfig({
+                        ...storageConfig,
+                        minio: { ...storageConfig.minio, bucket: e.target.value },
+                      })}
+                    />
+                  </Stack>
+                  <Stack gap="xs" style={{ flex: 1 }}>
+                    <Text size="label" weight="medium">{t('control.storage.prefix')}</Text>
+                    <Input
+                      placeholder="releases/"
+                      value={storageConfig.minio.prefix}
+                      onChange={(e) => setStorageConfig({
+                        ...storageConfig,
+                        minio: { ...storageConfig.minio, prefix: e.target.value },
+                      })}
+                    />
+                  </Stack>
+                </Inline>
+
+                <Inline gap="md">
+                  <Stack gap="xs" style={{ flex: 1 }}>
+                    <Text size="label" weight="medium">{t('control.storage.accessKey')}</Text>
+                    <Input
+                      value={storageConfig.minio.accessKey}
+                      onChange={(e) => setStorageConfig({
+                        ...storageConfig,
+                        minio: { ...storageConfig.minio, accessKey: e.target.value },
+                      })}
+                    />
+                  </Stack>
+                  <Stack gap="xs" style={{ flex: 1 }}>
+                    <Text size="label" weight="medium">{t('control.storage.secretKey')}</Text>
+                    <Input
+                      type="password"
+                      value={storageConfig.minio.secretKey}
+                      onChange={(e) => setStorageConfig({
+                        ...storageConfig,
+                        minio: { ...storageConfig.minio, secretKey: e.target.value },
+                      })}
+                    />
+                  </Stack>
+                </Inline>
+
+                <Inline gap="lg">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={storageConfig.minio.useSSL}
+                      onChange={(e) => setStorageConfig({
+                        ...storageConfig,
+                        minio: { ...storageConfig.minio, useSSL: e.target.checked },
+                      })}
+                    />
+                    <span>{t('control.storage.useSSL')}</span>
+                  </label>
+                </Inline>
+
+                <Stack gap="xs">
+                  <Text size="label" weight="medium">{t('control.storage.publicUrl')}</Text>
+                  <Input
+                    placeholder="http://localhost:9000/printops-releases"
+                    value={storageConfig.minio.publicUrl || ''}
+                    onChange={(e) => setStorageConfig({
+                      ...storageConfig,
+                      minio: { ...storageConfig.minio, publicUrl: e.target.value },
+                    })}
+                  />
+                </Stack>
+              </>
+            )}
+
+            <Inline gap="xs" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem' }}>
+              <Button
+                variant="secondary"
+                disabled={storageTesting || storageSaving}
+                busy={storageTesting}
+                busyLabel={t('control.storage.testing')}
+                onClick={handleTestStorage}
+              >
+                {t('control.storage.test')}
+              </Button>
+              <Inline gap="xs">
+                <Button variant="ghost" disabled={storageSaving} onClick={() => setStorageModalOpen(false)}>
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  variant="primary"
+                  disabled={storageSaving}
+                  busy={storageSaving}
+                  busyLabel={t('control.storage.saving')}
+                  onClick={handleSaveStorage}
+                >
+                  {t('control.storage.save')}
+                </Button>
+              </Inline>
             </Inline>
           </Stack>
         </Stack>
