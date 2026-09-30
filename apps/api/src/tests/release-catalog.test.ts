@@ -242,4 +242,57 @@ describe('ReleaseCatalogService (Phase 6)', () => {
     const revokedLatest = await service.findLatestRelease({ status: 'REVOKED' });
     expect(revokedLatest?.version).toBe('0.1.31');
   });
+
+  it('manages LTS and Latest designations and honors explicit Latest over semver', async () => {
+    const r28 = await service.registerRelease({
+      version: '0.1.28',
+      schemaVersion: 7,
+      manifestRef: 'https://releases.local/v0.1.28/manifest.json',
+      artifactRef: 'https://releases.local/v0.1.28/setup.exe',
+      sha256: 'hash28',
+      signature: 'sig28',
+      status: 'AVAILABLE',
+      isLts: true,
+    });
+
+    const r29 = await service.registerRelease({
+      version: '0.1.29',
+      schemaVersion: 8,
+      manifestRef: 'https://releases.local/v0.1.29/manifest.json',
+      artifactRef: 'https://releases.local/v0.1.29/setup.exe',
+      sha256: 'hash29',
+      signature: 'sig29',
+      status: 'AVAILABLE',
+    });
+
+    const r30 = await service.registerRelease({
+      version: '0.1.30',
+      schemaVersion: 8,
+      manifestRef: 'https://releases.local/v0.1.30/manifest.json',
+      artifactRef: 'https://releases.local/v0.1.30/setup.exe',
+      sha256: 'hash30',
+      signature: 'sig30',
+      status: 'AVAILABLE',
+    });
+
+    // Check finding LTS
+    const lts = await service.findLtsRelease();
+    expect(lts?.version).toBe('0.1.28');
+    expect(lts?.isLts).toBe(true);
+
+    // By default semver gives 0.1.30 as latest
+    let latest = await service.findLatestRelease();
+    expect(latest?.version).toBe('0.1.30');
+
+    // Explicitly set 0.1.29 as latest
+    await service.setLatestRelease(r29.id);
+    latest = await service.findLatestRelease();
+    expect(latest?.version).toBe('0.1.29');
+    expect(latest?.isLatest).toBe(true);
+
+    // Switch LTS to 0.1.29
+    await service.setLtsRelease(r29.id, true);
+    const newLts = await service.findLtsRelease();
+    expect(newLts?.version).toBe('0.1.29');
+  });
 });

@@ -172,7 +172,7 @@ export function isValidVersion(candidate: string): boolean {
 
 export type ArtifactPlatform = 'windows-x64' | 'node-bundle';
 export type ArtifactComponent = 'desktop' | 'runner' | 'api';
-export type ReleaseChannel = 'stable' | 'beta' | 'rc';
+export type ReleaseChannel = 'stable' | 'beta' | 'rc' | 'lts';
 export type ArtifactFormat = 'nsis-installer' | 'binary' | 'archive';
 
 export interface ArtifactEntry {

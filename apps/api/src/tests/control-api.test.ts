@@ -341,6 +341,56 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
     });
     expect(aliasDownloadRes.statusCode).toBe(302);
     expect(aliasDownloadRes.headers['location']).toBe('https://releases.local/artifact-0.1.30.exe');
+
+    // Test importing a release via POST /control/releases/import
+    const importRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/control/releases/import',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: {
+        filename: 'PrintOps_Setup_v0.1.32_windows-x64.exe',
+        artifactBase64: Buffer.from('mock-installer-binary-data').toString('base64'),
+        version: '0.1.32',
+        platform: 'windows-x64',
+        isLts: true,
+        isLatest: true,
+        releaseNotes: 'Imported 0.1.32 with LTS',
+      },
+    });
+    expect(importRes.statusCode).toBe(201);
+    const importedRelease = importRes.json();
+    expect(importedRelease && typeof importedRelease === 'object' && 'version' in importedRelease ? importedRelease.version : '').toBe('0.1.32');
+    expect(importedRelease && typeof importedRelease === 'object' && 'isLts' in importedRelease ? importedRelease.isLts : false).toBe(true);
+    expect(importedRelease && typeof importedRelease === 'object' && 'isLatest' in importedRelease ? importedRelease.isLatest : false).toBe(true);
+
+    // Verify GET /control/releases/lts returns the imported LTS release
+    const ltsRes = await app.inject({
+      method: 'GET',
+      url: '/api/v1/control/releases/lts',
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(ltsRes.statusCode).toBe(200);
+    const ltsJson = ltsRes.json();
+    expect(ltsJson && typeof ltsJson === 'object' && 'version' in ltsJson ? ltsJson.version : '').toBe('0.1.32');
+
+    // Verify setting another release as latest
+    const setLatestRes = await app.inject({
+      method: 'POST',
+      url: `/api/v1/control/releases/${release30Id}/set-latest`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(setLatestRes.statusCode).toBe(200);
+    const setLatestJson = setLatestRes.json();
+    expect(setLatestJson && typeof setLatestJson === 'object' && 'isLatest' in setLatestJson ? setLatestJson.isLatest : false).toBe(true);
+
+    // GET /control/releases/latest now returns 0.1.30
+    const latestAfterRes = await app.inject({
+      method: 'GET',
+      url: '/api/v1/control/releases/latest',
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    const latestAfterJson = latestAfterRes.json();
+    expect(latestAfterJson && typeof latestAfterJson === 'object' && 'version' in latestAfterJson ? latestAfterJson.version : '').toBe('0.1.30');
   });
 
   it('allows zero-token device announcement and network discovery', async () => {

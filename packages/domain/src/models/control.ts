@@ -1,3 +1,4 @@
+import type { ReleaseChannel } from './ota.js';
 /**
  * Web Control & Remote Management domain models.
  * Contracts for device identity, enrollment, command plane, heartbeats,
@@ -356,10 +357,11 @@ export interface ControlOtaTransitionEvent {
 
 export type ReleaseRecordStatus = 'AVAILABLE' | 'REVOKED' | 'DEPRECATED';
 
+
 export interface ReleaseCatalogRecord {
   id: string;
   version: string;
-  channel: 'stable' | 'beta' | 'rc';
+  channel: ReleaseChannel;
   platform: 'windows-x64' | 'node-bundle';
   architecture: 'x64' | 'arm64';
   schemaVersion: number;
@@ -371,11 +373,13 @@ export interface ReleaseCatalogRecord {
   status: ReleaseRecordStatus;
   createdAt: Date;
   releaseNotes?: string;
+  isLts?: boolean;
+  isLatest?: boolean;
 }
 
 export interface CreateReleaseCatalogInput {
   version: string;
-  channel?: 'stable' | 'beta' | 'rc';
+  channel?: ReleaseChannel;
   platform?: 'windows-x64' | 'node-bundle';
   architecture?: 'x64' | 'arm64';
   schemaVersion: number;
@@ -386,6 +390,8 @@ export interface CreateReleaseCatalogInput {
   minSupportedVersion?: string;
   status?: ReleaseRecordStatus;
   releaseNotes?: string;
+  isLts?: boolean;
+  isLatest?: boolean;
 }
 
 // ─── Phase 8: Control Audit Log ─────────────────────────────────────────────

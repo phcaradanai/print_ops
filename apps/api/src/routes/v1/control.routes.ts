@@ -13,9 +13,9 @@ import type { ControlCommandService } from '../../services/control-command.servi
 import type { ReleaseCatalogService } from '../../services/release-catalog.service.js';
 import type { ControlContentSyncService } from '../../services/control-content-sync.service.js';
 import { requirePermission, actor } from './permission-guard.js';
-import { randomUUID } from 'node:crypto';
-import { createReadStream, existsSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { randomUUID, createHash } from 'node:crypto';
+import { createReadStream, existsSync, statSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 
@@ -481,14 +481,136 @@ export async function controlRoutes(
     },
   );
 
+  app.get(
+    '/control/releases/lts',
+    { onRequest: [requirePermission('control:read')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const query = (req.query ?? {}) as { platform?: string };
+      const release = await deps.releases.findLtsRelease(query.platform);
+      if (!release) return reply.status(404).send({ error: 'No LTS release found' });
+      return reply.send(release);
+    },
+  );
+
   app.patch(
     '/control/releases/:id',
     { onRequest: [requirePermission('control:manage')] },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const { id } = req.params as { id: string };
-      const body = (req.body ?? {}) as { status: ReleaseRecordStatus };
-      const updated = await deps.releases.updateReleaseStatus(id, body.status);
+      const body = (req.body ?? {}) as {
+        status?: ReleaseRecordStatus;
+        channel?: 'stable' | 'beta' | 'rc' | 'lts';
+        releaseNotes?: string;
+        isLts?: boolean;
+        isLatest?: boolean;
+      };
+      const updated = await deps.releases.updateRelease(id, body);
       return reply.send(updated);
+    },
+  );
+
+  app.post(
+    '/control/releases/:id/set-latest',
+    { onRequest: [requirePermission('control:manage')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { id } = req.params as { id: string };
+      const updated = await deps.releases.setLatestRelease(id);
+      return reply.send(updated);
+    },
+  );
+
+  app.post(
+    '/control/releases/:id/set-lts',
+    { onRequest: [requirePermission('control:manage')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { id } = req.params as { id: string };
+      const body = (req.body ?? {}) as { isLts?: boolean };
+      const updated = await deps.releases.setLtsRelease(id, body.isLts !== false);
+      return reply.send(updated);
+    },
+  );
+
+  app.post(
+    '/control/releases/import',
+    { onRequest: [requirePermission('control:manage')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const body = (req.body ?? {}) as {
+        filename?: string;
+        artifactBase64?: string;
+        artifactUrl?: string;
+        artifactPath?: string;
+        version?: string;
+        channel?: 'stable' | 'beta' | 'rc' | 'lts';
+        platform?: 'windows-x64' | 'node-bundle';
+        architecture?: 'x64' | 'arm64';
+        schemaVersion?: number;
+        sha256?: string;
+        signature?: string;
+        minSupportedVersion?: string;
+        releaseNotes?: string;
+        isLts?: boolean;
+        isLatest?: boolean;
+      };
+
+      const releasesDir = process.env['PRINTOPS_RELEASES_DIR'] || resolve(process.cwd(), 'data/releases');
+      mkdirSync(releasesDir, { recursive: true });
+
+      let artifactRef = body.artifactUrl ?? body.artifactPath ?? '';
+      let sha256 = body.sha256 ?? '';
+
+      if (body.artifactBase64) {
+        const buffer = Buffer.from(body.artifactBase64, 'base64');
+        sha256 = createHash('sha256').update(buffer).digest('hex');
+        const filename = body.filename || `PrintOps_Setup_v${body.version || 'unknown'}_${body.platform || 'windows-x64'}.exe`;
+        const destPath = join(releasesDir, filename);
+        writeFileSync(destPath, buffer);
+        artifactRef = destPath;
+      } else if (body.artifactPath && existsSync(body.artifactPath)) {
+        if (!sha256) {
+          const fileBuf = readFileSync(body.artifactPath);
+          sha256 = createHash('sha256').update(fileBuf).digest('hex');
+        }
+        artifactRef = resolve(body.artifactPath);
+      } else if (!artifactRef) {
+        return reply.status(400).send({ error: 'Either artifactBase64, artifactPath, or artifactUrl must be provided' });
+      }
+
+      let version = body.version?.trim();
+      if (!version && body.filename) {
+        const match = body.filename.match(/v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)/);
+        if (match) version = match[1];
+      }
+      if (!version) {
+        return reply.status(400).send({ error: 'version is required or must be present in filename' });
+      }
+
+      if (!sha256) {
+        sha256 = createHash('sha256').update(artifactRef).digest('hex');
+      }
+
+      const signature = body.signature?.trim() || `sig_auto_${sha256.slice(0, 32)}`;
+      const manifestRef = `/v1/control/releases/${version}/manifest.json`;
+      const platform = body.platform ?? 'windows-x64';
+      const isLts = Boolean(body.isLts || body.channel === 'lts');
+      const channel = body.channel ?? (isLts ? 'lts' : 'stable');
+
+      const created = await deps.releases.registerRelease({
+        version,
+        channel,
+        platform,
+        architecture: body.architecture ?? 'x64',
+        schemaVersion: body.schemaVersion ?? 8,
+        manifestRef,
+        artifactRef,
+        sha256,
+        signature,
+        minSupportedVersion: body.minSupportedVersion ?? '0.1.0',
+        releaseNotes: body.releaseNotes,
+        isLts,
+        isLatest: body.isLatest,
+      });
+
+      return reply.status(201).send(created);
     },
   );
 

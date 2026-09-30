@@ -104,6 +104,12 @@ function ensureOptionalControlExtensions(db: Database): void {
       )
     `);
   }
+
+  const hasReleases = db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_releases'")[0]?.values.length === 1;
+  if (hasReleases) {
+    ensureColumn(db, 'control_releases', 'is_lts', 'INTEGER DEFAULT 0');
+    ensureColumn(db, 'control_releases', 'is_latest', 'INTEGER DEFAULT 0');
+  }
 }
 
 /**
@@ -288,6 +294,8 @@ function migrateVersionSevenToEight(db: Database): void {
       min_supported_version TEXT NOT NULL DEFAULT '0.1.0',
       status TEXT NOT NULL DEFAULT 'AVAILABLE',
       release_notes TEXT,
+      is_lts INTEGER DEFAULT 0,
+      is_latest INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       UNIQUE(version, platform)
     )

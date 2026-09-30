@@ -41,6 +41,8 @@ interface ReleaseItem {
   sha256: string;
   status: 'AVAILABLE' | 'REVOKED';
   releaseNotes?: string;
+  isLts?: boolean;
+  isLatest?: boolean;
   createdAt: string;
 }
 export interface DeviceListItem {
@@ -554,7 +556,8 @@ export default function WebControlDevices() {
                   {availableReleases.map((rel) => (
                     <option key={rel.id} value={rel.version}>
                       v{rel.version} · {rel.platform} · {rel.channel}
-                      {rel.id === latestRelease?.id ? ` (${t('control.devices.latest')})` : ''}
+                      {rel.isLatest || rel.id === latestRelease?.id ? ` (${t('control.devices.latest')})` : ''}
+                      {rel.isLts || rel.channel === 'lts' ? ' (LTS)' : ''}
                     </option>
                   ))}
                 </Select>
@@ -566,8 +569,11 @@ export default function WebControlDevices() {
                     <Inline style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                       <Inline gap="xs" style={{ alignItems: 'center' }}>
                         <Text size="body" weight="bold">v{effectiveSelectedRelease.version}</Text>
-                        {effectiveSelectedRelease.id === latestRelease?.id && (
+                        {(effectiveSelectedRelease.isLatest || effectiveSelectedRelease.id === latestRelease?.id) && (
                           <Badge tone="success">{t('control.devices.latest')}</Badge>
+                        )}
+                        {(effectiveSelectedRelease.isLts || effectiveSelectedRelease.channel === 'lts') && (
+                          <Badge tone="info">LTS</Badge>
                         )}
                         <Badge tone="neutral">{effectiveSelectedRelease.channel}</Badge>
                       </Inline>

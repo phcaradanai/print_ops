@@ -60,12 +60,33 @@ export class ReleaseCatalogService {
     return this.releases.findAll(filter);
   }
 
-  async updateReleaseStatus(id: string, status: ReleaseRecordStatus): Promise<ReleaseCatalogRecord> {
+  async updateRelease(
+    id: string,
+    patch: {
+      status?: ReleaseRecordStatus;
+      channel?: 'stable' | 'beta' | 'rc' | 'lts';
+      releaseNotes?: string;
+      isLts?: boolean;
+      isLatest?: boolean;
+    },
+  ): Promise<ReleaseCatalogRecord> {
     const existing = await this.releases.findById(id);
     if (!existing) {
       throw new NotFoundError('Release', id);
     }
-    return this.releases.update(id, { status });
+    return this.releases.update(id, patch);
+  }
+
+  async updateReleaseStatus(id: string, status: ReleaseRecordStatus): Promise<ReleaseCatalogRecord> {
+    return this.updateRelease(id, { status });
+  }
+
+  async setLatestRelease(id: string): Promise<ReleaseCatalogRecord> {
+    return this.updateRelease(id, { isLatest: true });
+  }
+
+  async setLtsRelease(id: string, isLts = true): Promise<ReleaseCatalogRecord> {
+    return this.updateRelease(id, { isLts, ...(isLts ? { channel: 'lts' as const } : {}) });
   }
 
   isCompatible(
@@ -144,6 +165,9 @@ export class ReleaseCatalogService {
       status: 'AVAILABLE',
       ...filter,
     });
+    const designatedLatest = available.find((r) => r.isLatest);
+    if (designatedLatest) return designatedLatest;
+
     const sorted = available.slice().sort((a, b) => {
       const diff = compareVersions(b.version, a.version);
       return diff ?? 0;
@@ -151,6 +175,19 @@ export class ReleaseCatalogService {
     return sorted[0] ?? null;
   }
 
+  async findLtsRelease(platform = 'windows-x64'): Promise<ReleaseCatalogRecord | null> {
+    const available = await this.releases.findAll({
+      status: 'AVAILABLE',
+      platform,
+    });
+    const ltsReleases = available.filter((r) => r.isLts || r.channel === 'lts');
+    if (ltsReleases.length === 0) return null;
+    const sorted = ltsReleases.slice().sort((a, b) => {
+      const diff = compareVersions(b.version, a.version);
+      return diff ?? 0;
+    });
+    return sorted[0] ?? null;
+  }
   async findReleaseByVersion(version: string, platform?: string): Promise<ReleaseCatalogRecord | undefined> {
     return this.releases.findByVersion(version, platform);
   }

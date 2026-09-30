@@ -249,10 +249,19 @@ export class InMemoryReleaseCatalogRepository implements ReleaseCatalogRepositor
 
   async create(input: CreateReleaseCatalogInput): Promise<ReleaseCatalogRecord> {
     const id = `rel_${generateId()}`;
+    const isLts = input.isLts ?? (input.channel === 'lts');
+    const isLatest = input.isLatest ?? false;
+    if (isLatest) {
+      for (const [key, r] of this.releases.entries()) {
+        if (r.platform === (input.platform ?? 'windows-x64')) {
+          this.releases.set(key, { ...r, isLatest: false });
+        }
+      }
+    }
     const record: ReleaseCatalogRecord = {
       id,
       version: input.version,
-      channel: input.channel ?? 'stable',
+      channel: input.channel ?? (isLts ? 'lts' : 'stable'),
       platform: input.platform ?? 'windows-x64',
       architecture: input.architecture ?? 'x64',
       schemaVersion: input.schemaVersion,
@@ -264,6 +273,8 @@ export class InMemoryReleaseCatalogRepository implements ReleaseCatalogRepositor
       status: input.status ?? 'AVAILABLE',
       createdAt: new Date(),
       releaseNotes: input.releaseNotes,
+      isLts,
+      isLatest,
     };
     this.releases.set(id, record);
     return { ...record };
@@ -302,6 +313,20 @@ export class InMemoryReleaseCatalogRepository implements ReleaseCatalogRepositor
     const existing = this.releases.get(id);
     if (!existing) {
       throw new Error(`Release not found: ${id}`);
+    }
+    if (patch.isLatest) {
+      for (const [key, r] of this.releases.entries()) {
+        if (r.platform === existing.platform) {
+          this.releases.set(key, { ...r, isLatest: false });
+        }
+      }
+    }
+    if (patch.isLts) {
+      for (const [key, r] of this.releases.entries()) {
+        if (r.platform === existing.platform) {
+          this.releases.set(key, { ...r, isLts: false });
+        }
+      }
     }
     const updated: ReleaseCatalogRecord = {
       ...existing,

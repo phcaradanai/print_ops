@@ -459,6 +459,8 @@ function rowToRelease(row: Record<string, unknown>): ReleaseCatalogRecord {
     status: row['status'] as ReleaseCatalogRecord['status'],
     createdAt: toDate(row['created_at']),
     releaseNotes: row['release_notes'] ? (row['release_notes'] as string) : undefined,
+    isLts: Boolean(row['is_lts']),
+    isLatest: Boolean(row['is_latest']),
   };
 }
 
@@ -468,16 +470,21 @@ export class SqliteReleaseCatalogRepository implements ReleaseCatalogRepositoryP
     const id = `rel_${generateId()}`;
     const now = dateStr(new Date());
 
+    const isLts = input.isLts ? 1 : (input.channel === 'lts' ? 1 : 0);
+    const isLatest = input.isLatest ? 1 : 0;
+    if (isLatest) {
+      db.run('UPDATE control_releases SET is_latest = 0 WHERE platform = ?', [input.platform ?? 'windows-x64']);
+    }
     db.run(
       `INSERT INTO control_releases (
         id, version, channel, platform, architecture, schema_version,
         manifest_ref, artifact_ref, sha256, signature, min_supported_version,
-        status, release_notes, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        status, release_notes, is_lts, is_latest, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.version,
-        input.channel ?? 'stable',
+        input.channel ?? (input.isLts ? 'lts' : 'stable'),
         input.platform ?? 'windows-x64',
         input.architecture ?? 'x64',
         input.schemaVersion,
@@ -488,10 +495,11 @@ export class SqliteReleaseCatalogRepository implements ReleaseCatalogRepositoryP
         input.minSupportedVersion ?? '0.1.0',
         input.status ?? 'AVAILABLE',
         input.releaseNotes ?? null,
+        isLts,
+        isLatest,
         now,
       ],
     );
-    const created = await this.findById(id);
     if (!created) throw new Error('Failed to create release record');
     return created;
   }
@@ -559,6 +567,16 @@ export class SqliteReleaseCatalogRepository implements ReleaseCatalogRepositoryP
 
   async update(id: string, patch: Partial<ReleaseCatalogRecord>): Promise<ReleaseCatalogRecord> {
     const db = getDb();
+    const existing = await this.findById(id);
+    if (!existing) throw new Error(`Release not found: ${id}`);
+
+    if (patch.isLatest) {
+      db.run('UPDATE control_releases SET is_latest = 0 WHERE platform = ?', [existing.platform]);
+    }
+    if (patch.isLts) {
+      db.run('UPDATE control_releases SET is_lts = 0 WHERE platform = ?', [existing.platform]);
+    }
+
     const sets: string[] = [];
     const params: SqlValue[] = [];
 
@@ -568,7 +586,10 @@ export class SqliteReleaseCatalogRepository implements ReleaseCatalogRepositoryP
     };
 
     if ('status' in patch) add('status', patch.status ?? null);
+    if ('channel' in patch) add('channel', patch.channel ?? null);
     if ('releaseNotes' in patch) add('release_notes', patch.releaseNotes ?? null);
+    if ('isLts' in patch) add('is_lts', patch.isLts ? 1 : 0);
+    if ('isLatest' in patch) add('is_latest', patch.isLatest ? 1 : 0);
 
     if (sets.length > 0) {
       params.push(id);
