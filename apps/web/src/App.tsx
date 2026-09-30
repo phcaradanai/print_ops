@@ -21,6 +21,7 @@ import { Input, Button, FormField } from './components/ui/index.js';
 import webPackage from '../package.json';
 
 export const APP_VERSION = webPackage.version;
+export const CONTROL_PLANE_VERSION = import.meta.env.VITE_CONTROL_PLANE_VERSION || '1.0.0';
 const CONTROL_APP = import.meta.env.VITE_CONTROL_APP === 'true';
 if (CONTROL_APP && typeof document !== 'undefined') document.title = 'Web Control';
 
@@ -62,14 +63,15 @@ function isMobileNavViewport() {
     && typeof window.matchMedia === 'function'
     && window.matchMedia(MOBILE_NAV_QUERY).matches;
 }
-export function AppVersionBadge({ label }: { label: string }) {
+export function AppVersionBadge({ label, version }: { label: string; version?: string }) {
+  const displayVersion = version ?? (CONTROL_APP ? CONTROL_PLANE_VERSION : APP_VERSION);
   return (
     <span
       className="app-version"
-      aria-label={label + ': ' + APP_VERSION}
-      title={label + ': ' + APP_VERSION}
+      aria-label={label + ': ' + displayVersion}
+      title={label + ': ' + displayVersion}
     >
-      v{APP_VERSION}
+      v{displayVersion}
     </span>
   );
 }
@@ -230,11 +232,14 @@ const VISIBLE_NAV_ITEMS = NAV_ITEMS.filter((item) =>
 
 function SplashScreen({ error, onRetry }: { error?: boolean; onRetry?: () => void }) {
   const { t } = useLocale();
-  const [status, setStatus] = useState(t('splash.starting'));
+  const startingText = CONTROL_APP ? t('control.splash.starting') : t('splash.starting');
+  const unableText = CONTROL_APP ? t('control.splash.unable') : t('splash.unable');
+  const progressText = CONTROL_APP ? t('control.splash.progress') : t('splash.progress');
+  const [status, setStatus] = useState(startingText);
 
   useEffect(() => {
     if (error) {
-      setStatus(t('splash.unable'));
+      setStatus(unableText);
       return;
     }
 
@@ -244,14 +249,14 @@ function SplashScreen({ error, onRetry }: { error?: boolean; onRetry?: () => voi
     const interval = setInterval(() => {
       if (cancelled) return;
       attempts++;
-      setStatus(t('splash.progress').replace('{n}', String(attempts)));
+      setStatus(progressText.replace('{n}', String(attempts)));
     }, 1000);
 
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [t, error]);
+  }, [t, error, unableText, progressText]);
 
   return (
     <div className="splash-screen">
@@ -674,9 +679,8 @@ function AppNav({
     <>
       <h2 className="app-nav-brand">
         <span className="app-brand-name">{CONTROL_APP ? 'Web Control' : 'PrintOps'}</span>
-        {!CONTROL_APP && <AppVersionBadge label={t('app.version')} />}
+        <AppVersionBadge label={CONTROL_APP ? 'Web Control' : t('app.version')} />
       </h2>
-
       {/* Operations group — always visible */}
       {opsItems.length > 0 && (
         <div className="nav-group">
@@ -771,7 +775,7 @@ function AppNav({
         </button>
         <span className="app-header-brand">
           <span className="app-brand-name">{CONTROL_APP ? 'Web Control' : 'PrintOps'}</span>
-          {!CONTROL_APP && <AppVersionBadge label={t('app.version')} />}
+          <AppVersionBadge label={CONTROL_APP ? 'Web Control' : t('app.version')} />
         </span>
       </header>
 
@@ -911,7 +915,8 @@ export default function App() {
   const checkApi = useCallback(async () => {
     setApiError(false);
     let cancelled = false;
-    for (let i = 0; i < 5; i++) {
+    const maxAttempts = CONTROL_APP ? 30 : 15;
+    for (let i = 0; i < maxAttempts; i++) {
       if (cancelled) return;
       try {
         const res = await fetch(healthUrl());

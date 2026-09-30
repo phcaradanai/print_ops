@@ -273,9 +273,14 @@ async function initialiseDatabase(generation: number): Promise<void> {
       locateFile: (file: string) => {
         const envPath = process.env['SQL_WASM_PATH'];
         if (envPath && existsSync(envPath)) return envPath;
-        // Fallback: look alongside the executable
-        const local = join(dirname(process.execPath), file);
-        if (existsSync(local)) return local;
+        const candidatePaths = [
+          join(process.cwd(), file),
+          join(process.cwd(), 'node_modules/sql.js/dist', file),
+          join(dirname(process.execPath), file),
+        ];
+        for (const candidate of candidatePaths) {
+          if (existsSync(candidate)) return candidate;
+        }
         return file;
       },
     });

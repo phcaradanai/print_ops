@@ -17,6 +17,7 @@ describe('Web Control UI Workspaces (Phase 7)', () => {
     );
 
     expect(html).toContain('Devices');
+    expect(html).toContain('ดาวน์โหลดแอป PrintOps');
     expect(html).toContain('Generate Enrollment Token');
     expect(html).toContain('All Connections');
     expect(html).toContain('All Versions');

@@ -387,6 +387,28 @@ export async function apiDownload(path: string, filename: string): Promise<void>
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+export function getDownloadUrl(path: string): string {
+  const authToken = token();
+  const apiKey = getApiKey();
+  const separator = path.includes('?') ? '&' : '?';
+  let url = apiUrl(path);
+  if (authToken) {
+    url += `${separator}token=${encodeURIComponent(authToken)}`;
+  } else if (apiKey) {
+    url += `${separator}apiKey=${encodeURIComponent(apiKey)}`;
+  }
+  return url;
+}
+
+export function triggerDirectDownload(path: string, filename?: string): void {
+  const url = getDownloadUrl(path);
+  const a = document.createElement('a');
+  a.href = url;
+  if (filename) a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
 /** Safely read a File as a base64 data URI string. */
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

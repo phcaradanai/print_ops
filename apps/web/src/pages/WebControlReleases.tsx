@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
-import { apiFetch } from '../api/client.js';
+import { apiFetch, triggerDirectDownload } from '../api/client.js';
+import { compareVersions } from '@printerops/domain';
 import { useLocale } from '../i18n/index.js';
 import { formatRelativeTime } from '../lib/relativeTime.js';
 import { useApiResource } from '../hooks/useApiResource.js';
@@ -49,6 +50,7 @@ export default function WebControlReleases() {
   const { t } = useLocale();
 
   const [registerModalOpen, setRegisterModalOpen] = useState(false);
+  const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
   const [formVersion, setFormVersion] = useState('');
   const [formChannel, setFormChannel] = useState<'stable' | 'beta' | 'rc'>('stable');
   const [formPlatform, setFormPlatform] = useState<'windows-x64' | 'node-bundle'>('windows-x64');
@@ -79,6 +81,23 @@ export default function WebControlReleases() {
     }
     return map;
   }, [devices]);
+
+  const latestAvailableRelease = useMemo(() => {
+    const available = releases.filter((r) => r.status === 'AVAILABLE');
+    const sorted = available.slice().sort((a, b) => {
+      const diff = compareVersions(b.version, a.version);
+      return diff ?? 0;
+    });
+    return sorted[0] ?? null;
+  }, [releases]);
+
+  const handleDownloadRelease = (release: ReleaseItem) => {
+    const filename = `PrintOps_Setup_v${release.version}_${release.platform}.exe`;
+    setDownloadNotice(t('control.downloadNotice')
+      .replace('{version}', release.version)
+      .replace('{filename}', filename));
+    triggerDirectDownload(`/v1/control/releases/${release.id}/download`, filename);
+  };
 
   const handleRegister = async () => {
     setIsSubmitting(true);
@@ -130,7 +149,15 @@ export default function WebControlReleases() {
       width="full"
       actions={
         <Inline gap="md">
-          <Button variant="primary" onClick={() => { setRegisterError(null); setRegisterModalOpen(true); }}>
+          {latestAvailableRelease && (
+            <Button
+              variant="primary"
+              onClick={() => handleDownloadRelease(latestAvailableRelease)}
+            >
+              {t('control.releases.downloadLatest')} (v{latestAvailableRelease.version})
+            </Button>
+          )}
+          <Button variant="secondary" onClick={() => { setRegisterError(null); setRegisterModalOpen(true); }}>
             Register Signed Release
           </Button>
           <Freshness
@@ -143,9 +170,21 @@ export default function WebControlReleases() {
         </Inline>
       }
     >
-      <Text size="body" tone="muted">
-        Web Control manages software releases for enrolled PrintOps clients. Versions in this catalog belong to PrintOps releases, not Web Control.
-      </Text>
+      <Inline gap="md" style={{ alignItems: 'center' }}>
+        <Text size="body" tone="muted">
+          Web Control manages software releases for enrolled PrintOps clients. Versions in this catalog belong to PrintOps releases, not Web Control.
+        </Text>
+        {latestAvailableRelease?.version && (
+          <Badge tone="neutral">
+            {t('control.releases.latestAppRelease').replace('{version}', latestAvailableRelease.version)}
+          </Badge>
+        )}
+      </Inline>
+      {downloadNotice && (
+        <Alert tone="info" onDismiss={() => setDownloadNotice(null)}>
+          {downloadNotice}
+        </Alert>
+      )}
       {releasesResource.stale && releasesResource.error != null && (
         <ErrorBanner error={releasesResource.error} onRetry={releasesResource.refresh} />
       )}
@@ -207,13 +246,25 @@ export default function WebControlReleases() {
                     <Text size="label" tone="muted">{formatRelativeTime(t, rel.createdAt)}</Text>
                   </DataCell>
                   <DataCell>
-                    <Button
-                      size="sm"
-                      variant={rel.status === 'AVAILABLE' ? 'danger' : 'secondary'}
-                      onClick={() => handleToggleStatus(rel)}
-                    >
-                      {rel.status === 'AVAILABLE' ? 'Revoke' : 'Activate'}
-                    </Button>
+                    <Inline gap="xs">
+                      {rel.status === 'AVAILABLE' && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleDownloadRelease(rel)}
+                          title={`${t('control.releases.downloadApp')} v${rel.version}`}
+                        >
+                          {t('common.download')} v{rel.version}
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant={rel.status === 'AVAILABLE' ? 'danger' : 'secondary'}
+                        onClick={() => handleToggleStatus(rel)}
+                      >
+                        {rel.status === 'AVAILABLE' ? 'Revoke' : 'Activate'}
+                      </Button>
+                    </Inline>
                   </DataCell>
                 </tr>
               );

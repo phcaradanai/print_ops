@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { apiFetch } from '../api/client.js';
+import { apiFetch, triggerDirectDownload } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 import { formatRelativeTime } from '../lib/relativeTime.js';
 import { useApiResource } from '../hooks/useApiResource.js';
@@ -27,9 +27,12 @@ import {
 } from '../components/ui/index.js';
 
 interface CompatibleReleaseOption {
+  id?: string;
   version: string;
   channel?: string;
   schemaVersion: number;
+  platform?: string;
+  artifactRef?: string;
   releaseNotes?: string;
 }
 
@@ -60,10 +63,13 @@ interface DeviceDetailData {
   capabilities?: string[];
   latestCompatibleVersion: string | null;
   latestCompatibleRelease?: {
+    id?: string;
     version: string;
     channel?: string;
     releaseNotes?: string;
     schemaVersion: number;
+    platform?: string;
+    artifactRef?: string;
   } | null;
   compatibleReleases?: CompatibleReleaseOption[];
   hasUpdateAvailable: boolean;
@@ -270,6 +276,25 @@ export default function WebControlDeviceDetail() {
               >
                 Rollback
               </Button>
+              {selectedRelease && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    const platform = selectedRelease.platform
+                      || (device.platform === 'win32' || device.platform === 'windows' ? 'windows-x64' : device.platform);
+                    const candidate = selectedRelease.artifactRef?.split('?')[0]?.split(/[/\\]/).pop();
+                    const filename = candidate && candidate.includes('.')
+                      ? candidate
+                      : `PrintOps_${selectedRelease.version}_${platform}.exe`;
+                    const downloadUrl = selectedRelease.id
+                      ? `/v1/control/releases/${selectedRelease.id}/download`
+                      : `/v1/control/releases/latest/download?version=${encodeURIComponent(selectedRelease.version)}&platform=${encodeURIComponent(platform)}`;
+                    triggerDirectDownload(downloadUrl, filename);
+                  }}
+                >
+                  {t('common.download')} v{selectedRelease.version}
+                </Button>
+              )}
             </Inline>
           </Inline>
         </Panel>

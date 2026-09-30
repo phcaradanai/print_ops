@@ -56,10 +56,11 @@ export class DeviceIdentityStore {
   private identity: StoredDeviceIdentity;
 
   constructor(opts: DeviceIdentityOptions = {}) {
+    const defaultDataDir = process.env['PRINTOPS_DATA_DIR'] || './data';
     this.filePath = resolve(
       opts.storagePath ||
       process.env['PRINTOPS_DEVICE_IDENTITY_PATH'] ||
-      './data/device-identity.json'
+      `${defaultDataDir}/device-identity.json`
     );
     this.defaultSiteId = opts.defaultSiteId || process.env['PRINTOPS_SITE_ID'] || 'default-site';
     this.appVersion = opts.appVersion || process.env['PRINTOPS_APP_VERSION'] || '0.1.31';
@@ -109,11 +110,15 @@ export class DeviceIdentityStore {
   }
 
   private save(data: StoredDeviceIdentity): void {
-    const dir = dirname(this.filePath);
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
+    try {
+      const dir = dirname(this.filePath);
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+      }
+      writeFileSync(this.filePath, JSON.stringify(data, null, 2), 'utf-8');
+    } catch (err) {
+      console.warn(`[DeviceIdentityStore] Failed to persist identity to ${this.filePath}:`, err instanceof Error ? err.message : err);
     }
-    writeFileSync(this.filePath, JSON.stringify(data, null, 2), 'utf-8');
   }
 
   getControlCommand(commandId: string, idempotencyKey?: string): StoredDeviceCommand | undefined {

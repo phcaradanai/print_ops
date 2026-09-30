@@ -1,7 +1,7 @@
 import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
-
+import os from 'node:os';
 import { InMemoryPrinterRepository } from './infra/repos/in-memory-printer.repo.js';
 import { InMemoryJobRepository } from './infra/repos/in-memory-job.repo.js';
 import { InMemoryTraceRepository } from './infra/repos/in-memory-trace.repo.js';
@@ -1262,6 +1262,20 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       internalToken: otaConfig.healthToken,
       contentSync: controlContentSyncService,
       deviceInfo: getLocalControlDeviceInfo,
+    });
+    v1.get('/control/device-info', async (_req, reply) => {
+      const identity = deviceIdentityStore.getIdentity();
+      return reply.send({
+        installationId: identity.installationId,
+        deviceId: identity.deviceId,
+        hostname: os.hostname(),
+        platform: process.platform === 'win32' ? 'windows-x64' : process.platform,
+        architecture: process.arch,
+        appVersion: process.env['PRINTOPS_APP_VERSION'] || '0.1.31',
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        capabilities: ['content-sync-v1', 'ota-v1'],
+        status: 'READY',
+      });
     });
     await controlRoutes(v1, {
       registry: webControlRegistry,

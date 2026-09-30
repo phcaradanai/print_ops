@@ -12,6 +12,11 @@ type AuthenticatedUser = {
 export function requirePermission(permission: Permission) {
   return async (req: FastifyRequest, reply: FastifyReply) => {
     try {
+      const query = req.query as Record<string, unknown> | undefined;
+      const queryToken = query?.['token'];
+      if (typeof queryToken === 'string' && queryToken && !req.headers.authorization) {
+        req.headers.authorization = `Bearer ${queryToken}`;
+      }
       await req.jwtVerify();
     } catch (err) {
       return reply.send(err);

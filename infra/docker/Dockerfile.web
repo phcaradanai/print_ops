@@ -10,7 +10,8 @@ COPY packages/adapters ./packages/adapters
 COPY apps/web ./apps/web
 
 RUN npm ci --no-audit --no-fund
-RUN VITE_CONTROL_APP=true npm run build -w apps/web
+ARG VITE_CONTROL_PLANE_VERSION=1.0.0
+RUN VITE_CONTROL_APP=true VITE_CONTROL_PLANE_VERSION=${VITE_CONTROL_PLANE_VERSION} npm run build -w apps/web
 
 # Serve with nginx
 FROM nginx:alpine

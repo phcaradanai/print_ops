@@ -198,9 +198,135 @@ export class WebControlRegistryService {
     return this.applyDynamicConnectionState(device);
   }
 
+  async autoRegisterDevice(input: {
+    installationId: string;
+    hostname: string;
+    platform: string;
+    architecture: string;
+    appVersion: string;
+    schemaVersion?: number;
+    runnerVersion?: string;
+    siteId?: string;
+    displayName?: string;
+    ipAddresses?: string[];
+    capabilities?: string[];
+  }): Promise<DeviceRecord> {
+    const existing = await this.deviceRegistry.findByInstallationId(input.installationId.trim());
+    const deviceId = existing?.deviceId || `dev_${input.installationId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 32)}`;
+    const deviceToken = `devtok_${randomBytes(24).toString('hex')}`;
+    const deviceTokenHash = hashDeviceToken(deviceToken);
+    const siteId = input.siteId || existing?.siteId || 'default-site';
+
+    if (existing) {
+      return this.deviceRegistry.update(existing.deviceId, {
+        hostname: input.hostname,
+        platform: input.platform,
+        architecture: input.architecture,
+        appVersion: input.appVersion,
+        schemaVersion: input.schemaVersion ?? existing.schemaVersion,
+        runnerVersion: input.runnerVersion ?? existing.runnerVersion,
+        displayName: input.displayName ?? existing.displayName,
+        status: 'ACTIVE',
+        connectionState: 'ONLINE',
+        lastSeenAt: new Date(),
+        capabilities: input.capabilities ?? existing.capabilities ?? ['content-sync-v1', 'ota-v1'],
+        ipAddresses: input.ipAddresses ?? existing.ipAddresses,
+      });
+    }
+
+    return this.deviceRegistry.create({
+      deviceId,
+      installationId: input.installationId.trim(),
+      siteId,
+      hostname: input.hostname,
+      platform: input.platform,
+      architecture: input.architecture,
+      appVersion: input.appVersion,
+      schemaVersion: input.schemaVersion ?? 8,
+      runnerVersion: input.runnerVersion ?? '0.1.28',
+      deviceTokenHash,
+      displayName: input.displayName ?? input.hostname,
+      capabilities: input.capabilities ?? ['content-sync-v1', 'ota-v1'],
+      ipAddresses: input.ipAddresses,
+    });
+  }
+
+  async discoverDevices(targets?: string[]): Promise<DeviceRecord[]> {
+    const candidateTargets = (targets && targets.length > 0)
+      ? targets
+      : [
+          process.env['PRINTOPS_CLIENT_URL'],
+          'http://host.docker.internal:31415',
+          'http://127.0.0.1:31415',
+          'http://localhost:31415',
+        ].filter(Boolean) as string[];
+
+    const discovered: DeviceRecord[] = [];
+
+    await Promise.all(
+      candidateTargets.map(async (targetUrl) => {
+        try {
+          const normalized = targetUrl.replace(/\/+$/, '');
+          const url = normalized.startsWith('http') ? normalized : `http://${normalized}:31415`;
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 2000);
+
+          const healthRes = await fetch(`${url}/health`, { signal: controller.signal });
+          clearTimeout(timeout);
+          if (!healthRes.ok) return;
+
+          const healthData = await healthRes.json() as { status?: string; version?: string; station?: any };
+          if (healthData.status !== 'ok') return;
+
+          let infoData: any = {};
+          try {
+            const infoCtrl = new AbortController();
+            const infoTimeout = setTimeout(() => infoCtrl.abort(), 1500);
+            const infoRes = await fetch(`${url}/api/v1/control/device-info`, { signal: infoCtrl.signal });
+            clearTimeout(infoTimeout);
+            if (infoRes.ok) {
+              infoData = await infoRes.json();
+            }
+          } catch {
+            // ignore
+          }
+
+          const parsedUrl = new URL(url);
+          const hostname = infoData.hostname || healthData.station?.hostname || parsedUrl.hostname;
+          const installationId = infoData.installationId || healthData.station?.installationId || `discovered_${hostname}_31415`;
+          const appVersion = infoData.appVersion || healthData.version || '0.1.31';
+          const platform = infoData.platform || healthData.station?.platform || 'windows-x64';
+          const architecture = infoData.architecture || 'x64';
+
+          const record = await this.autoRegisterDevice({
+            installationId,
+            hostname,
+            platform,
+            architecture,
+            appVersion,
+            schemaVersion: infoData.schemaVersion ?? 8,
+            capabilities: infoData.capabilities ?? ['content-sync-v1', 'ota-v1'],
+            ipAddresses: [parsedUrl.hostname],
+            displayName: `${hostname} (Auto-Discovered)`,
+          });
+
+          discovered.push(record);
+        } catch {
+          // unreachable target, ignore
+        }
+      }),
+    );
+
+    return discovered;
+  }
+
   async listDevices(filter?: DeviceRegistryFilter): Promise<DeviceRecord[]> {
     const repoFilter = filter ? { ...filter, connectionState: undefined } : undefined;
-    const devices = await this.deviceRegistry.findAll(repoFilter);
+    let devices = await this.deviceRegistry.findAll(repoFilter);
+    if (devices.length === 0) {
+      await this.discoverDevices();
+      devices = await this.deviceRegistry.findAll(repoFilter);
+    }
     const enriched = devices.map((d) => this.applyDynamicConnectionState(d));
     if (filter?.connectionState) {
       return enriched.filter((d) => d.connectionState === filter.connectionState);

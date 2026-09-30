@@ -5,6 +5,7 @@ import type {
   ControlContentKind,
   CreateReleaseCatalogInput,
   DeviceEnrollmentRequest,
+  ReleaseCatalogRecord,
   ReleaseRecordStatus,
 } from '@printerops/domain';
 import type { WebControlRegistryService } from '../../services/web-control-registry.service.js';
@@ -13,6 +14,10 @@ import type { ReleaseCatalogService } from '../../services/release-catalog.servi
 import type { ControlContentSyncService } from '../../services/control-content-sync.service.js';
 import { requirePermission, actor } from './permission-guard.js';
 import { randomUUID } from 'node:crypto';
+import { createReadStream, existsSync, statSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { Readable } from 'node:stream';
+import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 
 export interface ControlRoutesDeps {
   registry: WebControlRegistryService;
@@ -49,6 +54,60 @@ export async function controlRoutes(
       const body = req.body as DeviceEnrollmentRequest;
       const response = await deps.registry.enrollDevice(body);
       return reply.status(201).send(response);
+    },
+  );
+
+  // Zero-token announcement: any reachable or booted PrintOps station can announce directly
+  app.post(
+    '/control/announce',
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const body = (req.body ?? {}) as {
+        installationId?: string;
+        hostname?: string;
+        platform?: string;
+        architecture?: string;
+        appVersion?: string;
+        schemaVersion?: number;
+        runnerVersion?: string;
+        siteId?: string;
+        displayName?: string;
+        capabilities?: string[];
+      };
+      if (!body.installationId || !body.hostname) {
+        return reply.status(400).send({ error: 'installationId and hostname are required' });
+      }
+      const device = await deps.registry.autoRegisterDevice({
+        installationId: body.installationId,
+        hostname: body.hostname,
+        platform: body.platform || 'windows-x64',
+        architecture: body.architecture || 'x64',
+        appVersion: body.appVersion || '0.1.31',
+        schemaVersion: body.schemaVersion ?? 8,
+        runnerVersion: body.runnerVersion,
+        siteId: body.siteId || 'default-site',
+        displayName: body.displayName,
+        capabilities: body.capabilities ?? ['content-sync-v1', 'ota-v1'],
+      });
+      return reply.status(200).send({
+        deviceId: device.deviceId,
+        status: 'ONLINE',
+        message: 'Station announced successfully',
+      });
+    },
+  );
+
+  // Network discovery: probes configured or provided IP/host targets for PrintOps stations
+  app.post(
+    '/control/devices/discover',
+    { onRequest: [requirePermission('control:manage')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const body = (req.body ?? {}) as { targets?: string[]; ip?: string };
+      const targets = body.ip ? [body.ip] : body.targets;
+      const discovered = await deps.registry.discoverDevices(targets);
+      return reply.send({
+        discoveredCount: discovered.length,
+        devices: discovered,
+      });
     },
   );
 
@@ -94,9 +153,13 @@ export async function controlRoutes(
         latestCompatibleVersion: latestRelease?.version ?? null,
         latestCompatibleRelease: latestRelease ?? null,
         compatibleReleases: compatibleReleases.map((release) => ({
+          id: release.id,
           version: release.version,
           channel: release.channel,
           schemaVersion: release.schemaVersion,
+          platform: release.platform,
+          artifactRef: release.artifactRef,
+          sha256: release.sha256,
           releaseNotes: release.releaseNotes,
         })),
         hasUpdateAvailable: latestRelease !== null,
@@ -340,7 +403,74 @@ export async function controlRoutes(
       return reply.send(releases);
     },
   );
+  app.get(
+    '/control/releases/latest',
+    { onRequest: [requirePermission('control:read')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const query = (req.query ?? {}) as { platform?: string; channel?: string };
+      const release = await deps.releases.findLatestRelease(query);
+      if (!release) return reply.status(404).send({ error: 'No available release found' });
+      return reply.send(release);
+    },
+  );
 
+  app.get(
+    '/control/releases/latest/download',
+    { onRequest: [requirePermission('control:read')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const query = (req.query ?? {}) as { platform?: string; channel?: string; stream?: string; version?: string };
+      let release: ReleaseCatalogRecord | null | undefined;
+      if (query.version) {
+        release = await deps.releases.findReleaseByVersion(query.version, query.platform);
+        if (release && release.status === 'REVOKED') {
+          return reply.status(403).send({ error: 'Release has been revoked and cannot be downloaded' });
+        }
+      } else {
+        release = await deps.releases.findLatestRelease({
+          platform: query.platform,
+          channel: query.channel,
+        });
+      }
+      if (!release) return reply.status(404).send({ error: 'No available release found' });
+      return serveReleaseArtifact(release, req, reply, deps.audit);
+    },
+  );
+
+  app.get(
+    '/control/releases/download',
+    { onRequest: [requirePermission('control:read')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const query = (req.query ?? {}) as { platform?: string; channel?: string; stream?: string; version?: string };
+      let release: ReleaseCatalogRecord | null | undefined;
+      if (query.version) {
+        release = await deps.releases.findReleaseByVersion(query.version, query.platform);
+        if (release && release.status === 'REVOKED') {
+          return reply.status(403).send({ error: 'Release has been revoked and cannot be downloaded' });
+        }
+      } else {
+        release = await deps.releases.findLatestRelease({
+          platform: query.platform,
+          channel: query.channel,
+        });
+      }
+      if (!release) return reply.status(404).send({ error: 'No available release found' });
+      return serveReleaseArtifact(release, req, reply, deps.audit);
+    },
+  );
+
+  app.get(
+    '/control/releases/:id/download',
+    { onRequest: [requirePermission('control:read')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { id } = req.params as { id: string };
+      const release = await deps.releases.getRelease(id);
+      if (!release) return reply.status(404).send({ error: 'Release not found' });
+      if (release.status === 'REVOKED') {
+        return reply.status(403).send({ error: 'Release has been revoked and cannot be downloaded' });
+      }
+      return serveReleaseArtifact(release, req, reply, deps.audit);
+    },
+  );
   app.post(
     '/control/releases',
     { onRequest: [requirePermission('control:manage')] },
@@ -383,4 +513,94 @@ export async function controlRoutes(
       return reply.send(logs);
     },
   );
+}
+function getArtifactFilename(release: ReleaseCatalogRecord): string {
+  const ext = release.platform === 'windows-x64' ? '.exe' : '.tar.gz';
+  const urlOrPath = release.artifactRef;
+  const noQuery = urlOrPath.split('?')[0] ?? urlOrPath;
+  const parts = noQuery.split(/[/\\]/);
+  const candidate = parts[parts.length - 1];
+  if (candidate && candidate.includes('.') && candidate.includes(release.version)) {
+    return candidate;
+  }
+  return `PrintOps_Setup_v${release.version}_${release.platform}${ext}`;
+}
+
+async function serveReleaseArtifact(
+  release: ReleaseCatalogRecord,
+  req: FastifyRequest,
+  reply: FastifyReply,
+  audit?: ControlAuditRepositoryPort,
+): Promise<void> {
+  const filename = getArtifactFilename(release);
+  const query = (req.query ?? {}) as { stream?: string };
+  const isUrl = release.artifactRef.startsWith('http://') || release.artifactRef.startsWith('https://');
+
+  if (audit) {
+    await audit.record({
+      actor: actor(req),
+      deviceId: 'release-catalog',
+      action: 'release.downloaded',
+      sourceVersion: release.version,
+      requestedAt: new Date(),
+      terminalState: 'COMPLETED',
+      metadata: {
+        releaseId: release.id,
+        version: release.version,
+        platform: release.platform,
+        artifactRef: release.artifactRef,
+        filename,
+      },
+    });
+  }
+
+  if (isUrl) {
+    if (query.stream === 'true') {
+      try {
+        const upstream = await fetch(release.artifactRef);
+        if (!upstream.ok) {
+          return reply.status(502).send({
+            error: `Failed to fetch release artifact: upstream returned HTTP ${upstream.status}`,
+          });
+        }
+        reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+        reply.header('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
+        const contentLength = upstream.headers.get('content-length');
+        if (contentLength) {
+          reply.header('Content-Length', contentLength);
+        }
+        return reply.send(upstream.body ? Readable.fromWeb(upstream.body as unknown as WebReadableStream) : null);
+      } catch (err) {
+        return reply.status(502).send({
+          error: `Failed to stream release artifact: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    }
+    return reply.redirect(release.artifactRef, 302);
+  }
+
+  // Local file path
+  const candidatePaths = [
+    release.artifactRef,
+    resolve(process.cwd(), release.artifactRef),
+  ];
+  let foundPath: string | null = null;
+  for (const p of candidatePaths) {
+    if (existsSync(p)) {
+      foundPath = p;
+      break;
+    }
+  }
+
+  if (foundPath) {
+    const stat = statSync(foundPath);
+    reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+    reply.header('Content-Type', 'application/octet-stream');
+    reply.header('Content-Length', stat.size);
+    return reply.send(createReadStream(foundPath));
+  }
+
+  return reply.status(404).send({
+    error: `Artifact file not found: ${release.artifactRef}`,
+  });
 }

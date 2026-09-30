@@ -1,8 +1,10 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { buildApp } from '../app.js';
 import { hashPassword } from '../infra/auth/password.js';
-
 describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
   let app: FastifyInstance;
   let ownerToken: string;
@@ -189,7 +191,8 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
       },
     });
     expect(newerReleaseRes.statusCode).toBe(201);
-
+    const newerPayload = newerReleaseRes.json();
+    const release30Id = typeof newerPayload === 'object' && newerPayload && 'id' in newerPayload ? String(newerPayload.id) : '';
     const detailRes = await app.inject({
       method: 'GET',
       url: `/api/v1/control/devices/${deviceId}`,
@@ -242,6 +245,78 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
       payload: { status: 'REVOKED' },
     });
     expect(revokeRes.statusCode).toBe(200);
+    // 6. Test download releases
+    const latestRes = await app.inject({
+      method: 'GET',
+      url: '/api/v1/control/releases/latest',
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(latestRes.statusCode).toBe(200);
+    const latestPayload = latestRes.json();
+    expect(typeof latestPayload === 'object' && latestPayload && 'version' in latestPayload ? latestPayload.version : '').toBe('0.1.30');
+
+    const latestDownloadRes = await app.inject({
+      method: 'GET',
+      url: '/api/v1/control/releases/latest/download',
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(latestDownloadRes.statusCode).toBe(302);
+    expect(latestDownloadRes.headers['location']).toBe('https://releases.local/artifact-0.1.30.exe');
+
+    // Download with token query param
+    const tokenDownloadRes = await app.inject({
+      method: 'GET',
+      url: `/api/v1/control/releases/${release30Id}/download?token=${ownerToken}`,
+    });
+    expect(tokenDownloadRes.statusCode).toBe(302);
+    expect(tokenDownloadRes.headers['location']).toBe('https://releases.local/artifact-0.1.30.exe');
+
+    // Revoked release cannot be downloaded
+    const revokedDownload = await app.inject({
+      method: 'GET',
+      url: `/api/v1/control/releases/${releaseId}/download`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(revokedDownload.statusCode).toBe(403);
+
+    // Local file artifact download
+    const tmpDir = mkdtempSync(join(tmpdir(), 'printops-artifact-test-'));
+    const tmpArtifact = join(tmpDir, 'PrintOps_0.1.31_x64-setup.exe');
+    writeFileSync(tmpArtifact, 'fake-printops-executable-data');
+    try {
+      const localReleaseRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/control/releases',
+        headers: { authorization: `Bearer ${ownerToken}` },
+        payload: {
+          version: '0.1.31',
+          channel: 'stable',
+          platform: 'windows-x64',
+          architecture: 'x64',
+          schemaVersion: 8,
+          manifestRef: 'https://releases.local/manifest-0.1.31.json',
+          artifactRef: tmpArtifact,
+          sha256: 'hash131',
+          signature: 'sig131',
+          minSupportedVersion: '0.1.20',
+        },
+      });
+      expect(localReleaseRes.statusCode).toBe(201);
+      const localReleasePayload = localReleaseRes.json();
+      const localReleaseId = typeof localReleasePayload === 'object' && localReleasePayload && 'id' in localReleasePayload ? String(localReleasePayload.id) : '';
+
+      const localDownloadRes = await app.inject({
+        method: 'GET',
+        url: `/api/v1/control/releases/${localReleaseId}/download`,
+        headers: { authorization: `Bearer ${ownerToken}` },
+      });
+      expect(localDownloadRes.statusCode).toBe(200);
+      expect(localDownloadRes.headers['content-disposition']).toContain('attachment; filename="PrintOps_0.1.31_x64-setup.exe"');
+      expect(localDownloadRes.headers['content-type']).toBe('application/octet-stream');
+      expect(localDownloadRes.body).toBe('fake-printops-executable-data');
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
     const revokedInstall = await app.inject({
       method: 'POST',
       url: `/api/v1/control/devices/${deviceId}/commands`,
@@ -249,5 +324,62 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
       payload: { type: 'OTA_INSTALL', targetVersion: '0.1.29', idempotencyKey: 'idem_revoked_release' },
     });
     expect(revokedInstall.statusCode).toBe(409);
+
+    // Test download by version query
+    const versionDownloadRes = await app.inject({
+      method: 'GET',
+      url: '/api/v1/control/releases/latest/download?version=0.1.30',
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(versionDownloadRes.statusCode).toBe(302);
+    expect(versionDownloadRes.headers['location']).toBe('https://releases.local/artifact-0.1.30.exe');
+
+    const aliasDownloadRes = await app.inject({
+      method: 'GET',
+      url: '/api/v1/control/releases/download?version=0.1.30',
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(aliasDownloadRes.statusCode).toBe(302);
+    expect(aliasDownloadRes.headers['location']).toBe('https://releases.local/artifact-0.1.30.exe');
+  });
+
+  it('allows zero-token device announcement and network discovery', async () => {
+    // 1. Announce a station directly without an enrollment token
+    const announceRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/control/announce',
+      payload: {
+        installationId: 'inst_auto_counter_01',
+        hostname: 'pharmacy-counter-1',
+        platform: 'windows-x64',
+        architecture: 'x64',
+        appVersion: '0.1.31',
+        schemaVersion: 8,
+      },
+    });
+    expect(announceRes.statusCode).toBe(200);
+    const announceJson = announceRes.json() as { deviceId: string; status: string };
+    expect(announceJson.deviceId).toBeDefined();
+    expect(announceJson.status).toBe('ONLINE');
+
+    // 2. Verify device is present in device list
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/v1/control/devices',
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(listRes.statusCode).toBe(200);
+    const devices = listRes.json() as Array<{ deviceId: string; hostname: string }>;
+    expect(devices.some((d) => d.deviceId === announceJson.deviceId && d.hostname === 'pharmacy-counter-1')).toBe(true);
+
+    // 3. Discovery endpoint
+    const discoverRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/control/devices/discover',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { targets: ['http://invalid-probe-host:31415'] },
+    });
+    expect(discoverRes.statusCode).toBe(200);
+    expect((discoverRes.json() as { discoveredCount: number }).discoveredCount).toBe(0);
   });
 });

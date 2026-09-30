@@ -206,4 +206,40 @@ describe('ReleaseCatalogService (Phase 6)', () => {
     // 0.1.31 should be chosen because 0.1.32 minSupportedVersion is 0.1.30
     expect(latest?.version).toBe('0.1.31');
   });
+
+  it('finds latest available release sorted by semver', async () => {
+    await service.registerRelease({
+      version: '0.1.28',
+      schemaVersion: 8,
+      manifestRef: 'https://releases.local/v0.1.28/manifest.json',
+      artifactRef: 'https://releases.local/v0.1.28/setup.exe',
+      sha256: 'hash28',
+      signature: 'sig28',
+      status: 'AVAILABLE',
+    });
+    await service.registerRelease({
+      version: '0.1.30',
+      schemaVersion: 8,
+      manifestRef: 'https://releases.local/v0.1.30/manifest.json',
+      artifactRef: 'https://releases.local/v0.1.30/setup.exe',
+      sha256: 'hash30',
+      signature: 'sig30',
+      status: 'AVAILABLE',
+    });
+    await service.registerRelease({
+      version: '0.1.31',
+      schemaVersion: 8,
+      manifestRef: 'https://releases.local/v0.1.31/manifest.json',
+      artifactRef: 'https://releases.local/v0.1.31/setup.exe',
+      sha256: 'hash31',
+      signature: 'sig31',
+      status: 'REVOKED',
+    });
+
+    const latest = await service.findLatestRelease();
+    expect(latest?.version).toBe('0.1.30');
+
+    const revokedLatest = await service.findLatestRelease({ status: 'REVOKED' });
+    expect(revokedLatest?.version).toBe('0.1.31');
+  });
 });

@@ -138,4 +138,20 @@ export class ReleaseCatalogService {
   async findLatestCompatibleRelease(device: DeviceRecord): Promise<ReleaseCatalogRecord | null> {
     return (await this.findCompatibleReleases(device))[0] ?? null;
   }
+
+  async findLatestRelease(filter?: ReleaseCatalogFilter): Promise<ReleaseCatalogRecord | null> {
+    const available = await this.releases.findAll({
+      status: 'AVAILABLE',
+      ...filter,
+    });
+    const sorted = available.slice().sort((a, b) => {
+      const diff = compareVersions(b.version, a.version);
+      return diff ?? 0;
+    });
+    return sorted[0] ?? null;
+  }
+
+  async findReleaseByVersion(version: string, platform?: string): Promise<ReleaseCatalogRecord | undefined> {
+    return this.releases.findByVersion(version, platform);
+  }
 }

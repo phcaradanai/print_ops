@@ -52,7 +52,7 @@ const (
 	// Dev auth used only when PRINTOPS_RUNNER_TOKEN is not provided. This
 	// matches the API's seeded dev accounts and is NOT a production secret.
 	defaultDevEmail    = "admin@printerops.local"
-	defaultDevPassword = "dev-password"
+	defaultDevPassword = "Dev-password1!"
 )
 
 // Config is the fully-resolved runner configuration.
