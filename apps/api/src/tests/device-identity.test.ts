@@ -124,4 +124,38 @@ describe('DeviceIdentityStore', () => {
     expect(restartedStore.getPendingControlEvents()).toEqual([]);
   });
 
+  it('exposes the latest command transition written by the standalone agent', () => {
+    const apiStore = new DeviceIdentityStore({ storagePath: identityPath });
+    const sidecarStore = new DeviceIdentityStore({ storagePath: identityPath });
+    const acceptedAt = '2026-10-02T08:00:00.000Z';
+    const completedAt = '2026-10-02T08:00:05.000Z';
+
+    sidecarStore.persistControlTransitions([{
+      eventId: 'evt_content_accepted',
+      deviceId: 'dev_test_123',
+      commandId: 'cmd_content_123',
+      state: 'ACCEPTED',
+      currentVersion: '0.1.31',
+      timestamp: acceptedAt,
+    }], { commandType: 'CONTENT_SYNC' });
+    sidecarStore.persistControlTransitions([{
+      eventId: 'evt_content_completed',
+      deviceId: 'dev_test_123',
+      commandId: 'cmd_content_123',
+      state: 'COMPLETED',
+      currentVersion: '0.1.31',
+      timestamp: completedAt,
+    }], { commandType: 'CONTENT_SYNC' });
+
+    const latestCommand = apiStore.getLatestControlCommand();
+    expect(latestCommand).toMatchObject({
+      commandId: 'cmd_content_123',
+      commandType: 'CONTENT_SYNC',
+      lastCommandState: 'COMPLETED',
+      lastCommandAt: completedAt,
+      replayStatus: 'PROCESSED',
+    });
+    expect(latestCommand?.lastAuthoritativeOtaState).toBeUndefined();
+    expect(latestCommand?.lastAuthoritativeOtaAt).toBeUndefined();
+  });
 });

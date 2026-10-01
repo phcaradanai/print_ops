@@ -11,6 +11,13 @@ import (
 	"time"
 )
 
+func openDesktopShutdownEvent(name string) (desktopShutdownEvent, error) {
+	if name == "" {
+		return nil, fmt.Errorf("desktop shutdown event name is empty")
+	}
+	return nil, fmt.Errorf("desktop shutdown events are supported only on Windows")
+}
+
 func (defaultRuntime) ProcessPath(pid int) (string, error) {
 	return os.Readlink(filepath.Join("/proc", strconv.Itoa(pid), "exe"))
 }

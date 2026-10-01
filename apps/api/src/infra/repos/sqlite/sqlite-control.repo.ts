@@ -313,6 +313,7 @@ function rowToCommand(row: Record<string, unknown>): ControlCommandRecord {
     completedAt: row['completed_at'] ? toDate(row['completed_at']) : undefined,
     terminalState: row['terminal_state'] ? (row['terminal_state'] as string) : undefined,
     failureReason: row['failure_reason'] ? (row['failure_reason'] as string) : undefined,
+    ...(row['progress_json'] ? { progress: fromJson(row['progress_json'], undefined) as ControlCommandRecord['progress'] } : {}),
     ...(contentType ? { contentType: contentType as ControlCommandRecord['contentType'] } : {}),
     ...(contentKey ? { contentKey: contentKey as string } : {}),
     ...(row['payload_json'] ? { contentPayload: fromJson(row['payload_json'], undefined) as ControlCommandRecord['contentPayload'] } : {}),
@@ -431,6 +432,7 @@ export class SqliteControlCommandRepository implements ControlCommandRepositoryP
     if ('completedAt' in patch) add('completed_at', patch.completedAt ? dateStr(patch.completedAt) : null);
     if ('terminalState' in patch) add('terminal_state', patch.terminalState ?? null);
     if ('failureReason' in patch) add('failure_reason', patch.failureReason ?? null);
+    if ('progress' in patch) add('progress_json', patch.progress ? toJson(patch.progress) : null);
     if ('resultPayload' in patch) add('result_payload_json', patch.resultPayload ? toJson(patch.resultPayload) : null);
 
     if (sets.length > 0) {

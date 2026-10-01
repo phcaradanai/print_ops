@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-30
+Last updated: 2026-10-01
 
 ## Architecture
 
@@ -8,12 +8,32 @@ Last updated: 2026-09-30
 |---|---|---|---|
 | `apps/api` | TypeScript (Fastify) | **Production** | REST API, NATS intake, job queue, in-process print executor, result callbacks, audit/trace. Also serves the built SPA in the packaged desktop app. |
 | `apps/web` | TypeScript (React + Vite) | **Production** | Operator/admin dashboard, EN + TH |
-| `apps/desktop` | **Rust (Tauri v2)** | **Production** | Windows desktop shell. Single instance, supervises and restarts the `server.exe` and `printops-runner.exe` sidecars, owns per-installation secrets and NATS settings. **Not Electron.** |
+| `apps/desktop` | **Rust (Tauri v2)** | **Production** | Windows desktop shell. Single instance, supervises and restarts `server.exe`, `printops-runner.exe`, and the enrolled control agent; owns per-installation secrets and NATS settings. Normal exit stops sidecars; the Windows Job Object also kills contained descendants if Desktop exits abruptly. **Not Electron.** |
 | `apps/runner-go` | Go | **Production** | The only runner. In the packaged desktop it runs **discovery + heartbeat only**. |
 | `apps/windows-print-helper` | C# (WebView2) | **Production** | Driver-rendered HTML printing for the Windows spooler path |
 
 The TypeScript runner has been removed. Any document describing `apps/runner`
 or a Node.js runner is stale.
+
+## Desktop shutdown and OTA lifecycle
+
+The Windows Desktop owns the API server, discovery runner, and enrolled control
+agent processes. Normal Tauri exit stops them; the Windows Job Object also
+terminates contained descendants after an abrupt Desktop exit.
+
+OTA replacement uses a one-shot breakaway updater because Desktop must stop
+before its install tree can be replaced. Each Windows Desktop session creates
+a private named shutdown event and passes its name to the API/updater. Normal
+exit signals the event before stopping sidecars. The updater checks the event
+before and after the Desktop-stop handoff; a close during that handoff records
+a failed/canceled operation and exits before backing up or replacing files.
+Online manual rollback observes the same signal. CLI rollback without
+`--desktop-pid` refuses file replacement if the persisted Desktop PID still
+resolves to a live process; otherwise it restores files without relaunching.
+If the event remains clear, the updater-owned handoff continues through health
+verification and automatic rollback on failure. Event creation failure disables
+external OTA rather than running without shutdown coordination. The updater
+runs per operation; it is not installed as a service or scheduled task.
 
 ## Web Control device presence
 
@@ -35,6 +55,21 @@ public `/control/device-info` discovery endpoint alone does not establish local
 connection status. Enrollment by itself is identity, not proof of current
 connectivity. HTTP discovery still requires the Control Plane server to reach
 the station; it does not cross firewalls, NAT, or unrouted subnets.
+
+The PrintOps sidebar also displays a compact remote-command symbol while the
+latest command is processing and for 30 seconds after its last transition. It
+reads the shared device-identity record updated by the standalone agent and
+exposes command type, target version, state, replay status, and latest progress
+to the local UI; command IDs and enrollment credentials are not returned.
+
+PrintOps and Web Control show the command action, current phase, item, measured
+percentage, and terminal success or failure. OTA download percentages count
+artifact bytes read from the response stream; install, rollback, and content
+operations report labeled milestones with `Step X of Y`, rather than estimated
+time or fabricated byte counts. An OTA install also shows its nested artifact
+transfer percentage. The latest progress is persisted with the device command
+and appears in Web Control's command history and per-client content deployment
+status.
 
 ## Web Control client content
 

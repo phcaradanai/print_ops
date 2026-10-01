@@ -1,4 +1,5 @@
 import type {
+  ControlCommandProgress,
   ControlCommandType,
   ControlOtaTransitionEvent,
   DeviceIdentity,
@@ -18,6 +19,9 @@ export interface StoredDeviceCommand {
   targetVersion?: string;
   lastAuthoritativeOtaState?: OtaTransitionState;
   lastAuthoritativeOtaAt?: string;
+  lastCommandState?: OtaTransitionState;
+  lastCommandAt?: string;
+  progress?: ControlCommandProgress;
   lastLocalOtaState?: string;
   replayStatus: DeviceCommandReplayStatus;
   executionStarted?: boolean;
@@ -176,6 +180,21 @@ export class DeviceIdentityStore {
   getPendingControlEvents(): ControlOtaTransitionEvent[] {
     return [...(this.identity.controlEventOutbox ?? [])];
   }
+  getLatestControlCommand(): StoredDeviceCommand | undefined {
+    try {
+      // The API and packaged control agent share this file but have separate
+      // in-memory stores. Read the latest valid command snapshot for the UI.
+      const parsed = JSON.parse(readFileSync(this.filePath, 'utf-8')) as Partial<StoredDeviceIdentity>;
+      if (parsed.installationId === this.identity.installationId && Array.isArray(parsed.controlCommands)) {
+        const commands = parsed.controlCommands;
+        return commands[commands.length - 1];
+      }
+    } catch {
+      // Keep the in-memory state if a sibling process is partway through a write.
+    }
+    const commands = this.identity.controlCommands ?? [];
+    return commands[commands.length - 1];
+  }
 
   persistControlTransitions(
     events: ControlOtaTransitionEvent[],
@@ -209,6 +228,9 @@ export class DeviceIdentityStore {
         targetVersion: event.targetVersion ?? command?.targetVersion ?? previous?.targetVersion,
         lastAuthoritativeOtaState: isContentCommand ? previous?.lastAuthoritativeOtaState : event.state,
         lastAuthoritativeOtaAt: isContentCommand ? previous?.lastAuthoritativeOtaAt : event.timestamp,
+        lastCommandState: event.state,
+        lastCommandAt: event.timestamp,
+        progress: event.progress ?? previous?.progress,
         lastLocalOtaState: command?.localOtaState ?? previous?.lastLocalOtaState,
         replayStatus: terminal ? 'PROCESSED' : previous?.replayStatus ?? 'PROCESSING',
         executionStarted: previous?.executionStarted ?? false,

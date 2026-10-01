@@ -7,6 +7,7 @@ import type {
   ControlContentIndex,
   CreateControlCommandInput,
   ControlCommandRepositoryPort,
+  ControlCommandProgress,
   DeviceRegistryRepositoryPort,
   ControlAuditRepositoryPort,
   OtaTransitionState,
@@ -255,16 +256,17 @@ export class ControlCommandService {
       });
     }
 
-    // Update command if event references a command_id
     if (event.commandId && command) {
       const patch: Partial<ControlCommandRecord> = {
         terminalState: event.state,
+        ...(event.progress ? { progress: event.progress } : {}),
       };
 
       if (event.state === 'ACCEPTED') {
         patch.status = 'ACCEPTED';
         patch.acceptedAt = new Date(event.timestamp);
-      } else if (event.state === 'COMPLETED') {
+      } else if (event.state === 'COMPLETED'
+        || (command.type === 'OTA_DOWNLOAD' && event.state === 'VERIFIED')) {
         if (command.type === 'CONTENT_LIST' || command.type === 'CONTENT_PULL') {
           const resultPayload = validateClientReadResult(command, event.details);
           contentResultValid = Boolean(resultPayload);

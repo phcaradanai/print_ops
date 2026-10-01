@@ -1,10 +1,13 @@
+use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{atomic::{AtomicBool, Ordering}, Mutex, OnceLock};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex, OnceLock,
+};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use serde::{Deserialize, Serialize};
 use tauri::{Manager, Url};
 
 #[cfg(windows)]
@@ -16,9 +19,93 @@ use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
 #[cfg(windows)]
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-    SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-    JOB_OBJECT_LIMIT_BREAKAWAY_OK, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_BREAKAWAY_OK,
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
+
+#[cfg(windows)]
+use windows_sys::Win32::System::Threading::{CreateEventW, SetEvent};
+
+struct DesktopShutdownSignal {
+    event_name: Option<String>,
+    #[cfg(windows)]
+    handle: Mutex<Option<isize>>,
+}
+
+impl DesktopShutdownSignal {
+    fn create(log_path: &Path) -> Self {
+        #[cfg(windows)]
+        {
+            let name = format!(
+                r"Local\PrintOpsDesktopShutdown-{}-{}",
+                std::process::id(),
+                generate_random_hex_secret(),
+            );
+            let wide_name: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+            let handle = unsafe { CreateEventW(std::ptr::null(), 1, 0, wide_name.as_ptr()) };
+            if handle.is_null() {
+                log_line(
+                    log_path,
+                    &format!(
+                        "WARNING: could not create OTA shutdown signal: {}",
+                        std::io::Error::last_os_error()
+                    ),
+                );
+                return Self {
+                    event_name: None,
+                    handle: Mutex::new(None),
+                };
+            }
+            return Self {
+                event_name: Some(name),
+                handle: Mutex::new(Some(handle as isize)),
+            };
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = log_path;
+            Self { event_name: None }
+        }
+    }
+
+    fn event_name(&self) -> Option<&str> {
+        self.event_name.as_deref()
+    }
+
+    fn signal(&self, log_path: &Path) {
+        #[cfg(windows)]
+        {
+            if let Ok(handle) = self.handle.lock() {
+                if let Some(handle) = *handle {
+                    if unsafe { SetEvent(handle as HANDLE) } == 0 {
+                        log_line(
+                            log_path,
+                            &format!(
+                                "WARNING: could not signal OTA shutdown: {}",
+                                std::io::Error::last_os_error()
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = log_path;
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for DesktopShutdownSignal {
+    fn drop(&mut self) {
+        if let Ok(handle) = self.handle.get_mut() {
+            if let Some(handle) = handle.take() {
+                unsafe { CloseHandle(handle as HANDLE) };
+            }
+        }
+    }
+}
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 #[cfg(windows)]
@@ -105,16 +192,14 @@ const OTA_HEALTH_TOKEN_FILE: &str = "ota-health-token.txt";
 // scripts/ota-native-acceptance-build.mjs profile. Normal production builds
 // inherit the Cargo version and current SQLite schema; no runtime
 // environment variable can change either value.
-const DESKTOP_APP_VERSION: &str =
-    match option_env!("PRINTOPS_BUILD_VERSION") {
-        Some(value) => value,
-        None => env!("CARGO_PKG_VERSION"),
-    };
-const DESKTOP_DB_SCHEMA_VERSION: &str =
-    match option_env!("PRINTOPS_BUILD_DB_SCHEMA_VERSION") {
-        Some(value) => value,
-        None => "8",
-    };
+const DESKTOP_APP_VERSION: &str = match option_env!("PRINTOPS_BUILD_VERSION") {
+    Some(value) => value,
+    None => env!("CARGO_PKG_VERSION"),
+};
+const DESKTOP_DB_SCHEMA_VERSION: &str = match option_env!("PRINTOPS_BUILD_DB_SCHEMA_VERSION") {
+    Some(value) => value,
+    None => "8",
+};
 const NATIVE_ACCEPTANCE_BUILD: bool = option_env!("PRINTOPS_OTA_NATIVE_ACCEPTANCE_BUILD").is_some();
 
 fn native_acceptance_data_root() -> Option<PathBuf> {
@@ -155,7 +240,10 @@ fn validate_nats_settings(settings: &NatsSettings) -> Result<(), String> {
 }
 
 fn is_nats_token(value: &str) -> bool {
-    !value.is_empty() && value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 fn is_nats_subject_prefix(value: &str) -> bool {
@@ -248,7 +336,10 @@ fn load_or_create_runner_bootstrap_secret(data_dir: &Path, log: &Path) -> String
     }
     let secret = generate_random_hex_secret();
     let temporary = path.with_extension("txt.tmp");
-    if fs::write(&temporary, &secret).and_then(|_| fs::rename(&temporary, &path)).is_err() {
+    if fs::write(&temporary, &secret)
+        .and_then(|_| fs::rename(&temporary, &path))
+        .is_err()
+    {
         log_line(log, "WARNING: could not persist runner bootstrap secret");
     } else {
         log_line(log, "Generated per-installation runner bootstrap secret");
@@ -266,7 +357,10 @@ fn load_or_create_ota_health_token(data_dir: &Path, log: &Path) -> String {
     }
     let token = generate_random_hex_secret();
     let temporary = path.with_extension("txt.tmp");
-    if fs::write(&temporary, &token).and_then(|_| fs::rename(&temporary, &path)).is_err() {
+    if fs::write(&temporary, &token)
+        .and_then(|_| fs::rename(&temporary, &path))
+        .is_err()
+    {
         log_line(log, "WARNING: could not persist the OTA local health token");
     } else {
         log_line(log, "Generated per-installation OTA local health token");
@@ -294,6 +388,7 @@ struct ServerPaths {
     desktop_path: PathBuf,
     ota_health_token: String,
     ota_public_key: Option<String>,
+    desktop_shutdown_event_name: Option<String>,
 }
 
 /// Builds the `server.exe` launch command for the given NATS settings. Used
@@ -325,15 +420,27 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
         .env("PRINTOPS_APP_VERSION", DESKTOP_APP_VERSION)
         .env("PRINTOPS_GIT_COMMIT", env!("PRINTOPS_GIT_COMMIT"))
         .env("PRINTOPS_DB_SCHEMA_VERSION", DESKTOP_DB_SCHEMA_VERSION)
-        .env("PRINTOPS_OTA_ENABLED", paths.ota_public_key.is_some().to_string())
+        .env(
+            "PRINTOPS_OTA_ENABLED",
+            paths.ota_public_key.is_some().to_string(),
+        )
         .env("PRINTOPS_OTA_REQUIRE_SIGNATURE", "true")
         .env("SQL_WASM_PATH", &paths.wasm_path)
         .env("JWT_SECRET", &paths.jwt_secret)
-        .env("PRINTOPS_RUNNER_BOOTSTRAP_SECRET", &paths.runner_bootstrap_secret)
+        .env(
+            "PRINTOPS_RUNNER_BOOTSTRAP_SECRET",
+            &paths.runner_bootstrap_secret,
+        )
         .env("PRINTOPS_OTA_UPDATER_PATH", &paths.updater_path)
         .env("PRINTOPS_OTA_UPDATER_STATE_PATH", &paths.updater_state_path)
-        .env("PRINTOPS_OTA_UPDATER_REQUEST_DIR", &paths.updater_request_dir)
-        .env("PRINTOPS_OTA_ARTIFACT_STATE_PATH", &paths.artifact_state_path)
+        .env(
+            "PRINTOPS_OTA_UPDATER_REQUEST_DIR",
+            &paths.updater_request_dir,
+        )
+        .env(
+            "PRINTOPS_OTA_ARTIFACT_STATE_PATH",
+            &paths.artifact_state_path,
+        )
         .env("PRINTOPS_OTA_INSTALL_ROOT", &paths.install_root)
         .env("PRINTOPS_OTA_DESKTOP_PATH", &paths.desktop_path)
         .env("PRINTOPS_DESKTOP_PID", std::process::id().to_string())
@@ -341,7 +448,10 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
         .env("PRINTOPS_OTA_HEALTH_TOKEN", &paths.ota_health_token)
         .env(
             "PRINTOPS_HTML_PRINT_HELPER",
-            paths.res_dir.join("print-helper").join("printops-html-print.exe"),
+            paths
+                .res_dir
+                .join("print-helper")
+                .join("printops-html-print.exe"),
         )
         .stdin(Stdio::null())
         .stdout(out)
@@ -349,7 +459,10 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
     if nats_settings.enabled {
         cmd.env("PRINTOPS_NATS_URL", &nats_settings.url)
             .env("PRINTOPS_NATS_CLIENT_ID", &nats_settings.client_id)
-            .env("PRINTOPS_NATS_SUBJECT_PREFIX", &nats_settings.subject_prefix);
+            .env(
+                "PRINTOPS_NATS_SUBJECT_PREFIX",
+                &nats_settings.subject_prefix,
+            );
     } else {
         // Do not inherit accidental machine-level NATS variables.
         cmd.env_remove("NATS_URL")
@@ -360,6 +473,11 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
     }
     if let Some(public_key) = &paths.ota_public_key {
         cmd.env("PRINTOPS_OTA_PUBLIC_KEY", public_key);
+    }
+    if let Some(event_name) = &paths.desktop_shutdown_event_name {
+        cmd.env("PRINTOPS_DESKTOP_SHUTDOWN_EVENT", event_name);
+    } else {
+        cmd.env_remove("PRINTOPS_DESKTOP_SHUTDOWN_EVENT");
     }
     cmd
 }
@@ -404,7 +522,10 @@ fn build_control_agent_command(paths: &ServerPaths) -> Command {
     let mut cmd = Command::new(paths.res_dir.join(CONTROL_AGENT_BINARY_FILE));
     cmd.current_dir(&paths.res_dir)
         .env_remove("PKG_EXECPATH")
-        .env("PRINTOPS_CONTROL_IDENTITY_PATH", &paths.device_identity_path)
+        .env(
+            "PRINTOPS_CONTROL_IDENTITY_PATH",
+            &paths.device_identity_path,
+        )
         .env("PRINTOPS_CONTROL_TARGET_TOKEN_PATH", token_path)
         .env("PRINTOPS_CONTROL_TARGET_URL", SERVER_URL)
         .env("PRINTOPS_CONTROL_NATS_URL", nats_url)
@@ -420,8 +541,12 @@ fn build_control_agent_command(paths: &ServerPaths) -> Command {
 }
 
 fn device_identity_is_enrolled(path: &Path) -> bool {
-    let Ok(contents) = fs::read_to_string(path) else { return false };
-    let Ok(identity) = serde_json::from_str::<serde_json::Value>(&contents) else { return false };
+    let Ok(contents) = fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(identity) = serde_json::from_str::<serde_json::Value>(&contents) else {
+        return false;
+    };
     ["deviceId", "deviceToken"].iter().all(|key| {
         identity
             .get(key)
@@ -436,7 +561,10 @@ fn wait_for_server_health(timeout: Duration) -> bool {
     let deadline = std::time::Instant::now() + timeout;
     let health_url = format!("{SERVER_URL}/health");
     while std::time::Instant::now() < deadline {
-        if let Ok(resp) = ureq::get(&health_url).timeout(Duration::from_secs(2)).call() {
+        if let Ok(resp) = ureq::get(&health_url)
+            .timeout(Duration::from_secs(2))
+            .call()
+        {
             if resp.status() == 200 {
                 return true;
             }
@@ -459,7 +587,10 @@ fn save_nats_settings(app: tauri::AppHandle, settings: NatsSettings) -> Result<(
 
     let state = app.state::<AppState>();
     let app_log = state.paths.app_log.clone();
-    log_line(&app_log, "NATS settings saved; restarting the API server in-process to apply");
+    log_line(
+        &app_log,
+        "NATS settings saved; restarting the API server in-process to apply",
+    );
 
     // Deliberately do NOT call `app.restart()` here. Relaunching the whole
     // Tauri process races with `tauri_plugin_single_instance`: the freshly
@@ -471,7 +602,11 @@ fn save_nats_settings(app: tauri::AppHandle, settings: NatsSettings) -> Result<(
     // the "saved NATS settings but they never take effect" bug. Restarting
     // only the child server process, inside this same already-running app,
     // sidesteps that race entirely: there is no second process launch.
-    kill_child(&state.server_child, &app_log, "server (applying new NATS settings)");
+    kill_child(
+        &state.server_child,
+        &app_log,
+        "server (applying new NATS settings)",
+    );
 
     let cmd = build_server_command(&state.paths, &settings);
     let new_child = spawn_child(cmd, &app_log, "server.exe");
@@ -484,10 +619,16 @@ fn save_nats_settings(app: tauri::AppHandle, settings: NatsSettings) -> Result<(
     }
 
     if wait_for_server_health(Duration::from_secs(20)) {
-        log_line(&app_log, "Server restarted and healthy with new NATS settings");
+        log_line(
+            &app_log,
+            "Server restarted and healthy with new NATS settings",
+        );
         Ok(())
     } else {
-        log_line(&app_log, "ERROR: server restarted but did not become healthy in time");
+        log_line(
+            &app_log,
+            "ERROR: server restarted but did not become healthy in time",
+        );
         Err("API server restarted but did not become healthy in time".into())
     }
 }
@@ -496,6 +637,7 @@ struct AppState {
     server_child: Mutex<Option<Child>>,
     runner_child: Mutex<Option<Child>>,
     control_agent_child: Mutex<Option<Child>>,
+    shutdown_signal: DesktopShutdownSignal,
     shutdown: ShutdownGuard,
     paths: ServerPaths,
 }
@@ -583,7 +725,13 @@ fn resolve_resource_dir(resource_dir: &Path, exe_dir: &Path) -> PathBuf {
 /// that resource directly would leave the file locked during replacement.
 fn prepare_ota_updater(source: &Path, destination: &Path, log: &Path) -> PathBuf {
     if !source.exists() {
-        log_line(log, &format!("ERROR: OTA updater resource is missing: {}", source.display()));
+        log_line(
+            log,
+            &format!(
+                "ERROR: OTA updater resource is missing: {}",
+                source.display()
+            ),
+        );
         return source.to_path_buf();
     }
     if let Some(parent) = destination.parent() {
@@ -598,11 +746,16 @@ fn prepare_ota_updater(source: &Path, destination: &Path, log: &Path) -> PathBuf
     if destination.exists() {
         let _ = fs::remove_file(destination);
     }
-    let copied = fs::copy(source, &temporary)
-        .and_then(|_| fs::rename(&temporary, destination));
+    let copied = fs::copy(source, &temporary).and_then(|_| fs::rename(&temporary, destination));
     match copied {
         Ok(_) => {
-            log_line(log, &format!("Prepared external OTA updater outside install tree: {}", destination.display()));
+            log_line(
+                log,
+                &format!(
+                    "Prepared external OTA updater outside install tree: {}",
+                    destination.display()
+                ),
+            );
             destination.to_path_buf()
         }
         Err(error) => {
@@ -670,9 +823,16 @@ fn spawn_child(mut cmd: Command, log: &Path, label: &str) -> Option<Child> {
 }
 
 fn ota_recovery_is_stale(state_path: &Path) -> bool {
-    let Ok(raw) = fs::read_to_string(state_path) else { return false };
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else { return false };
-    let phase = value.get("phase").and_then(serde_json::Value::as_str).unwrap_or("");
+    let Ok(raw) = fs::read_to_string(state_path) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return false;
+    };
+    let phase = value
+        .get("phase")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
     if !matches!(
         phase,
         "RECEIVED"
@@ -721,11 +881,20 @@ fn launch_stale_ota_recovery(
     command.creation_flags(CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB);
     match command.spawn() {
         Ok(child) => {
-            log_line(log, &format!("stale OTA recovery handed off to updater (pid: {})", child.id()));
+            log_line(
+                log,
+                &format!(
+                    "stale OTA recovery handed off to updater (pid: {})",
+                    child.id()
+                ),
+            );
             true
         }
         Err(error) => {
-            log_line(log, &format!("ERROR: could not start stale OTA recovery: {error}"));
+            log_line(
+                log,
+                &format!("ERROR: could not start stale OTA recovery: {error}"),
+            );
             false
         }
     }
@@ -751,12 +920,18 @@ fn restart_exited_child(
     let exited = match guard.as_mut() {
         Some(child) => match child.try_wait() {
             Ok(Some(status)) => {
-                log_line(log, &format!("ERROR: {label} exited unexpectedly ({status}); restarting"));
+                log_line(
+                    log,
+                    &format!("ERROR: {label} exited unexpectedly ({status}); restarting"),
+                );
                 true
             }
             Ok(None) => false,
             Err(error) => {
-                log_line(log, &format!("ERROR: could not inspect {label}: {error}; restarting"));
+                log_line(
+                    log,
+                    &format!("ERROR: could not inspect {label}: {error}; restarting"),
+                );
                 true
             }
         },
@@ -858,7 +1033,10 @@ pub fn run() {
                 }
                 log_line(
                     &app_log,
-                    &format!("using isolated native acceptance data root: {}", path.display()),
+                    &format!(
+                        "using isolated native acceptance data root: {}",
+                        path.display()
+                    ),
                 );
                 path
             } else {
@@ -867,7 +1045,9 @@ pub fn run() {
                     Err(error) => {
                         log_line(
                             &app_log,
-                            &format!("ERROR: cannot resolve the per-user app-data directory: {error}"),
+                            &format!(
+                                "ERROR: cannot resolve the per-user app-data directory: {error}"
+                            ),
                         );
                         return Err(Box::new(error));
                     }
@@ -907,7 +1087,8 @@ pub fn run() {
             let runner_bootstrap_secret =
                 load_or_create_runner_bootstrap_secret(&data_dir, &app_log);
             let ota_health_token = load_or_create_ota_health_token(&data_dir, &app_log);
-            let desktop_path = std::env::current_exe().unwrap_or_else(|_| exe_dir.join("printerops-desktop.exe"));
+            let desktop_path =
+                std::env::current_exe().unwrap_or_else(|_| exe_dir.join("printerops-desktop.exe"));
             let bundled_updater_path = res_dir.join("printops-updater.exe");
             let updater_path = prepare_ota_updater(
                 &bundled_updater_path,
@@ -918,7 +1099,7 @@ pub fn run() {
                 .ok()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty() && value != "unconfigured");
-
+            let shutdown_signal = DesktopShutdownSignal::create(&app_log);
             let server_paths = ServerPaths {
                 res_dir: res_dir.clone(),
                 db_path: db_path.clone(),
@@ -936,6 +1117,7 @@ pub fn run() {
                 desktop_path,
                 ota_health_token,
                 ota_public_key,
+                desktop_shutdown_event_name: shutdown_signal.event_name().map(str::to_owned),
             };
 
             if launch_stale_ota_recovery(
@@ -1002,6 +1184,7 @@ pub fn run() {
                 runner_child: Mutex::new(runner_child),
                 control_agent_child: Mutex::new(control_agent_child),
                 shutdown: ShutdownGuard::default(),
+                shutdown_signal,
                 paths: server_paths,
             });
 
@@ -1011,7 +1194,9 @@ pub fn run() {
             let supervisor_handle = app.handle().clone();
             std::thread::spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(2));
-                let Some(state) = supervisor_handle.try_state::<AppState>() else { return };
+                let Some(state) = supervisor_handle.try_state::<AppState>() else {
+                    return;
+                };
                 if state.shutdown.started() {
                     return;
                 }
@@ -1104,7 +1289,10 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app: &tauri::AppHandle, event| {
-            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
                 let log = std::env::current_exe()
                     .ok()
                     .and_then(|p| p.parent().map(Path::to_path_buf))
@@ -1112,7 +1300,7 @@ pub fn run() {
                     .unwrap_or_else(|| PathBuf::from("desktop.log"));
                 if let Some(state) = app.try_state::<AppState>() {
                     if state.shutdown.begin() {
-                        log_line(&log, "Desktop exit requested; stopping sidecars before shutdown...");
+                        state.shutdown_signal.signal(&log);
                         kill_child(&state.runner_child, &log, "runner");
                         kill_child(&state.control_agent_child, &log, "control agent");
                         kill_child(&state.server_child, &log, "server");
@@ -1193,7 +1381,10 @@ mod tests {
 
         let first = load_or_create_jwt_secret(&dir, &log);
         let second = load_or_create_jwt_secret(&dir, &log);
-        assert_eq!(first, second, "secret must persist across restarts, not regenerate every launch");
+        assert_eq!(
+            first, second,
+            "secret must persist across restarts, not regenerate every launch"
+        );
         assert_eq!(first.len(), 64);
 
         std::fs::remove_dir_all(&dir).ok();

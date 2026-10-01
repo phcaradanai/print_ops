@@ -222,6 +222,37 @@ describe('OtaUpdateService', () => {
     await expect(service.getStatus()).resolves.toMatchObject({ state: { state: 'VERIFIED' } });
   });
 
+  it('reports actual artifact bytes while downloading in chunks', async () => {
+    const artifact = new Uint8Array(5 * 1024).fill(0x61);
+    const config = await makeConfig();
+    const service = new OtaUpdateService({
+      state: new InMemoryOtaUpdateStateRepository(),
+      config,
+      fetchImpl: async (url) => url.endsWith('manifest.json')
+        ? jsonResponse(manifest('0.1.29', artifact))
+        : new Response(new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (let offset = 0; offset < artifact.byteLength; offset += 1024) {
+              controller.enqueue(artifact.subarray(offset, offset + 1024));
+            }
+            controller.close();
+          },
+        }), { status: 200, headers: { 'content-length': String(artifact.byteLength) } }),
+    });
+    const reports: Array<{ downloadedBytes: number; totalBytes: number }> = [];
+
+    await service.downloadUpdate({
+      version: '0.1.29',
+      onProgress: (progress) => { reports.push(progress); },
+    });
+
+    expect(reports[0]).toEqual({ downloadedBytes: 1024, totalBytes: artifact.byteLength });
+    expect(reports.at(-1)).toEqual({
+      downloadedBytes: artifact.byteLength,
+      totalBytes: artifact.byteLength,
+    });
+  });
+
   it('rejects a corrupted artifact and records VERIFY_FAILED', async () => {
     const expected = bytes('expected');
     const corrupted = bytes('corrupt!');

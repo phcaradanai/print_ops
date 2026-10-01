@@ -21,28 +21,36 @@ const (
 // contains no manifest or networking policy: the API has already selected and
 // verified the artifact before writing this file.
 type Request struct {
-	Mode                  string `json:"mode"`
-	OperationID           string `json:"operation_id"`
-	ArtifactPath          string `json:"artifact_path"`
-	ArtifactSHA256        string `json:"artifact_sha256"`
-	ArtifactSignature     string `json:"artifact_signature"`
-	ArtifactFormat        string `json:"artifact_format"`
-	RequireSignature      bool   `json:"require_signature"`
-	PublicKey             string `json:"public_key"`
-	Version               string `json:"version"`
-	PreviousVersion       string `json:"previous_version"`
-	InstallRoot           string `json:"install_root"`
-	DesktopPath           string `json:"desktop_path"`
-	DesktopPID            int    `json:"desktop_pid"`
-	APIURL                string `json:"api_url"`
-	HealthToken           string `json:"health_token"`
-	DatabasePath          string `json:"database_path"`
-	DatabaseSchemaVersion int    `json:"database_schema_version"`
-	TargetSchemaVersion   int    `json:"target_schema_version"`
-	StatePath             string `json:"state_path"`
-	HealthTimeoutMs       int    `json:"health_check_timeout_ms"`
-	ShutdownTimeoutMs     int    `json:"shutdown_timeout_ms"`
-	HandoffDelayMs        int    `json:"handoff_delay_ms"`
+	Mode                     string `json:"mode"`
+	OperationID              string `json:"operation_id"`
+	ArtifactPath             string `json:"artifact_path"`
+	ArtifactSHA256           string `json:"artifact_sha256"`
+	ArtifactSignature        string `json:"artifact_signature"`
+	ArtifactFormat           string `json:"artifact_format"`
+	RequireSignature         bool   `json:"require_signature"`
+	PublicKey                string `json:"public_key"`
+	Version                  string `json:"version"`
+	PreviousVersion          string `json:"previous_version"`
+	InstallRoot              string `json:"install_root"`
+	DesktopPath              string `json:"desktop_path"`
+	DesktopPID               int    `json:"desktop_pid"`
+	DesktopShutdownEventName string `json:"desktop_shutdown_event_name,omitempty"`
+	APIURL                   string `json:"api_url"`
+	HealthToken              string `json:"health_token"`
+	DatabasePath             string `json:"database_path"`
+	DatabaseSchemaVersion    int    `json:"database_schema_version"`
+	TargetSchemaVersion      int    `json:"target_schema_version"`
+	StatePath                string `json:"state_path"`
+	HealthTimeoutMs          int    `json:"health_check_timeout_ms"`
+	ShutdownTimeoutMs        int    `json:"shutdown_timeout_ms"`
+	HandoffDelayMs           int    `json:"handoff_delay_ms"`
+}
+
+// desktopShutdownEvent remains open so a normal Desktop exit stays observable
+// after the updater has deliberately stopped the Desktop process.
+type desktopShutdownEvent interface {
+	IsSignaled() bool
+	Close()
 }
 
 // State is deliberately written before every irreversible lifecycle step.
@@ -73,9 +81,11 @@ type HealthProbe interface {
 }
 
 type Updater struct {
-	Runtime Runtime
-	Probe   HealthProbe
-	Now     func() time.Time
+	Runtime                  Runtime
+	Probe                    HealthProbe
+	Now                      func() time.Time
+	DesktopShutdownEventName string
+	openShutdownEvent        func(string) (desktopShutdownEvent, error)
 	// Report is injectable for lifecycle tests; production uses the local API
 	// recovery endpoint implemented in updater.go.
 	Report func(Request, string, string) error

@@ -262,6 +262,33 @@ export interface ControlCommandEnvelope {
   content_payload?: ControlContentBundle;
 }
 
+export type ControlCommandProgressPhase =
+  | 'queued'
+  | 'checking'
+  | 'downloading'
+  | 'verifying'
+  | 'waiting-for-idle'
+  | 'installing'
+  | 'restarting'
+  | 'rolling-back'
+  | 'syncing-content'
+  | 'syncing-profile'
+  | 'syncing-template'
+  | 'listing-content'
+  | 'pulling-content'
+  | 'completed';
+
+export interface ControlCommandProgress {
+  /** Completed workflow steps or downloaded bytes, depending on mode. */
+  current: number;
+  total: number;
+  percent: number;
+  mode: 'bytes' | 'steps';
+  phase: ControlCommandProgressPhase;
+  item?: string;
+  transfer?: { currentBytes: number; totalBytes: number };
+}
+
 export interface ControlCommandRecord {
   commandId: string;
   deviceId: string;
@@ -277,11 +304,13 @@ export interface ControlCommandRecord {
   completedAt?: Date;
   terminalState?: string;
   failureReason?: string;
+  progress?: ControlCommandProgress;
   contentType?: ControlContentKind;
   contentKey?: string;
   contentPayload?: ControlContentBundle;
   resultPayload?: { index?: ControlContentIndex; bundle?: ControlContentBundle };
 }
+
 
 export interface CreateControlCommandInput {
   deviceId: string;
@@ -348,6 +377,7 @@ export interface ControlOtaTransitionEvent {
   previousState?: string;
   targetVersion?: string;
   currentVersion: string;
+  progress?: ControlCommandProgress;
   details?: Record<string, unknown>;
   errorMessage?: string;
   timestamp: string; // ISO 8601

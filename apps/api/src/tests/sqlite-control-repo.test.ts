@@ -156,13 +156,23 @@ describe('SQLite Control Repositories (Schema v9)', () => {
     ).rejects.toThrow();
 
     // Update command status
+    const progress = {
+      current: 3,
+      total: 4,
+      percent: 75,
+      mode: 'steps' as const,
+      phase: 'installing' as const,
+    };
     const updated = await repo.update(cmd.commandId, {
       status: 'COMPLETED',
       completedAt: new Date(),
       terminalState: 'COMPLETED',
+      progress,
     });
     expect(updated.status).toBe('COMPLETED');
     expect(updated.terminalState).toBe('COMPLETED');
+    expect(updated.progress).toEqual(progress);
+    expect((await repo.findById(cmd.commandId))?.progress).toEqual(progress);
   });
 
   it('persists client content pull metadata and result payloads', async () => {

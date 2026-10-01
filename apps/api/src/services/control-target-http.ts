@@ -1,13 +1,19 @@
 import { readFileSync } from 'node:fs';
-import type { ControlContentBundle, ControlContentIndex, ControlContentKind } from '@printerops/domain';
+import type {
+  ControlCommandProgress,
+  ControlContentBundle,
+  ControlContentIndex,
+  ControlContentKind,
+} from '@printerops/domain';
 import type { ControlContentSyncResult } from './control-content-sync.service.js';
 import type {
   DownloadUpdateRequest,
+  DownloadUpdateResult,
+  OtaArtifactDownloadProgress,
   OtaExternalOutcome,
   OtaInstallRequest,
   OtaUpdateServicePort,
 } from './ota-update.service.js';
-
 /** The independent device agent only talks to the local PrintOps API. */
 export class ControlTargetHttp implements OtaUpdateServicePort {
   private readonly baseUrl: string;
@@ -37,6 +43,64 @@ export class ControlTargetHttp implements OtaUpdateServicePort {
     }
     return response.json() as Promise<T>;
   }
+  private async requestWithProgress<T, P>(
+    path: string,
+    method: string,
+    body: unknown,
+    onProgress?: (progress: P) => void | Promise<void>,
+  ): Promise<T> {
+    const token = readFileSync(this.tokenPath, 'utf8').trim();
+    if (!token) throw new Error('PrintOps local OTA token is empty');
+    const response = await fetch(new URL(path, this.baseUrl), {
+      method,
+      headers: {
+        'x-printops-ota-token': token,
+        accept: 'application/x-ndjson',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 400);
+      throw new Error(`PrintOps OTA API ${method} ${path} returned ${response.status}: ${detail}`);
+    }
+    if (!response.body) throw new Error(`PrintOps OTA API ${method} ${path} returned no progress stream`);
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result: T | undefined;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (value) buffer += decoder.decode(value, { stream: !done });
+      if (done) buffer += decoder.decode();
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line) as { type?: string; progress?: P; result?: T; message?: string };
+        if (event.type === 'progress' && event.progress) {
+          await onProgress?.(event.progress);
+        } else if (event.type === 'result') {
+          result = event.result;
+        } else if (event.type === 'error') {
+          throw new Error(event.message || `PrintOps OTA API ${method} ${path} failed`);
+        } else {
+          throw new Error(`PrintOps OTA API ${method} ${path} returned an unknown progress event`);
+        }
+      }
+      if (done) break;
+    }
+    if (buffer.trim()) {
+      const event = JSON.parse(buffer) as { type?: string; progress?: P; result?: T; message?: string };
+      if (event.type === 'progress' && event.progress) await onProgress?.(event.progress);
+      else if (event.type === 'result') result = event.result;
+      else if (event.type === 'error') throw new Error(event.message || `PrintOps OTA API ${method} ${path} failed`);
+      else throw new Error(`PrintOps OTA API ${method} ${path} returned an unknown progress event`);
+    }
+    if (result === undefined) throw new Error(`PrintOps OTA API ${method} ${path} ended without a result`);
+    return result;
+  }
 
   async getStatus() {
     const status = await this.request<Awaited<ReturnType<OtaUpdateServicePort['getStatus']>>>('/api/v1/ota/status');
@@ -53,7 +117,9 @@ export class ControlTargetHttp implements OtaUpdateServicePort {
   }
 
   downloadUpdate(request: DownloadUpdateRequest) {
-    return this.request<Awaited<ReturnType<OtaUpdateServicePort['downloadUpdate']>>>('/api/v1/ota/download', 'POST', request);
+    const { onProgress, ...body } = request;
+    return this.requestWithProgress<DownloadUpdateResult, OtaArtifactDownloadProgress>(
+      '/api/v1/ota/download', 'POST', body, onProgress);
   }
 
   async installUpdate(request: OtaInstallRequest) {
@@ -100,8 +166,16 @@ export class ControlTargetHttp implements OtaUpdateServicePort {
     }
   }
 
-  applyContentBundle(bundle: ControlContentBundle): Promise<ControlContentSyncResult> {
-    return this.request('/api/v1/ota/content-sync', 'POST', bundle);
+  applyContentBundle(
+    bundle: ControlContentBundle,
+    onProgress?: (progress: ControlCommandProgress) => void | Promise<void>,
+  ): Promise<ControlContentSyncResult> {
+    return this.requestWithProgress<ControlContentSyncResult, ControlCommandProgress>(
+      '/api/v1/ota/content-sync',
+      'POST',
+      bundle,
+      onProgress,
+    );
   }
 
   getClientContentIndex(): Promise<ControlContentIndex> {

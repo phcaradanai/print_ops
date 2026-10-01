@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type {
+  ControlCommandProgress,
   ControlContentBundle,
   ControlContentIndex,
   ControlContentKind,
@@ -228,7 +229,10 @@ export class ControlContentSyncService {
     };
   }
 
-  async applyBundle(value: unknown): Promise<ControlContentSyncResult> {
+  async applyBundle(
+    value: unknown,
+    onProgress?: (progress: ControlCommandProgress) => void | Promise<void>,
+  ): Promise<ControlContentSyncResult> {
     const bundle = validateBundle(value);
     const existingProfile = bundle.profile
       ? await this.profiles.findByCode(bundle.profile.code)
@@ -255,6 +259,23 @@ export class ControlContentSyncService {
       throw new ConflictError(`Template ${bundle.template!.templateCode} already exists with local changes; enable replace to update it`);
     }
 
+    const workItems: Array<{ phase: 'syncing-profile' | 'syncing-template'; item: string }> = [];
+    if (bundle.profile) workItems.push({ phase: 'syncing-profile', item: bundle.profile.name || bundle.profile.code });
+    if (bundle.template) workItems.push({ phase: 'syncing-template', item: bundle.template.name || bundle.template.templateCode });
+    let completed = 0;
+    const reportProgress = async (nextItem = workItems[completed]) => {
+      const total = workItems.length;
+      await onProgress?.({
+        current: completed,
+        total,
+        percent: Math.floor((completed / total) * 100),
+        mode: 'steps',
+        phase: nextItem?.phase ?? 'completed',
+        ...(nextItem?.item ? { item: nextItem.item } : {}),
+      });
+    };
+    if (workItems.length > 0) await reportProgress();
+
     let profileResult: ControlContentSyncResult['profile'] = 'none';
     if (bundle.profile) {
       if (!existingProfile) {
@@ -266,6 +287,8 @@ export class ControlContentSyncService {
         linkedPaper = await this.profiles.update(existingProfile.id, bundle.profile);
         profileResult = 'updated';
       }
+      completed += 1;
+      await reportProgress();
     }
 
     let templateResult: ControlContentSyncResult['template'] = 'none';
@@ -291,6 +314,8 @@ export class ControlContentSyncService {
         });
         templateResult = 'updated';
       }
+      completed += 1;
+      await reportProgress();
     }
 
     return { kind: bundle.kind, key: bundle.key, profile: profileResult, template: templateResult };

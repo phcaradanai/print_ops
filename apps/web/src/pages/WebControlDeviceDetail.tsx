@@ -25,6 +25,8 @@ import {
   Select,
   Text,
 } from '../components/ui/index.js';
+import type { ControlCommandProgress } from '@printerops/domain';
+import { RemoteCommandProgress } from '../components/RemoteCommandProgress.js';
 
 interface CompatibleReleaseOption {
   id?: string;
@@ -86,6 +88,7 @@ interface CommandItem {
   status: string;
   terminalState?: string;
   failureReason?: string;
+  progress?: ControlCommandProgress;
 }
 
 const DETAIL_POLL_MS = 6_000;
@@ -381,6 +384,7 @@ export default function WebControlDeviceDetail() {
                   <DataHead>Type</DataHead>
                   <DataHead>Target Version</DataHead>
                   <DataHead>Status</DataHead>
+                  <DataHead>Progress</DataHead>
                   <DataHead>Terminal State</DataHead>
                   <DataHead>Requested By</DataHead>
                   <DataHead>Requested At</DataHead>
@@ -396,6 +400,23 @@ export default function WebControlDeviceDetail() {
                       <DataCell><Mono size="body">{cmd.type}</Mono></DataCell>
                       <DataCell><Mono size="body">{cmd.targetVersion ? `v${cmd.targetVersion}` : '—'}</Mono></DataCell>
                       <DataCell><Badge tone={statusTone}>{cmd.status}</Badge></DataCell>
+                      <DataCell>
+                        <RemoteCommandProgress
+                          progress={cmd.progress ?? (['PENDING', 'DELIVERED', 'ACCEPTED'].includes(cmd.status)
+                            ? {
+                              current: 0,
+                              total: 1,
+                              percent: 0,
+                              mode: 'steps',
+                              phase: 'queued',
+                              ...(cmd.targetVersion ? { item: cmd.targetVersion } : {}),
+                            }
+                            : undefined)}
+                          commandType={cmd.type}
+                          status={cmd.status}
+                          compact
+                        />
+                      </DataCell>
                       <DataCell><Text size="body">{cmd.terminalState || '—'}</Text></DataCell>
                       <DataCell><Text size="label">{cmd.requestedBy}</Text></DataCell>
                       <DataCell><Text size="label">{formatRelativeTime(t, cmd.requestedAt)}</Text></DataCell>

@@ -94,6 +94,7 @@ function ensureOptionalControlExtensions(db: Database): void {
     ensureColumn(db, 'control_commands', 'content_type', 'TEXT');
     ensureColumn(db, 'control_commands', 'content_key', 'TEXT');
     ensureColumn(db, 'control_commands', 'result_payload_json', 'TEXT');
+    ensureColumn(db, 'control_commands', 'progress_json', 'TEXT');
     db.run(`
       CREATE TABLE IF NOT EXISTS control_command_payloads (
         command_id TEXT PRIMARY KEY NOT NULL,

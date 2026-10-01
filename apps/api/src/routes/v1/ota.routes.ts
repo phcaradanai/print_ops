@@ -2,13 +2,42 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import type {
   ArtifactComponent,
   ArtifactPlatform,
+  ControlCommandProgress,
   ControlContentKind,
 } from '@printerops/domain';
-import type { OtaExternalOutcome, OtaUpdateServicePort } from '../../services/ota-update.service.js';
+import type {
+  DownloadUpdateRequest,
+  DownloadUpdateResult,
+  OtaArtifactDownloadProgress,
+  OtaExternalOutcome,
+  OtaUpdateServicePort,
+} from '../../services/ota-update.service.js';
 import type { ControlContentSyncService } from '../../services/control-content-sync.service.js';
 import type { LocalControlDeviceInfo } from '../../services/control-device-info.service.js';
+import { PassThrough } from 'node:stream';
 import { AppError, ValidationError } from '@printerops/shared';
 import { requireInternalToken, requirePermissionOrInternal } from './permission-guard.js';
+function sendProgressStream<T, P = ControlCommandProgress>(
+  reply: FastifyReply,
+  operation: (onProgress: (progress: P) => void | Promise<void>) => Promise<T>,
+): FastifyReply {
+  const stream = new PassThrough();
+  reply.header('content-type', 'application/x-ndjson; charset=utf-8');
+  reply.send(stream);
+  const writeEvent = (event: unknown) => {
+    if (!stream.destroyed) stream.write(`${JSON.stringify(event)}\n`);
+  };
+  void operation((progress) => writeEvent({ type: 'progress', progress }))
+    .then((result) => {
+      writeEvent({ type: 'result', result });
+      stream.end();
+    })
+    .catch((error: unknown) => {
+      writeEvent({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+      stream.end();
+    });
+  return reply;
+}
 
 export async function otaRoutes(
   app: FastifyInstance,
@@ -58,12 +87,17 @@ export async function otaRoutes(
       if (manifestUrl !== undefined && typeof manifestUrl !== 'string') {
         throw new ValidationError('manifestUrl must be a string');
       }
-      return reply.send(await deps.service.downloadUpdate({
+      const downloadRequest: DownloadUpdateRequest = {
         version,
         ...(component !== undefined ? { component: component as ArtifactComponent } : {}),
         ...(platform !== undefined ? { platform: platform as ArtifactPlatform } : {}),
         ...(manifestUrl !== undefined ? { manifestUrl } : {}),
-      }));
+      };
+      if (String(req.headers.accept ?? '').includes('application/x-ndjson')) {
+        return sendProgressStream<DownloadUpdateResult, OtaArtifactDownloadProgress>(reply, (onProgress) =>
+          deps.service.downloadUpdate({ ...downloadRequest, onProgress }));
+      }
+      return reply.send(await deps.service.downloadUpdate(downloadRequest));
     } catch (error) {
       return sendError(reply, error);
     }
@@ -128,6 +162,10 @@ export async function otaRoutes(
   app.post('/ota/content-sync', { onRequest: [requireInternalToken(deps.internalToken)] }, async (req, reply) => {
     if (!deps.contentSync) return reply.status(503).send({ error: 'Content sync is not configured' });
     try {
+      if (String(req.headers.accept ?? '').includes('application/x-ndjson')) {
+        return sendProgressStream(reply, (onProgress) =>
+          deps.contentSync!.applyBundle(req.body, onProgress));
+      }
       const result = await deps.contentSync.applyBundle(req.body);
       return reply.send(result);
     } catch (error) {

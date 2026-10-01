@@ -128,13 +128,18 @@ export interface UpdateCheckResult {
   compatibility?: ReleaseManifest['compatibility'];
 }
 
+export interface OtaArtifactDownloadProgress {
+  downloadedBytes: number;
+  totalBytes: number;
+}
+
 export interface DownloadUpdateRequest {
   version: string;
   component?: ArtifactComponent;
   platform?: ArtifactPlatform;
   manifestUrl?: string;
+  onProgress?: (progress: OtaArtifactDownloadProgress) => void | Promise<void>;
 }
-
 export interface DownloadUpdateResult {
   downloaded: boolean;
   alreadyCurrent: boolean;
@@ -936,7 +941,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           await rm(finalPath, { force: true });
         }
 
-        if (!cached) await this.downloadToPart(url, partPath, entry);
+        if (!cached) await this.downloadToPart(url, partPath, entry, request.onProgress);
         await this.deps.state.update({ state: 'DOWNLOADED' });
 
         phase = 'verify';
@@ -1624,7 +1629,12 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     return join(this.deps.config.cacheDir, version, `${component}-${platform}.artifact`);
   }
 
-  private async downloadToPart(url: string, partPath: string, entry: ArtifactEntry): Promise<void> {
+  private async downloadToPart(
+    url: string,
+    partPath: string,
+    entry: ArtifactEntry,
+    onProgress?: DownloadUpdateRequest['onProgress'],
+  ): Promise<void> {
     if (entry.size > this.deps.config.maxArtifactBytes) {
       throw new AppError('OTA_DOWNLOAD_FAILED', 'Artifact exceeds the configured download size limit', 413);
     }
@@ -1638,9 +1648,29 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     }
     if (!response.body) throw new AppError('OTA_DOWNLOAD_FAILED', 'Artifact response has no body', 503);
 
+    let downloadedBytes = 0;
+    let lastReportedPercent = -1;
+    let lastReportedAt = 0;
+    const source = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
+    const reportChunks = async function* () {
+      for await (const chunk of source) {
+        downloadedBytes += chunk.byteLength;
+        const percent = entry.size > 0
+          ? Math.min(100, Math.floor((downloadedBytes / entry.size) * 100))
+          : 100;
+        const now = Date.now();
+        if (percent === 100 || percent - lastReportedPercent >= 5 || now - lastReportedAt >= 1_000) {
+          lastReportedPercent = percent;
+          lastReportedAt = now;
+          await onProgress?.({ downloadedBytes: Math.min(downloadedBytes, entry.size), totalBytes: entry.size });
+        }
+        yield chunk;
+      }
+    };
+
     try {
       await pipeline(
-        Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
+        Readable.from(reportChunks()),
         createWriteStream(partPath, { flags: 'wx' }),
       );
       const info = await stat(partPath);

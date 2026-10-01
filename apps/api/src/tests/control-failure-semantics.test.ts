@@ -676,7 +676,7 @@ describe('Phase 9 — Failure Semantics & Robustness', () => {
     await agent.handleCommand(envelope, { waitForCompletion: true });
 
     expect(operationOrder).toEqual(['download', 'install']);
-    expect(mockOta.downloadUpdate).toHaveBeenCalledWith({ version: '0.1.29' });
+    expect(mockOta.downloadUpdate).toHaveBeenCalledWith(expect.objectContaining({ version: '0.1.29' }));
     expect(recordedEvents.map((event) => event.state)).toEqual([
       'ACCEPTED',
       'CHECKING',
@@ -718,7 +718,7 @@ describe('Phase 9 — Failure Semantics & Robustness', () => {
 
     await agent.handleCommand(envelope, { waitForCompletion: true });
 
-    expect(mockOta.downloadUpdate).toHaveBeenCalledWith({ version: '0.1.29' });
+    expect(mockOta.downloadUpdate).toHaveBeenCalledWith(expect.objectContaining({ version: '0.1.29' }));
     expect(mockOta.installUpdate).not.toHaveBeenCalled();
     expect(recordedEvents.map((event) => event.state)).toEqual([
       'ACCEPTED',

@@ -1,4 +1,5 @@
 import type {
+  ControlCommandProgress,
   ControlContentBundle,
   ControlCommandEnvelope,
   ControlOtaTransitionEvent,
@@ -15,6 +16,7 @@ import type { ControlContentSyncResult } from './control-content-sync.service.js
 import type { DeviceIdentityStore } from './device-identity.js';
 import type {
   DownloadUpdateResult,
+  OtaArtifactDownloadProgress,
   OtaUpdateServicePort,
   UpdateCheckResult,
 } from './ota-update.service.js';
@@ -54,6 +56,105 @@ function updaterStateUpdatedAfter(
   const since = timestamp ? Date.parse(timestamp) : Number.NaN;
   const updatedAt = status.state.updatedAt.getTime();
   return Number.isFinite(since) && Number.isFinite(updatedAt) && updatedAt > since;
+}
+
+function stepProgress(
+  phase: ControlCommandProgress['phase'],
+  current: number,
+  total: number,
+  item?: string,
+): ControlCommandProgress {
+  return {
+    current,
+    total,
+    percent: total > 0 ? Math.floor((current / total) * 100) : 100,
+    mode: 'steps',
+    phase,
+    ...(item ? { item } : {}),
+  };
+}
+
+function commandProgress(
+  type: ControlCommandEnvelope['type'] | undefined,
+  state: OtaTransitionState,
+  item?: string,
+): ControlCommandProgress | undefined {
+  switch (type) {
+    case 'OTA_CHECK':
+      if (state === 'ACCEPTED') return stepProgress('queued', 0, 1, item);
+      if (state === 'CHECKING') return stepProgress('checking', 0, 1, item);
+      if (state === 'COMPLETED') return stepProgress('completed', 1, 1, item);
+      return undefined;
+    case 'OTA_DOWNLOAD':
+      if (state === 'ACCEPTED') return stepProgress('queued', 0, 1, item);
+      if (state === 'DOWNLOADING') return stepProgress('downloading', 0, 1, item);
+      if (state === 'VERIFIED' || state === 'COMPLETED') return stepProgress('completed', 1, 1, item);
+      return undefined;
+    case 'OTA_INSTALL':
+      if (state === 'ACCEPTED') return stepProgress('queued', 0, 4, item);
+      if (state === 'CHECKING') return stepProgress('checking', 0, 4, item);
+      if (state === 'DOWNLOADING') return stepProgress('downloading', 1, 4, item);
+      if (state === 'VERIFIED') return stepProgress('verifying', 2, 4, item);
+      if (state === 'WAITING_FOR_IDLE') return stepProgress('waiting-for-idle', 2, 4, item);
+      if (state === 'INSTALLING') return stepProgress('installing', 3, 4, item);
+      if (state === 'RESTARTING') return stepProgress('restarting', 3, 4, item);
+      if (state === 'COMPLETED') return stepProgress('completed', 4, 4, item);
+      return undefined;
+    case 'OTA_ROLLBACK':
+      if (state === 'ACCEPTED') return stepProgress('queued', 0, 2, item);
+      if (state === 'ROLLING_BACK') return stepProgress('rolling-back', 0, 2, item);
+      if (state === 'RESTARTING') return stepProgress('restarting', 1, 2, item);
+      if (state === 'ROLLED_BACK' || state === 'COMPLETED') return stepProgress('completed', 2, 2, item);
+      return undefined;
+    case 'CONTENT_SYNC':
+      if (state === 'ACCEPTED') return stepProgress('syncing-content', 0, 1, item);
+      if (state === 'COMPLETED') return stepProgress('completed', 1, 1, item);
+      return undefined;
+    case 'CONTENT_LIST':
+      if (state === 'ACCEPTED') return stepProgress('listing-content', 0, 1, item);
+      if (state === 'COMPLETED') return stepProgress('completed', 1, 1, item);
+      return undefined;
+    case 'CONTENT_PULL':
+      if (state === 'ACCEPTED') return stepProgress('pulling-content', 0, 1, item);
+      if (state === 'COMPLETED') return stepProgress('completed', 1, 1, item);
+      return undefined;
+    default:
+      return undefined;
+  }
+}
+
+function initialCommandProgress(envelope: ControlCommandEnvelope): ControlCommandProgress | undefined {
+  if (envelope.type === 'CONTENT_PULL') {
+    return stepProgress('pulling-content', 0, 1, envelope.content_key);
+  }
+  if (envelope.type === 'CONTENT_SYNC') {
+    return stepProgress('syncing-content', 0, 1, envelope.content_key);
+  }
+  return commandProgress(envelope.type, 'ACCEPTED', envelope.target_version);
+}
+
+function downloadProgress(
+  type: ControlCommandEnvelope['type'],
+  version: string,
+  progress: OtaArtifactDownloadProgress,
+): ControlCommandProgress {
+  const totalBytes = Math.max(1, progress.totalBytes);
+  const currentBytes = Math.min(progress.downloadedBytes, totalBytes);
+  if (type === 'OTA_DOWNLOAD') {
+    return {
+      current: currentBytes,
+      total: totalBytes,
+      percent: Math.min(100, Math.floor((currentBytes / totalBytes) * 100)),
+      mode: 'bytes',
+      phase: 'downloading',
+      item: version,
+    };
+  }
+  const stage = commandProgress(type, 'DOWNLOADING', version)!;
+  return {
+    ...stage,
+    transfer: { currentBytes, totalBytes },
+  };
 }
 
 class ControlEventDeliveryError extends Error {
@@ -97,10 +198,13 @@ export interface ControlAgentDeps {
     ipAddresses?: string[];
     capabilities?: string[];
   } | undefined>;
-  applyContentBundle?: (bundle: ControlContentBundle) => Promise<ControlContentSyncResult>;
+  logger?: Pick<Console, 'info' | 'warn' | 'error'>;
+  applyContentBundle?: (
+    bundle: ControlContentBundle,
+    onProgress?: (progress: ControlCommandProgress) => void | Promise<void>,
+  ) => Promise<ControlContentSyncResult>;
   getClientContentIndex?: () => Promise<ControlContentIndex>;
   exportClientContent?: (kind: ControlContentKind, code: string) => Promise<ControlContentBundle>;
-  logger?: { info: (msg: string, ...args: unknown[]) => void; error: (msg: string, ...args: unknown[]) => void; warn: (msg: string, ...args: unknown[]) => void };
 }
 
 export class PrintOpsControlAgent {
@@ -148,6 +252,7 @@ export class PrintOpsControlAgent {
       targetVersion?: string;
       errorMessage?: string;
       details?: Record<string, unknown>;
+      progress?: ControlCommandProgress;
       localOtaState?: string;
       command?: {
         idempotencyKey?: string;
@@ -157,6 +262,12 @@ export class PrintOpsControlAgent {
     } = {},
   ): Promise<void> {
     const otaStatus = await this.otaService.getStatus();
+    const existing = commandId ? this.identityStore.getControlCommand(commandId) : undefined;
+    const progress = opts.progress ?? commandProgress(
+      opts.command?.commandType ?? existing?.commandType,
+      state,
+      opts.targetVersion ?? existing?.targetVersion,
+    );
     const event: ControlOtaTransitionEvent = {
       eventId: `evt_${generateId()}`,
       deviceId: this.identity.deviceId,
@@ -164,6 +275,7 @@ export class PrintOpsControlAgent {
       state,
       targetVersion: opts.targetVersion,
       currentVersion: otaStatus.currentVersion,
+      ...(progress ? { progress } : {}),
       errorMessage: opts.errorMessage,
       details: opts.details,
       timestamp: new Date().toISOString(),
@@ -482,6 +594,7 @@ export class PrintOpsControlAgent {
     try {
       await this.emitTransition(envelope.command_id, 'ACCEPTED', {
         targetVersion: envelope.target_version,
+        progress: initialCommandProgress(envelope),
         command: {
           idempotencyKey: envelope.idempotency_key,
           commandType: envelope.type,
@@ -568,10 +681,27 @@ export class PrintOpsControlAgent {
     if (this.identityStore.getControlCommand(envelope.command_id)?.lastAuthoritativeOtaState !== 'DOWNLOADING') {
       await this.emitTransition(envelope.command_id, 'DOWNLOADING', { targetVersion: version });
     }
+    let progressDeliveryFailed = false;
     let result: DownloadUpdateResult;
     try {
       this.identityStore.markControlCommandStarted(envelope.command_id);
-      result = await this.otaService.downloadUpdate({ version, manifestUrl: envelope.manifest_url });
+      result = await this.otaService.downloadUpdate({
+        version,
+        manifestUrl: envelope.manifest_url,
+        onProgress: async (progress) => {
+          if (progressDeliveryFailed) return;
+          try {
+            await this.emitTransition(envelope.command_id, 'DOWNLOADING', {
+              targetVersion: version,
+              progress: downloadProgress(envelope.type, version, progress),
+            });
+          } catch (error) {
+            if (!(error instanceof ControlEventDeliveryError)) throw error;
+            progressDeliveryFailed = true;
+            this.logger?.warn('Skipping further OTA download progress events after delivery failed', error);
+          }
+        },
+      });
     } catch (err) {
       if (err instanceof ControlEventDeliveryError) throw err;
       await this.emitTransition(envelope.command_id, 'INSTALL_FAILED', {
@@ -580,7 +710,6 @@ export class PrintOpsControlAgent {
       });
       return;
     }
-
     await this.emitTransition(envelope.command_id, 'VERIFIED', {
       targetVersion: version,
       details: { bytes: result.bytes, sha256: result.sha256 },
@@ -598,6 +727,7 @@ export class PrintOpsControlAgent {
 
     let progressDeliveryFailed = false;
     let progressDeliveryError: unknown;
+    let downloadProgressDeliveryFailed = false;
     try {
       const persistedCommand = this.identityStore.getControlCommand(envelope.command_id);
       let lastReportedState: string | undefined =
@@ -625,16 +755,23 @@ export class PrintOpsControlAgent {
         if (lastState !== 'DOWNLOADING') {
           await this.emitTransition(envelope.command_id, 'DOWNLOADING', { targetVersion: version });
         }
-        const downloadResult = await this.otaService.downloadUpdate({ version, manifestUrl: envelope.manifest_url });
-        if (downloadResult.version !== version
-          || downloadResult.component !== component
-          || downloadResult.platform !== platform) {
-          throw new AppError(
-            'OTA_ARTIFACT_MISMATCH',
-            `Downloaded OTA artifact does not match ${component}/${platform} ${version}`,
-            409,
-          );
-        }
+        const downloadResult = await this.otaService.downloadUpdate({
+          version,
+          manifestUrl: envelope.manifest_url,
+          onProgress: async (progress) => {
+            if (downloadProgressDeliveryFailed) return;
+            try {
+              await this.emitTransition(envelope.command_id, 'DOWNLOADING', {
+                targetVersion: version,
+                progress: downloadProgress(envelope.type, version, progress),
+              });
+            } catch (error) {
+              if (!(error instanceof ControlEventDeliveryError)) throw error;
+              downloadProgressDeliveryFailed = true;
+              this.logger?.warn('Skipping further OTA download progress events after delivery failed', error);
+            }
+          },
+        });
         await this.emitTransition(envelope.command_id, 'VERIFIED', {
           targetVersion: version,
           localOtaState: 'VERIFIED',
@@ -790,7 +927,17 @@ export class PrintOpsControlAgent {
       return;
     }
     try {
-      const result = await this.applyContentBundle(bundle);
+      const result = await this.applyContentBundle(bundle, async (progress) => {
+        try {
+          await this.emitTransition(envelope.command_id, 'ACCEPTED', {
+            targetVersion: envelope.target_version,
+            progress,
+          });
+        } catch (error) {
+          if (!(error instanceof ControlEventDeliveryError)) throw error;
+          this.logger?.warn('Content update continues after progress event delivery failed', error);
+        }
+      });
       await this.emitTransition(envelope.command_id, 'COMPLETED', {
         targetVersion: envelope.target_version,
         details: { ...result },

@@ -5,7 +5,8 @@ import { useLocale } from '../i18n/index.js';
 import { formatRelativeTime } from '../lib/relativeTime.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import type { DeviceListItem } from './WebControlDevices.js';
-import type { ControlContentBundle, ControlContentIndex, ControlContentKind } from '@printerops/domain';
+import type { ControlCommandProgress, ControlContentBundle, ControlContentIndex, ControlContentKind } from '@printerops/domain';
+import { RemoteCommandProgress } from '../components/RemoteCommandProgress.js';
 import {
   Alert,
   Badge,
@@ -50,6 +51,7 @@ interface CommandHistoryItem {
   status: string;
   terminalState?: string;
   failureReason?: string;
+  progress?: ControlCommandProgress;
 }
 
 interface ContentCommandDetail {
@@ -57,6 +59,7 @@ interface ContentCommandDetail {
   status: string;
   terminalState?: string;
   failureReason?: string;
+  progress?: ControlCommandProgress;
   resultPayload?: { index?: ControlContentIndex; bundle?: ControlContentBundle };
 }
 
@@ -81,6 +84,7 @@ interface DeploymentTarget {
   errorMessage?: string;
   terminalState?: string;
   failureReason?: string;
+  progress?: ControlCommandProgress;
 }
 
 interface DeploymentRecord {
@@ -106,6 +110,9 @@ export default function WebControlContent() {
   const [clientInventory, setClientInventory] = useState<ControlContentIndex | null>(null);
   const [inventoryError, setInventoryError] = useState<string | null>(null);
   const [inventoryActivity, setInventoryActivity] = useState('');
+  const [inventoryProgress, setInventoryProgress] = useState<ControlCommandProgress | null>(null);
+  const [inventoryCommandType, setInventoryCommandType] = useState<'CONTENT_LIST' | 'CONTENT_PULL'>('CONTENT_LIST');
+  const [inventoryCommandStatus, setInventoryCommandStatus] = useState('ACCEPTED');
   const [isReadingClient, setIsReadingClient] = useState(false);
   const [pulledBundle, setPulledBundle] = useState<ControlContentBundle | null>(null);
   const [pullCommandId, setPullCommandId] = useState('');
@@ -178,11 +185,23 @@ export default function WebControlContent() {
         idempotencyKey: `content_${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
       }),
     });
+    setInventoryCommandType(body.type);
+    setInventoryCommandStatus(issued.status);
+    setInventoryProgress(issued.progress ?? {
+      current: 0,
+      total: 1,
+      percent: 0,
+      mode: 'steps',
+      phase: body.type === 'CONTENT_LIST' ? 'listing-content' : 'pulling-content',
+      ...(body.type === 'CONTENT_PULL' ? { item: body.contentKey } : {}),
+    });
     setInventoryActivity(`Command ${issued.commandId} is ${issued.status.toLowerCase()}. Waiting for the client…`);
     for (let attempt = 0; attempt < 40; attempt += 1) {
       const current = await apiFetch<ContentCommandDetail>(
         `/v1/control/devices/${encodeURIComponent(deviceId)}/commands/${encodeURIComponent(issued.commandId)}`,
       );
+      setInventoryCommandStatus(current.status);
+      if (current.progress) setInventoryProgress(current.progress);
       if (current.status === 'COMPLETED') return current;
       if (['FAILED', 'REJECTED', 'EXPIRED'].includes(current.status)) {
         throw new Error(current.failureReason || `Client command ${current.status.toLowerCase()}`);
@@ -202,6 +221,15 @@ export default function WebControlContent() {
     setPulledBundle(null);
     setPullCommandId('');
     setClientInventory(null);
+    setInventoryCommandType('CONTENT_LIST');
+    setInventoryCommandStatus('ACCEPTED');
+    setInventoryProgress({
+      current: 0,
+      total: 1,
+      percent: 0,
+      mode: 'steps',
+      phase: 'listing-content',
+    });
     setInventoryActivity('Requesting profile and template list…');
     try {
       const result = await issueAndWaitForContentCommand(inventoryDeviceId, { type: 'CONTENT_LIST' });
@@ -211,6 +239,7 @@ export default function WebControlContent() {
     } catch (error) {
       setInventoryError(error instanceof Error ? error.message : String(error));
       setInventoryActivity('');
+      setInventoryCommandStatus('FAILED');
     } finally {
       setIsReadingClient(false);
     }
@@ -224,6 +253,16 @@ export default function WebControlContent() {
     setImportResult(null);
     setPulledBundle(null);
     setPullCommandId('');
+    setInventoryCommandType('CONTENT_PULL');
+    setInventoryCommandStatus('ACCEPTED');
+    setInventoryProgress({
+      current: 0,
+      total: 1,
+      percent: 0,
+      mode: 'steps',
+      phase: 'pulling-content',
+      item: item.name,
+    });
     setInventoryActivity(`Pulling ${item.kind === 'paper-profile' ? 'paper profile' : 'template'} ${item.code}…`);
     try {
       const result = await issueAndWaitForContentCommand(inventoryDeviceId, {
@@ -240,6 +279,7 @@ export default function WebControlContent() {
     } catch (error) {
       setInventoryError(error instanceof Error ? error.message : String(error));
       setInventoryActivity('');
+      setInventoryCommandStatus('FAILED');
     } finally {
       setIsReadingClient(false);
     }
@@ -285,7 +325,13 @@ export default function WebControlContent() {
           );
           const current = history.find((command) => command.commandId === target.commandId);
           return current
-            ? { ...target, status: current.status, terminalState: current.terminalState, failureReason: current.failureReason }
+            ? {
+              ...target,
+              status: current.status,
+              terminalState: current.terminalState,
+              failureReason: current.failureReason,
+              progress: current.progress ?? target.progress,
+            }
             : target;
         } catch {
           return target;
@@ -430,6 +476,14 @@ export default function WebControlContent() {
             )}
             {inventoryError && <ErrorBanner error={inventoryError} />}
             {inventoryActivity && <Text size="label" tone="muted" aria-live="polite">{inventoryActivity}</Text>}
+            {inventoryProgress && (
+              <RemoteCommandProgress
+                progress={inventoryProgress}
+                commandType={inventoryCommandType}
+                status={inventoryCommandStatus}
+                compact
+              />
+            )}
             {clientInventory?.truncated && (
               <Alert tone="warning" title="Client list is limited">
                 This client has more than 500 items in at least one category. The first 500 profiles and templates are shown.
@@ -640,16 +694,27 @@ export default function WebControlContent() {
             <Text size="label" tone="muted">{deployment.contentKey} · {deployment.deploymentId}</Text>
             <DataTable label="Latest content distribution status" responsive>
               <thead>
-                <tr><DataHead>Client</DataHead><DataHead>Status</DataHead><DataHead>Result</DataHead></tr>
+                <tr><DataHead>Client</DataHead><DataHead>Status</DataHead><DataHead>Progress</DataHead><DataHead>Result</DataHead></tr>
               </thead>
               <tbody>
                 {deployment.deployments.map((target) => {
                   const device = deploymentDevice(target.deviceId);
                   const tone = target.status === 'COMPLETED' ? 'success' : target.status === 'REJECTED' || target.status === 'FAILED' ? 'danger' : 'warning';
+                  const progress = target.progress ?? (['PENDING', 'DELIVERED', 'ACCEPTED'].includes(target.status)
+                    ? { current: 0, total: 1, percent: 0, mode: 'steps' as const, phase: 'queued' as const }
+                    : undefined);
                   return (
                     <tr key={target.deviceId}>
                       <DataCell>{device?.displayName || device?.hostname || target.deviceId}</DataCell>
                       <DataCell><Badge tone={tone}>{target.terminalState || target.status}</Badge></DataCell>
+                      <DataCell>
+                        <RemoteCommandProgress
+                          progress={progress}
+                          commandType="CONTENT_SYNC"
+                          status={target.status}
+                          compact
+                        />
+                      </DataCell>
                       <DataCell><Text size="label" tone={target.errorMessage || target.failureReason ? 'danger' : 'muted'}>{target.errorMessage || target.failureReason || target.commandId || 'Not sent'}</Text></DataCell>
                     </tr>
                   );

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ControlCommandProgress } from '@printerops/domain';
 import { ConflictError } from '@printerops/shared';
 import { InMemoryPaperProfileRepository } from '../infra/repos/in-memory-paper-profile.repo.js';
 import { InMemoryPrintTemplateRepository } from '../infra/repos/in-memory-template.repo.js';
@@ -61,6 +62,24 @@ describe('Web Control client content import', () => {
     const importedProfile = await targetProfiles.findByCode('CLIENT_50X30');
     expect(importedTemplate).toMatchObject({ status: 'DRAFT', createdBy: 'operator@hospital.local' });
     expect(importedTemplate?.paperProfileId).toBe(importedProfile?.id);
+  });
+
+  it('reports truthful step progress for each synchronized content item', async () => {
+    const source = await sourceContent();
+    const sourceService = new ControlContentSyncService(source.profiles, source.templates);
+    const bundle = await sourceService.createClientContentBundle('template', 'CLIENT_LABEL');
+    const targetProfiles = new InMemoryPaperProfileRepository();
+    const targetTemplates = new InMemoryPrintTemplateRepository();
+    const targetService = new ControlContentSyncService(targetProfiles, targetTemplates);
+    const progress: ControlCommandProgress[] = [];
+
+    await targetService.applyBundle(bundle, (update) => { progress.push(update); });
+
+    expect(progress).toMatchObject([
+      { current: 0, total: 2, percent: 0, mode: 'steps', phase: 'syncing-profile', item: 'Client label 50 by 30' },
+      { current: 1, total: 2, percent: 50, mode: 'steps', phase: 'syncing-template', item: 'Client label template' },
+      { current: 2, total: 2, percent: 100, mode: 'steps', phase: 'completed' },
+    ]);
   });
 
   it('never overwrites a matching central code and allows importing the client item under a new code', async () => {

@@ -514,7 +514,7 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
 
       await agent.handleCommand(envelope, { waitForCompletion: true });
 
-      expect(mockOta.downloadUpdate).toHaveBeenCalledWith({ version: '0.1.29' });
+      expect(mockOta.downloadUpdate).toHaveBeenCalledWith(expect.objectContaining({ version: '0.1.29' }));
 
       const states = publishedEvents.map((e) => e.event.state);
       expect(states).toContain('DOWNLOADING');
@@ -522,6 +522,79 @@ describe('Control Command Plane & OTA Bridge (Phases 3, 4, 5)', () => {
 
       const dev = await deviceRepo.findById(deviceId);
       expect(dev?.otaState).toBe('VERIFIED');
+      expect(await commandService.getCommand(envelope.command_id)).toMatchObject({
+        status: 'COMPLETED',
+        terminalState: 'VERIFIED',
+      });
+    });
+
+    it('publishes and persists measured OTA download progress', async () => {
+      let signalProgress!: () => void;
+      const progressPublished = new Promise<void>((resolve) => { signalProgress = resolve; });
+      let releaseDownload!: () => void;
+      const downloadPaused = new Promise<void>((resolve) => { releaseDownload = resolve; });
+      const downloadUpdate = vi.fn(async (request: Parameters<OtaUpdateServicePort['downloadUpdate']>[0]) => {
+        await request.onProgress?.({ downloadedBytes: 4_000, totalBytes: 10_000 });
+        signalProgress();
+        await downloadPaused;
+        return {
+          downloaded: true,
+          alreadyCurrent: false,
+          version: request.version,
+          component: 'desktop',
+          platform: 'windows-x64',
+          bytes: 10_000,
+          sha256: 'abc123sha256',
+          source: 'wan',
+          signatureVerification: 'verified' as const,
+        };
+      });
+      const otaService = { ...mockOta, downloadUpdate } as unknown as OtaUpdateServicePort;
+      const agent = new PrintOpsControlAgent({
+        identityStore,
+        otaService,
+        eventPublisher: async (subject, event) => {
+          publishedEvents.push({ subject, event });
+          await commandService.handleDeviceEvent(event);
+        },
+      });
+      const envelope = await issueTestCommandEnvelope(commandService, {
+        deviceId,
+        type: 'OTA_DOWNLOAD',
+        targetVersion: '0.1.29',
+        idempotencyKey: 'idem_dl_progress',
+      });
+      const execution = agent.handleCommand(envelope, { waitForCompletion: true });
+
+      try {
+        await progressPublished;
+        const byteProgressEvent = publishedEvents.find(({ event }) => event.progress?.mode === 'bytes');
+        expect(byteProgressEvent?.event.progress).toMatchObject({
+          current: 4_000,
+          total: 10_000,
+          percent: 40,
+          mode: 'bytes',
+          phase: 'downloading',
+        });
+        const recorded = await commandService.getCommand(envelope.command_id);
+        expect(recorded?.progress).toMatchObject({
+          current: 4_000,
+          total: 10_000,
+          percent: 40,
+          mode: 'bytes',
+          phase: 'downloading',
+        });
+        expect(identityStore.getControlCommand(envelope.command_id, envelope.idempotency_key)?.progress)
+          .toMatchObject({ current: 4_000, total: 10_000, percent: 40, mode: 'bytes' });
+      } finally {
+        releaseDownload();
+        await execution;
+      }
+
+      expect((await commandService.getCommand(envelope.command_id))?.progress)
+        .toMatchObject({ current: 1, total: 1, percent: 100, phase: 'completed' });
+      expect(identityStore.getControlCommand(envelope.command_id, envelope.idempotency_key))
+        .toMatchObject({ replayStatus: 'PROCESSED', lastCommandState: 'VERIFIED' });
     });
 
     it('maps actual OTA progress and does not predict RESTARTING from COMPLETED', async () => {

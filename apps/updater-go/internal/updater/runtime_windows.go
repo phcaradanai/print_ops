@@ -17,19 +17,37 @@ const (
 	processQueryLimitedInformation = 0x1000
 	th32csSnapProcess              = 0x00000002
 	invalidHandleValue             = ^uintptr(0)
+	shutdownEventSynchronize       = 0x00100000
+	waitObject0                    = 0
+	waitFailed                     = 0xffffffff
 )
 
-type processEntry32 struct {
-	Size            uint32
-	Usage           uint32
-	ProcessID       uint32
-	DefaultHeapID   uintptr
-	ModuleID        uint32
-	Threads         uint32
-	ParentProcessID uint32
-	PriorityBase    int32
-	Flags           uint32
-	ExeFile         [260]uint16
+type windowsDesktopShutdownEvent struct {
+	handle syscall.Handle
+}
+
+func openDesktopShutdownEvent(name string) (desktopShutdownEvent, error) {
+	if name == "" {
+		return nil, fmt.Errorf("desktop shutdown event name is empty")
+	}
+	wideName, err := syscall.UTF16PtrFromString(name)
+	if err != nil {
+		return nil, fmt.Errorf("encode desktop shutdown event name: %w", err)
+	}
+	handle, _, openErr := openEventW.Call(shutdownEventSynchronize, 0, uintptr(unsafe.Pointer(wideName)))
+	if handle == 0 {
+		return nil, fmt.Errorf("open desktop shutdown event: %v", openErr)
+	}
+	return &windowsDesktopShutdownEvent{handle: syscall.Handle(handle)}, nil
+}
+
+func (event *windowsDesktopShutdownEvent) IsSignaled() bool {
+	result, _, _ := waitForSingleObject.Call(uintptr(event.handle), 0)
+	return result == waitObject0 || result == waitFailed
+}
+
+func (event *windowsDesktopShutdownEvent) Close() {
+	closeHandle.Call(uintptr(event.handle))
 }
 
 var (
@@ -40,6 +58,8 @@ var (
 	createToolhelp32Snapshot   = kernel32.NewProc("CreateToolhelp32Snapshot")
 	process32FirstW            = kernel32.NewProc("Process32FirstW")
 	process32NextW             = kernel32.NewProc("Process32NextW")
+	openEventW                 = kernel32.NewProc("OpenEventW")
+	waitForSingleObject        = kernel32.NewProc("WaitForSingleObject")
 )
 
 func (defaultRuntime) ProcessPath(pid int) (string, error) {
@@ -93,6 +113,20 @@ func terminateProcessTree(pid int, timeout time.Duration) error {
 		time.Sleep(50 * time.Millisecond)
 	}
 	return fmt.Errorf("process tree %d did not exit within %s", pid, timeout)
+}
+
+// processEntry32 matches the Win32 PROCESSENTRY32W layout used by Toolhelp.
+type processEntry32 struct {
+	Size              uint32
+	Usage             uint32
+	ProcessID         uint32
+	DefaultHeapID     uintptr
+	ModuleID          uint32
+	Threads           uint32
+	ParentProcessID   uint32
+	PriorityClassBase int32
+	Flags             uint32
+	ExeFile           [260]uint16
 }
 
 type processRecord struct {

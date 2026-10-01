@@ -29,7 +29,7 @@ func main() {
 		return
 	}
 
-	worker := updater.Updater{}
+	worker := updater.Updater{DesktopShutdownEventName: os.Getenv("PRINTOPS_DESKTOP_SHUTDOWN_EVENT")}
 	switch os.Args[1] {
 	case "apply":
 		flags := flag.NewFlagSet("apply", flag.ExitOnError)

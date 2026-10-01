@@ -417,12 +417,14 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   }
   let localPrintScheduler: LocalPrintScheduler | undefined;
   const otaConfig = otaConfigFromEnv();
+  const desktopShutdownEventName = process.env['PRINTOPS_DESKTOP_SHUTDOWN_EVENT']?.trim();
   const externalUpdaterConfig: ExternalUpdaterConfig | undefined = otaConfig.updaterPath
     && otaConfig.updaterRequestDirectory
     && otaConfig.updaterStatePath
     && otaConfig.installRoot
     && otaConfig.desktopPath
     && otaConfig.desktopPid
+    && desktopShutdownEventName
     && otaConfig.healthToken
     ? {
         executablePath: otaConfig.updaterPath,
@@ -431,6 +433,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         installRoot: otaConfig.installRoot,
         desktopPath: otaConfig.desktopPath,
         desktopPid: otaConfig.desktopPid,
+        desktopShutdownEventName,
         apiUrl: otaConfig.apiUrl ?? 'http://127.0.0.1:31415',
         healthToken: otaConfig.healthToken,
         publicKey: otaConfig.publicKey,
@@ -1110,6 +1113,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     identityStore: deviceIdentityStore,
     otaService: otaUpdateService,
     getPrintStatus: () => otaUpdateService.getPrintSystemStatus(),
+    applyContentBundle: (bundle, onProgress) => controlContentSyncService.applyBundle(bundle, onProgress),
+    getClientContentIndex: () => controlContentSyncService.createClientContentIndex(),
+    exportClientContent: (kind, code) => controlContentSyncService.createClientContentBundle(kind, code),
     eventPublisher: async (subject, event) => {
       const deviceToken = deviceIdentityStore.getDeviceToken();
       if (!deviceControlTransport || !deviceToken) {
@@ -1291,6 +1297,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
 
     v1.get('/control/client-status', async (_req, reply) => {
       const identity = deviceIdentityStore.getIdentity();
+      const latestRemoteCommand = deviceIdentityStore.getLatestControlCommand();
       const isEnrolled = deviceIdentityStore.isEnrolled();
       let otaState = 'IDLE';
       try {
@@ -1314,6 +1321,14 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         visibleToControlPlane,
         otaReady,
         otaState,
+        remoteCommand: latestRemoteCommand ? {
+          commandType: latestRemoteCommand.commandType,
+          targetVersion: latestRemoteCommand.targetVersion,
+          state: latestRemoteCommand.lastCommandState,
+          replayStatus: latestRemoteCommand.replayStatus,
+          progress: latestRemoteCommand.progress,
+          updatedAt: latestRemoteCommand.lastCommandAt,
+        } : null,
         connectionState: visibleToControlPlane ? 'ONLINE' : 'DISCONNECTED',
       });
     });

@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ControlCommandProgress } from '@printerops/domain';
 import { buildApp } from '../app.js';
 import { ControlTargetHttp } from '../services/control-target-http.js';
+import { DeviceIdentityStore } from '../services/device-identity.js';
 import {
   InMemoryDeviceRegistryRepository,
   InMemoryEnrollmentTokenRepository,
@@ -173,7 +175,7 @@ describe('WebControlRegistryService device freshness', () => {
 });
 
 describe('Control client discovery and reachability', () => {
-  it('advertises content-pull support without letting a public probe claim liveness', async () => {
+  it('advertises content-pull support and streams truthful content progress', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'printops-control-status-'));
     const identityPath = join(dataDir, 'device-identity.json');
     const otaTokenPath = join(dataDir, 'ota-health-token.txt');
@@ -185,6 +187,23 @@ describe('Control client discovery and reachability', () => {
       createdAt: new Date().toISOString(),
     }));
     writeFileSync(otaTokenPath, 'test-ota-health-token');
+    const sidecarIdentityStore = new DeviceIdentityStore({ storagePath: identityPath });
+    const commandUpdatedAt = '2026-10-02T08:00:00.000Z';
+    sidecarIdentityStore.persistControlTransitions([{
+      eventId: 'evt_status_remote_command',
+      deviceId: 'dev_enrolled_offline',
+      commandId: 'cmd_status_remote',
+      state: 'ACCEPTED',
+      currentVersion: '0.1.31',
+      timestamp: commandUpdatedAt,
+      progress: {
+        current: 0,
+        total: 1,
+        percent: 0,
+        mode: 'steps',
+        phase: 'listing-content',
+      },
+    }], { commandType: 'CONTENT_LIST' });
 
     const environmentKeys = [
       'DB_MODE',
@@ -222,6 +241,19 @@ describe('Control client discovery and reachability', () => {
         visibleToControlPlane: false,
         otaReady: false,
         connectionState: 'DISCONNECTED',
+        remoteCommand: {
+          commandType: 'CONTENT_LIST',
+          state: 'ACCEPTED',
+          replayStatus: 'PROCESSING',
+          updatedAt: commandUpdatedAt,
+          progress: {
+            current: 0,
+            total: 1,
+            percent: 0,
+            mode: 'steps',
+            phase: 'listing-content',
+          },
+        },
       });
 
       const deviceInfoResponse = await built.app.inject({ method: 'GET', url: '/api/v1/control/device-info' });
@@ -261,6 +293,39 @@ describe('Control client discovery and reachability', () => {
         otaReady: true,
         connectionState: 'ONLINE',
       });
+
+      const syncProgress: ControlCommandProgress[] = [];
+      const syncResult = await controlTarget.applyContentBundle({
+        version: 1,
+        kind: 'paper-profile',
+        key: 'CLIENT_50X30',
+        overwriteExisting: false,
+        publishedBy: 'operator@hospital.local',
+        profile: {
+          code: 'CLIENT_50X30',
+          name: 'Client label 50 by 30',
+          widthMm: 50,
+          heightMm: 30,
+          marginTopMm: 1,
+          marginRightMm: 1,
+          marginBottomMm: 1,
+          marginLeftMm: 1,
+          dpi: 203,
+          orientation: 'portrait',
+          unit: 'mm',
+          fields: [],
+        },
+      }, (progress) => { syncProgress.push(progress); });
+      expect(syncResult).toMatchObject({
+        kind: 'paper-profile',
+        key: 'CLIENT_50X30',
+        profile: 'created',
+        template: 'none',
+      });
+      expect(syncProgress).toMatchObject([
+        { current: 0, total: 1, percent: 0, phase: 'syncing-profile', item: 'Client label 50 by 30' },
+        { current: 1, total: 1, percent: 100, phase: 'completed' },
+      ]);
     } finally {
       await closeApp?.();
       for (const [key, value] of previousEnvironment) {

@@ -13,6 +13,8 @@ import {
 import { apiFetch, bootstrapOwner, getBootstrapState, getCurrentUser, hasSessionToken, issuePasswordRecoveryCode, login, logout, recoverPassword, healthUrl, onUnauthorized, type BootstrapInfo, type SessionUser } from './api/client.js';
 import { SessionProvider } from './api/session.js';
 import { LocaleProvider, useLocale } from './i18n/index.js';
+import type { ControlCommandProgress } from '@printerops/domain';
+import { RemoteCommandProgress } from './components/RemoteCommandProgress.js';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary.js';
 import { NavIcon } from './components/NavIcon.js';
 import { ActionIcon } from './components/ActionIcon.js';
@@ -76,6 +78,15 @@ export function AppVersionBadge({ label, version }: { label: string; version?: s
   );
 }
 
+export interface ClientControlCommandStatus {
+  commandType?: string;
+  targetVersion?: string;
+  state?: string;
+  replayStatus: 'PROCESSING' | 'PROCESSED';
+  progress?: ControlCommandProgress;
+  updatedAt?: string;
+}
+
 export interface ClientControlStatus {
   deviceId?: string;
   installationId?: string;
@@ -85,6 +96,70 @@ export interface ClientControlStatus {
   otaReady: boolean;
   otaState: string;
   connectionState: 'ONLINE' | 'DISCONNECTED';
+  remoteCommand?: ClientControlCommandStatus | null;
+}
+
+const REMOTE_COMMAND_STATUS_POLL_INTERVAL_MS = 5_000;
+const REMOTE_COMMAND_RECENT_WINDOW_MS = 30_000;
+const REMOTE_COMMAND_FAILURE_STATES: Record<string, true> = {
+  INSTALL_FAILED: true,
+  HEALTH_CHECK_FAILED: true,
+  ROLLBACK_FAILED: true,
+  RECOVERY_REQUIRED: true,
+  REJECTED: true,
+  EXPIRED: true,
+};
+
+export function RemoteCommandIndicator({
+  command,
+  now = Date.now(),
+}: {
+  command?: ClientControlCommandStatus | null;
+  now?: number;
+}) {
+  const { t } = useLocale();
+  if (!command) return null;
+
+  const isRunning = command.replayStatus === 'PROCESSING';
+  const ageMs = command.updatedAt ? now - Date.parse(command.updatedAt) : Number.NaN;
+  const isRecent = Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= REMOTE_COMMAND_RECENT_WINDOW_MS;
+  if (!isRunning && !isRecent) return null;
+
+  const isFailed = !isRunning && (
+    Boolean(command.state && REMOTE_COMMAND_FAILURE_STATES[command.state])
+    || (command.state === 'ROLLED_BACK' && command.commandType !== 'OTA_ROLLBACK')
+  );
+  const statusClass = isRunning ? 'running' : isFailed ? 'failed' : 'completed';
+  const label = isRunning
+    ? t('client.control.commandInProgress')
+    : isFailed
+      ? t('client.control.commandFailed')
+      : t('client.control.commandCompleted');
+
+  return (
+    <span
+      className={`client-control-command-symbol client-control-command-symbol--${statusClass}`}
+      title={label}
+      aria-label={label}
+      role="status"
+      aria-live="polite"
+    >
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <rect x="4" y="4" width="16" height="12" rx="2" />
+        <path d="M8 20h8m-4-4v4M8 8l2 2-2 2m5 0h3" />
+      </svg>
+    </span>
+  );
 }
 
 export function ClientControlStatusBadge({ iconOnly = true }: { iconOnly?: boolean }) {
@@ -102,7 +177,7 @@ export function ClientControlStatusBadge({ iconOnly = true }: { iconOnly?: boole
       }
     };
     void fetchStatus();
-    const interval = setInterval(() => { void fetchStatus(); }, 15_000);
+    const interval = setInterval(() => { void fetchStatus(); }, REMOTE_COMMAND_STATUS_POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -111,6 +186,10 @@ export function ClientControlStatusBadge({ iconOnly = true }: { iconOnly?: boole
 
   const isVisible = Boolean(status?.visibleToControlPlane);
   const isOtaReady = Boolean(status?.otaReady);
+  const command = status?.remoteCommand;
+  const commandAgeMs = command?.updatedAt ? Date.now() - Date.parse(command.updatedAt) : Number.NaN;
+  const showCommandProgress = command?.replayStatus === 'PROCESSING'
+    || (Number.isFinite(commandAgeMs) && commandAgeMs >= 0 && commandAgeMs <= REMOTE_COMMAND_RECENT_WINDOW_MS);
 
   const dotColor = isVisible && isOtaReady
     ? '#10b981'
@@ -131,51 +210,63 @@ export function ClientControlStatusBadge({ iconOnly = true }: { iconOnly?: boole
       : `${t('client.control.offlineBadge')}: ${t('client.control.offlineDesc')}`;
 
   return (
-    <div
-      className="client-control-status-symbol"
-      title={tooltip}
-      aria-label={tooltip}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '6px',
-        padding: iconOnly ? '3px 7px' : '3px 8px',
-        borderRadius: '9999px',
-        background: isVisible ? 'rgba(16, 185, 129, 0.12)' : 'rgba(148, 163, 184, 0.12)',
-        border: `1px solid ${isVisible ? 'rgba(16, 185, 129, 0.3)' : 'rgba(148, 163, 184, 0.2)'}`,
-        cursor: 'default',
-        userSelect: 'none',
-      }}
-    >
-      <svg
-        width="13"
-        height="13"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke={dotColor}
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+    <div className={`client-control-status-stack${iconOnly ? ' client-control-status-stack--compact' : ''}`}>
+      <div
+        className="client-control-status-symbol"
+        title={tooltip}
+        aria-label={tooltip}
         style={{
-          filter: isVisible && isOtaReady ? 'drop-shadow(0 0 3px rgba(16, 185, 129, 0.6))' : undefined,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          padding: iconOnly ? '3px 7px' : '3px 8px',
+          borderRadius: '9999px',
+          background: isVisible ? 'rgba(16, 185, 129, 0.12)' : 'rgba(148, 163, 184, 0.12)',
+          border: `1px solid ${isVisible ? 'rgba(16, 185, 129, 0.3)' : 'rgba(148, 163, 184, 0.2)'}`,
+          cursor: 'default',
+          userSelect: 'none',
         }}
-        aria-hidden="true"
       >
-        <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
-        {isVisible && isOtaReady && <polyline points="9 13 12 16 15 13" />}
-      </svg>
-      <span
-        style={{
-          width: '6px',
-          height: '6px',
-          borderRadius: '50%',
-          backgroundColor: dotColor,
-          boxShadow: isVisible && isOtaReady ? '0 0 6px #10b981' : undefined,
-          display: 'inline-block',
-        }}
-        aria-hidden="true"
-      />
-      {!iconOnly && <span style={{ fontSize: '0.72rem', color: isVisible ? 'var(--color-text, #0f172a)' : 'var(--color-text-muted, #64748b)' }}>{label}</span>}
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={dotColor}
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            filter: isVisible && isOtaReady ? 'drop-shadow(0 0 3px rgba(16, 185, 129, 0.6))' : undefined,
+          }}
+          aria-hidden="true"
+        >
+          <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+          {isVisible && isOtaReady && <polyline points="9 13 12 16 15 13" />}
+        </svg>
+        <span
+          style={{
+            width: '6px',
+            height: '6px',
+            borderRadius: '50%',
+            backgroundColor: dotColor,
+            boxShadow: isVisible && isOtaReady ? '0 0 6px #10b981' : undefined,
+            display: 'inline-block',
+          }}
+          aria-hidden="true"
+        />
+        <RemoteCommandIndicator command={command} />
+        {!iconOnly && <span style={{ fontSize: '0.72rem', color: isVisible ? 'var(--color-text, #0f172a)' : 'var(--color-text-muted, #64748b)' }}>{label}</span>}
+      </div>
+      {showCommandProgress && command?.progress && (
+        <RemoteCommandProgress
+          progress={command.progress}
+          commandType={command.commandType}
+          status={command.state}
+          compact={iconOnly}
+          dark={iconOnly}
+        />
+      )}
     </div>
   );
 }
