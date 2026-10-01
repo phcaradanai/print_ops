@@ -87,6 +87,7 @@ export interface ControlAgentDeps {
   otaService: OtaUpdateServicePort;
   eventPublisher?: EventPublisher;
   heartbeatPublisher?: HeartbeatPublisher;
+  onHeartbeatAcknowledged?: () => void | Promise<void>;
   getPrintStatus?: ControlAgentPrintStatusProvider;
   getDeviceInfo?: () => Promise<{
     hostname?: string;
@@ -107,6 +108,7 @@ export class PrintOpsControlAgent {
   private readonly otaService: OtaUpdateServicePort;
   private readonly eventPublisher?: EventPublisher;
   private readonly heartbeatPublisher?: HeartbeatPublisher;
+  private readonly onHeartbeatAcknowledged?: ControlAgentDeps['onHeartbeatAcknowledged'];
   private readonly getPrintStatus: ControlAgentPrintStatusProvider;
   private readonly getDeviceInfo?: ControlAgentDeps['getDeviceInfo'];
   private readonly applyContentBundle?: ControlAgentDeps['applyContentBundle'];
@@ -122,6 +124,7 @@ export class PrintOpsControlAgent {
     this.otaService = deps.otaService;
     this.eventPublisher = deps.eventPublisher;
     this.heartbeatPublisher = deps.heartbeatPublisher;
+    this.onHeartbeatAcknowledged = deps.onHeartbeatAcknowledged;
     this.getPrintStatus = deps.getPrintStatus ?? (() => ({ state: 'IDLE', queueDepth: 0, readiness: 'READY' }));
     this.getDeviceInfo = deps.getDeviceInfo;
     this.applyContentBundle = deps.applyContentBundle;
@@ -891,6 +894,13 @@ export class PrintOpsControlAgent {
       await this.heartbeatPublisher(subject, heartbeat);
     } catch (err) {
       this.logger?.warn('Failed to publish device heartbeat', err);
+      return;
+    }
+
+    try {
+      await this.onHeartbeatAcknowledged?.();
+    } catch (err) {
+      this.logger?.warn('Failed to report acknowledged device heartbeat locally', err);
     }
   }
 

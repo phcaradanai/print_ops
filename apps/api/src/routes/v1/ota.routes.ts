@@ -17,6 +17,7 @@ export async function otaRoutes(
     internalToken?: string;
     contentSync?: ControlContentSyncService;
     deviceInfo?: () => LocalControlDeviceInfo;
+    onControlAgentHeartbeat?: () => void;
   },
 ): Promise<void> {
   app.get('/ota/status', { onRequest: [requirePermissionOrInternal('ota:read', deps.internalToken)] }, async (_req, reply) => {
@@ -116,6 +117,14 @@ export async function otaRoutes(
     return reply.send(deps.deviceInfo?.() ?? { capabilities: ['ota'] });
   });
 
+
+  app.post('/ota/control-agent-heartbeat', { onRequest: [requireInternalToken(deps.internalToken)] }, async (_req, reply) => {
+    if (!deps.onControlAgentHeartbeat) {
+      return reply.status(503).send({ error: 'Control-agent heartbeat reporting is not configured' });
+    }
+    deps.onControlAgentHeartbeat();
+    return reply.send({ accepted: true });
+  });
   app.post('/ota/content-sync', { onRequest: [requireInternalToken(deps.internalToken)] }, async (req, reply) => {
     if (!deps.contentSync) return reply.status(503).send({ error: 'Content sync is not configured' });
     try {

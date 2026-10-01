@@ -14,6 +14,32 @@ import { AppError, ConflictError, NotFoundError, ValidationError, generateId } f
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { hashDeviceToken, verifyControlMessage } from './control-message-auth.js';
 export { hashDeviceToken } from './control-message-auth.js';
+const AUTO_DISCOVERY_INTERVAL_MS = 30_000;
+
+function objectField(value: unknown, key: string): unknown {
+  if (typeof value !== 'object' || value === null || Array.isArray(value) || !(key in value)) {
+    return undefined;
+  }
+  return (value as Record<string, unknown>)[key];
+}
+
+function stringField(value: unknown, key: string): string | undefined {
+  const field = objectField(value, key);
+  return typeof field === 'string' && field.length > 0 ? field : undefined;
+}
+
+function numberField(value: unknown, key: string): number | undefined {
+  const field = objectField(value, key);
+  return typeof field === 'number' ? field : undefined;
+}
+
+function stringArrayField(value: unknown, key: string): string[] | undefined {
+  const field = objectField(value, key);
+  return Array.isArray(field) && field.every((item: unknown) => typeof item === 'string')
+    ? field as string[]
+    : undefined;
+}
+
 
 export interface WebControlRegistryConfig {
   natsUrl?: string;
@@ -33,6 +59,8 @@ export class WebControlRegistryService {
   private readonly enrollmentTokens: EnrollmentTokenRepositoryPort;
   private readonly audit?: ControlAuditRepositoryPort;
   private readonly config: Required<WebControlRegistryConfig>;
+  private lastAutoDiscoveryAt = 0;
+  private automaticDiscoveryInFlight?: Promise<void>;
 
   constructor(deps: WebControlRegistryDeps) {
     this.deviceRegistry = deps.deviceRegistry;
@@ -226,7 +254,7 @@ export class WebControlRegistryService {
         schemaVersion: input.schemaVersion ?? existing.schemaVersion,
         runnerVersion: input.runnerVersion ?? existing.runnerVersion,
         displayName: input.displayName ?? existing.displayName,
-        status: 'ACTIVE',
+        status: existing.status,
         connectionState: 'ONLINE',
         lastSeenAt: new Date(),
         capabilities: input.capabilities ?? existing.capabilities ?? ['content-sync-v1', 'ota-v1'],
@@ -270,33 +298,45 @@ export class WebControlRegistryService {
           const url = normalized.startsWith('http') ? normalized : `http://${normalized}:31415`;
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), 2000);
-
-          const healthRes = await fetch(`${url}/health`, { signal: controller.signal });
-          clearTimeout(timeout);
-          if (!healthRes.ok) return;
-
-          const healthData = await healthRes.json() as { status?: string; version?: string; station?: any };
-          if (healthData.status !== 'ok') return;
-
-          let infoData: any = {};
+          let healthData: unknown;
           try {
-            const infoCtrl = new AbortController();
-            const infoTimeout = setTimeout(() => infoCtrl.abort(), 1500);
+            const healthRes = await fetch(`${url}/health`, { signal: controller.signal });
+            if (!healthRes.ok) return;
+            healthData = await healthRes.json();
+          } finally {
+            clearTimeout(timeout);
+          }
+          if (stringField(healthData, 'status') !== 'ok') return;
+
+          let infoData: unknown = {};
+          const infoCtrl = new AbortController();
+          const infoTimeout = setTimeout(() => infoCtrl.abort(), 1500);
+          try {
             const infoRes = await fetch(`${url}/api/v1/control/device-info`, { signal: infoCtrl.signal });
-            clearTimeout(infoTimeout);
             if (infoRes.ok) {
               infoData = await infoRes.json();
             }
           } catch {
-            // ignore
+            // Discovery can still use host and version from /health.
+          } finally {
+            clearTimeout(infoTimeout);
           }
 
           const parsedUrl = new URL(url);
-          const hostname = infoData.hostname || healthData.station?.hostname || parsedUrl.hostname;
-          const installationId = infoData.installationId || healthData.station?.installationId || `discovered_${hostname}_31415`;
-          const appVersion = infoData.appVersion || healthData.version || '0.1.31';
-          const platform = infoData.platform || healthData.station?.platform || 'windows-x64';
-          const architecture = infoData.architecture || 'x64';
+          const stationData = objectField(healthData, 'station');
+          const hostname = stringField(infoData, 'hostname')
+            || stringField(stationData, 'hostname')
+            || parsedUrl.hostname;
+          const installationId = stringField(infoData, 'installationId')
+            || stringField(stationData, 'installationId')
+            || `discovered_${hostname}_31415`;
+          const appVersion = stringField(infoData, 'appVersion')
+            || stringField(healthData, 'version')
+            || '0.1.31';
+          const platform = stringField(infoData, 'platform')
+            || stringField(stationData, 'platform')
+            || 'windows-x64';
+          const architecture = stringField(infoData, 'architecture') || 'x64';
 
           const record = await this.autoRegisterDevice({
             installationId,
@@ -304,8 +344,8 @@ export class WebControlRegistryService {
             platform,
             architecture,
             appVersion,
-            schemaVersion: infoData.schemaVersion ?? 8,
-            capabilities: infoData.capabilities ?? ['content-sync-v1', 'ota-v1'],
+            schemaVersion: numberField(infoData, 'schemaVersion') ?? 8,
+            capabilities: stringArrayField(infoData, 'capabilities') ?? ['content-sync-v1', 'ota-v1'],
             ipAddresses: [parsedUrl.hostname],
             displayName: `${hostname} (Auto-Discovered)`,
           });
@@ -322,16 +362,48 @@ export class WebControlRegistryService {
 
   async listDevices(filter?: DeviceRegistryFilter): Promise<DeviceRecord[]> {
     const repoFilter = filter ? { ...filter, connectionState: undefined } : undefined;
-    let devices = await this.deviceRegistry.findAll(repoFilter);
-    if (devices.length === 0) {
-      await this.discoverDevices();
-      devices = await this.deviceRegistry.findAll(repoFilter);
-    }
-    const enriched = devices.map((d) => this.applyDynamicConnectionState(d));
+    await this.refreshFromNetworkIfDue();
+    const allDevices = await this.deviceRegistry.findAll();
+    const devices = repoFilter
+      ? await this.deviceRegistry.findAll(repoFilter)
+      : allDevices;
+
+    // Older discovery records without an installation identity can describe
+    // the same station as a later identity-aware probe of the same endpoint.
+    const identifiedAddresses = new Set(
+      allDevices
+        .filter((device) => !device.installationId.startsWith('discovered_'))
+        .flatMap((device) => device.ipAddresses ?? [])
+        .map((address) => address.toLowerCase()),
+    );
+    const visibleDevices = devices.filter((device) => {
+      if (!device.installationId.startsWith('discovered_')) return true;
+      return !(device.ipAddresses ?? []).some((address) => identifiedAddresses.has(address.toLowerCase()));
+    });
+    const enriched = visibleDevices.map((device) => this.applyDynamicConnectionState(device));
     if (filter?.connectionState) {
-      return enriched.filter((d) => d.connectionState === filter.connectionState);
+      return enriched.filter((device) => device.connectionState === filter.connectionState);
     }
     return enriched;
+  }
+
+  private async refreshFromNetworkIfDue(): Promise<void> {
+    if (this.automaticDiscoveryInFlight) {
+      await this.automaticDiscoveryInFlight;
+      return;
+    }
+    if (Date.now() - this.lastAutoDiscoveryAt < AUTO_DISCOVERY_INTERVAL_MS) return;
+
+    this.lastAutoDiscoveryAt = Date.now();
+    const discovery = this.discoverDevices().then(() => undefined);
+    this.automaticDiscoveryInFlight = discovery;
+    try {
+      await discovery;
+    } finally {
+      if (this.automaticDiscoveryInFlight === discovery) {
+        this.automaticDiscoveryInFlight = undefined;
+      }
+    }
   }
 
   private applyDynamicConnectionState(device: DeviceRecord): DeviceRecord {

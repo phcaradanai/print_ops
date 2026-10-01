@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-03
+Last updated: 2026-09-30
 
 ## Architecture
 
@@ -14,6 +14,43 @@ Last updated: 2026-08-03
 
 The TypeScript runner has been removed. Any document describing `apps/runner`
 or a Node.js runner is stale.
+
+## Web Control device presence
+
+`GET /api/v1/control/devices` re-runs `PRINTOPS_CLIENT_URL` and built-in local
+discovery targets at most once every 30 seconds. This refreshes reachable
+stations while the device list is open; arbitrary IPs scanned manually are not
+kept in the automatic probe set unless configured.
+
+The registry reports `STALE` after 30 seconds and `OFFLINE` after 90 seconds
+without a successful probe or authenticated NATS heartbeat. Older address-only
+discovery rows are hidden from the list when a newer installation identity is
+found at the same endpoint; the stored row is retained.
+
+The PrintOps sidebar symbol requires an enrolled device's recent acknowledged
+NATS heartbeat. The in-process agent updates status only after JetStream
+acknowledges the publish; the standalone agent reports the same acknowledgement
+through the authenticated loopback OTA-token route. An open NATS socket or the
+public `/control/device-info` discovery endpoint alone does not establish local
+connection status. Enrollment by itself is identity, not proof of current
+connectivity. HTTP discovery still requires the Control Plane server to reach
+the station; it does not cross firewalls, NAT, or unrouted subnets.
+
+## Web Control client content
+
+Open `/control/content` (sidebar: “กระจายข้อมูล”) to inspect a client's paper
+profiles and templates. Select an online client, click **Read catalog**, use
+**Pull for review** on an item, then **Import copy**. The imported copy is
+central to Web Control; existing central items are not overwritten. Imported
+templates are drafts, and importing a template also imports its paper-profile
+dependency when needed. Open the paper-profile or template catalog to edit the
+copy, then publish to enrolled online clients that support `content-sync-v1`.
+
+The client must report `content-pull-v1` to appear in the inventory selector.
+The public `/api/v1/control/device-info` endpoint shares its capability list
+with the local control-agent info, so discovery retains the pull capability.
+Existing installed client binaries must be rebuilt and deployed to expose this
+source change.
 
 ## Persistence
 

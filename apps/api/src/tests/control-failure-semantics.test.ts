@@ -189,7 +189,7 @@ describe('Phase 9 — Failure Semantics & Robustness', () => {
     expect(mockOta.checkForUpdate).toHaveBeenCalledTimes(1);
   });
 
-  it('flushes persisted startup transitions after the device JetStream transport comes online', async () => {
+  it('records local presence only after an acknowledged heartbeat and flushes persisted transitions', async () => {
     const mockOta = {
       getStatus: vi.fn().mockResolvedValue({
         currentVersion: '0.1.28',
@@ -215,6 +215,20 @@ describe('Phase 9 — Failure Semantics & Robustness', () => {
       .rejects.toThrow('Failed to publish control event');
     const pending = identityStore.getPendingControlEvents()[0]!;
 
+    const heartbeatAcknowledged = vi.fn();
+    const connectedSocket = true;
+    const failedHeartbeatAgent = new PrintOpsControlAgent({
+      identityStore,
+      otaService: mockOta,
+      heartbeatPublisher: async () => {
+        expect(connectedSocket).toBe(true);
+        throw new Error('JetStream heartbeat was not acknowledged');
+      },
+      onHeartbeatAcknowledged: heartbeatAcknowledged,
+    });
+    await failedHeartbeatAgent.publishHeartbeat();
+    expect(heartbeatAcknowledged).not.toHaveBeenCalled();
+
     const restartedIdentityStore = new DeviceIdentityStore({
       storagePath: join(tempDir, 'device-identity.json'),
     });
@@ -231,10 +245,12 @@ describe('Phase 9 — Failure Semantics & Robustness', () => {
         if (!connected) throw new Error('control transport is not connected');
         published.push('heartbeat');
       },
+      onHeartbeatAcknowledged: heartbeatAcknowledged,
     });
     connected = true;
 
     await restartedAgent.publishHeartbeat();
+    expect(heartbeatAcknowledged).toHaveBeenCalledOnce();
 
     expect(published).toEqual([pending.eventId, 'heartbeat']);
     expect(restartedIdentityStore.getPendingControlEvents()).toEqual([]);

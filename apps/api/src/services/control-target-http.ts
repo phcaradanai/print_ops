@@ -43,6 +43,10 @@ export class ControlTargetHttp implements OtaUpdateServicePort {
     return { ...status, state: { ...status.state, updatedAt: new Date(status.state.updatedAt) } };
   }
 
+  async recordControlAgentHeartbeat(): Promise<void> {
+    await this.request<{ accepted: boolean }>('/api/v1/ota/control-agent-heartbeat', 'POST');
+  }
+
   checkForUpdate(manifestUrl?: string) {
     return this.request<Awaited<ReturnType<OtaUpdateServicePort['checkForUpdate']>>>('/api/v1/ota/check', 'POST',
       manifestUrl ? { manifestUrl } : undefined);

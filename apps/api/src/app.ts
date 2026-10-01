@@ -79,7 +79,7 @@ import { ResolvePrinterBindingService } from './services/resolve-printer-binding
 import { DynamicPrintService } from './services/dynamic-print.service.js';
 import { ImportPaperProfileService } from './services/import-paper-profile.service.js';
 import { ControlContentSyncService } from './services/control-content-sync.service.js';
-import { getLocalControlDeviceInfo } from './services/control-device-info.service.js';
+import { getLocalControlDeviceInfo, LOCAL_CONTROL_CAPABILITIES } from './services/control-device-info.service.js';
 import { SandboxService } from './services/sandbox.service.js';
 import { PrinterConnectivityService } from './services/printer-connectivity.service.js';
 
@@ -1074,6 +1074,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     : undefined;
   let controlPlaneTransport: ControlPlaneTransport | undefined;
   let deviceControlTransport: ControlPlaneTransport | undefined;
+  let lastAuthenticatedControlHeartbeatAt = 0;
 
   const webControlRegistry = new WebControlRegistryService({
     deviceRegistry: controlDeviceRepo,
@@ -1133,6 +1134,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         `heartbeat-${heartbeat.deviceId}-${heartbeat.timestamp}`,
       );
     },
+    onHeartbeatAcknowledged: () => { lastAuthenticatedControlHeartbeatAt = Date.now(); },
     logger: app.log,
   }) : undefined;
 
@@ -1270,10 +1272,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       internalToken: otaConfig.healthToken,
       contentSync: controlContentSyncService,
       deviceInfo: getLocalControlDeviceInfo,
+      onControlAgentHeartbeat: () => { lastAuthenticatedControlHeartbeatAt = Date.now(); },
     });
-    let lastControlContactTime = 0;
     v1.get('/control/device-info', async (_req, reply) => {
-      lastControlContactTime = Date.now();
       const identity = deviceIdentityStore.getIdentity();
       return reply.send({
         installationId: identity.installationId,
@@ -1283,7 +1284,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         architecture: process.arch,
         appVersion: process.env['PRINTOPS_APP_VERSION'] || '0.1.31',
         schemaVersion: CURRENT_SCHEMA_VERSION,
-        capabilities: ['content-sync-v1', 'ota-v1'],
+        capabilities: LOCAL_CONTROL_CAPABILITIES,
         status: 'READY',
       });
     });
@@ -1291,7 +1292,6 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     v1.get('/control/client-status', async (_req, reply) => {
       const identity = deviceIdentityStore.getIdentity();
       const isEnrolled = deviceIdentityStore.isEnrolled();
-      const natsConnected = deviceControlTransport ? deviceControlTransport.isConnected() : false;
       let otaState = 'IDLE';
       try {
         const otaStatus = await otaUpdateService.getStatus();
@@ -1300,8 +1300,10 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         // ignore
       }
       const isRecoveryBlocked = ['ROLLBACK_FAILED', 'RECOVERY_REQUIRED'].includes(otaState);
-      const recentlyContacted = (Date.now() - lastControlContactTime) < 90_000;
-      const visibleToControlPlane = isEnrolled || natsConnected || recentlyContacted || Boolean(process.env['PRINTOPS_CONTROL_NATS_URL']);
+      const recentlyContacted = (Date.now() - lastAuthenticatedControlHeartbeatAt) < 90_000;
+      // Enrollment is identity, not liveness. Presence requires an acknowledged
+      // NATS heartbeat reported by the in-process agent or authenticated sidecar.
+      const visibleToControlPlane = isEnrolled && recentlyContacted;
       const otaReady = visibleToControlPlane && !isRecoveryBlocked;
 
       return reply.send({

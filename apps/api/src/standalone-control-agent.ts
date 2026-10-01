@@ -37,6 +37,9 @@ async function main(): Promise<void> {
     heartbeatPublisher: async (subject, heartbeat) => {
       await transport.publishHeartbeat(subject, signControlMessageWithToken(deviceToken, heartbeat) as unknown as Record<string, unknown>, `heartbeat-${heartbeat.deviceId}-${heartbeat.timestamp}`);
     },
+    onHeartbeatAcknowledged: async () => {
+      await target.recordControlAgentHeartbeat();
+    },
     logger: console,
   });
   transport = await startControlPlaneTransport(config, {
