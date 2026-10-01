@@ -3,8 +3,8 @@
   "version": "0.1.31",
   "private": true,
   "scripts": {
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:dev": "node ../../scripts/desktop-tauri.mjs dev",
+    "tauri:build": "node ../../scripts/desktop-tauri.mjs build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2"

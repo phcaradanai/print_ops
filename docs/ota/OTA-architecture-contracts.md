@@ -693,7 +693,26 @@ PRINTOPS_OTA_AUTO_UPDATE_MAX_FAILURES=5
 PRINTOPS_OTA_POLICY_STATE_PATH=
 ```
 
-### 10.3 Permissions
+### 10.3 Desktop Release Signing
+
+The release signer reads `PRINTOPS_OTA_SECRET` from its process environment,
+normally injected by a CI secret store or set for a local release command. The
+root `.env` is rejected if it contains this variable because build tools in the
+same workspace can read files even when the child environment is sanitized.
+The secret must contain at least 32 bytes of high-entropy data; it must remain
+on the release side and must never be embedded in the client or committed.
+
+The release tools derive a stable Ed25519 signer from this secret. The desktop
+bundle contains only the derived public key. Keep the same secret for every
+release: changing it changes the public key and requires an explicit client
+trust-key migration. `PRINTOPS_OTA_MIN_SUPPORTED_VERSION` remains a release
+compatibility policy setting, not a signing key.
+
+The `desktop:bundle` driver passes the secret only to release verification. It
+removes `PRINTOPS_OTA_SECRET` from Tauri, compiler, and nested build process
+environments; resource assembly receives only the public trust key.
+
+### 10.4 Permissions
 
 New RBAC permissions:
 
@@ -702,7 +721,7 @@ New RBAC permissions:
 'ota:manage'  // ADMIN+
 ```
 
-### 10.4 Build Pipeline
+### 10.5 Build Pipeline
 
 - `release-verify.mjs` emits `manifest.json` with checksums
 - Signing step emits the versioned manifest envelope and self-verifies the
@@ -724,7 +743,7 @@ New RBAC permissions:
 ## 12. Open Questions
 
 1. Where does the WAN artifact store live? (GitHub Releases, S3, existing CDN?)
-2. Signing key custody: who holds the release signing key? (single key, or HSM?)
+2. How should the release secret be provisioned and rotated safely in CI?
 3. LAN relay deployment: existing server, or new infrastructure?
 4. Auto-update policy: opt-in or opt-out for desktop users?
 

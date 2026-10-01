@@ -14,6 +14,13 @@ const f = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..', '..');
+delete process.env.PRINTOPS_OTA_SECRET;
+const {
+  assertNoLocalOtaSigningSecret,
+  resetOtaResourceDirectory,
+  resolveOtaPublicKey,
+} = require(path.join(ROOT, 'scripts', 'ota-signing.cjs'));
+assertNoLocalOtaSigningSecret(ROOT);
 const RUNNER_DIR = path.join(ROOT, 'apps', 'runner-go');
 const UPDATER_DIR = path.join(ROOT, 'apps', 'updater-go');
 const PRINT_HELPER_DIR = path.join(ROOT, 'apps', 'windows-print-helper');
@@ -105,8 +112,7 @@ step('Building WebView2 HTML print helper', () => {
 // ──── Copy resources ──────────────────────────────────────────────────
 step('Copying resources into src-tauri/resources/', () => {
   const d = path.resolve(__dirname, '..', 'resources');
-  f.rmSync(d, { recursive: true, force: true });
-  f.mkdirSync(d, { recursive: true });
+  const { publicKeyPath, previousPublicKey } = resetOtaResourceDirectory(d);
 
   const webDist = path.join(ROOT, 'apps', 'web', 'dist');
   const apiStatic = path.join(ROOT, 'apps', 'api', 'dist', 'static');
@@ -176,21 +182,22 @@ step('Copying resources into src-tauri/resources/', () => {
     throw new Error('[BUILD] ERROR: printops-updater.exe not found');
   }
 
-  // Pin the verification key in the normal installer. The private signing key
-  // is never copied; it is consumed only by the release pipeline.
-  const publicKeyFile = process.env.PRINTOPS_OTA_PUBLIC_KEY_FILE;
-  const publicKeyPath = path.join(d, 'ota-public-key.txt');
-  if (publicKeyFile && f.existsSync(publicKeyFile)) {
-    f.cpSync(publicKeyFile, publicKeyPath);
-    console.log('[BUILD] Copied OTA Ed25519 public key');
-  } else if (process.env.PRINTOPS_OTA_PUBLIC_KEY?.trim()) {
-    f.writeFileSync(publicKeyPath, `${process.env.PRINTOPS_OTA_PUBLIC_KEY.trim()}\n`);
-    console.log('[BUILD] Wrote OTA Ed25519 public key from environment');
+  // Only a public verification key is bundled; signing stays in release verification.
+  const acceptanceBuild = process.env.PRINTOPS_OTA_NATIVE_ACCEPTANCE_BUILD === '1';
+  const acceptancePublicKeyFile = process.env.PRINTOPS_OTA_PUBLIC_KEY_FILE;
+  const bundledPublicKey = resolveOtaPublicKey({
+    previousPublicKey,
+    acceptanceBuild,
+    acceptancePublicKeyFile,
+  });
+  f.writeFileSync(publicKeyPath, `${bundledPublicKey}\n`);
+
+  if (acceptanceBuild) {
+    console.log('[BUILD] Copied OTA public key for native acceptance build');
+  } else if (previousPublicKey && previousPublicKey !== 'unconfigured') {
+    console.log('[BUILD] Kept existing OTA public key for local build');
   } else {
-    // Keep local developer builds reproducible; release verification rejects
-    // this marker whenever signed OTA is enabled.
-    f.writeFileSync(publicKeyPath, 'unconfigured\n');
-    console.log('[BUILD] OTA Ed25519 public key not configured (development build)');
+    console.log('[BUILD] OTA signing secret not configured (development build)');
   }
 
   // Copy WebView2 HTML print helper and its managed/native dependencies.

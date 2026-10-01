@@ -26,8 +26,10 @@ import {
   readCurrentSchemaVersion,
 } from './ota-native-acceptance-schema.mjs';
 import { deriveAcceptanceVersions } from './ota-native-acceptance-version.mjs';
+import { assertNoLocalOtaSigningSecret, withoutOtaSigningSecret } from './ota-signing.cjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+delete process.env.PRINTOPS_OTA_SECRET;
 const desktopDir = join(root, 'apps', 'desktop');
 const resourceRoot = join(root, 'apps', 'desktop', 'src-tauri', 'resources');
 const apiDir = join(root, 'apps', 'api');
@@ -152,7 +154,7 @@ function normalizePreexistingGeneratedTauriChanges() {
 }
 
 function cleanBuildEnv(extra = {}) {
-  const environment = { ...process.env, ...extra };
+  const environment = withoutOtaSigningSecret({ ...process.env, ...extra });
   delete environment.PRINTOPS_OTA_NATIVE_SIGNING_KEY;
   return environment;
 }
@@ -413,6 +415,7 @@ function writeEvidence({ publicKey, publicKeyPath, artifacts, sourceCommit, norm
 }
 
 function main() {
+  assertNoLocalOtaSigningSecret(root);
   assert(process.platform === 'win32', 'native Windows OTA acceptance artifacts must be built on Windows');
   assert(signingKeyText, 'PRINTOPS_OTA_NATIVE_SIGNING_KEY must be provided by the CI secret');
   const sourceSchemaVersion = readCurrentSchemaVersion(apiSchemaSource);
