@@ -1,0 +1,98 @@
+name: printops-control-plane
+
+services:
+  nats:
+    image: nats:2.10.29-alpine
+    command: ["-js", "-sd", "/data"]
+    ports:
+      - target: 4222
+        published: "${PRINTOPS_CONTROL_NATS_PORT:-4222}"
+        host_ip: "${PRINTOPS_CONTROL_NATS_BIND_ADDRESS:?Set PRINTOPS_CONTROL_NATS_BIND_ADDRESS to a private/VPN server address}"
+        protocol: tcp
+    volumes:
+      - control_nats_data:/data
+    restart: unless-stopped
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    profiles: ["minio"]
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: "${PRINTOPS_MINIO_ACCESS_KEY:-}"
+      MINIO_ROOT_PASSWORD: "${PRINTOPS_MINIO_SECRET_KEY:-}"
+    volumes:
+      - control_minio_data:/data
+    restart: unless-stopped
+
+  control-stream:
+    image: "${PRINTOPS_IMAGE_PREFIX:-printops/control-plane}-api:${PRINTOPS_CONTROL_PLANE_VERSION:-local}"
+    command: ["node", "ensure-control-stream.mjs"]
+    environment:
+      PRINTOPS_CONTROL_NATS_URL: nats://nats:4222
+      PRINTOPS_CONTROL_NATS_STREAM: PRINTOPS_CONTROL
+    depends_on:
+      nats:
+        condition: service_started
+    restart: "no"
+
+  api:
+    image: "${PRINTOPS_IMAGE_PREFIX:-printops/control-plane}-api:${PRINTOPS_CONTROL_PLANE_VERSION:-local}"
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.api
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3001"
+      JWT_SECRET: "${PRINTOPS_CONTROL_JWT_SECRET:?Set PRINTOPS_CONTROL_JWT_SECRET to a unique random secret}"
+      DB_MODE: sqlite
+      SQL_WASM_PATH: /app/node_modules/sql.js/dist/sql-wasm.wasm
+      PRINTOPS_DATA_DIR: /data
+      PRINTOPS_DB_PATH: /data/printops.db
+      PRINTOPS_DEVICE_IDENTITY_PATH: /data/device-identity.json
+      PRINTOPS_RELEASES_DIR: /data/releases
+      STORAGE_PROVIDER: "${PRINTOPS_RELEASE_STORAGE_PROVIDER:-minio}"
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: "${PRINTOPS_MINIO_ACCESS_KEY:-}"
+      MINIO_SECRET_KEY: "${PRINTOPS_MINIO_SECRET_KEY:-}"
+      MINIO_BUCKET: printops-releases
+      PRINTOPS_DEV_SEED: "false"
+      PRINTOPS_CONTROL_ROLE: control-plane
+      PRINTOPS_CONTROL_NATS_URL: nats://nats:4222
+      PRINTOPS_CONTROL_PUBLIC_NATS_URL: "${PRINTOPS_CONTROL_PUBLIC_NATS_URL:?Set PRINTOPS_CONTROL_PUBLIC_NATS_URL to the NATS URL reachable by client devices}"
+      PRINTOPS_CONTROL_NATS_STREAM: PRINTOPS_CONTROL
+    volumes:
+      - control_api_data:/data
+    depends_on:
+      control-stream:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  web:
+    image: "${PRINTOPS_IMAGE_PREFIX:-printops/control-plane}-web:${PRINTOPS_CONTROL_PLANE_VERSION:-local}"
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.web
+      args:
+        VITE_CONTROL_PLANE_VERSION: "${PRINTOPS_CONTROL_PLANE_VERSION:-1.0.0}"
+    ports:
+      - target: 80
+        published: "${PRINTOPS_WEB_PORT:-8080}"
+        host_ip: "${PRINTOPS_WEB_BIND_ADDRESS:-127.0.0.1}"
+        protocol: tcp
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  control_api_data:
+  control_nats_data:
+  control_minio_data:

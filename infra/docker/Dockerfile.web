@@ -10,6 +10,8 @@ COPY packages/adapters ./packages/adapters
 COPY apps/web ./apps/web
 
 RUN npm ci --no-audit --no-fund
+RUN npm run build -w packages/domain
+RUN npm run build -w packages/shared
 ARG VITE_CONTROL_PLANE_VERSION=1.0.0
 RUN VITE_CONTROL_APP=true VITE_CONTROL_PLANE_VERSION=${VITE_CONTROL_PLANE_VERSION} npm run build -w apps/web
 

@@ -14,6 +14,7 @@ apps/*/src/**/*.d.ts.map
 .env
 .env.local
 .env.*.local
+infra/docker/control-plane.env
 infra/docker/.control-ota.env
 infra/docker/.ota-private-key.pem
 infra/docker/.ota-public-key.txt
@@ -26,6 +27,9 @@ infra/docker/.control-owner-credentials.txt
 .loopx/
 vitest.config.ts.timestamp-*.mjs
 **/printops.db
+# API runtime data: SQLite, uploaded releases, and device identity.
+apps/api/data/
+/data/
 coverage/
 .DS_Store
 *.tsbuildinfo

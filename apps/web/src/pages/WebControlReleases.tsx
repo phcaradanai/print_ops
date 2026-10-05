@@ -115,8 +115,8 @@ export default function WebControlReleases() {
       endPoint: 'localhost',
       port: 9000,
       useSSL: false,
-      accessKey: 'minioadmin',
-      secretKey: 'minioadmin',
+      accessKey: '',
+      secretKey: '',
       bucket: 'printops-releases',
       prefix: '',
       publicUrl: '',
@@ -920,6 +920,12 @@ export default function WebControlReleases() {
                   <span>{t('control.storage.local')}</span>
                 </label>
               </Inline>
+              <Text size="body" tone="muted">{t('control.storage.providerHelp')}</Text>
+              <Text size="body" tone="muted">
+                {storageConfig.provider === 'local'
+                  ? t('control.storage.localHelp')
+                  : t('control.storage.minioHelp')}
+              </Text>
             </Stack>
 
             {storageConfig.provider === 'local' ? (

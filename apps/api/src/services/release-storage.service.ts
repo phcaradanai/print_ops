@@ -43,16 +43,22 @@ export class ReleaseStorageService {
       endPoint: process.env['MINIO_ENDPOINT'] || 'localhost',
       port: Number(process.env['MINIO_PORT'] || 9000),
       useSSL: process.env['MINIO_USE_SSL'] === 'true',
-      accessKey: process.env['MINIO_ACCESS_KEY'] || 'minioadmin',
-      secretKey: process.env['MINIO_SECRET_KEY'] || 'minioadmin',
+      accessKey: process.env['MINIO_ACCESS_KEY'] || '',
+      secretKey: process.env['MINIO_SECRET_KEY'] || '',
       bucket: process.env['MINIO_BUCKET'] || 'printops-releases',
       prefix: process.env['MINIO_PREFIX'] || '',
       publicUrl: process.env['MINIO_PUBLIC_URL'] || '',
     };
 
-    const defaultProvider: StorageProviderType = (process.env['STORAGE_PROVIDER'] === 'minio' || process.env['MINIO_ENDPOINT'])
+    const configuredProvider = process.env['STORAGE_PROVIDER'];
+    if (configuredProvider && configuredProvider !== 'local' && configuredProvider !== 'minio') {
+      throw new Error(`Invalid STORAGE_PROVIDER '${configuredProvider}'; expected 'local' or 'minio'`);
+    }
+    const defaultProvider: StorageProviderType = configuredProvider === 'minio'
       ? 'minio'
-      : 'local';
+      : configuredProvider === 'local'
+        ? 'local'
+        : process.env['MINIO_ENDPOINT'] ? 'minio' : 'local';
 
     this.config = {
       provider: initialConfig?.provider || defaultProvider,

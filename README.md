@@ -18,7 +18,9 @@ building a print request, and calling the PrintOps API.
 - `packages/shared` - Shared utilities.
 - `docs` - Architecture, local development, and operational notes.
 - `infra/migrations` - SQL schema for future database-backed storage.
-- `infra/docker/docker-compose.yml` - Draft local Docker stack. The referenced Dockerfiles are not present in this repo yet, so treat this as TBD / ต้องยืนยัน before using it.
+- `infra/docker/docker-compose.yml` - Local/dev stack with optional support services.
+- `infra/docker/docker-compose.control-plane.yml` - Compose file for source builds.
+- `infra/docker/docker-compose.control-plane.stack.yml` - Registry-only server stack for Docker Compose v2 / Portainer Standalone; see [the deployment guide](docs/operations/deploy-web-control-plane.md).
 
 ## UI Source Of Truth And Runtime Modes
 
@@ -469,7 +471,7 @@ API should return the existing job instead of creating a second print.
 | No printers appear in discovery | Use `PRINTOPS_DISCOVERY_MODE=fake npm run dev:runner-go` for local fake discovery. On Windows, confirm Print Spooler and `Get-Printer`; on macOS/Linux, confirm `lpstat`. |
 | Data disappears after restarting the dev API | Development uses in-memory repositories unless `DB_MODE=sqlite` is set. Packaged desktop uses SQLite in its app-data directory. |
 | Real printer does not print | Real printer adapters are skeleton/incomplete in the current repo. Use the fake adapter path for verified local flow. |
-| Docker Compose does not build | `infra/docker/docker-compose.yml` references Dockerfiles that are not present. This is TBD / ต้องยืนยัน. |
+| Server Web Control deployment | Use the production Compose file and instructions in [the deployment guide](docs/operations/deploy-web-control-plane.md). |
 | `tauri:build` fails on `Could not resolve "dist/server.js"` | Stale `apps/api/tsconfig.tsbuildinfo`. Delete it and rebuild — see [Build The Desktop Installer](#build-the-desktop-installer). |
 | `tauri:build` fails / hangs while running the installer | The desktop app may already be running and holding the old `resources/*.exe` files locked. Stop `printerops-desktop.exe`, `server.exe`, and `printops-runner.exe` first. |
 | `release:verify` reports `platform:windows-installer` on macOS/Linux | Run the full `npm run desktop:bundle` command on Windows x64. The configured release requires MSI as well as NSIS. |
@@ -614,8 +616,7 @@ Operators can also retrieve:
 - API key auth exists for external `/api/v1` endpoints, with a seeded dev key.
 - Real printer adapters are not confirmed production-ready.
 - Packaged Windows execution is owned by the bundled API local worker through the TypeScript `WindowsSpoolerAdapter`. The Go runner performs discovery and heartbeat only.
-- Docker Compose references Dockerfiles that are not present in this repo.
-- Production service account creation, key rotation, and deployment steps are TBD / ต้องยืนยัน.
+- Web Control server deployment is documented in `docs/operations/deploy-web-control-plane.md`; production service-account creation and key rotation remain TBD / ต้องยืนยัน.
 
 ## คู่มือภาษาไทย
 
@@ -1021,7 +1022,7 @@ curl -X POST http://127.0.0.1:31415/api/v1/print-jobs \
 | ไม่เจอ printer discovery | ลอง `PRINTOPS_DISCOVERY_MODE=fake npm run dev:runner-go` |
 | restart dev API แล้วข้อมูลหาย | Dev API ใช้ memory เป็นค่าเริ่มต้น ถ้าต้องการเก็บข้อมูลให้ใช้ `DB_MODE=sqlite`; packaged desktop ใช้ SQLite ใน app-data อยู่แล้ว |
 | printer จริงไม่พิมพ์ | real printer adapters ยังไม่ยืนยันว่า production-ready |
-| Docker Compose build ไม่ได้ | `infra/docker/docker-compose.yml` อ้างถึง Dockerfile ที่ยังไม่มี ต้องยืนยัน |
+| deploy Web Control บน server | ดู [คู่มือ Docker Compose](docs/operations/deploy-web-control-plane.md) |
 | `tauri:build` fail ที่ `Could not resolve "dist/server.js"` | `apps/api/tsconfig.tsbuildinfo` ค้าง ลบแล้ว build ใหม่ — ดู [Build ตัวติดตั้ง Desktop](#build-ตัวติดตั้ง-desktop) |
 | `tauri:build` fail หรือค้างตอนสร้างตัวติดตั้ง | แอป desktop อาจรันอยู่และล็อกไฟล์ `resources/*.exe` เก่าไว้ ให้ปิด `printerops-desktop.exe`, `server.exe`, `printops-runner.exe` ก่อน |
 | `release:verify` แจ้ง `platform:windows-installer` บน macOS/Linux | ให้รัน `npm run desktop:bundle` บน Windows x64 เพราะ release นี้ต้องสร้างทั้ง MSI และ NSIS |
