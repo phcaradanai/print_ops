@@ -1,9 +1,10 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import type { ControlOtaTransitionEvent } from '@printerops/domain';
 import { DeviceIdentityStore } from '../services/device-identity.js';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { controlPlaneTransportConfigFromEnv } from '../infra/nats/control-plane-transport.js';
 
 describe('DeviceIdentityStore', () => {
   let tempDir: string;
@@ -80,6 +81,88 @@ describe('DeviceIdentityStore', () => {
     expect(store.getDeviceId()).toBeUndefined();
     expect(store.getInstallationId()).toBe(origInstallationId);
   });
+
+  it('reads the control-plane endpoints issued at enrollment', () => {
+    // The desktop enrollment command and scripts/enroll-local-control-device.mjs
+    // write the identity file directly while no API server is running, so the
+    // store has to pick up endpoints it never recorded itself.
+    const initial = new DeviceIdentityStore({ storagePath: identityPath });
+    const installationId = initial.getInstallationId();
+    expect(initial.getControlPlane()).toBeUndefined();
+
+    writeFileSync(identityPath, JSON.stringify({
+      installationId,
+      siteId: 'hospital-ward-1',
+      deviceId: 'dev_test_123',
+      deviceToken: 'devtok_secret_abc',
+      controlPlane: { natsUrl: 'nats://10.20.0.5:4222', stream: 'PRINTOPS_CONTROL' },
+    }, null, 2));
+
+    const enrolled = new DeviceIdentityStore({ storagePath: identityPath });
+    expect(enrolled.isEnrolled()).toBe(true);
+    expect(enrolled.getControlPlane()).toEqual({
+      natsUrl: 'nats://10.20.0.5:4222',
+      stream: 'PRINTOPS_CONTROL',
+    });
+
+    // An identity from before endpoints were issued keeps working without them.
+    writeFileSync(identityPath, JSON.stringify({
+      installationId,
+      siteId: 'hospital-ward-1',
+      deviceId: 'dev_test_123',
+      deviceToken: 'devtok_secret_abc',
+    }));
+    expect(new DeviceIdentityStore({ storagePath: identityPath }).getControlPlane()).toBeUndefined();
+
+    // A half-written block is dropped, not half-applied: handing the transport
+    // a broker without its stream would publish into an unknown stream.
+    writeFileSync(identityPath, JSON.stringify({
+      installationId,
+      deviceId: 'dev_test_123',
+      deviceToken: 'devtok_secret_abc',
+      controlPlane: { natsUrl: 'nats://10.20.0.5:4222' },
+    }));
+    expect(new DeviceIdentityStore({ storagePath: identityPath }).getControlPlane()).toBeUndefined();
+  });
+
+  it('uses the issued endpoints unless a complete NATS pair overrides them', () => {
+    writeFileSync(identityPath, JSON.stringify({
+      installationId: 'inst_issued',
+      siteId: 'hospital-ward-1',
+      deviceId: 'dev_test_123',
+      deviceToken: 'devtok_secret_abc',
+      controlPlane: { natsUrl: 'nats://10.20.0.5:4222', stream: 'ISSUED_STREAM' },
+    }));
+    const enrolled = new DeviceIdentityStore({ storagePath: identityPath });
+    const role = { role: 'device', deviceId: 'dev_test_123' } as const;
+
+    // An unconfigured workstation reaches the plane on the enrolled broker.
+    expect(controlPlaneTransportConfigFromEnv(role, enrolled.controlPlaneEnv({}))).toMatchObject({
+      role: 'device',
+      url: 'nats://10.20.0.5:4222',
+      stream: 'ISSUED_STREAM',
+    });
+
+    expect(controlPlaneTransportConfigFromEnv(role, enrolled.controlPlaneEnv({
+      PRINTOPS_CONTROL_NATS_URL: 'nats://192.168.1.9:4222',
+      PRINTOPS_CONTROL_NATS_STREAM: 'OTHER_STREAM',
+    }))).toMatchObject({
+      url: 'nats://192.168.1.9:4222',
+      stream: 'OTHER_STREAM',
+    });
+
+    // A half-set pair is a misconfiguration, never completed from the identity.
+    expect(controlPlaneTransportConfigFromEnv(role, enrolled.controlPlaneEnv({
+      PRINTOPS_CONTROL_NATS_STREAM: 'OTHER_STREAM',
+    }))).toBeUndefined();
+    expect(() => controlPlaneTransportConfigFromEnv(role, enrolled.controlPlaneEnv({
+      PRINTOPS_CONTROL_NATS_URL: 'nats://192.168.1.9:4222',
+    }))).toThrow(/PRINTOPS_CONTROL_NATS_STREAM/);
+
+    const unenrolled = new DeviceIdentityStore({ storagePath: join(tempDir, 'unenrolled.json') });
+    expect(controlPlaneTransportConfigFromEnv(role, unenrolled.controlPlaneEnv({}))).toBeUndefined();
+  });
+
   it('persists OTA command identity and pending transition outbox across restarts', () => {
     const store = new DeviceIdentityStore({ storagePath: identityPath });
     const event: ControlOtaTransitionEvent = {

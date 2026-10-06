@@ -129,8 +129,15 @@ export interface DeviceEnrollmentResponse {
   siteId: string;
   /** Per-device authentication credential returned ONCE upon enrollment. */
   deviceToken: string;
+  /**
+   * Broker endpoints the client must use for control traffic. They are part
+   * of the enrollment response so an installed client never needs a
+   * machine-wide `PRINTOPS_CONTROL_NATS_URL`/`…_STREAM` to reach the plane.
+   */
   controlPlane: {
-    natsUrl?: string;
+    natsUrl: string;
+    /** JetStream stream that carries commands, events and heartbeats. */
+    stream: string;
     commandSubject: string;
     eventSubject: string;
     heartbeatSubject: string;

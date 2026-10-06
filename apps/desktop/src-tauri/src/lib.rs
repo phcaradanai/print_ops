@@ -181,7 +181,6 @@ const JWT_SECRET_FILE: &str = "jwt-secret.txt";
 const RUNNER_BOOTSTRAP_SECRET_FILE: &str = "runner-bootstrap-secret.txt";
 const CONTROL_AGENT_BINARY_FILE: &str = "printops-control-agent.exe";
 const CONTROL_AGENT_LOG_FILE: &str = "desktop-control-agent.log";
-const CONTROL_NATS_STREAM: &str = "PRINTOPS_CONTROL";
 const OTA_UPDATER_STATE_FILE: &str = "ota/updater-state.json";
 const OTA_ARTIFACT_STATE_FILE: &str = "ota/staged-artifact.json";
 const OTA_UPDATER_REQUEST_DIR: &str = "ota/requests";
@@ -514,11 +513,6 @@ fn build_control_agent_command(paths: &ServerPaths) -> Command {
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .join(OTA_HEALTH_TOKEN_FILE);
-    let nats_url = std::env::var("PRINTOPS_CONTROL_NATS_URL")
-        .unwrap_or_else(|_| "nats://127.0.0.1:4222".to_string());
-    let stream = std::env::var("PRINTOPS_CONTROL_NATS_STREAM")
-        .unwrap_or_else(|_| CONTROL_NATS_STREAM.to_string());
-
     let mut cmd = Command::new(paths.res_dir.join(CONTROL_AGENT_BINARY_FILE));
     cmd.current_dir(&paths.res_dir)
         .env_remove("PKG_EXECPATH")
@@ -528,8 +522,6 @@ fn build_control_agent_command(paths: &ServerPaths) -> Command {
         )
         .env("PRINTOPS_CONTROL_TARGET_TOKEN_PATH", token_path)
         .env("PRINTOPS_CONTROL_TARGET_URL", SERVER_URL)
-        .env("PRINTOPS_CONTROL_NATS_URL", nats_url)
-        .env("PRINTOPS_CONTROL_NATS_STREAM", stream)
         .env("PRINTOPS_APP_VERSION", DESKTOP_APP_VERSION)
         .env("PRINTOPS_RUNNER_VERSION", DESKTOP_APP_VERSION)
         .env("PRINTOPS_OTA_INSTALL_ROOT", &paths.install_root)
@@ -537,6 +529,15 @@ fn build_control_agent_command(paths: &ServerPaths) -> Command {
         .stdin(Stdio::null())
         .stdout(out)
         .stderr(err);
+    // Only forward an operator-provided broker. A built-in localhost default
+    // would override the endpoints the control plane issued at enrollment,
+    // which are the ones that actually reach it from this network.
+    if let Ok(nats_url) = std::env::var("PRINTOPS_CONTROL_NATS_URL") {
+        cmd.env("PRINTOPS_CONTROL_NATS_URL", nats_url);
+    }
+    if let Ok(stream) = std::env::var("PRINTOPS_CONTROL_NATS_STREAM") {
+        cmd.env("PRINTOPS_CONTROL_NATS_STREAM", stream);
+    }
     cmd
 }
 
@@ -631,6 +632,235 @@ fn save_nats_settings(app: tauri::AppHandle, settings: NatsSettings) -> Result<(
         );
         Err("API server restarted but did not become healthy in time".into())
     }
+}
+
+/// Device credentials and broker endpoints returned by `POST /api/v1/control/enroll`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ControlEnrollmentResponse {
+    device_id: String,
+    device_token: String,
+    #[serde(default)]
+    site_id: Option<String>,
+    control_plane: ControlPlaneEndpoints,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ControlPlaneEndpoints {
+    nats_url: String,
+    stream: String,
+}
+
+/// What the Settings page shows after a successful enrollment.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ControlEnrollmentResult {
+    device_id: String,
+    nats_url: String,
+    stream: String,
+}
+
+/// Accepts the address an operator copies out of the Web Control browser tab —
+/// `https://control.example.com`, with or without a trailing slash or `/api` —
+/// and returns the origin the enroll route hangs off.
+fn normalize_control_plane_url(input: &str) -> Result<String, String> {
+    let trimmed = input.trim().trim_end_matches('/');
+    if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
+        return Err("Control plane address must start with http:// or https://".to_string());
+    }
+    let without_api = trimmed.strip_suffix("/api").unwrap_or(trimmed);
+    let base = without_api.trim_end_matches('/');
+    if base.is_empty() {
+        return Err("Control plane address is required".to_string());
+    }
+    Ok(base.to_string())
+}
+
+/// Reads `installationId` from the identity file the API server maintains.
+fn read_installation_id(path: &Path) -> Result<String, String> {
+    let contents = fs::read_to_string(path)
+        .map_err(|err| format!("Could not read the device identity at {}: {err}", path.display()))?;
+    let identity = serde_json::from_str::<serde_json::Value>(&contents)
+        .map_err(|err| format!("Device identity file is not valid JSON: {err}"))?;
+    identity
+        .get("installationId")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            "Device identity has no installationId; start PrintOps once before enrolling".to_string()
+        })
+}
+
+/// Records the issued credentials and broker endpoints in the identity file.
+/// Only called while the API server is stopped, so nothing else writes the
+/// file, and a temp-file rename keeps a crash from truncating it.
+fn write_enrollment(path: &Path, response: &ControlEnrollmentResponse) -> Result<(), String> {
+    let contents = fs::read_to_string(path)
+        .map_err(|err| format!("Could not read the device identity at {}: {err}", path.display()))?;
+    let mut identity = serde_json::from_str::<serde_json::Value>(&contents)
+        .map_err(|err| format!("Device identity file is not valid JSON: {err}"))?;
+    let object = identity
+        .as_object_mut()
+        .ok_or_else(|| "Device identity file must contain a JSON object".to_string())?;
+    object.insert("deviceId".into(), response.device_id.clone().into());
+    object.insert("deviceToken".into(), response.device_token.clone().into());
+    if let Some(site_id) = response
+        .site_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        object.insert("siteId".into(), site_id.clone().into());
+    }
+    object.insert(
+        "controlPlane".into(),
+        serde_json::json!({
+            "natsUrl": response.control_plane.nats_url,
+            "stream": response.control_plane.stream,
+        }),
+    );
+    let json = serde_json::to_vec_pretty(&identity).map_err(|err| err.to_string())?;
+    let temporary = path.with_extension("json.tmp");
+    fs::write(&temporary, json).map_err(|err| err.to_string())?;
+    fs::rename(&temporary, path).map_err(|err| err.to_string())
+}
+
+/// Connects this installation to a Web Control plane: exchanges the one-time
+/// enrollment token for device credentials, records the broker endpoints the
+/// plane issued, then restarts the API server so the control-agent supervisor
+/// starts the sidecar from the enrolled identity.
+#[tauri::command]
+fn enroll_control_device(
+    app: tauri::AppHandle,
+    control_plane_url: String,
+    enrollment_token: String,
+) -> Result<ControlEnrollmentResult, String> {
+    let state = app.state::<AppState>();
+    let log = state.paths.app_log.clone();
+    let identity_path = state.paths.device_identity_path.clone();
+    let base = normalize_control_plane_url(&control_plane_url)?;
+    let token = enrollment_token.trim();
+    if token.is_empty() {
+        return Err("Enrollment token is required".to_string());
+    }
+    if device_identity_is_enrolled(&identity_path) {
+        return Err("This installation is already enrolled with a control plane".to_string());
+    }
+    let installation_id = read_installation_id(&identity_path)?;
+    let hostname = std::env::var("COMPUTERNAME")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "printops-workstation".to_string());
+    let schema_version = DESKTOP_DB_SCHEMA_VERSION
+        .parse::<u32>()
+        .map_err(|_| "PRINTOPS_BUILD_DB_SCHEMA_VERSION is not a number".to_string())?;
+
+    let url = format!("{base}/api/v1/control/enroll");
+    let payload = serde_json::json!({
+        "enrollmentToken": token,
+        "installationId": installation_id,
+        "hostname": hostname,
+        // Node's `process.platform`/`process.arch` spelling, so a device row
+        // reads identically however it enrolled. The desktop ships x64 only.
+        "platform": "win32",
+        "architecture": "x64",
+        "appVersion": DESKTOP_APP_VERSION,
+        "schemaVersion": schema_version,
+        "runnerVersion": DESKTOP_APP_VERSION,
+    });
+    let agent = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(30))
+        .build();
+    // `ureq` is built without its optional `json` feature, so the payload and
+    // the response body are (de)serialized with serde_json directly.
+    let body = serde_json::to_string(&payload).map_err(|err| err.to_string())?;
+    let response = match agent
+        .post(&url)
+        .set("content-type", "application/json")
+        .send_string(&body)
+    {
+        Ok(response) => response,
+        Err(ureq::Error::Status(status, response)) => {
+            let detail: String = response
+                .into_string()
+                .unwrap_or_default()
+                .chars()
+                .take(300)
+                .collect();
+            log_line(
+                &log,
+                &format!("Control plane rejected enrollment: HTTP {status} {detail}"),
+            );
+            return Err(format!(
+                "Control plane rejected the enrollment (HTTP {status}): {detail}"
+            ));
+        }
+        Err(err) => {
+            log_line(&log, &format!("Enrollment request to {url} failed: {err}"));
+            return Err(format!("Could not reach the control plane at {base}: {err}"));
+        }
+    };
+    let response_body = response
+        .into_string()
+        .map_err(|err| format!("Could not read the enrollment response: {err}"))?;
+    let enrollment = serde_json::from_str::<ControlEnrollmentResponse>(&response_body)
+        .map_err(|err| format!("Control plane returned an unexpected enrollment response: {err}"))?;
+    if enrollment.device_id.trim().is_empty() || enrollment.device_token.trim().is_empty() {
+        return Err("Control plane returned incomplete device credentials".to_string());
+    }
+    if enrollment.control_plane.nats_url.trim().is_empty()
+        || enrollment.control_plane.stream.trim().is_empty()
+    {
+        return Err("Control plane did not return a broker address for this device".to_string());
+    }
+
+    let data_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
+    let nats_settings = load_nats_settings(&data_dir, &log);
+
+    // The API server holds the identity in memory and rewrites the file on its
+    // own schedule, so it is stopped before the file is touched: no second
+    // writer, no stale overwrite. The supervisor starts the control agent from
+    // the enrolled identity once the server is back.
+    kill_child(
+        &state.server_child,
+        &log,
+        "server (applying control-plane enrollment)",
+    );
+    let write_result = write_enrollment(&identity_path, &enrollment);
+    let child = spawn_child(
+        build_server_command(&state.paths, &nats_settings),
+        &log,
+        "server.exe",
+    );
+    let restarted = child.is_some();
+    if let Ok(mut guard) = state.server_child.lock() {
+        *guard = child;
+    }
+    // The server is back regardless of the write outcome, so a failed write is
+    // reported afterwards instead of leaving the workstation without a local API.
+    write_result?;
+    if !restarted {
+        return Err("Enrollment was saved, but the API server could not be restarted".to_string());
+    }
+    if !wait_for_server_health(Duration::from_secs(20)) {
+        return Err(
+            "Enrollment was saved, but the API server did not become healthy in time".to_string(),
+        );
+    }
+    log_line(
+        &log,
+        &format!(
+            "Enrolled with control plane {base} as {}",
+            enrollment.device_id
+        ),
+    );
+    Ok(ControlEnrollmentResult {
+        device_id: enrollment.device_id,
+        nats_url: enrollment.control_plane.nats_url,
+        stream: enrollment.control_plane.stream,
+    })
 }
 
 struct AppState {
@@ -1280,7 +1510,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_nats_settings,
             save_nats_settings,
-            write_export_file
+            write_export_file,
+            enroll_control_device
         ])
         // Do not use WindowEvent::Destroyed here. On Windows it runs after the
         // Tao event-loop state has started moving and can panic before the

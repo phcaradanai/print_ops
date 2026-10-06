@@ -3,6 +3,7 @@ import { useLocale, type Locale } from '../i18n/index.js';
 import { errorMessage } from '../api/errors.js';
 import {
   apiDownload,
+  apiFetch,
   getReadiness,
   getNatsRuntimeStatus,
   getRuntimeArchitecture,
@@ -16,9 +17,13 @@ import {
   type NatsSettings,
   DEFAULT_NATS_SETTINGS,
   getNatsSettings,
+  enrollControlDevice,
+  type ControlEnrollmentResult,
   saveNatsSettings,
   isTauriAvailable,
 } from '../tauri.js';
+
+import type { ClientControlStatus } from '../App.js';
 import { ServiceAccountSettings } from '../components/ServiceAccountSettings.js';
 import {
   Alert,
@@ -144,6 +149,12 @@ export default function Settings() {
   const [natsStatus, setNatsStatus] = useState<NatsRuntimeStatus | null>(null);
   const [natsTesting, setNatsTesting] = useState(false);
 
+  // Web Control enrollment (desktop only)
+  const [controlStatus, setControlStatus] = useState<ClientControlStatus | null>(null);
+  const [controlPlaneUrl, setControlPlaneUrl] = useState('');
+  const [enrollmentToken, setEnrollmentToken] = useState('');
+  const [enrollmentResult, setEnrollmentResult] = useState<ControlEnrollmentResult | null>(null);
+
   const readinessLabels: Record<string, string> = {
     desktopShell: t('settings.readiness.desktopShell'),
     localApi: t('settings.readiness.localApi'),
@@ -199,6 +210,25 @@ export default function Settings() {
     const timer = window.setInterval(refresh, 3000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [natsSupported]);
+
+  // The local server restarts while an enrollment is applied, so the panel
+  // re-reads the identity it actually holds rather than trusting the call
+  // result alone.
+  const refreshControlStatus = useCallback(async () => {
+    try {
+      const value = await apiFetch<ClientControlStatus>('/v1/control/client-status');
+      if (value) setControlStatus(value);
+    } catch {
+      // The local server is unreachable while it restarts.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!natsSupported) return;
+    void refreshControlStatus();
+    const timer = window.setInterval(() => { void refreshControlStatus(); }, 5000);
+    return () => window.clearInterval(timer);
+  }, [natsSupported, refreshControlStatus]);
 
   const handleNatsTest = useCallback(async () => {
     setNatsTesting(true);
@@ -316,6 +346,36 @@ export default function Settings() {
     setNatsDraft(nats);
     setNatsDirty(false);
   }, [nats]);
+
+  // ---- Web Control enrollment handlers ----
+
+  // Enrollment is desktop-only: the local server owns the device identity, and
+  // only the desktop shell may stop it, rewrite that identity with the broker
+  // endpoints the control plane issued, and start it again.
+  const enroll = useApiAction(async (input: { controlPlaneUrl: string; enrollmentToken: string }) =>
+    enrollControlDevice(input.controlPlaneUrl, input.enrollmentToken),
+  );
+
+  const handleControlEnroll = useCallback(async () => {
+    const result = await enroll.run({ controlPlaneUrl, enrollmentToken });
+    if (result) {
+      setEnrollmentResult(result);
+      setEnrollmentToken('');
+      setMessage({ text: t('settings.control.enrolled'), kind: 'success' });
+    } else {
+      setMessage({
+        text: `${t('settings.control.failed')} ${errorMessage(enroll.getError())}`,
+        kind: 'error',
+      });
+    }
+    await refreshControlStatus();
+  }, [controlPlaneUrl, enrollmentToken, enroll, refreshControlStatus, t]);
+
+  const controlStateLabel = !controlStatus?.isEnrolled
+    ? t('settings.control.state.notEnrolled')
+    : controlStatus.visibleToControlPlane
+      ? t('settings.control.state.online')
+      : t('settings.control.state.registered');
 
   const localhostNats = /^(nats:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|$)/i.test(natsDraft.url.trim());
 
@@ -678,6 +738,79 @@ export default function Settings() {
                   {t('common.cancel')}
                 </Button>
               </Inline>
+            </Stack>
+          )}
+        </Panel>
+
+        {/* Web Control enrollment (desktop only) */}
+        <Panel title={t('settings.control.title')}>
+          {natsLoading && <LoadingState />}
+
+          {!natsLoading && !natsSupported && (
+            <Text as="p" tone="muted">{t('settings.control.desktopOnly')}</Text>
+          )}
+
+          {!natsLoading && natsSupported && (
+            <Stack gap="lg">
+              <Text as="p" tone="muted">{t('settings.control.description')}</Text>
+
+              {controlStatus && (
+                <CardDetail aria-label={t('settings.control.status')}>
+                  <CardDetailItem label={t('settings.control.state')}>{controlStateLabel}</CardDetailItem>
+                  <CardDetailItem label={t('settings.control.deviceId')}>
+                    {controlStatus.deviceId ?? enrollmentResult?.deviceId ?? t('common.noData')}
+                  </CardDetailItem>
+                  <CardDetailItem label={t('settings.control.broker')}>
+                    {enrollmentResult?.natsUrl ?? controlStatus.controlPlane?.natsUrl ?? t('common.noData')}
+                  </CardDetailItem>
+                  <CardDetailItem label={t('settings.control.stream')}>
+                    {enrollmentResult?.stream ?? controlStatus.controlPlane?.stream ?? t('common.noData')}
+                  </CardDetailItem>
+                </CardDetail>
+              )}
+
+              {!controlStatus?.isEnrolled && (
+                <Stack gap="lg">
+                  <FormField label={t('settings.control.address')} hint={t('settings.control.addressHint')}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        type="text"
+                        value={controlPlaneUrl}
+                        placeholder="https://control.example.com"
+                        onChange={(e) => setControlPlaneUrl(e.target.value)}
+                        disabled={enroll.pending}
+                      />
+                    )}
+                  </FormField>
+
+                  <FormField label={t('settings.control.token')} hint={t('settings.control.tokenHint')}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        type="password"
+                        autoComplete="off"
+                        value={enrollmentToken}
+                        onChange={(e) => setEnrollmentToken(e.target.value)}
+                        disabled={enroll.pending}
+                      />
+                    )}
+                  </FormField>
+
+                  <Inline gap="sm">
+                    <Button
+                      disabled={!controlPlaneUrl.trim() || !enrollmentToken.trim()}
+                      busy={enroll.pending}
+                      busyLabel={t('settings.control.connecting')}
+                      onClick={() => void handleControlEnroll()}
+                    >
+                      {t('settings.control.connect')}
+                    </Button>
+                  </Inline>
+                </Stack>
+              )}
+
+              <Text as="p" tone="muted">{t('settings.control.restartNotice')}</Text>
             </Stack>
           )}
         </Panel>

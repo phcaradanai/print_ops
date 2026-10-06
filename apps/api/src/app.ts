@@ -1085,6 +1085,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     audit: controlAuditRepo,
     config: {
       natsUrl: process.env['PRINTOPS_CONTROL_PUBLIC_NATS_URL'] ?? process.env['PRINTOPS_CONTROL_NATS_URL'],
+      natsStream: process.env['PRINTOPS_CONTROL_NATS_STREAM'],
     },
   });
   const releaseCatalogService = new ReleaseCatalogService({
@@ -1329,6 +1330,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
           progress: latestRemoteCommand.progress,
           updatedAt: latestRemoteCommand.lastCommandAt,
         } : null,
+        // Endpoints this installation was issued at enrollment; null until it
+        // is enrolled. Lets the UI show what the client is connecting to.
+        controlPlane: deviceIdentityStore.getControlPlane() ?? null,
         connectionState: visibleToControlPlane ? 'ONLINE' : 'DISCONNECTED',
       });
     });

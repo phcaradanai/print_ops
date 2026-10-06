@@ -492,6 +492,9 @@ export default function WebControlDevices() {
               <Text size="label" tone="muted">
                 Provide this token during device setup. Once enrolled, the device will obtain its own permanent per-device credentials.
               </Text>
+              <Text size="label" tone="muted">
+                {t('control.devices.enrollServerHint').replace('{url}', window.location.origin)}
+              </Text>
               <Inline>
                 <Button variant="primary" onClick={() => setTokenModalOpen(false)}>Done</Button>
               </Inline>

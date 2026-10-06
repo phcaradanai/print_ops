@@ -28,6 +28,16 @@ export interface StoredDeviceCommand {
   executionStartedAt?: string;
 }
 
+/**
+ * Broker endpoints issued by the control plane at enrollment. They live in
+ * the identity file — not in the machine environment — so an installed client
+ * can reach its control plane with no manual configuration.
+ */
+export interface StoredControlPlaneEndpoints {
+  natsUrl: string;
+  stream: string;
+}
+
 export interface StoredDeviceIdentity {
   installationId: string;
   siteId: string;
@@ -41,6 +51,7 @@ export interface StoredDeviceIdentity {
   currentControlCommandId?: string;
   controlCommands?: StoredDeviceCommand[];
   controlEventOutbox?: ControlOtaTransitionEvent[];
+  controlPlane?: StoredControlPlaneEndpoints;
 }
 
 export interface DeviceIdentityOptions {
@@ -80,6 +91,18 @@ export class DeviceIdentityStore {
         const raw = readFileSync(this.filePath, 'utf-8');
         const parsed = JSON.parse(raw) as Partial<StoredDeviceIdentity>;
         if (parsed.installationId) {
+          // Control-plane endpoints issued at enrollment. A half-written block
+          // (missing broker URL or stream) is dropped rather than half-applied.
+          const storedControlPlane = parsed.controlPlane;
+          const controlPlane = typeof storedControlPlane?.natsUrl === 'string'
+            && typeof storedControlPlane.stream === 'string'
+            && storedControlPlane.natsUrl.trim().length > 0
+            && storedControlPlane.stream.trim().length > 0
+            ? {
+                natsUrl: storedControlPlane.natsUrl.trim(),
+                stream: storedControlPlane.stream.trim(),
+              }
+            : undefined;
           return {
             installationId: parsed.installationId,
             siteId: parsed.siteId || this.defaultSiteId,
@@ -93,6 +116,7 @@ export class DeviceIdentityStore {
             currentControlCommandId: parsed.currentControlCommandId,
             controlCommands: Array.isArray(parsed.controlCommands) ? parsed.controlCommands : undefined,
             controlEventOutbox: Array.isArray(parsed.controlEventOutbox) ? parsed.controlEventOutbox : undefined,
+            controlPlane,
           };
         }
       }
@@ -274,6 +298,34 @@ export class DeviceIdentityStore {
 
   getDeviceToken(): string | undefined {
     return this.identity.deviceToken;
+  }
+
+  /**
+   * Broker endpoints this installation was enrolled against, as issued by the
+   * control plane. Used as the last resort when the matching environment
+   * variables are absent.
+   */
+  getControlPlane(): StoredControlPlaneEndpoints | undefined {
+    return this.identity.controlPlane;
+  }
+
+  /**
+   * Environment for the control-plane transport. An explicit
+   * `PRINTOPS_CONTROL_NATS_URL`/`PRINTOPS_CONTROL_NATS_STREAM` pair overrides
+   * the endpoints issued at enrollment, so an installed workstation needs no
+   * machine-wide configuration. The pair is resolved as a unit: a half-set
+   * pair is left for the transport to reject instead of being completed with a
+   * broker from a different control plane.
+   */
+  controlPlaneEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+    const issued = this.identity.controlPlane;
+    const configured = env['PRINTOPS_CONTROL_NATS_URL'] || env['PRINTOPS_CONTROL_NATS_STREAM'];
+    if (configured || !issued) return env;
+    return {
+      ...env,
+      PRINTOPS_CONTROL_NATS_URL: issued.natsUrl,
+      PRINTOPS_CONTROL_NATS_STREAM: issued.stream,
+    };
   }
 
   getSiteId(): string {

@@ -1169,7 +1169,7 @@ field ที่ยืนยันจาก route code ว่าจำเป็�
 
 ### Architecture
 
-The central API uses `PRINTOPS_CONTROL_ROLE=control-plane`; an enrolled device uses `PRINTOPS_CONTROL_ROLE=device`. By default, role selection follows whether the local identity is enrolled. Run separate processes for the central control plane and device role. Control traffic is enabled only by the dedicated `PRINTOPS_CONTROL_NATS_URL` plus `PRINTOPS_CONTROL_NATS_STREAM`; generic print-intake NATS settings do not enable it.
+The central API uses `PRINTOPS_CONTROL_ROLE=control-plane`; an enrolled device uses `PRINTOPS_CONTROL_ROLE=device`. By default, role selection follows whether the local identity is enrolled. Run separate processes for the central control plane and device role. The central role requires the dedicated `PRINTOPS_CONTROL_NATS_URL` plus `PRINTOPS_CONTROL_NATS_STREAM`; generic print-intake NATS settings do not enable it. An enrolled device uses the broker URL and stream issued in its enrollment response, so a client workstation needs no control-plane variables; an explicit `PRINTOPS_CONTROL_NATS_URL`/`PRINTOPS_CONTROL_NATS_STREAM` pair still overrides them.
 
 The transport uses JetStream only: the central role publishes per-device commands and consumes durable event/heartbeat streams; the device role consumes a durable command filter scoped to its persisted device ID and publishes signed events/heartbeats. The stream and durable consumers must be provisioned externally. A validated JetStream PubAck marks a command `DELIVERED`; only an authenticated device event can advance it to an accepted or terminal OTA state. A PubAck is not OTA success.
 
@@ -1195,10 +1195,12 @@ OTA progress is reported from persisted local service transitions, including `WA
 
 This is not a validated production setup procedure. Provision an isolated JetStream stream whose subjects capture `printops.control.command.*`, `printops.control.event.*`, and `printops.control.heartbeat.*`; the runtime checks the configured stream and durable filters but does not create or retarget them.
 
+Client onboarding — generate a one-time enrollment token in Web Control, then enter the control-plane address and that token in the app's **Settings → Web Control Connection** — is documented in `docs/operations/deploy-web-control-plane.md`.
+
 | Component | Variable | Code-level purpose |
 | --- | --- | --- |
-| Control API / device | `PRINTOPS_CONTROL_NATS_URL` | Dedicated control-plane NATS endpoint; generic `PRINTOPS_NATS_URL` and `NATS_URL` do not enable this transport |
-| Control API / device | `PRINTOPS_CONTROL_NATS_STREAM` | Required pre-provisioned JetStream stream name |
+| Control API / device | `PRINTOPS_CONTROL_NATS_URL` | Dedicated control-plane NATS endpoint; required by the central role, and an override for a device that otherwise uses the endpoint issued at enrollment; generic `PRINTOPS_NATS_URL` and `NATS_URL` do not enable this transport |
+| Control API / device | `PRINTOPS_CONTROL_NATS_STREAM` | Pre-provisioned JetStream stream name; required with the URL, and an override for an enrolled device that otherwise uses the stream issued at enrollment |
 | Control API | `PRINTOPS_CONTROL_ROLE` | `control-plane` for central command publication/event consumption, `device` for an enrolled local device process |
 | Control API | `PRINTOPS_CONTROL_EVENTS_DURABLE` / `PRINTOPS_CONTROL_HEARTBEATS_DURABLE` | Optional central durable consumer names |
 | Local PrintOps Device | `PRINTOPS_CONTROL_COMMAND_DURABLE` | Optional command durable; its name must end in `-<deviceId>` |

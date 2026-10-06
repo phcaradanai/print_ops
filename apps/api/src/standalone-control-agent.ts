@@ -15,8 +15,16 @@ async function main(): Promise<void> {
   if (!identity.isEnrolled()) throw new Error('Control agent must be enrolled before startup');
   const deviceId = identity.getDeviceId()!;
   const deviceToken = identity.getDeviceToken()!;
-  const config = controlPlaneTransportConfigFromEnv({ role: 'device', deviceId });
-  if (!config) throw new Error('PRINTOPS_CONTROL_NATS_URL is required');
+  // Endpoints issued by the control plane at enrollment supply the broker, so
+  // an installed client needs no manual configuration. An explicit
+  // PRINTOPS_CONTROL_NATS_URL/PRINTOPS_CONTROL_NATS_STREAM pair still wins.
+  const config = controlPlaneTransportConfigFromEnv(
+    { role: 'device', deviceId },
+    identity.controlPlaneEnv(process.env),
+  );
+  if (!config) {
+    throw new Error('No control-plane broker for this device: enroll it with Web Control, or set both PRINTOPS_CONTROL_NATS_URL and PRINTOPS_CONTROL_NATS_STREAM');
+  }
 
   const target = new ControlTargetHttp(
     process.env['PRINTOPS_CONTROL_TARGET_URL'] ?? 'http://127.0.0.1:31415',

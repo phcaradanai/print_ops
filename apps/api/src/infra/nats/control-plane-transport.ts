@@ -13,6 +13,14 @@ import type {
   NatsConnection,
 } from 'nats';
 
+/**
+ * JetStream stream that carries device commands, events and heartbeats. A
+ * deployment sets `PRINTOPS_CONTROL_NATS_STREAM`, and an installing device
+ * learns the value from its enrollment response, so both sides need the same
+ * default when the variable is absent.
+ */
+export const DEFAULT_CONTROL_PLANE_STREAM = 'PRINTOPS_CONTROL';
+
 const CONTROL_COMMAND_PREFIX = 'printops.control.command.';
 const CONTROL_EVENT_FILTER = 'printops.control.event.>';
 const CONTROL_HEARTBEAT_FILTER = 'printops.control.heartbeat.>';

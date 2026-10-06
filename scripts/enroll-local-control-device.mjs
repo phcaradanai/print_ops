@@ -22,7 +22,7 @@ const response = await fetch(new URL('/api/v1/control/enroll', controlBase), {
     hostname: os.hostname(),
     platform: process.platform,
     architecture: process.arch,
-  appVersion: '0.1.32',
+    appVersion: '0.1.32',
     schemaVersion: 8,
     runnerVersion: '0.1.28',
   }),
@@ -33,12 +33,22 @@ if (!enrollment.deviceId || !enrollment.deviceToken || enrollment.installationId
   throw new Error('Control enrollment response is incomplete');
 }
 
+if (!enrollment.controlPlane?.natsUrl || !enrollment.controlPlane?.stream) {
+  throw new Error('Enrollment response has no broker endpoints; the control plane is too old to hand out NATS settings');
+}
+
 copyFileSync(identityPath, `${identityPath}.pre-enrollment.bak`);
 writeFileSync(identityPath, JSON.stringify({
   ...identity,
   deviceId: enrollment.deviceId,
   deviceToken: enrollment.deviceToken,
   siteId: enrollment.siteId,
+  // Broker endpoints issued by the control plane. Without them a client falls
+  // back to NATS defaults that point at its own machine.
+  controlPlane: {
+    natsUrl: enrollment.controlPlane.natsUrl,
+    stream: enrollment.controlPlane.stream,
+  },
   enrolledAt: new Date().toISOString(),
 }, null, 2));
 console.log(`Enrolled device ${enrollment.deviceId}`);

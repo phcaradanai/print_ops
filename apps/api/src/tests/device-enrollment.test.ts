@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import {
   InMemoryDeviceRegistryRepository,
   InMemoryEnrollmentTokenRepository,
@@ -7,6 +7,7 @@ import {
 import { WebControlRegistryService } from '../services/web-control-registry.service.js';
 import { ConflictError, NotFoundError } from '@printerops/shared';
 import { signControlMessageWithToken } from '../services/control-message-auth.js';
+import { DEFAULT_CONTROL_PLANE_STREAM } from '../infra/nats/control-plane-transport.js';
 
 describe('WebControlRegistryService - Enrollment & Identity', () => {
   let deviceRepo: InMemoryDeviceRegistryRepository;
@@ -24,6 +25,7 @@ describe('WebControlRegistryService - Enrollment & Identity', () => {
       audit: auditRepo,
       config: {
         natsUrl: 'nats://control.printops.local:4222',
+        natsStream: 'PRINTOPS_CONTROL',
         staleThresholdMs: 1_000,
         offlineThresholdMs: 2_000,
       },
@@ -81,6 +83,7 @@ describe('WebControlRegistryService - Enrollment & Identity', () => {
     expect(res.siteId).toBe('pharmacy-1');
     expect(res.deviceToken).toMatch(/^devtok_/);
     expect(res.controlPlane.natsUrl).toBe('nats://control.printops.local:4222');
+    expect(res.controlPlane.stream).toBe('PRINTOPS_CONTROL');
     expect(res.controlPlane.commandSubject).toBe(`printops.control.command.${res.deviceId}`);
     expect(res.controlPlane.eventSubject).toBe(`printops.control.event.${res.deviceId}`);
     expect(res.controlPlane.heartbeatSubject).toBe(`printops.control.heartbeat.${res.deviceId}`);
@@ -100,6 +103,36 @@ describe('WebControlRegistryService - Enrollment & Identity', () => {
     const auditLogs = await auditRepo.findByDeviceId(res.deviceId);
     expect(auditLogs.length).toBeGreaterThan(0);
     expect(auditLogs[0]!.action).toBe('device.enrolled');
+  });
+
+  it('issues the default JetStream stream when the deployment configures none', async () => {
+    // Clients need a broker URL and a stream name, and the stream name is the
+    // same for every deployment unless an operator deliberately isolates one.
+    vi.stubEnv('PRINTOPS_CONTROL_NATS_STREAM', '');
+    const serviceWithoutStream = new WebControlRegistryService({
+      deviceRegistry: deviceRepo,
+      enrollmentTokens: tokenRepo,
+      audit: auditRepo,
+      config: { natsUrl: 'nats://control.printops.local:4222' },
+    });
+    const token = await serviceWithoutStream.createEnrollmentToken({
+      siteId: 'pharmacy-1',
+      createdBy: 'admin@hospital.local',
+    });
+
+    const res = await serviceWithoutStream.enrollDevice({
+      enrollmentToken: token.token,
+      installationId: 'inst_station_43',
+      hostname: 'pharm-print-02',
+      platform: 'win32',
+      architecture: 'x64',
+      appVersion: '0.1.32',
+      schemaVersion: 8,
+      runnerVersion: '0.1.32',
+    });
+
+    expect(res.controlPlane.stream).toBe(DEFAULT_CONTROL_PLANE_STREAM);
+    vi.unstubAllEnvs();
   });
 
   it('prevents replay: one-time enrollment token cannot be consumed twice', async () => {

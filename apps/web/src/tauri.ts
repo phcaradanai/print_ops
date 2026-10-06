@@ -55,6 +55,32 @@ export async function saveNatsSettings(settings: NatsSettings): Promise<void> {
   await invoke('save_nats_settings', { settings });
 }
 
+export interface ControlEnrollmentResult {
+  deviceId: string;
+  natsUrl: string;
+  stream: string;
+}
+
+/**
+ * Connects this workstation to a Web Control plane with a one-time enrollment
+ * token issued there. Desktop-only: the command exchanges the token for device
+ * credentials, records the broker endpoints the plane issued, and restarts the
+ * bundled API server so its control agent starts from the new identity. It
+ * throws with the control plane's own rejection message rather than returning a
+ * half-applied result.
+ */
+export async function enrollControlDevice(
+  controlPlaneUrl: string,
+  enrollmentToken: string,
+): Promise<ControlEnrollmentResult> {
+  const invoke = await getInvoke();
+  if (!invoke) throw new Error('Web Control enrollment is only available in the desktop app');
+  return (await invoke('enroll_control_device', {
+    controlPlaneUrl,
+    enrollmentToken,
+  })) as ControlEnrollmentResult;
+}
+
 let saveDialogFn: ((options: Record<string, unknown>) => Promise<string | null>) | null = null;
 
 async function getSaveDialog(): Promise<((options: Record<string, unknown>) => Promise<string | null>) | null> {

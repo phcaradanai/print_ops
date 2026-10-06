@@ -60,6 +60,35 @@ PRINTOPS_CONTROL_NATS_BIND_ADDRESS=10.20.0.5
 
 Ensure the address is assigned to the server. Permit TCP 4222 only from the trusted client/VPN subnet, and configure the reverse proxy to forward to `http://127.0.0.1:8080`.
 
+### Connect a PrintOps station
+
+A station does not need any control-plane setting on the machine: it learns the
+broker address and stream from the control plane during enrollment.
+
+1. Install and start the PrintOps desktop app once, so it creates an unenrolled
+   local identity.
+2. In Web Control, open **Devices**, choose **Generate One-Time Enrollment
+   Token**, and copy the token. The dialog also shows the control plane address
+   to enter on the station.
+3. On the station, open **Settings → Web Control Connection**, enter that
+   control plane address and the token, then choose **Connect**. The desktop app
+   exchanges the token for per-device credentials, records the `natsUrl` and
+   JetStream `stream` the control plane issued in its local
+   `device-identity.json`, and restarts its bundled API server so the control
+   agent starts from that identity. The app refuses to enroll again while it
+   already holds device credentials; generate a new token to move a station.
+4. The connection indicator turns green once the control plane receives the
+   first heartbeat. Allow up to a minute while the local server restarts.
+
+No machine-wide `PRINTOPS_CONTROL_*` variable is required on client
+workstations. An explicit `PRINTOPS_CONTROL_NATS_URL`/`PRINTOPS_CONTROL_NATS_STREAM`
+pair overrides the enrolled endpoints; a half-set pair is refused rather than
+completed with a broker from another control plane.
+
+Clients must be able to reach the address advertised by
+`PRINTOPS_CONTROL_PUBLIC_NATS_URL`: enrollment hands clients that exact URL, so
+a Docker-internal hostname is not reachable from a workstation.
+
 ### Deployment environment reference
 
 | Variable | Values / default | Purpose |
@@ -70,6 +99,7 @@ Ensure the address is assigned to the server. Permit TCP 4222 only from the trus
 | `PRINTOPS_MINIO_ACCESS_KEY` | `printops-control` by default; MinIO only | MinIO root access key. |
 | `PRINTOPS_MINIO_SECRET_KEY` | Required for MinIO | MinIO root secret; generate a unique value separate from the JWT secret. |
 | `PRINTOPS_CONTROL_PUBLIC_NATS_URL` | Required; `nats://<private-address>:<port>` | URL clients use to reach NATS. |
+| `PRINTOPS_CONTROL_NATS_STREAM` | `PRINTOPS_CONTROL` | JetStream stream issued to clients at enrollment; must match the stream the control agent uses. |
 | `PRINTOPS_CONTROL_NATS_BIND_ADDRESS` | Required; private/VPN server address | Host interface for the NATS port binding. |
 | `PRINTOPS_CONTROL_NATS_PORT` | `4222` | Published NATS port. |
 | `PRINTOPS_WEB_BIND_ADDRESS` | `127.0.0.1` | Host interface for the web port; keep loopback behind a reverse proxy. |

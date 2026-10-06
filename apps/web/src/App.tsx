@@ -97,6 +97,8 @@ export interface ClientControlStatus {
   otaState: string;
   connectionState: 'ONLINE' | 'DISCONNECTED';
   remoteCommand?: ClientControlCommandStatus | null;
+  /** Broker endpoints issued at enrollment; null until this client is enrolled. */
+  controlPlane?: { natsUrl: string; stream: string } | null;
 }
 
 const REMOTE_COMMAND_STATUS_POLL_INTERVAL_MS = 5_000;

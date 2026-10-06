@@ -12,6 +12,7 @@ import type {
 } from '@printerops/domain';
 import { AppError, ConflictError, NotFoundError, ValidationError, generateId } from '@printerops/shared';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { DEFAULT_CONTROL_PLANE_STREAM } from '../infra/nats/control-plane-transport.js';
 import { hashDeviceToken, verifyControlMessage } from './control-message-auth.js';
 export { hashDeviceToken } from './control-message-auth.js';
 const AUTO_DISCOVERY_INTERVAL_MS = 30_000;
@@ -43,6 +44,7 @@ function stringArrayField(value: unknown, key: string): string[] | undefined {
 
 export interface WebControlRegistryConfig {
   natsUrl?: string;
+  natsStream?: string;
   staleThresholdMs?: number; // default 30s
   offlineThresholdMs?: number; // default 90s
 }
@@ -68,6 +70,7 @@ export class WebControlRegistryService {
     this.audit = deps.audit;
     this.config = {
       natsUrl: deps.config?.natsUrl || process.env['PRINTOPS_CONTROL_NATS_URL'] || 'nats://127.0.0.1:4222',
+      natsStream: deps.config?.natsStream || process.env['PRINTOPS_CONTROL_NATS_STREAM'] || DEFAULT_CONTROL_PLANE_STREAM,
       staleThresholdMs: deps.config?.staleThresholdMs ?? 30_000,
       offlineThresholdMs: deps.config?.offlineThresholdMs ?? 90_000,
     };
@@ -176,6 +179,7 @@ export class WebControlRegistryService {
       deviceToken,
       controlPlane: {
         natsUrl: this.config.natsUrl,
+        stream: this.config.natsStream,
         commandSubject: `printops.control.command.${deviceId}`,
         eventSubject: `printops.control.event.${deviceId}`,
         heartbeatSubject: `printops.control.heartbeat.${deviceId}`,
