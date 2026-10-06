@@ -77,6 +77,7 @@ Ensure the address is assigned to the server. Permit TCP 4222 only from the trus
 | `PRINTOPS_CONTROL_PLANE_VERSION` | `1.0.0` | Control Plane image tag/version; independent of the PrintOps app version. |
 | `PRINTOPS_IMAGE_PREFIX` | Optional for source builds; required by registry stack | Registry/repository prefix for API and Web images. |
 | `PRINTOPS_API_UPSTREAM` | `api:3001` | API service DNS name and port reachable by the web container; override when its Docker network alias differs. |
+| `PRINTOPS_RELEASE_IMPORT_MAX_MIB` | Positive whole number; default `128` | Maximum Base64 JSON import request size in MiB, shared by API and Web. |
 
 Validate and start the stack:
 
@@ -89,6 +90,37 @@ docker compose --env-file infra/docker/control-plane.env \
 ```
 
 The dashboard is available through the reverse proxy. The API health endpoint, reachable through the web proxy, is `http://127.0.0.1:8080/api/health`.
+
+### Release installer import size
+
+`POST /api/v1/control/releases/import` reads `PRINTOPS_RELEASE_IMPORT_MAX_MIB`
+at container startup in both the Web Nginx proxy and API. The default is `128`
+MiB for the entire JSON request, not the original installer file. Set a positive
+whole number without a unit suffix; zero (unlimited) is not supported.
+
+For example, configure this stack variable in Portainer or the env file:
+
+```dotenv
+PRINTOPS_RELEASE_IMPORT_MAX_MIB=256
+```
+
+Both bundled stacks pass the same value to API and Web. If managing the services
+separately, set it on **both** containers. Redeploy/recreate both services after
+changing the value; no image rebuild is needed for subsequent size changes.
+
+Base64 adds about one third to the file size. With a `256` MiB request limit,
+keep the installer below 192 MiB to leave room for JSON metadata (below 96 MiB
+with the default `128`). Other API routes retain their existing size limits.
+
+If an external reverse proxy fronts the Web container, allow at least the same
+request size on this import endpoint there too (for the `256` example, Nginx:
+`client_max_body_size 256m;`). A proxy with a smaller limit can still return 413
+before the request reaches the API. Raising this limit also increases potential
+memory use because the API decodes the Base64 installer in memory.
+
+For the initial rollout of env-configurable limits, rebuild and publish **both
+API and Web images**, then redeploy with the new image tag. Existing images with
+fixed limits do not gain this behavior by changing environment variables alone.
 
 ## Build and push images
 

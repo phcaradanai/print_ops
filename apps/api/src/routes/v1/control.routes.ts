@@ -33,6 +33,12 @@ export async function controlRoutes(
   app: FastifyInstance,
   deps: { prefix?: string } & ControlRoutesDeps,
 ): Promise<void> {
+  const importLimitSetting = process.env['PRINTOPS_RELEASE_IMPORT_MAX_MIB'] ?? '128';
+  const importBodyLimit = Number(importLimitSetting) * 1024 * 1024;
+  if (!/^[0-9]+$/.test(importLimitSetting) || !Number.isSafeInteger(importBodyLimit) || importBodyLimit <= 0) {
+    throw new Error('PRINTOPS_RELEASE_IMPORT_MAX_MIB must be a positive whole number of MiB');
+  }
+
   // ─── Enrollment Tokens & Bootstrap ──────────────────────────────────────────
 
   app.post(
@@ -536,7 +542,11 @@ export async function controlRoutes(
 
   app.post(
     '/control/releases/import',
-    { onRequest: [requirePermission('control:manage')] },
+    {
+      onRequest: [requirePermission('control:manage')],
+      // Base64 JSON needs about one third more space than the installer itself.
+      bodyLimit: importBodyLimit,
+    },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const body = (req.body ?? {}) as {
         filename?: string;

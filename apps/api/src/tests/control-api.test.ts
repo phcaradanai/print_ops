@@ -1,6 +1,6 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildApp } from '../app.js';
@@ -393,6 +393,47 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
     expect(latestAfterJson && typeof latestAfterJson === 'object' && 'version' in latestAfterJson ? latestAfterJson.version : '').toBe('0.1.30');
   });
 
+  it('imports an installer exceeding the shared body limit without raising other route limits', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'printops-large-import-'));
+    const headers = { authorization: `Bearer ${ownerToken}` };
+    const artifact = Buffer.alloc(10 * 1024 * 1024, 0x5a);
+    const payload = {
+      filename: 'PrintOps_Setup_v0.1.99_windows-x64.exe',
+      artifactBase64: artifact.toString('base64'),
+      version: '0.1.99',
+      platform: 'windows-x64',
+    };
+    try {
+      const settings = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/control/storage-settings',
+        headers,
+        payload: { provider: 'local', localPath: tmpDir },
+      });
+      expect(settings.statusCode).toBe(200);
+
+      const imported = await app.inject({
+        method: 'POST',
+        url: '/api/v1/control/releases/import',
+        headers,
+        payload,
+      });
+      expect(imported.statusCode).toBe(201);
+      expect(imported.json().version).toBe('0.1.99');
+      expect(readFileSync(join(tmpDir, payload.filename))).toEqual(artifact);
+
+      const otherRoute = await app.inject({
+        method: 'POST',
+        url: '/api/v1/control/releases',
+        headers,
+        payload,
+      });
+      expect(otherRoute.statusCode).toBe(413);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it('allows zero-token device announcement and network discovery', async () => {
     // 1. Announce a station directly without an enrollment token
     const announceRes = await app.inject({
@@ -478,5 +519,67 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
     expect(testStorageRes.statusCode).toBe(200);
     const testResult = testStorageRes.json();
     expect(testResult && typeof testResult === 'object' && 'ok' in testResult ? testResult.ok : false).toBe(true);
+  });
+});
+
+describe('Web Control import size configuration', () => {
+  let app: FastifyInstance | undefined;
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'printops-import-limit-'));
+    vi.stubEnv('DB_MODE', 'memory');
+    vi.stubEnv('PRINTOPS_DEV_SEED', 'true');
+    vi.stubEnv('STORAGE_PROVIDER', 'local');
+    vi.stubEnv('PRINTOPS_RELEASES_DIR', tmpDir);
+  });
+
+  afterEach(async () => {
+    await app?.close();
+    app = undefined;
+    vi.unstubAllEnvs();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it.each([
+    { limit: '8', expectedStatus: 413 },
+    { limit: '16', expectedStatus: 201 },
+  ])('applies a $limit MiB request limit to installer import', async ({ limit, expectedStatus }) => {
+    vi.stubEnv('PRINTOPS_RELEASE_IMPORT_MAX_MIB', limit);
+    app = (await buildApp()).app;
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'sysadmin@printerops.local', password: 'Dev-password1!' },
+    });
+    expect(loginRes.statusCode).toBe(200);
+    const headers = { authorization: `Bearer ${loginRes.json().token}` };
+    const artifact = Buffer.alloc(10 * 1024 * 1024, 0x5a);
+    const filename = 'PrintOps_Setup_v0.1.99_windows-x64.exe';
+    const payload = {
+      filename,
+      artifactBase64: artifact.toString('base64'),
+      version: '0.1.99',
+      platform: 'windows-x64',
+    };
+    const imported = await app.inject({
+      method: 'POST',
+      url: '/api/v1/control/releases/import',
+      headers,
+      payload,
+    });
+    expect(imported.statusCode).toBe(expectedStatus);
+    if (expectedStatus === 201) {
+      expect(readFileSync(join(tmpDir, filename))).toEqual(artifact);
+    } else {
+      expect(existsSync(join(tmpDir, filename))).toBe(false);
+    }
+    const otherRoute = await app.inject({
+      method: 'POST',
+      url: '/api/v1/control/releases',
+      headers,
+      payload,
+    });
+    expect(otherRoute.statusCode).toBe(413);
   });
 });
