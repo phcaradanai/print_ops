@@ -23,7 +23,7 @@
     "test:ota-docker": "node scripts/ota-docker-integration.mjs",
     "build:ota-native-acceptance": "node scripts/ota-native-acceptance-build.mjs",
     "verify:ota-native-provenance": "node scripts/ota-native-provenance.mjs",
-    "test:release-verifier": "node --test scripts/release-verify.test.mjs scripts/ota-signing.test.cjs scripts/ota-native-provenance.test.mjs scripts/ota-native-acceptance-schema.test.mjs scripts/ota-native-acceptance-version.test.mjs",
+    "test:release-verifier": "node --test scripts/release-verify.test.mjs scripts/ota-signing.test.cjs scripts/desktop-signing-secret.test.mjs scripts/ota-native-provenance.test.mjs scripts/ota-native-acceptance-schema.test.mjs scripts/ota-native-acceptance-version.test.mjs",
     "typecheck:runner-go": "cd apps/runner-go && go test ./...",
     "typecheck:updater-go": "cd apps/updater-go && go test ./...",
     "release:verify": "node scripts/release-verify.mjs",
@@ -39,5 +39,5 @@
     "node": ">=20.0.0",
     "npm": ">=10.0.0"
   },
-  "version": "0.1.31"
+  "version": "0.1.32"
 }

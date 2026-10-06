@@ -332,7 +332,7 @@ export class WebControlRegistryService {
             || `discovered_${hostname}_31415`;
           const appVersion = stringField(infoData, 'appVersion')
             || stringField(healthData, 'version')
-            || '0.1.31';
+            || '0.1.32';
           const platform = stringField(infoData, 'platform')
             || stringField(stationData, 'platform')
             || 'windows-x64';

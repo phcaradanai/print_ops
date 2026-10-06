@@ -22,7 +22,7 @@ const response = await fetch(new URL('/api/v1/control/enroll', controlBase), {
     hostname: os.hostname(),
     platform: process.platform,
     architecture: process.arch,
-  appVersion: '0.1.31',
+  appVersion: '0.1.32',
     schemaVersion: 8,
     runnerVersion: '0.1.28',
   }),

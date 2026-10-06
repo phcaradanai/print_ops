@@ -343,13 +343,25 @@ apps/desktop/src-tauri/target/release/bundle/nsis/PrintOps_<version>_x64-setup.e
 
 #### OTA Release Signing
 
-`npm run desktop:bundle` requires signed releases by default. Provide
-`PRINTOPS_OTA_SECRET` through the process environment using an approved secret
-manager or CI secret store. It must contain 32–1024 bytes of high-entropy data.
-Never store it in the workspace `.env`, pass it as a command-line argument, or
-commit it. The release tools reject an active or commented
-`PRINTOPS_OTA_SECRET=` assignment in the root `.env`; they also remove the
-secret before starting Tauri, compiler, and resource-build subprocesses.
+On Windows, `npm run desktop:bundle` needs no manual signing-secret setup. The
+first run creates a high-entropy secret and saves it outside the repository at
+`%LOCALAPPDATA%\PrintOps\build\ota-signing-secret.dpapi`, encrypted with Windows
+DPAPI for the current user. Later builds reuse it automatically.
+
+An explicit process/CI `PRINTOPS_OTA_SECRET` takes precedence without changing
+the local store. It must contain 32–1024 bytes of high-entropy data. Never store
+it in the workspace `.env`, pass it as a command-line argument, or commit it.
+The release tools still reject active or commented secret assignments in the
+root `.env` and strip the secret from Tauri, compiler, and resource-build
+subprocesses. Only the release verifier receives it.
+
+Preserve the encrypted store and the Windows profile that can decrypt it.
+Copying the file alone to another account or machine is not a portable backup.
+For CI or a different build account, provision the same signing secret through
+an approved secret manager. If a store is unreadable or conflicts with an
+existing public key, the build fails rather than silently rotating the key.
+If a public key is already pinned but no local store exists, supply its original
+secret explicitly; the command will not create an incompatible signing identity.
 
 Keep the same secret across releases. It derives a stable Ed25519 signing key;
 the installer contains only the public key at
@@ -359,9 +371,9 @@ trust-key migration before performing an intentional key rotation.
 
 | Variable | Required/default | Purpose |
 | --- | --- | --- |
-| `PRINTOPS_OTA_SECRET` | Required for signed releases | High-entropy signing secret; process environment/CI secret store only. |
+| `PRINTOPS_OTA_SECRET` | Optional locally; required for CI | Process/CI override; Windows desktop builds otherwise reuse the current-user DPAPI store. |
 | `PRINTOPS_OTA_REQUIRE_SIGNATURE` | `true` | Signature checks are on by default; do not disable for a publishable release. |
-| `PRINTOPS_OTA_MIN_SUPPORTED_VERSION` | Required | Explicit SemVer compatibility floor for clients allowed to update. |
+| `PRINTOPS_OTA_MIN_SUPPORTED_VERSION` | `0.1.31` for `desktop:bundle` | SemVer compatibility floor; process/root `.env` override takes precedence. Direct `release:verify --post-bundle` requires an explicit value. |
 | `PRINTOPS_DB_SCHEMA_VERSION` | `9` if unset | Schema version written to the OTA compatibility metadata. Set the actual release schema explicitly. |
 | `PRINTOPS_OTA_CHANNEL` | `stable` | Release channel; accepted values are `stable`, `beta`, and `rc`. |
 | `PRINTOPS_OTA_ROLLOUT_PERCENTAGE` | `100` | Integer `0`–`100`; below `100` sets staged metadata, not enforced client-side. |
@@ -906,13 +918,21 @@ apps/desktop/src-tauri/target/release/bundle/nsis/PrintOps_<version>_x64-setup.e
 
 ##### การเซ็นชื่อ OTA release และค่าที่ต้องตั้ง
 
-`npm run desktop:bundle` ต้องสร้าง signed release โดยค่าเริ่มต้น ให้ provision
-`PRINTOPS_OTA_SECRET` ใน process environment จาก secret manager ที่อนุมัติหรือ
-CI secret store เท่านั้น ค่าต้องเป็น high-entropy ขนาด 32–1024 ไบต์ ห้ามเก็บใน
-workspace `.env`, ส่งเป็น command-line argument หรือ commit ลง source control
-release tools จะปฏิเสธ assignment ของ `PRINTOPS_OTA_SECRET=` ใน root `.env`
-แม้บรรทัดนั้นจะถูก comment ไว้ และจะลบ secret ก่อนเริ่ม Tauri, compiler และ
-resource-build subprocess
+บน Windows รัน `npm run desktop:bundle` ได้โดยไม่ต้องตั้ง signing secret เอง
+ครั้งแรกจะสร้าง secret ที่มีความสุ่มสูงและเก็บแบบเข้ารหัสด้วย Windows DPAPI ที่
+`%LOCALAPPDATA%\PrintOps\build\ota-signing-secret.dpapi` นอก repository
+ครั้งต่อไปใช้ค่าเดิมอัตโนมัติ โดยผูกกับ Windows user ที่สร้างไฟล์
+
+ถ้าตั้ง `PRINTOPS_OTA_SECRET` ใน process/CI จะใช้ค่านั้นแทน โดยไม่เปลี่ยน local store
+ค่าต้องเป็น high-entropy ขนาด 32–1024 ไบต์ ห้ามเก็บใน workspace `.env`,
+ส่งเป็น command-line argument หรือ commit ลง source control ระบบยังปฏิเสธ
+secret assignment ใน root `.env` และไม่ส่ง secret ให้ Tauri/compiler/resource build
+
+ต้องรักษาไฟล์ encrypted store และ Windows profile ที่ถอดรหัสได้
+คัดลอกไฟล์อย่างเดียวไปอีกเครื่องหรืออีก user ไม่ใช่ backup ที่ใช้แทนกันได้
+สำหรับ CI/บัญชี build อื่น ให้ provision secret เดิมผ่าน secret manager
+หาก store เสีย ถอดรหัสไม่ได้ หรือไม่ตรงกับ public key เดิม ระบบจะหยุด ไม่สุ่ม key ใหม่
+หากมี public key เดิมแต่ไม่มี local store ต้องใช้ secret เดิมผ่าน process environment
 
 ต้องใช้ secret เดิมในทุก release เพราะ secret เดียวกันสร้าง Ed25519 signing key
 ที่คงที่ ตัวติดตั้งบรรจุเฉพาะ public key ไว้ที่
@@ -922,9 +942,9 @@ public key เปลี่ยนและ preflight ปฏิเสธ ต้อ
 
 | ตัวแปร | จำเป็น/ค่าเริ่มต้น | ความหมาย |
 | --- | --- | --- |
-| `PRINTOPS_OTA_SECRET` | จำเป็นสำหรับ signed release | High-entropy signing secret; ใช้ process environment/CI secret store เท่านั้น |
+| `PRINTOPS_OTA_SECRET` | ไม่ต้องตั้งสำหรับ local Windows; ต้องตั้งสำหรับ CI | Process/CI override; หากไม่ตั้ง desktop build ใช้ DPAPI store ของ Windows user |
 | `PRINTOPS_OTA_REQUIRE_SIGNATURE` | `true` | เปิด signature verification โดยปริยาย; อย่าปิดสำหรับ release ที่จะเผยแพร่ |
-| `PRINTOPS_OTA_MIN_SUPPORTED_VERSION` | จำเป็น | SemVer compatibility floor ที่ระบุชัดเจนสำหรับ client ที่อนุญาตให้อัพเดต |
+| `PRINTOPS_OTA_MIN_SUPPORTED_VERSION` | `0.1.31` สำหรับ `desktop:bundle` | Compatibility floor; process/root `.env` override ได้ ส่วน direct `release:verify --post-bundle` ต้องระบุเอง |
 | `PRINTOPS_DB_SCHEMA_VERSION` | `9` หากไม่กำหนด | Schema version ใน OTA compatibility metadata; release ควรกำหนดค่าตาม schema จริง |
 | `PRINTOPS_OTA_CHANNEL` | `stable` | รองรับ `stable`, `beta`, `rc` |
 | `PRINTOPS_OTA_ROLLOUT_PERCENTAGE` | `100` | จำนวนเต็ม `0`–`100`; ต่ำกว่า `100` ตั้ง staged metadata แต่ client ยังไม่ enforce |

@@ -89,7 +89,7 @@ export async function controlRoutes(
         hostname: body.hostname,
         platform: body.platform || 'windows-x64',
         architecture: body.architecture || 'x64',
-        appVersion: body.appVersion || '0.1.31',
+        appVersion: body.appVersion || '0.1.32',
         schemaVersion: body.schemaVersion ?? 8,
         runnerVersion: body.runnerVersion,
         siteId: body.siteId || 'default-site',

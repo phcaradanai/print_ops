@@ -695,18 +695,26 @@ PRINTOPS_OTA_POLICY_STATE_PATH=
 
 ### 10.3 Desktop Release Signing
 
-The release signer reads `PRINTOPS_OTA_SECRET` from its process environment,
-normally injected by a CI secret store or set for a local release command. The
-root `.env` is rejected if it contains this variable because build tools in the
-same workspace can read files even when the child environment is sanitized.
-The secret must contain at least 32 bytes of high-entropy data; it must remain
-on the release side and must never be embedded in the client or committed.
+The release signer receives `PRINTOPS_OTA_SECRET` in its process environment.
+CI supplies it from a secret store. On local Windows builds, `desktop:bundle`
+automatically creates and reuses a current-user DPAPI-encrypted secret at
+`%LOCALAPPDATA%\PrintOps\build\ota-signing-secret.dpapi`; a process secret takes
+precedence without changing this store. Existing pinned keys prevent silent
+identity replacement, and unreadable or mismatching stores fail closed.
+
+The root `.env` is still rejected if it contains this variable because build
+tools can read workspace files even when their child environment is sanitized.
+The secret must contain at least 32 bytes of high-entropy data; it stays on the
+release side and is never embedded in the client or committed. DPAPI storage is
+bound to its Windows account; transferring a file alone is not a portable key
+backup. Cross-account/CI builds require the original secret via a secret manager.
 
 The release tools derive a stable Ed25519 signer from this secret. The desktop
 bundle contains only the derived public key. Keep the same secret for every
 release: changing it changes the public key and requires an explicit client
-trust-key migration. `PRINTOPS_OTA_MIN_SUPPORTED_VERSION` remains a release
-compatibility policy setting, not a signing key.
+trust-key migration. `PRINTOPS_OTA_MIN_SUPPORTED_VERSION` is a compatibility
+policy, not a signing key; `desktop:bundle` defaults it to `0.1.31`, and existing
+process or supported root `.env` values override that default.
 
 The `desktop:bundle` driver passes the secret only to release verification. It
 removes `PRINTOPS_OTA_SECRET` from Tauri, compiler, and nested build process

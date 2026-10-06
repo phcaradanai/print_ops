@@ -67,7 +67,7 @@ export class DeviceIdentityStore {
       `${defaultDataDir}/device-identity.json`
     );
     this.defaultSiteId = opts.defaultSiteId || process.env['PRINTOPS_SITE_ID'] || 'default-site';
-    this.appVersion = opts.appVersion || process.env['PRINTOPS_APP_VERSION'] || '0.1.31';
+    this.appVersion = opts.appVersion || process.env['PRINTOPS_APP_VERSION'] || '0.1.32';
     this.schemaVersion = opts.schemaVersion ?? 7;
     this.runnerVersion = opts.runnerVersion || process.env['PRINTOPS_RUNNER_VERSION'] || '0.1.28';
 

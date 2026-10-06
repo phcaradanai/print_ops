@@ -1058,7 +1058,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   );
   natsManager.setIntakeCallbacks(intakeOutcomeCallbacks);
   const deviceIdentityStore = new DeviceIdentityStore({
-    appVersion: process.env['PRINTOPS_APP_VERSION'] ?? '0.1.31',
+    appVersion: process.env['PRINTOPS_APP_VERSION'] ?? '0.1.32',
     schemaVersion: CURRENT_SCHEMA_VERSION,
   });
   const enrolledIdentity = deviceIdentityStore.getIdentity();
@@ -1288,7 +1288,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         hostname: os.hostname(),
         platform: process.platform === 'win32' ? 'windows-x64' : process.platform,
         architecture: process.arch,
-        appVersion: process.env['PRINTOPS_APP_VERSION'] || '0.1.31',
+        appVersion: process.env['PRINTOPS_APP_VERSION'] || '0.1.32',
         schemaVersion: CURRENT_SCHEMA_VERSION,
         capabilities: LOCAL_CONTROL_CAPABILITIES,
         status: 'READY',
