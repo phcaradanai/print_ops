@@ -76,6 +76,7 @@ Ensure the address is assigned to the server. Permit TCP 4222 only from the trus
 | `PRINTOPS_WEB_PORT` | `8080` | Published web port. |
 | `PRINTOPS_CONTROL_PLANE_VERSION` | `1.0.0` | Control Plane image tag/version; independent of the PrintOps app version. |
 | `PRINTOPS_IMAGE_PREFIX` | Optional for source builds; required by registry stack | Registry/repository prefix for API and Web images. |
+| `PRINTOPS_API_UPSTREAM` | `api:3001` | API service DNS name and port reachable by the web container; override when its Docker network alias differs. |
 
 Validate and start the stack:
 

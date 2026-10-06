@@ -75,6 +75,8 @@ services:
 
   web:
     image: "${PRINTOPS_IMAGE_PREFIX:?Set PRINTOPS_IMAGE_PREFIX, e.g. ghcr.io/org/printops-control-plane}-web:${PRINTOPS_CONTROL_PLANE_VERSION:?Set PRINTOPS_CONTROL_PLANE_VERSION}"
+    environment:
+      PRINTOPS_API_UPSTREAM: "${PRINTOPS_API_UPSTREAM:-api:3001}"
     ports:
       - target: 80
         published: "${PRINTOPS_WEB_PORT:-8080}"
