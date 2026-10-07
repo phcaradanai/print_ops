@@ -5,7 +5,7 @@ import { Section } from './editorPrimitives.js';
 import { FieldCard } from './FieldCard.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
 import type { Translate } from './types.js';
-import { validateDynamicFields } from '../model/validation.js';
+import { formatValidationIssue, validateDynamicFieldDiagnostics } from '../model/validation.js';
 
 export function DynamicFieldsSection({ editor, t, anchorRef, onNotice }: {
   editor: PaperProfileEditor;
@@ -14,7 +14,7 @@ export function DynamicFieldsSection({ editor, t, anchorRef, onNotice }: {
   onNotice: (message: string) => void;
 }) {
   const fields = editor.ux.dynamicFields;
-  const geometryIssues = validateDynamicFields(editor.form, fields);
+  const diagnostics = validateDynamicFieldDiagnostics(editor.form, fields);
   const add = () => {
     editor.addField();
     onNotice(t('page.paperProfiles.addedFieldNote'));
@@ -37,9 +37,9 @@ export function DynamicFieldsSection({ editor, t, anchorRef, onNotice }: {
           </div>
         )}
         <p className="pp-preview-only-hint">{t('page.paperProfiles.previewOnlyHint')}</p>
-        {geometryIssues.length > 0 && (
-          <Alert tone="error">{t('validation.fieldOutsidePaper')}</Alert>
-        )}
+        {diagnostics.errors.map((issue) => (
+          <Alert key={issue.field} tone="error">{formatValidationIssue(t, issue)}</Alert>
+        ))}
         <div className="pp-field-list">
           {fields.map((field) => <FieldCard key={field.id} field={field} editor={editor} t={t} />)}
         </div>

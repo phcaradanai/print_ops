@@ -2,10 +2,11 @@ import {
   getOrientedPaperGeometry,
   mapPrintablePointToVisual as mapPrintablePointToVisualShared,
   mapVisualPointToPrintable as mapVisualPointToPrintableShared,
+  type PaperGeometry,
   resolveRenderTransform,
   resolveRenderTransformFrame,
 } from '@printerops/shared';
-import type { PaperForm, VisualPaperGeometry } from './types.js';
+import type { PaperForm } from './types.js';
 
 export function getVisualPaperGeometry(
   form: Pick<
@@ -18,7 +19,7 @@ export function getVisualPaperGeometry(
     | 'marginLeftMm'
     | 'orientation'
   >,
-): VisualPaperGeometry {
+): PaperGeometry {
   return getOrientedPaperGeometry(form);
 }
 
@@ -36,7 +37,7 @@ export function getVisualPaperTransformFrame(
 export function mapPrintablePointToVisual(
   xMm: number,
   yMm: number,
-  geometry: Pick<VisualPaperGeometry, 'rotated' | 'sourcePrintableHeightMm'>,
+  geometry: Pick<PaperGeometry, 'rotated' | 'sourcePrintableHeightMm'>,
 ) {
   return mapPrintablePointToVisualShared(xMm, yMm, geometry);
 }
@@ -44,7 +45,7 @@ export function mapPrintablePointToVisual(
 export function mapVisualPointToPrintable(
   xMm: number,
   yMm: number,
-  geometry: Pick<VisualPaperGeometry, 'rotated' | 'sourcePrintableHeightMm'>,
+  geometry: Pick<PaperGeometry, 'rotated' | 'sourcePrintableHeightMm'>,
 ) {
   return mapVisualPointToPrintableShared(xMm, yMm, geometry);
 }
@@ -54,7 +55,7 @@ export function nudgePrintablePoint(
   yMm: number,
   deltaVisualXmm: number,
   deltaVisualYmm: number,
-  geometry: VisualPaperGeometry,
+  geometry: PaperGeometry,
 ) {
   const visualPoint = mapPrintablePointToVisual(xMm, yMm, geometry);
   const visualX = Math.max(0, Math.min(geometry.printableWidthMm, visualPoint.xMm + deltaVisualXmm));

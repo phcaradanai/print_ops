@@ -1,11 +1,11 @@
 import type { PaperProfile } from '@printerops/domain';
 import {
+  fieldContentFitsPaper,
   getOrientedPaperGeometry,
-  mapPrintablePointToVisual,
+  maxFieldSymbolSizeMm,
   qrQuietZoneUpperBoundMm,
   resolveRenderTransform,
-  resolveRenderTransformFrame,
-  transformedRectBounds,
+  type FieldContentBox,
 } from '@printerops/shared';
 
 export interface PaperProfileIssue {
@@ -194,8 +194,6 @@ function checkFields(body: Record<string, unknown>): PaperProfileIssue[] {
     flipHorizontal: typeof body['flipHorizontal'] === 'boolean' ? body['flipHorizontal'] : false,
     flipVertical: typeof body['flipVertical'] === 'boolean' ? body['flipVertical'] : false,
   });
-  const frame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, transform);
-  const epsilon = 0.0001;
   const issues: PaperProfileIssue[] = [];
 
   rawFields.forEach((rawField, index) => {
@@ -205,6 +203,7 @@ function checkFields(body: Record<string, unknown>): PaperProfileIssue[] {
     }
     const field = rawField as Record<string, unknown>;
     const fieldId = typeof field['id'] === 'string' && field['id'].trim() ? field['id'] : String(index);
+    const type = String(field['type'] ?? '');
     const xMm = field['xMm'];
     const yMm = field['yMm'];
     if (!isFiniteNumber(xMm) || !isFiniteNumber(yMm)) {
@@ -212,48 +211,57 @@ function checkFields(body: Record<string, unknown>): PaperProfileIssue[] {
       return;
     }
 
-    const size = fieldSizeMm(field);
+    const size = fieldSizeMm(field, type);
     if (!size) {
-      issues.push({ field: `fields.${fieldId}.size`, message: 'field size must be finite and greater than zero' });
+      issues.push({ field: `fields.${fieldId}.size`, message: fieldSizeRule(type) });
       return;
     }
-    const point = mapPrintablePointToVisual(xMm, yMm, geometry);
-    const anchorX = geometry.marginLeftMm + point.xMm;
-    const anchorY = geometry.marginTopMm + point.yMm;
-    const left = field['align'] === 'center' ? anchorX - size.widthMm / 2
-      : field['align'] === 'right' ? anchorX - size.widthMm
-        : anchorX;
-    const bounds = transformedRectBounds(
-      left,
-      anchorY,
-      size.widthMm,
-      size.heightMm,
-      geometry.widthMm,
-      geometry.heightMm,
-      transform,
-    );
-    const minX = bounds.minX + frame.offsetX;
-    const minY = bounds.minY + frame.offsetY;
-    const maxX = bounds.maxX + frame.offsetX;
-    const maxY = bounds.maxY + frame.offsetY;
-    if (minX < -epsilon || minY < -epsilon || maxX > frame.width + epsilon || maxY > frame.height + epsilon) {
+    const box: FieldContentBox = {
+      xMm,
+      yMm,
+      widthMm: size.widthMm,
+      heightMm: size.heightMm,
+      align: field['align'] === 'center' ? 'center' : field['align'] === 'right' ? 'right' : 'left',
+    };
+    if (!fieldContentFitsPaper(geometry, transform, { ...box, widthMm: 0, heightMm: 0 })) {
       issues.push({
         field: `fields.${fieldId}`,
-        message: 'field extends beyond the transformed paper boundary',
+        message: `field anchor at X ${xMm.toFixed(1)} mm / Y ${yMm.toFixed(1)} mm is outside the transformed paper boundary`,
       });
+      return;
     }
+    // A text-like field prints one line of whatever the job payload carries, so
+    // its stored size says nothing about the paper: only barcode and QR symbols
+    // carry a physical size the paper must accept.
+    if (type !== 'barcode' && type !== 'qrcode') return;
+    if (fieldContentFitsPaper(geometry, transform, box)) return;
+    const limits = maxFieldSymbolSizeMm(geometry, transform, box);
+    issues.push({
+      field: `fields.${fieldId}`,
+      message: `field of ${box.widthMm.toFixed(1)} × ${box.heightMm.toFixed(1)} mm extends beyond the transformed paper boundary; `
+        + `at most ${limits.maxWidthMm} × ${limits.maxHeightMm} mm fits at this anchor after rotation`,
+    });
   });
   return issues;
 }
 
-function fieldSizeMm(field: Record<string, unknown>): { widthMm: number; heightMm: number } | undefined {
-  if (field['type'] === 'qrcode') {
+/** The numeric rule the explicit content size of a field must satisfy. */
+function fieldSizeRule(type: string): string {
+  if (type === 'qrcode') return 'qrSizeMm must be a finite number greater than zero';
+  if (type === 'barcode') return 'barcodeWidthMm and barcodeHeightMm must be finite numbers greater than zero';
+  return 'fontSize must be a finite number greater than zero';
+}
+
+/** Printed content box of a field: the symbol's physical size, or a degenerate
+ * box for text-like fields, whose printed width only exists at print time. */
+function fieldSizeMm(field: Record<string, unknown>, type: string): { widthMm: number; heightMm: number } | undefined {
+  if (type === 'qrcode') {
     const sizeMm = field['qrSizeMm'] ?? 20;
     if (!isFiniteNumber(sizeMm) || sizeMm <= 0) return undefined;
     const quietZoneMm = qrQuietZoneUpperBoundMm(sizeMm);
     return { widthMm: sizeMm + quietZoneMm * 2, heightMm: sizeMm + quietZoneMm * 2 };
   }
-  if (field['type'] === 'barcode') {
+  if (type === 'barcode') {
     const widthMm = field['barcodeWidthMm'] ?? 28;
     const heightMm = field['barcodeHeightMm'] ?? 12;
     return isFiniteNumber(widthMm) && widthMm > 0 && isFiniteNumber(heightMm) && heightMm > 0
@@ -261,19 +269,7 @@ function fieldSizeMm(field: Record<string, unknown>): { widthMm: number; heightM
       : undefined;
   }
   const fontSize = field['fontSize'];
-  if (!isFiniteNumber(fontSize) || fontSize <= 0) return undefined;
-  const sample = typeof field['defaultValue'] === 'string' && field['defaultValue']
-    ? field['defaultValue']
-    : typeof field['label'] === 'string' && field['label']
-      ? field['label']
-      : typeof field['key'] === 'string' && field['key']
-        ? field['key']
-        : 'field';
-  const charWidthMm = fontSize * 25.4 * 0.6 / 72;
-  return {
-    widthMm: Math.max(charWidthMm, sample.length * charWidthMm),
-    heightMm: fontSize * 25.4 * 1.2 / 72,
-  };
+  return isFiniteNumber(fontSize) && fontSize > 0 ? { widthMm: 0, heightMm: 0 } : undefined;
 }
 
 /** Validates a complete profile body for creation. */

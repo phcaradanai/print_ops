@@ -234,7 +234,8 @@ describe('paper profile field geometry validation', () => {
 
     expect(issues).toContainEqual({
       field: 'fields.qr-1',
-      message: 'field extends beyond the transformed paper boundary',
+      message: 'field of 13.8 × 13.8 mm extends beyond the transformed paper boundary; '
+        + 'at most 5 × 5 mm fits at this anchor after rotation',
     });
   });
 
@@ -243,7 +244,36 @@ describe('paper profile field geometry validation', () => {
 
     expect(issues).toContainEqual({
       field: 'fields.qr-1',
-      message: 'field extends beyond the transformed paper boundary',
+      message: 'field of 13.8 × 13.8 mm extends beyond the transformed paper boundary; '
+        + 'at most 5 × 5 mm fits at this anchor after rotation',
     });
+  });
+
+  it('rejects a field whose anchor sits off the paper', () => {
+    const issues = validatePaperProfileCreate({
+      ...baseProfile,
+      fields: [qrField({ xMm: 120 })],
+    });
+
+    expect(issues).toContainEqual({
+      field: 'fields.qr-1',
+      message: 'field anchor at X 120.0 mm / Y 20.0 mm is outside the transformed paper boundary',
+    });
+  });
+
+  it('accepts a text field whose stored placeholder is wider than the paper', () => {
+    const issues = validatePaperProfileCreate({
+      ...baseProfile,
+      fields: [qrField({
+        type: 'text',
+        label: 'Hyoscine-N-butylbromide (BUSLI1) 400 MG 11',
+        defaultValue: '',
+        xMm: 3,
+        yMm: 20,
+        qrSizeMm: undefined,
+      })],
+    });
+
+    expect(issues).toEqual([]);
   });
 });

@@ -4824,6 +4824,20 @@ body {
   gap: 0.35rem;
 }
 
+/* What the field can still hold, then why it does not: the budget line stays
+   muted, the warning keeps the Alert's own colour language. */
+.pp-field-row__limits {
+  margin: 0.5rem 0 0;
+  color: var(--neutral-text-muted, #6b7280);
+  font-size: 0.7rem;
+}
+
+/* The Alert carries a page-level bottom margin it must not add inside a card. */
+.pp-field-row__warning > .ui-alert {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.6rem;
+}
+
 .pp-field-delete {
   box-sizing: border-box;
   display: inline-flex;
