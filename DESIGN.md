@@ -116,7 +116,7 @@ components:
     typography: "{typography.action}"
     rounded: "{rounded.md}"
     padding: "0.48rem 1.15rem"
-    height: "38px"
+    height: "44px"
   button-primary-hover:
     backgroundColor: "{colors.primary-hover}"
     textColor: "{colors.neutral-surface}"
@@ -193,12 +193,12 @@ components:
     backgroundColor: "{colors.neutral-surface}"
     textColor: "{colors.neutral-deep}"
     typography: "{typography.stat}"
-    rounded: "{rounded.lg}"
+    rounded: "0px"
     padding: "{spacing.lg}"
   metric-tile-attention:
     backgroundColor: "{colors.state-warning-surface}"
     textColor: "{colors.state-warning-text}"
-    rounded: "{rounded.lg}"
+    rounded: "0px"
     padding: "{spacing.lg}"
   table-head:
     backgroundColor: "{colors.neutral-subtle}"
@@ -271,7 +271,7 @@ The notebook has two papers. Most of the product is light: white surfaces on pag
 
 - Light-first surfaces tuned for clinical workstations, with one sanctioned dark canvas for authored code
 - A single route anatomy — bounded measure, ruled header, body, detail, footer — shared by every page
-- Flat-by-default depth with elevation reserved for overlays, drawers, and consequential controls
+- Flat-by-default depth with elevation reserved for overlays and drawers
 - System-native sans-serif typography with monospace reserved for technical evidence
 - One action-blue family, plus separate axes for job status and device condition
 - Restrained surface corners with pills reserved for compact status and filtering
@@ -375,13 +375,13 @@ Every page is the same skeleton, expressed by `PageScaffold` and the `.ops-page`
 
 Measure is bounded, not fluid. `--page-content-standard` (72rem) is the default reading width for forms, settings, and record pages; `--page-content-wide` (96rem) is for dense operational tables and split workspaces; a `full` variant exists for surfaces that genuinely own the viewport. All three center with `margin-inline: auto`. Prose inside a header, section description, or panel description caps at 72ch independently of the container.
 
-The shell is a fixed navigation rail beside a scrolling main canvas. The rail is 200px at 1025px and above, with labels allowed to wrap rather than forcing the canvas to surrender width; `.app-main` reserves `scrollbar-gutter: stable` so content does not shift when a scrollbar appears.
+The shell is a fixed 200px navigation rail beside a scrolling main canvas at 1025px and above. A 56px topbar carries breadcrumb, language controls, user identity and the separate Web Control connection indicator. Browser and Tauri reuse this shell; native window controls remain outside the React content.
 
 ### Responsive behavior
 
 **1024px is the primary transition.** At and below it: multi-column grids collapse to one column, page headers and section headings stack their copy above their actions, resource toolbars go vertical, panels stack their header rows, drawers go full width, main padding drops to 1rem, and responsive tables become labelled record cards. Coarse pointers get the same treatment through `(pointer: coarse)`, independent of width.
 
-Secondary steps handle the rest. 1100px reduces dense multi-column forms. 860px collapses editor/preview workspaces to one column and strips card chrome from list surfaces that have already become cards. 760px turns the navigation into an off-canvas drawer at `min(20rem, 88vw)`, tightens main padding to 0.75rem, and lets header actions grow to fill their row. 520px drops record-card cells to a single column, tightens padding again, and applies safe-area insets on all four edges. Webhooks additionally uses a container query on its workspace, which is the preferred tool for a component that must adapt to its own column rather than the viewport.
+At 1024px and below navigation becomes an off-canvas drawer at `min(20rem, 88vw)` with a persistent 44px trigger. The closed drawer is inert; opening traps keyboard focus, dismissal restores the trigger, and choosing a route focuses main content. Other breakpoints retain the editor/preview and responsive-table adaptations: 1100px reduces dense forms, 860px stacks editing workspaces, 760px tightens padding, and 520px stacks record-card cells. Webhooks also adapts to its container width.
 
 ### Overflow discipline
 
@@ -400,10 +400,9 @@ The system is flat by default, and the shared experience layer enforces it: pane
 ### Shadow Vocabulary
 
 - **Subtle Surface** (`box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05)`): Rare separation for a sticky action bar or preview paper when a border alone is insufficient.
-- **Floating Panel** (`box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08)`): Login and splash panels, drawers.
+- **Floating Panel** (`box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08)`): Login panels and drawers.
 - **Popover** (`box-shadow: 0 8px 24px rgba(17, 24, 39, 0.14)`): Dialogs, menus, and anchored floating content that must remain distinct over white surfaces.
 - **Drawer** (`box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12)`): Side drawers with directional depth.
-- **Action Lift** (`box-shadow: 0 3px 8px rgba(30, 102, 245, 0.30)`): Hover feedback on the primary button; the danger button uses the rose equivalent at 0.24 alpha. It disappears when pressed or disabled.
 
 Backdrops are dark translucent neutrals, not blurs: `rgba(30, 30, 46, 0.45)` for dialogs, `rgba(17, 24, 39, 0.42)` for drawers, `rgba(17, 24, 39, 0.72)` for the full-screen paper preview, which is darker because the artifact behind it is the point.
 
@@ -419,7 +418,7 @@ Backdrops are dark translucent neutrals, not blurs: `rgba(30, 30, 46, 0.45)` for
 
 The dominant form language is gently squared: 4px for compact internal elements, 6px for controls, and 8px for cards, panels, tables, and the Evidence Canvas. Borders are thin and quiet, becoming stronger only for fields, selected controls, and focus. Circular geometry is reserved for avatars, condition dots, metric dots, and iconography.
 
-12px is the floating-surface corner: dialogs and the login and splash panels. The larger radius is what distinguishes a surface that arrived over the page from one that belongs to it — do not spread it to ordinary cards.
+12px is reserved for floating dialogs. Sign-in and connection-recovery panels use the same restrained 8px corners as the reference boards; ordinary reading surfaces stay at 4–8px.
 
 Full pills are a functional exception for filter chips, outlined status badges, and count bubbles. They distinguish compact categorical state from rectangular actions.
 
@@ -449,8 +448,8 @@ Never remove focus without replacing it. The skip link is the first focusable el
 
 ### Buttons
 
-- **Sizes:** 32px compact, 38px default, 44px large — and 44px minimum for every size on coarse pointers or below 1024px.
-- **Primary:** Flat Action Blue with white text for direct task progression. Hover deepens to Action Blue Hover and adds the Action Lift shadow; the base state carries no shadow.
+- **Sizes:** 32px compact, 38px default and 44px large for secondary controls. Primary actions are at least 44×44px at every width; all controls retain the 44px touch floor below 1024px and on coarse pointers.
+- **Primary:** Flat Action Blue with white text. Hover deepens the blue without adding elevation; danger actions follow the same flat hover rule.
 - **Secondary:** White surface, strong neutral border, and body text color; hover fills with Warm Subtle Gray.
 - **Danger:** Consequence Rose fill with white text for destructive or physically consequential confirmation.
 - **Ghost:** Transparent and quiet for dismissal, tertiary navigation, and low-emphasis actions; hover fills with the pale info surface.
@@ -461,7 +460,7 @@ Never remove focus without replacing it. The skip link is the first focusable el
 ### Chips and Badges
 
 - **Filter chips:** White outlined pills with muted text, 34px tall. Selected chips take the pale info surface, deeper blue text, a mixed blue border, and `aria-pressed`.
-- **Status badges:** Transparent outlined pills carrying the literal job status as text at three sizes (24 / 26 / 30px). Border and text share the status color; status is never conveyed by hue alone.
+- **Status badges:** Transparent outlined pills pair a verdict-shaped SVG with the literal server status at three sizes (24 / 26 / 30px). Border and text retain the audited status color. `UNVERIFIED` stays amber and distinct from `SUCCESS` and `FAILED`.
 - **Metadata badges:** 6px rectangles on Warm Subtle Gray with tone variants tied to the state pairs. Use these when the item is metadata rather than an interactive filter or job status.
 
 ### Cards, Panels, and Sections
@@ -491,7 +490,7 @@ Never remove focus without replacing it. The skip link is the first focusable el
 
 ### Metrics
 
-`MetricTile` and `MetricGrid` render at-a-glance counts on auto-fitting tracks (11rem primary, 9rem secondary). Values use tabular numerals so columns of digits align. Tone comes from the **value, not the concept**: a zero `UNVERIFIED` count is an ordinary tile, and only a non-zero one takes the attention treatment. Attention and critical tiles tint the whole surface rather than adding a colored edge bar, so they are findable across the room, and a dot beside the label keeps the meaning off color alone.
+`MetricTile` segments compose a single border-defined `MetricGrid` strip, not a grid of floating cards. Secondary tracks start at 8rem and wrap on narrow screens; 1px separators and tabular 24px values keep the summary low-height. The dashboard leads with actionable unknown/failed outcomes before this summary, recent jobs and printer health. Health filters use observed status; enabling a printer is not evidence that it is ready.
 
 ### The Evidence Canvas
 
@@ -505,6 +504,8 @@ Use it only for content the operator authors or inspects literally — template 
 - **Active:** White text at 600, a 15% Action Blue band, and the 3px leading marker. Color is reinforced by weight and shape.
 - **Focus:** Powder Blue outline, since Action Blue disappears into the rail.
 - **Mobile:** Off-canvas drawer at `min(20rem, 88vw)` with overlay, Escape and close behavior, safe-area spacing, and a persistent 44px trigger.
+- **Connectivity:** The shell's cloud indicator reports Web Control visibility/OTA only, not printer or runner readiness. Pending and stale states are explicit; stale command progress is not presented as current.
+
 
 ### Overlays
 
@@ -521,7 +522,7 @@ Use it only for content the operator authors or inspects literally — template 
 
 ### Auth surfaces
 
-Login and splash are the one place the notebook shows its paper. A 28px graph-paper grid — Action Blue hairlines at 3.5% opacity over Page Gray — fills the viewport behind a 380px floating panel with the Floating Panel shadow. It is the only decorative field in the product, it is scoped to the unauthenticated shell, and it never appears behind operational content.
+Sign-in uses a focused white panel on a flat page-gray canvas, with no decorative grid. `ServiceConnectionScreen` provides shared startup/recovery UI: indeterminate connection checking, a truthful failure state, Retry, and an expandable diagnostic address/result with the physical-printing safety note. It does not invent lifecycle stages, percentages, timestamps, readiness, or repair controls. Tauri embeds this UI so it remains visible before its local API starts, then returns to the existing HTTP origin after a successful health check.
 
 ## Do's and Don'ts
 
@@ -543,7 +544,7 @@ Login and splash are the one place the notebook shows its paper. A 28px graph-pa
 - **Don't** write a literal hex, rem, or shadow value into a stylesheet when a token expresses it. `#1e66f5` is `var(--primary)`.
 - **Don't** add another global override stylesheet to correct a page. Fix the shared component, or scope the fix to the feature that owns it.
 - **Don't** invent a competing page frame, a fifth breakpoint for one surface, or a one-off font size.
-- **Don't** use color gradients, decorative glows, oversized display type, or animation as decoration. The auth graph-paper field is the single sanctioned exception and does not generalize.
+- **Don't** use color gradients, decorative glows, oversized display type, or animation as decoration. Authentication and recovery use the same flat visual language.
 - **Don't** extend the Evidence Canvas beyond authored code and payload editing. Application chrome, dashboards, tables, and forms stay light.
 - **Don't** create terminal-dense dashboards or expose expert payload controls as the default operator workflow.
 - **Don't** uppercase or letter-space anything that can hold localized copy — table headers, field labels, legends, nav headings, or badge text.

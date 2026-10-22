@@ -250,7 +250,7 @@ export default function WebControlReleases() {
       await apiFetch(`/v1/control/releases/${release.id}/set-latest`, { method: 'POST' });
       releasesResource.refresh();
     } catch (err) {
-      setDownloadNotice(`Failed to set latest: ${err instanceof Error ? err.message : String(err)}`);
+      setDownloadNotice(t('control.releases.setLatestFailed').replace('{message}', err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -264,7 +264,7 @@ export default function WebControlReleases() {
       });
       releasesResource.refresh();
     } catch (err) {
-      setDownloadNotice(`Failed to update LTS: ${err instanceof Error ? err.message : String(err)}`);
+      setDownloadNotice(t('control.releases.setLtsFailed').replace('{message}', err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -297,7 +297,7 @@ export default function WebControlReleases() {
       setEditingRelease(null);
       releasesResource.refresh();
     } catch (err) {
-      setDownloadNotice(`Failed to save release: ${err instanceof Error ? err.message : String(err)}`);
+      setDownloadNotice(t('control.releases.saveFailed').replace('{message}', err instanceof Error ? err.message : String(err)));
     } finally {
       setIsSubmitting(false);
     }
@@ -355,9 +355,9 @@ export default function WebControlReleases() {
       });
       setStorageConfig(updated);
       setStorageModalOpen(false);
-      setDownloadNotice('Storage settings saved successfully.');
+      setDownloadNotice(t('control.releases.storageSaved'));
     } catch (err) {
-      setStorageTestResult({ ok: false, message: `Save failed: ${err instanceof Error ? err.message : String(err)}` });
+      setStorageTestResult({ ok: false, message: t('control.releases.storageSaveFailed').replace('{message}', err instanceof Error ? err.message : String(err)) });
     } finally {
       setStorageSaving(false);
     }
@@ -365,7 +365,8 @@ export default function WebControlReleases() {
 
   return (
     <PageLayout
-      title="PrintOps Client Releases"
+      title={t('control.releases.title')}
+      description={t('control.releases.subtitle')}
       density="compact"
       width="full"
       actions={
@@ -382,7 +383,7 @@ export default function WebControlReleases() {
             {t('control.releases.importApp')}
           </Button>
           <Button variant="secondary" onClick={() => { setRegisterError(null); setRegisterModalOpen(true); }}>
-            Register Signed Release
+            {t('control.releases.registerRelease')}
           </Button>
           <Button variant="secondary" onClick={handleOpenStorageModal}>
             {t('control.storage.button')}
@@ -399,15 +400,15 @@ export default function WebControlReleases() {
     >
       <Inline gap="md" style={{ alignItems: 'center' }}>
         <Text size="body" tone="muted">
-          Web Control manages software releases for enrolled PrintOps clients. Versions in this catalog belong to PrintOps releases, not Web Control.
+          {t('control.releases.intro')}
         </Text>
         {latestAvailableRelease?.version && (
           <Badge tone="neutral">
             {t('control.releases.latestAppRelease').replace('{version}', latestAvailableRelease.version)}
           </Badge>
         )}
-        <Badge tone={storageConfig.provider === 'minio' ? 'info' : 'neutral'}>
-          Storage: {storageConfig.provider === 'minio' ? `MinIO (${storageConfig.minio.bucket})` : `Local (${storageConfig.localPath})`}
+        <Badge className="ui-badge--wrap" tone={storageConfig.provider === 'minio' ? 'info' : 'neutral'}>
+          {t('control.releases.storageSummary').replace('{detail}', storageConfig.provider === 'minio' ? `MinIO (${storageConfig.minio.bucket})` : `Local (${storageConfig.localPath})`)}
         </Badge>
       </Inline>
       {downloadNotice && (
@@ -424,20 +425,20 @@ export default function WebControlReleases() {
       ) : releasesResource.error != null && !releasesResource.data ? (
         <ErrorState error={releasesResource.error} onRetry={releasesResource.refresh} />
       ) : releases.length === 0 ? (
-        <EmptyState title="No releases registered in catalog yet" />
+        <EmptyState title={t('control.releases.noReleases')} />
       ) : (
-        <DataTable label="Release Catalog" responsive>
+        <DataTable label={t('control.releases.catalogLabel')} responsive>
           <thead>
             <tr>
-              <DataHead>Version</DataHead>
-              <DataHead>Platform</DataHead>
-              <DataHead>Channel</DataHead>
-              <DataHead>Schema Version</DataHead>
-              <DataHead>Signature / Provenance</DataHead>
-              <DataHead>Status</DataHead>
-              <DataHead>Device Deployments</DataHead>
-              <DataHead>Created</DataHead>
-              <DataHead>Action</DataHead>
+              <DataHead>{t('control.releases.colVersion')}</DataHead>
+              <DataHead>{t('control.releases.platform')}</DataHead>
+              <DataHead>{t('control.releases.channel')}</DataHead>
+              <DataHead>{t('control.releases.schemaVersion')}</DataHead>
+              <DataHead>{t('control.releases.colSignatureProvenance')}</DataHead>
+              <DataHead>{t('control.releases.colStatus')}</DataHead>
+              <DataHead>{t('control.releases.colDeployments')}</DataHead>
+              <DataHead>{t('control.releases.colCreated')}</DataHead>
+              <DataHead>{t('control.releases.colAction')}</DataHead>
             </tr>
           </thead>
           <tbody>
@@ -450,7 +451,7 @@ export default function WebControlReleases() {
                     <Stack gap="xs">
                       <Inline gap="xs" style={{ alignItems: 'center' }}>
                         <Mono size="body" weight="semibold">v{rel.version}</Mono>
-                        {rel.isLatest && <Badge tone="success">LATEST</Badge>}
+                        {rel.isLatest && <Badge tone="success">{t('control.releases.latestBadge')}</Badge>}
                         {(rel.isLts || rel.channel === 'lts') && <Badge tone="info">LTS</Badge>}
                       </Inline>
                       {rel.releaseNotes && <Text size="label" tone="muted">{rel.releaseNotes}</Text>}
@@ -465,7 +466,7 @@ export default function WebControlReleases() {
                   <DataCell><Mono size="body">v{rel.schemaVersion}</Mono></DataCell>
                   <DataCell>
                     <Stack gap="xs">
-                      <Badge tone="success">Verified Ed25519</Badge>
+                      <Badge tone="neutral">{t('control.releases.signatureUnverified')}</Badge>
                       <Mono size="label" tone="muted" title={rel.sha256}>
                         {rel.sha256.slice(0, 12)}…
                       </Mono>
@@ -477,7 +478,7 @@ export default function WebControlReleases() {
                   <DataCell>
                     <Inline gap="xs">
                       <Text size="body" weight="semibold">{deployed}</Text>
-                      <Text size="label" tone="muted">device{deployed === 1 ? '' : 's'}</Text>
+                      <Text size="label" tone="muted">{t(deployed === 1 ? 'control.releases.deviceOne' : 'control.releases.deviceMany')}</Text>
                     </Inline>
                   </DataCell>
                   <DataCell>
@@ -512,7 +513,7 @@ export default function WebControlReleases() {
                           onClick={() => handleToggleLts(rel)}
                           title={rel.isLts ? t('control.releases.unsetLts') : t('control.releases.setLts')}
                         >
-                          {rel.isLts ? 'LTS: ON' : t('control.releases.setLts')}
+                          {rel.isLts ? t('control.releases.ltsOn') : t('control.releases.setLts')}
                         </Button>
                       )}
                       <Button
@@ -527,7 +528,7 @@ export default function WebControlReleases() {
                         variant={rel.status === 'AVAILABLE' ? 'danger' : 'secondary'}
                         onClick={() => handleToggleStatus(rel)}
                       >
-                        {rel.status === 'AVAILABLE' ? 'Revoke' : 'Activate'}
+                        {rel.status === 'AVAILABLE' ? t('control.releases.revoke') : t('control.releases.activate')}
                       </Button>
                     </Inline>
                   </DataCell>
@@ -542,15 +543,15 @@ export default function WebControlReleases() {
       <Dialog
         open={registerModalOpen}
         onClose={() => !isSubmitting && setRegisterModalOpen(false)}
-        title="Register Signed Release"
+        title={t('control.releases.registerRelease')}
       >
         <Stack gap="lg">
           <Text size="body" tone="muted">
-            Register a signed PrintOps release in the catalog. Releases must be cryptographically signed by the offline release key.
+            {t('control.releases.registerDesc')}
           </Text>
 
           {registerError && (
-            <Alert tone="error" title="Registration Failed">
+            <Alert tone="error" title={t('control.releases.registerFailedTitle')}>
               {registerError}
             </Alert>
           )}
@@ -558,11 +559,11 @@ export default function WebControlReleases() {
           <Stack gap="md">
             <Inline gap="md">
               <Stack gap="xs" style={{ flex: 1 }}>
-                <Text size="label" weight="medium">Version (SemVer)</Text>
+                <Text size="label" weight="medium">{t('control.releases.versionLabel')}</Text>
                 <Input placeholder="0.1.29" value={formVersion} onChange={(e) => setFormVersion(e.target.value)} />
               </Stack>
               <Stack gap="xs" style={{ width: '140px' }}>
-                <Text size="label" weight="medium">Channel</Text>
+                <Text size="label" weight="medium">{t('control.releases.channel')}</Text>
                 <Select value={formChannel} onChange={(e) => setFormChannel(e.target.value as 'stable' | 'beta' | 'rc')}>
                   <option value="stable">stable</option>
                   <option value="beta">beta</option>
@@ -573,58 +574,58 @@ export default function WebControlReleases() {
 
             <Inline gap="md">
               <Stack gap="xs" style={{ flex: 1 }}>
-                <Text size="label" weight="medium">Platform</Text>
+                <Text size="label" weight="medium">{t('control.releases.platform')}</Text>
                 <Select value={formPlatform} onChange={(e) => setFormPlatform(e.target.value as 'windows-x64' | 'node-bundle')}>
                   <option value="windows-x64">windows-x64</option>
                   <option value="node-bundle">node-bundle</option>
                 </Select>
               </Stack>
               <Stack gap="xs" style={{ width: '140px' }}>
-                <Text size="label" weight="medium">Schema Version</Text>
+                <Text size="label" weight="medium">{t('control.releases.schemaVersion')}</Text>
                 <Input type="number" value={formSchemaVersion} onChange={(e) => setFormSchemaVersion(Number(e.target.value))} />
               </Stack>
             </Inline>
 
             <Stack gap="xs">
-              <Text size="label" weight="medium">Manifest URL / Reference</Text>
+              <Text size="label" weight="medium">{t('control.releases.manifestRef')}</Text>
               <Input placeholder="https://releases.local/v0.1.29/manifest.json" value={formManifestRef} onChange={(e) => setFormManifestRef(e.target.value)} />
             </Stack>
 
             <Stack gap="xs">
-              <Text size="label" weight="medium">Artifact URL / Reference</Text>
+              <Text size="label" weight="medium">{t('control.releases.artifactRef')}</Text>
               <Input placeholder="https://releases.local/v0.1.29/setup.exe" value={formArtifactRef} onChange={(e) => setFormArtifactRef(e.target.value)} />
             </Stack>
 
             <Stack gap="xs">
-              <Text size="label" weight="medium">SHA-256 Checksum</Text>
+              <Text size="label" weight="medium">{t('control.releases.sha256Field')}</Text>
               <Input placeholder="64-character hex hash" value={formSha256} onChange={(e) => setFormSha256(e.target.value)} />
             </Stack>
 
             <Stack gap="xs">
-              <Text size="label" weight="medium">Ed25519 Cryptographic Signature</Text>
+              <Text size="label" weight="medium">{t('control.releases.signatureField')}</Text>
               <Input placeholder="base64 / hex signature string" value={formSignature} onChange={(e) => setFormSignature(e.target.value)} />
             </Stack>
 
             <Stack gap="xs">
-              <Text size="label" weight="medium">Minimum Supported Version</Text>
+              <Text size="label" weight="medium">{t('control.releases.minSupportedVersion')}</Text>
               <Input placeholder="0.1.20" value={formMinVersion} onChange={(e) => setFormMinVersion(e.target.value)} />
             </Stack>
 
             <Stack gap="xs">
-              <Text size="label" weight="medium">Release Notes</Text>
+              <Text size="label" weight="medium">{t('control.releases.releaseNotes')}</Text>
               <Input placeholder="Summary of changes" value={formNotes} onChange={(e) => setFormNotes(e.target.value)} />
             </Stack>
 
             <Inline gap="xs">
               <Button variant="ghost" disabled={isSubmitting} onClick={() => setRegisterModalOpen(false)}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button
                 variant="primary"
                 disabled={isSubmitting || !formVersion || !formManifestRef || !formArtifactRef || !formSha256 || !formSignature}
                 onClick={handleRegister}
               >
-                {isSubmitting ? 'Registering…' : 'Register Release'}
+                {isSubmitting ? t('control.releases.registering') : t('control.releases.registerSubmit')}
               </Button>
             </Inline>
           </Stack>
@@ -643,7 +644,7 @@ export default function WebControlReleases() {
           </Text>
 
           {importError && (
-            <Alert tone="error" title="Import Failed">
+            <Alert tone="error" title={t('control.releases.importFailedTitle')}>
               {importError}
             </Alert>
           )}
@@ -655,20 +656,20 @@ export default function WebControlReleases() {
                 variant={importMode === 'file' ? 'primary' : 'secondary'}
                 onClick={() => setImportMode('file')}
               >
-                Upload File (.exe / .tar.gz)
+                {t('control.releases.uploadModeFile')}
               </Button>
               <Button
                 size="sm"
                 variant={importMode === 'path' ? 'primary' : 'secondary'}
                 onClick={() => setImportMode('path')}
               >
-                Path / Remote URL
+                {t('control.releases.uploadModePath')}
               </Button>
             </Inline>
 
             {importMode === 'file' ? (
               <Stack gap="xs">
-                <Text size="label" weight="medium">Installer File</Text>
+                <Text size="label" weight="medium">{t('control.releases.installerFile')}</Text>
                 <input
                   type="file"
                   accept=".exe,.tar.gz,.zip,.msi"
@@ -682,13 +683,13 @@ export default function WebControlReleases() {
                 />
                 {importFile && (
                   <Text size="label" tone="muted">
-                    Selected: {importFile.name} ({(importFile.size / (1024 * 1024)).toFixed(2)} MB)
+                    {t('control.releases.selectedFile').replace('{name}', importFile.name).replace('{size}', (importFile.size / (1024 * 1024)).toFixed(2))}
                   </Text>
                 )}
               </Stack>
             ) : (
               <Stack gap="xs">
-                <Text size="label" weight="medium">Server File Path or HTTPS URL</Text>
+                <Text size="label" weight="medium">{t('control.releases.pathInput')}</Text>
                 <Input
                   placeholder="e.g. C:/dist/PrintOps_Setup_v0.1.32_windows-x64.exe or https://cdn.example.com/setup.exe"
                   value={importUrlOrPath}
@@ -703,7 +704,7 @@ export default function WebControlReleases() {
 
             <Inline gap="md">
               <Stack gap="xs" style={{ flex: 1 }}>
-                <Text size="label" weight="medium">Version (SemVer)</Text>
+                <Text size="label" weight="medium">{t('control.releases.versionLabel')}</Text>
                 <Input
                   placeholder="e.g. 0.1.32"
                   value={importVersion}
@@ -711,7 +712,7 @@ export default function WebControlReleases() {
                 />
               </Stack>
               <Stack gap="xs" style={{ width: '140px' }}>
-                <Text size="label" weight="medium">Channel</Text>
+                <Text size="label" weight="medium">{t('control.releases.channel')}</Text>
                 <Select
                   value={importIsLts ? 'lts' : importChannel}
                   onChange={(e) => {
@@ -730,7 +731,7 @@ export default function WebControlReleases() {
 
             <Inline gap="md">
               <Stack gap="xs" style={{ flex: 1 }}>
-                <Text size="label" weight="medium">Platform</Text>
+                <Text size="label" weight="medium">{t('control.releases.platform')}</Text>
                 <Select
                   value={importPlatform}
                   onChange={(e) => setImportPlatform(e.target.value as 'windows-x64' | 'node-bundle')}
@@ -742,7 +743,7 @@ export default function WebControlReleases() {
             </Inline>
 
             <Stack gap="sm" style={{ padding: '8px 12px', background: 'var(--color-bg-subtle, #f8fafc)', borderRadius: '6px' }}>
-              <Text size="label" weight="semibold">Designations</Text>
+              <Text size="label" weight="semibold">{t('control.releases.designations')}</Text>
               <Inline gap="lg">
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
                   <input
@@ -750,7 +751,7 @@ export default function WebControlReleases() {
                     checked={importIsLatest}
                     onChange={(e) => setImportIsLatest(e.target.checked)}
                   />
-                  <strong>Set as LATEST</strong> (Recommended target for stations)
+                  <strong>{t('control.releases.setAsLatest')}</strong> ({t('control.releases.setAsLatestHint')})
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
                   <input
@@ -761,13 +762,13 @@ export default function WebControlReleases() {
                       if (e.target.checked) setImportChannel('lts');
                     }}
                   />
-                  <strong>Set as LTS</strong> (Long-Term Support track)
+                  <strong>{t('control.releases.setAsLts')}</strong> ({t('control.releases.setAsLtsHint')})
                 </label>
               </Inline>
             </Stack>
 
             <Stack gap="xs">
-              <Text size="label" weight="medium">Release Notes</Text>
+              <Text size="label" weight="medium">{t('control.releases.releaseNotes')}</Text>
               <Input
                 placeholder="Key features, bug fixes, or deployment guidelines"
                 value={importNotes}
@@ -784,7 +785,7 @@ export default function WebControlReleases() {
                 disabled={isSubmitting || !importVersion || (importMode === 'file' ? !importFile : !importUrlOrPath.trim())}
                 onClick={handleImportRelease}
               >
-                {isSubmitting ? 'Importing…' : 'Import Release'}
+                {isSubmitting ? t('control.releases.importing') : t('control.releases.importSubmit')}
               </Button>
             </Inline>
           </Stack>
@@ -799,13 +800,13 @@ export default function WebControlReleases() {
       >
         <Stack gap="lg">
           <Text size="body" tone="muted">
-            Update release status, channel, and LTS / Latest designations for PrintOps v{editingRelease?.version}.
+            {t('control.releases.editDesc').replace('{version}', editingRelease?.version ?? '')}
           </Text>
 
           <Stack gap="md">
             <Inline gap="md">
               <Stack gap="xs" style={{ flex: 1 }}>
-                <Text size="label" weight="medium">Channel</Text>
+                <Text size="label" weight="medium">{t('control.releases.channel')}</Text>
                 <Select
                   value={editChannel}
                   onChange={(e) => {
@@ -821,7 +822,7 @@ export default function WebControlReleases() {
                 </Select>
               </Stack>
               <Stack gap="xs" style={{ flex: 1 }}>
-                <Text size="label" weight="medium">Status</Text>
+                <Text size="label" weight="medium">{t('control.releases.colStatus')}</Text>
                 <Select
                   value={editStatus}
                   onChange={(e) => setEditStatus(e.target.value as ReleaseItem['status'])}
@@ -834,7 +835,7 @@ export default function WebControlReleases() {
             </Inline>
 
             <Stack gap="sm" style={{ padding: '8px 12px', background: 'var(--color-bg-subtle, #f8fafc)', borderRadius: '6px' }}>
-              <Text size="label" weight="semibold">Designations</Text>
+              <Text size="label" weight="semibold">{t('control.releases.designations')}</Text>
               <Inline gap="lg">
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
                   <input
@@ -842,7 +843,7 @@ export default function WebControlReleases() {
                     checked={editIsLatest}
                     onChange={(e) => setEditIsLatest(e.target.checked)}
                   />
-                  <strong>Set as LATEST</strong>
+                  <strong>{t('control.releases.setAsLatest')}</strong>
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
                   <input
@@ -853,13 +854,13 @@ export default function WebControlReleases() {
                       if (e.target.checked) setEditChannel('lts');
                     }}
                   />
-                  <strong>Set as LTS</strong>
+                  <strong>{t('control.releases.setAsLts')}</strong>
                 </label>
               </Inline>
             </Stack>
 
             <Stack gap="xs">
-              <Text size="label" weight="medium">Release Notes</Text>
+              <Text size="label" weight="medium">{t('control.releases.releaseNotes')}</Text>
               <Input
                 value={editNotes}
                 onChange={(e) => setEditNotes(e.target.value)}
@@ -871,7 +872,7 @@ export default function WebControlReleases() {
                 {t('common.cancel')}
               </Button>
               <Button variant="primary" disabled={isSubmitting} onClick={handleSaveEdit}>
-                {isSubmitting ? 'Saving…' : 'Save Changes'}
+                {isSubmitting ? t('common.saving') : t('control.releases.saveChanges')}
               </Button>
             </Inline>
           </Stack>
@@ -890,7 +891,7 @@ export default function WebControlReleases() {
           </Text>
 
           {storageTestResult && (
-            <Alert tone={storageTestResult.ok ? 'success' : 'error'} title={storageTestResult.ok ? 'Connection Verified' : 'Connection Failed'}>
+            <Alert tone={storageTestResult.ok ? 'success' : 'error'} title={storageTestResult.ok ? t('control.storage.testOk') : t('control.storage.testFailed')}>
               {storageTestResult.message}
             </Alert>
           )}
@@ -937,7 +938,7 @@ export default function WebControlReleases() {
                   onChange={(e) => setStorageConfig({ ...storageConfig, localPath: e.target.value })}
                 />
                 <Text size="label" tone="muted">
-                  Path on the Web Control server host/container where release binaries are saved.
+                  {t('control.storage.localPathHelp')}
                 </Text>
               </Stack>
             ) : (

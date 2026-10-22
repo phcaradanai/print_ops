@@ -219,7 +219,8 @@ export default function WebControlDevices() {
 
   return (
     <PageLayout
-      title="Devices"
+      title={t('control.devices.title')}
+      description={t('control.devices.subtitle')}
       density="compact"
       width="full"
       actions={
@@ -251,7 +252,7 @@ export default function WebControlDevices() {
             {t('control.devices.addByIp')}
           </Button>
           <Button variant="secondary" onClick={() => { setGeneratedToken(null); setTokenModalOpen(true); }}>
-            Generate Enrollment Token
+            {t('control.devices.generateToken')}
           </Button>
           <Freshness
             lastSuccessAt={devicesResource.lastSuccessAt}
@@ -263,9 +264,9 @@ export default function WebControlDevices() {
         </Inline>
       }
     >
-      <Inline gap="md" style={{ alignItems: 'center' }}>
+      <Inline gap="md">
         <Text size="body" tone="muted">
-          Web Control automatically detects and monitors active PrintOps stations on the network.
+          {t('control.devices.intro')}
         </Text>
         {latestRelease?.version && (
           <Badge tone="neutral">
@@ -287,29 +288,29 @@ export default function WebControlDevices() {
           <Select
             value={onlineFilter}
             onChange={(e) => setOnlineFilter(e.target.value as 'all' | 'online' | 'offline')}
-            aria-label="Filter by connection"
+            aria-label={t('control.devices.filterState')}
           >
-            <option value="all">All Connections</option>
-            <option value="online">Online only</option>
-            <option value="offline">Offline only</option>
+            <option value="all">{t('control.devices.filterStateAll')}</option>
+            <option value="online">{t('control.devices.filterOnline')}</option>
+            <option value="offline">{t('control.devices.filterOffline')}</option>
           </Select>
 
           <Select
             value={versionFilter}
             onChange={(e) => setVersionFilter(e.target.value as 'all' | 'outdated' | 'current')}
-            aria-label="Filter by update status"
+            aria-label={t('control.devices.filterUpdate')}
           >
-            <option value="all">All Versions</option>
-            <option value="outdated">Update Available</option>
-            <option value="current">Up to date</option>
+            <option value="all">{t('control.devices.filterVersionAll')}</option>
+            <option value="outdated">{t('control.devices.filterOutdated')}</option>
+            <option value="current">{t('control.devices.filterCurrent')}</option>
           </Select>
 
           <Select
             value={otaFilter}
             onChange={(e) => setOtaFilter(e.target.value)}
-            aria-label="Filter by OTA state"
+            aria-label={t('control.devices.filterOta')}
           >
-            <option value="all">All OTA States</option>
+            <option value="all">{t('control.devices.filterOtaAll')}</option>
             <option value="IDLE">IDLE</option>
             <option value="WAITING_FOR_IDLE">WAITING_FOR_IDLE</option>
             <option value="DOWNLOADING">DOWNLOADING</option>
@@ -321,10 +322,11 @@ export default function WebControlDevices() {
           </Select>
 
           <Input
-            placeholder="Filter by site..."
+            placeholder={t('control.devices.filterSitePlaceholder')}
+            aria-label={t('control.devices.filterSite')}
             value={siteFilter}
             onChange={(e) => setSiteFilter(e.target.value)}
-            style={{ width: '180px' }}
+            className="wc-filter-site"
           />
         </Inline>
 
@@ -333,20 +335,20 @@ export default function WebControlDevices() {
         ) : devicesResource.error != null && !devicesResource.data ? (
           <ErrorState error={devicesResource.error} onRetry={devicesResource.refresh} />
         ) : filteredDevices.length === 0 ? (
-          <EmptyState title="No PrintOps devices match criteria" />
+          <EmptyState title={t('control.devices.noMatches')} />
         ) : (
-          <DataTable label="PrintOps Devices" responsive>
+          <DataTable label={t('control.devices.tableLabel')} responsive>
             <thead>
               <tr>
-                <DataHead>Device</DataHead>
-                <DataHead>Site</DataHead>
-                <DataHead>Online Status</DataHead>
-                <DataHead>PrintOps Client Version</DataHead>
-                <DataHead>Latest Compatible</DataHead>
-                <DataHead>Print Status</DataHead>
-                <DataHead>OTA Status</DataHead>
-                <DataHead>Last Seen</DataHead>
-                <DataHead>Action</DataHead>
+                <DataHead>{t('control.devices.colDevice')}</DataHead>
+                <DataHead>{t('control.devices.colSite')}</DataHead>
+                <DataHead>{t('control.devices.colConnection')}</DataHead>
+                <DataHead>{t('control.devices.colVersion')}</DataHead>
+                <DataHead>{t('control.devices.colLatestCompatible')}</DataHead>
+                <DataHead>{t('control.devices.colPrint')}</DataHead>
+                <DataHead>{t('control.devices.colOta')}</DataHead>
+                <DataHead>{t('control.devices.colLastSeen')}</DataHead>
+                <DataHead>{t('control.devices.colAction')}</DataHead>
               </tr>
             </thead>
             <tbody>
@@ -368,18 +370,18 @@ export default function WebControlDevices() {
                       <Stack gap="xs">
                         <Badge tone={onlineTone}>{dev.connectionState}</Badge>
                         {dev.connectionState === 'ONLINE' && !['ROLLBACK_FAILED', 'RECOVERY_REQUIRED'].includes(dev.otaState) && (
-                          <Badge tone="success" title="Client is online and reachable for OTA updates">
-                            ● OTA Ready
+                          <Badge tone="success" title={t('control.devices.otaReadyHint')}>
+                            {t('control.devices.otaReady')}
                           </Badge>
                         )}
                         {dev.connectionState === 'ONLINE' && ['ROLLBACK_FAILED', 'RECOVERY_REQUIRED'].includes(dev.otaState) && (
-                          <Badge tone="danger" title="OTA is blocked due to recovery state">
-                            ▲ OTA Blocked
+                          <Badge tone="danger" title={t('control.devices.otaBlockedHint')}>
+                            {t('control.devices.otaBlocked')}
                           </Badge>
                         )}
                         {dev.connectionState !== 'ONLINE' && (
-                          <Badge tone="neutral" title="Client is offline; cannot receive OTA updates">
-                            ○ No OTA
+                          <Badge tone="neutral" title={t('control.devices.noOtaHint')}>
+                            {t('control.devices.noOta')}
                           </Badge>
                         )}
                       </Stack>
@@ -394,7 +396,7 @@ export default function WebControlDevices() {
                           <Badge tone="warning">UPDATE</Badge>
                         </Inline>
                       ) : (
-                        <Text size="body" tone="muted">Up to date</Text>
+                        <Text size="body" tone="muted">{t('control.devices.upToDate')}</Text>
                       )}
                     </DataCell>
                     <DataCell>
@@ -405,7 +407,7 @@ export default function WebControlDevices() {
                     </DataCell>
                     <DataCell>
                       <Text size="label" tone="muted">
-                        {dev.lastSeenAt ? formatRelativeTime(t, dev.lastSeenAt) : 'Never'}
+                        {dev.lastSeenAt ? formatRelativeTime(t, dev.lastSeenAt) : t('control.devices.never')}
                       </Text>
                     </DataCell>
                     <DataCell>
@@ -414,7 +416,7 @@ export default function WebControlDevices() {
                         variant="secondary"
                         onClick={() => navigate(`/control/devices/${dev.deviceId}`)}
                       >
-                        Detail
+                        {t('control.devices.detail')}
                       </Button>
                     </DataCell>
                   </tr>
@@ -429,25 +431,25 @@ export default function WebControlDevices() {
       <Dialog
         open={tokenModalOpen}
         onClose={() => setTokenModalOpen(false)}
-        title="Generate One-Time Enrollment Token"
+        title={t('control.devices.tokenModalTitle')}
       >
         <Stack gap="lg">
           <Text size="body" tone="muted">
-            Generate an enrollment token to bootstrap a new PrintOps station. Each token is one-time use and device-bound.
+            {t('control.devices.tokenModalDesc')}
           </Text>
 
           {!generatedToken ? (
             <Stack gap="md">
               <Stack gap="xs">
-                <Text size="label" weight="medium">Site Identifier</Text>
+                <Text size="label" weight="medium">{t('control.devices.siteIdentifier')}</Text>
                 <Input
                   value={tokenSiteId}
                   onChange={(e) => setTokenSiteId(e.target.value)}
-                  placeholder="e.g. main-clinic, radiology-1"
+                  placeholder={t('control.devices.siteIdentifierPlaceholder')}
                 />
               </Stack>
               <Stack gap="xs">
-                <Text size="label" weight="medium">Expires In (Seconds)</Text>
+                <Text size="label" weight="medium">{t('control.devices.expiresIn')}</Text>
                 <Input
                   type="number"
                   value={tokenTtl}
@@ -455,13 +457,13 @@ export default function WebControlDevices() {
                 />
               </Stack>
               <Inline gap="sm">
-                <Button variant="ghost" onClick={() => setTokenModalOpen(false)}>Cancel</Button>
+                <Button variant="ghost" onClick={() => setTokenModalOpen(false)}>{t('common.cancel')}</Button>
                 <Button
                   variant="primary"
                   disabled={isGeneratingToken || !tokenSiteId}
                   onClick={handleGenerateToken}
                 >
-                  {isGeneratingToken ? 'Generating…' : 'Generate Token'}
+                  {isGeneratingToken ? t('control.devices.generatingToken') : t('control.devices.generateToken')}
                 </Button>
               </Inline>
             </Stack>
@@ -482,21 +484,21 @@ export default function WebControlDevices() {
                   </Button>
                 </Inline>
               </Stack>
-              <Text size="body" weight="medium" tone="success">Enrollment Token Ready:</Text>
+              <Text size="body" weight="medium" tone="success">{t('control.devices.tokenReady')}</Text>
               <Inline gap="sm">
-                <Input readOnly value={generatedToken} style={{ fontFamily: 'monospace' }} />
+                <Input readOnly mono value={generatedToken} />
                 <Button variant="secondary" onClick={() => copyToClipboard(generatedToken)}>
-                  Copy
+                  {t('common.copy')}
                 </Button>
               </Inline>
               <Text size="label" tone="muted">
-                Provide this token during device setup. Once enrolled, the device will obtain its own permanent per-device credentials.
+                {t('control.devices.tokenProvideHint')}
               </Text>
               <Text size="label" tone="muted">
                 {t('control.devices.enrollServerHint').replace('{url}', window.location.origin)}
               </Text>
               <Inline>
-                <Button variant="primary" onClick={() => setTokenModalOpen(false)}>Done</Button>
+                <Button variant="primary" onClick={() => setTokenModalOpen(false)}>{t('common.close')}</Button>
               </Inline>
             </Stack>
           )}
@@ -518,7 +520,7 @@ export default function WebControlDevices() {
             </Alert>
           )}
           <Stack gap="xs">
-            <Label htmlFor="station-ip-input">IP Address / Hostname</Label>
+            <Label htmlFor="station-ip-input">{t('control.devices.ipAddressLabel')}</Label>
             <Input
               id="station-ip-input"
               value={customIp}
@@ -529,7 +531,7 @@ export default function WebControlDevices() {
               }}
             />
           </Stack>
-          <Inline gap="sm" style={{ justifyContent: 'flex-end' }}>
+          <Inline gap="sm">
             <Button variant="ghost" onClick={() => setIpModalOpen(false)}>
               {t('common.cancel')}
             </Button>
@@ -630,7 +632,7 @@ export default function WebControlDevices() {
                 </Panel>
               )}
 
-              <Inline gap="sm" style={{ justifyContent: 'flex-end' }}>
+          <Inline gap="sm">
                 <Button variant="secondary" onClick={() => setDownloadModalOpen(false)}>
                   {t('common.cancel')}
                 </Button>

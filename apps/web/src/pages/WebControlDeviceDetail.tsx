@@ -14,6 +14,7 @@ import {
   DataHead,
   DataTable,
   Dialog,
+  EmptyState,
   ErrorState,
   Freshness,
   Inline,
@@ -21,6 +22,7 @@ import {
   Mono,
   PageLayout,
   Panel,
+  SectionHeading,
   Stack,
   Select,
   Text,
@@ -194,13 +196,13 @@ export default function WebControlDeviceDetail() {
 
   return (
     <PageLayout
-      title={`Device: ${device.displayName || device.hostname}`}
+      title={t('control.devices.detailTitle').replace('{name}', device.displayName || device.hostname)}
       density="compact"
       width="full"
       actions={
         <Inline gap="md">
           <Button variant="ghost" onClick={() => navigate('/control/devices')}>
-            Back to Devices
+            {t('control.devices.backToDevices')}
           </Button>
           <Freshness
             lastSuccessAt={deviceResource.lastSuccessAt}
@@ -214,14 +216,14 @@ export default function WebControlDeviceDetail() {
     >
       <Stack gap="lg">
         {isRecoveryRequired && (
-          <Alert tone="error" title="Manual Recovery Required">
-            Device reached a failed rollback state ({device.otaState}). Remote OTA operations are blocked until resolved locally by a physical operator.
+          <Alert tone="error" title={t('control.devices.recoveryTitle')}>
+            {t('control.devices.recoveryBody').replace('{state}', device.otaState)}
           </Alert>
         )}
 
         {isOffline && (
-          <Alert tone="warning" title="Device Offline">
-            Device is currently offline. Remote commands cannot be dispatched until connectivity is restored.
+          <Alert tone="warning" title={t('control.devices.offlineTitle')}>
+            {t('control.devices.offlineBody')}
           </Alert>
         )}
 
@@ -230,18 +232,18 @@ export default function WebControlDeviceDetail() {
           <Inline gap="md" style={{ justifyContent: 'space-between', alignItems: 'end', flexWrap: 'wrap' }}>
             <Inline gap="xs">
               <Badge tone={onlineTone}>{device.connectionState}</Badge>
-              <Badge tone="neutral">Site: {device.siteId}</Badge>
+              <Badge tone="neutral">{t('control.devices.colSite')}: {device.siteId}</Badge>
               {device.connectionState === 'ONLINE' && !['ROLLBACK_FAILED', 'RECOVERY_REQUIRED'].includes(device.otaState) && (
-                <Badge tone="success" title="Client is online and reachable for OTA">● OTA Ready</Badge>
+                <Badge tone="success" title={t('control.devices.otaReadyHint')}>{t('control.devices.otaReady')}</Badge>
               )}
               {device.connectionState === 'ONLINE' && ['ROLLBACK_FAILED', 'RECOVERY_REQUIRED'].includes(device.otaState) && (
-                <Badge tone="danger" title="OTA is blocked">▲ OTA Blocked</Badge>
+                <Badge tone="danger" title={t('control.devices.otaBlocked')}>{t('control.devices.otaBlocked')}</Badge>
               )}
               {device.connectionState !== 'ONLINE' && (
-                <Badge tone="neutral" title="Device is offline">○ No OTA</Badge>
+                <Badge tone="neutral" title={t('control.devices.noOtaHint')}>{t('control.devices.noOta')}</Badge>
               )}
-              <Badge tone={device.otaState === 'COMPLETED' ? 'success' : 'warning'}>OTA: {device.otaState}</Badge>
-              <Badge tone={device.printState === 'PRINTING' ? 'info' : 'neutral'}>Print: {device.printState}</Badge>
+              <Badge tone={device.otaState === 'COMPLETED' ? 'success' : 'warning'}>{t('control.devices.colOta')}: {device.otaState}</Badge>
+              <Badge tone={device.printState === 'PRINTING' ? 'info' : 'neutral'}>{t('control.devices.colPrint')}: {device.printState}</Badge>
             </Inline>
 
             <Inline gap="xs">
@@ -250,27 +252,27 @@ export default function WebControlDeviceDetail() {
                 disabled={isOffline || isBusy}
                 onClick={() => handleOpenConfirm('CHECK')}
               >
-                Check Update
+                {t('control.devices.checkUpdate')}
               </Button>
 
             </Inline>
             <Stack gap="xs" style={{ minWidth: '220px' }}>
-              <Text size="label" weight="medium">Target app version</Text>
+              <Text size="label" weight="medium">{t('control.devices.targetVersion')}</Text>
               <Select
-                aria-label="Target app version"
+                aria-label={t('control.devices.targetVersion')}
                 value={targetVersion}
                 disabled={isOffline || isBusy || compatibleReleases.length === 0 || isRecoveryRequired}
                 onChange={(event) => setTargetVersion(event.target.value)}
               >
                 {compatibleReleases.length === 0
-                  ? <option value="">No compatible release</option>
+                  ? <option value="">{t('control.devices.noCompatibleRelease')}</option>
                   : compatibleReleases.map((release) => (
                     <option key={release.version} value={release.version}>
                       v{release.version} · {release.channel ?? 'stable'} · schema v{release.schemaVersion}
                     </option>
                   ))}
               </Select>
-              <Text size="label" tone="muted">Only available releases compatible with this client are listed.</Text>
+              <Text size="label" tone="muted">{t('control.devices.compatibleReleasesHint')}</Text>
             </Stack>
             <Inline gap="xs">
               <Button
@@ -278,7 +280,7 @@ export default function WebControlDeviceDetail() {
                 disabled={isOffline || isBusy || !device.hasUpdateAvailable || !selectedRelease || isRecoveryRequired}
                 onClick={() => handleOpenConfirm('INSTALL')}
               >
-                Request Update
+                {t('control.devices.requestUpdate')}
               </Button>
 
               <Button
@@ -286,7 +288,7 @@ export default function WebControlDeviceDetail() {
                 disabled={isOffline || isBusy || isRecoveryRequired}
                 onClick={() => handleOpenConfirm('ROLLBACK')}
               >
-                Rollback
+                {t('control.devices.rollback')}
               </Button>
               {selectedRelease && (
                 <Button
@@ -314,56 +316,56 @@ export default function WebControlDeviceDetail() {
         {/* Device Information Cards */}
         <Panel padding="md">
           <CardDetail columns={2}>
-            <CardDetailItem label="Device ID">
+            <CardDetailItem label={t('control.devices.deviceIdLabel')}>
               <Mono size="body">{device.deviceId}</Mono>
             </CardDetailItem>
-            <CardDetailItem label="Installation ID">
+            <CardDetailItem label={t('control.devices.installationId')}>
               <Mono size="body">{device.installationId}</Mono>
             </CardDetailItem>
-            <CardDetailItem label="Hostname / OS">
+            <CardDetailItem label={t('control.devices.hostnameOs')}>
               <Text size="body">{device.hostname} ({device.platform} / {device.architecture}{device.osVersion ? ` / ${device.osVersion}` : ''})</Text>
             </CardDetailItem>
-            <CardDetailItem label="Network Addresses">
-              <Text size="body">{device.ipAddresses?.length ? device.ipAddresses.join(', ') : 'Not reported'}</Text>
+            <CardDetailItem label={t('control.devices.networkAddresses')}>
+              <Text size="body">{device.ipAddresses?.length ? device.ipAddresses.join(', ') : t('control.content.notReported')}</Text>
             </CardDetailItem>
-            <CardDetailItem label="PrintOps Installation Path">
-              {device.installationPath ? <Mono size="body">{device.installationPath}</Mono> : <Text size="body" tone="muted">Not reported</Text>}
+            <CardDetailItem label={t('control.devices.installationPath')}>
+              {device.installationPath ? <Mono size="body">{device.installationPath}</Mono> : <Text size="body" tone="muted">{t('control.content.notReported')}</Text>}
             </CardDetailItem>
-            <CardDetailItem label="PrintOps Data Path">
-              {device.dataPath ? <Mono size="body">{device.dataPath}</Mono> : <Text size="body" tone="muted">Not reported</Text>}
+            <CardDetailItem label={t('control.devices.dataPath')}>
+              {device.dataPath ? <Mono size="body">{device.dataPath}</Mono> : <Text size="body" tone="muted">{t('control.content.notReported')}</Text>}
             </CardDetailItem>
-            <CardDetailItem label="Remote Capabilities">
-              <Text size="body">{device.capabilities?.join(', ') || 'OTA only / not reported'}</Text>
+            <CardDetailItem label={t('control.devices.remoteCapabilities')}>
+              <Text size="body">{device.capabilities?.join(', ') || t('control.devices.otaOnlyNotReported')}</Text>
             </CardDetailItem>
 
-            <CardDetailItem label="PrintOps Client Version">
+            <CardDetailItem label={t('control.devices.colVersion')}>
               <Mono size="body" weight="semibold">v{device.appVersion}</Mono>
             </CardDetailItem>
-            <CardDetailItem label="Database Schema Version">
+            <CardDetailItem label={t('control.devices.schemaVersion')}>
               <Mono size="body">v{device.schemaVersion}</Mono>
             </CardDetailItem>
-            <CardDetailItem label="Runner Status">
+            <CardDetailItem label={t('control.devices.runnerStatus')}>
               <Text size="body">v{device.runnerVersion} ({device.runnerStatus || 'UNKNOWN'})</Text>
             </CardDetailItem>
 
-            <CardDetailItem label="Print Readiness">
+            <CardDetailItem label={t('control.devices.printReadiness')}>
               <Text size="body">{device.printReadinessSummary || 'READY'}</Text>
             </CardDetailItem>
-            <CardDetailItem label="Current Print State">
+            <CardDetailItem label={t('control.devices.currentPrintState')}>
               <Text size="body">{device.printState}</Text>
             </CardDetailItem>
-            <CardDetailItem label="Last Heartbeat">
-              <Text size="body">{device.lastSeenAt ? formatRelativeTime(t, device.lastSeenAt) : 'Never'}</Text>
+            <CardDetailItem label={t('control.devices.lastHeartbeat')}>
+              <Text size="body">{device.lastSeenAt ? formatRelativeTime(t, device.lastSeenAt) : t('control.devices.never')}</Text>
             </CardDetailItem>
 
-            <CardDetailItem label="Latest Compatible Release">
+            <CardDetailItem label={t('control.devices.colLatestCompatible')}>
               {device.latestCompatibleVersion ? (
                 <Inline gap="xs">
                   <Mono size="body" tone="warning" weight="semibold">v{device.latestCompatibleVersion}</Mono>
-                  <Badge tone="warning">AVAILABLE</Badge>
+                  <Badge tone="warning">{t('control.devices.available')}</Badge>
                 </Inline>
               ) : (
-                <Text size="body" tone="muted">Up to date (No new compatible release)</Text>
+                <Text size="body" tone="muted">{t('control.devices.upToDateNoRelease')}</Text>
               )}
             </CardDetailItem>
           </CardDetail>
@@ -371,24 +373,24 @@ export default function WebControlDeviceDetail() {
 
         {/* OTA History Table */}
         <Stack gap="md">
-          <Text size="title" weight="semibold">OTA & Command History</Text>
+          <SectionHeading title={t('control.devices.historyTitle')} />
           {commands.length === 0 ? (
             <Panel padding="md">
-              <Text size="body" tone="muted">No commands recorded for this device yet.</Text>
+              <EmptyState title={t('control.devices.noCommands')} />
             </Panel>
           ) : (
-            <DataTable label="Device Commands" responsive>
+            <DataTable label={t('control.devices.commandsTable')} responsive>
               <thead>
                 <tr>
-                  <DataHead>Command ID</DataHead>
-                  <DataHead>Type</DataHead>
-                  <DataHead>Target Version</DataHead>
-                  <DataHead>Status</DataHead>
-                  <DataHead>Progress</DataHead>
-                  <DataHead>Terminal State</DataHead>
-                  <DataHead>Requested By</DataHead>
-                  <DataHead>Requested At</DataHead>
-                  <DataHead>Details</DataHead>
+                  <DataHead>{t('control.devices.colCommandId')}</DataHead>
+                  <DataHead>{t('control.devices.colType')}</DataHead>
+                  <DataHead>{t('control.devices.colTargetVersion')}</DataHead>
+                  <DataHead>{t('control.devices.colStatus')}</DataHead>
+                  <DataHead>{t('control.devices.colProgress')}</DataHead>
+                  <DataHead>{t('control.devices.colTerminalState')}</DataHead>
+                  <DataHead>{t('control.devices.colRequestedBy')}</DataHead>
+                  <DataHead>{t('control.devices.colRequestedAt')}</DataHead>
+                  <DataHead>{t('control.devices.colDetails')}</DataHead>
                 </tr>
               </thead>
               <tbody>
@@ -434,11 +436,11 @@ export default function WebControlDeviceDetail() {
       <Dialog
         open={confirmModalOpen}
         onClose={() => !isSubmitting && setConfirmModalOpen(false)}
-        title={actionType === 'INSTALL' ? 'Confirm Remote OTA Update' : actionType === 'ROLLBACK' ? 'Confirm OTA Rollback' : 'Confirm Update Check'}
+        title={actionType === 'INSTALL' ? t('control.devices.confirmInstallTitle') : actionType === 'ROLLBACK' ? t('control.devices.confirmRollbackTitle') : t('control.devices.confirmCheckTitle')}
       >
         <Stack gap="lg">
           {actionError && (
-            <Alert tone="error" title="Action Failed">
+            <Alert tone="error" title={t('control.devices.actionFailed')}>
               {actionError}
             </Alert>
           )}
@@ -446,17 +448,17 @@ export default function WebControlDeviceDetail() {
           <Panel padding="md">
             <Stack gap="xs">
               <Inline>
-                <Text size="body" tone="muted">Device: </Text>
+                <Text size="body" tone="muted">{t('control.devices.confirmDeviceLabel')} </Text>
                 <Text size="body" weight="semibold">{device.displayName || device.hostname} ({device.deviceId})</Text>
               </Inline>
               <Inline>
-                <Text size="body" tone="muted">Current Version: </Text>
+                <Text size="body" tone="muted">{t('control.devices.confirmCurrentVersionLabel')} </Text>
                 <Mono size="body">v{device.appVersion}</Mono>
               </Inline>
               {actionType === 'INSTALL' && (
                 <Stack gap="xs">
                   <Inline>
-                    <Text size="body" tone="muted">Selected target version: </Text>
+                    <Text size="body" tone="muted">{t('control.devices.confirmTargetVersionLabel')} </Text>
                     <Mono size="body" tone="warning" weight="semibold">v{targetVersion}</Mono>
                   </Inline>
                   {selectedRelease && (
@@ -468,27 +470,27 @@ export default function WebControlDeviceDetail() {
                 </Stack>
               )}
               <Inline>
-                <Text size="body" tone="muted">Current Print State: </Text>
+                <Text size="body" tone="muted">{t('control.devices.confirmPrintStateLabel')} </Text>
                 <Badge tone={device.printState === 'PRINTING' ? 'info' : 'neutral'}>{device.printState}</Badge>
               </Inline>
             </Stack>
           </Panel>
 
           {/* Explicit Safety Notice required by prompt */}
-          <Alert tone="info" title="Print Safety Notice">
-            The update will begin only when the local PrintOps instance reaches a safe point. Active printing is never interrupted.
+          <Alert tone="info" title={t('control.devices.safetyTitle')}>
+            {t('control.devices.safetyBody')}
           </Alert>
 
           <Inline gap="xs">
             <Button variant="ghost" disabled={isSubmitting} onClick={() => setConfirmModalOpen(false)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               variant={actionType === 'ROLLBACK' ? 'danger' : 'primary'}
               disabled={isSubmitting || (actionType === 'INSTALL' && !selectedRelease)}
               onClick={handleExecuteAction}
             >
-              {isSubmitting ? 'Dispatching…' : actionType === 'INSTALL' ? 'Confirm Update Request' : actionType === 'ROLLBACK' ? 'Confirm Rollback' : 'Check Now'}
+              {isSubmitting ? t('control.devices.dispatching') : actionType === 'INSTALL' ? t('control.devices.confirmInstall') : actionType === 'ROLLBACK' ? t('control.devices.confirmRollback') : t('control.devices.checkNow')}
             </Button>
           </Inline>
         </Stack>

@@ -1,7 +1,7 @@
 # Desktop App Architecture (Tauri v2)
 
 **Status:** Implemented — a process supervisor, not a scaffold
-**Last updated:** 2026-08-03
+**Last updated:** 2026-10-22
 
 ---
 
@@ -14,8 +14,8 @@
 |                                                           |
 |  +-----------------------------------------------+        |
 |  |  React frontend (apps/web)                    |        |
-|  |  served BY server.exe at 127.0.0.1:31415      |        |
-|  |  (same origin as the API, not a file:// load) |        |
+|  bundled entry UI before the local API starts |        |
+|  operational UI at 127.0.0.1:31415 after health |        |
 |  +-----------------------------------------------+        |
 |                                                           |
 |  Responsibilities:                                        |
@@ -24,7 +24,7 @@
 |   - Windows job object: sidecars die with the app         |
 |   - per-installation JWT + runner bootstrap secrets       |
 |   - NATS settings storage, with in-process API restart    |
-|   - health-gated navigation (splash until :31415 answers) |
+|   - shared checking/retry UI before health-gated handoff |
 +-----------+---------------------------------+-------------+
             | spawns                          | spawns
             v                                 v
@@ -53,6 +53,15 @@ because two claimants on one queue would double-print.
 **No React source in apps/desktop.** The Tauri shell is a thin OS wrapper. All
 UI lives in `apps/web`, so the browser dashboard and the desktop app are the
 same pages from one source of truth.
+
+**The entry screen is bundled, not served by an unavailable API.** `frontendDist`
+embeds `apps/web/dist`; the initial native URL is `index.html`. On the Tauri
+asset origin the shared React entry checks `http://127.0.0.1:31415/api/health`
+with a 2-second per-request timeout and approximately 60-second startup budget.
+Failure leaves Retry and expandable diagnostics available. Success navigates to
+the existing HTTP origin, preserving operational routes and stored sessions.
+The initial connection screen does not claim printer/runner readiness, progress
+percentages or completed printing. There is no competing Rust navigation loop.
 
 **The shell is a supervisor, not just a window.** A background thread polls both
 children every 2 seconds and restarts one that exited, using the exact packaged
@@ -84,9 +93,11 @@ restarts.
 folder, so the app works when installed to a read-only location and survives
 upgrades.
 
-**CSP null.** The frontend calls the API on the same loopback origin; `csp: null`
-in `tauri.conf.json` keeps that working without a bespoke policy. Packaged CORS
-on the API side is restricted to loopback and `tauri://` origins.
+**CSP null.** The operational frontend still uses the API's loopback origin.
+The bundled entry performs only its health check across origins. Packaged CORS
+allows `http://tauri.localhost` alongside the existing loopback/Tauri origins;
+an explicit `CORS_ALLOWED_ORIGINS` deployment override must also allow that
+entry origin. `csp: null` is unchanged.
 
 ---
 
@@ -98,7 +109,7 @@ apps/desktop/
 `-- src-tauri/
     |-- Cargo.toml
     |-- build.rs
-    |-- tauri.conf.json        # productName PrintOps, window -> 127.0.0.1:31415
+    |-- tauri.conf.json        # bundled index.html -> health-gated 127.0.0.1:31415
     |-- nsis-hooks.nsh         # closes a running PrintOps before upgrade
     |-- capabilities/
     |   `-- default.json
@@ -139,6 +150,9 @@ npm run tauri:dev -w apps/desktop
 
 # Check the Rust side without a full build
 cd apps/desktop/src-tauri && cargo check
+
+# Ad-hoc production asset smoke build (Tauri CLI normally sets this feature)
+cargo build --release --features tauri/custom-protocol
 
 # Produce verified installers (MSI + NSIS)
 npm run desktop:bundle

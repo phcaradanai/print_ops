@@ -135,17 +135,18 @@ export function EndpointList({
         ? 'webhook-list webhook-list--selection-active'
         : 'webhook-list'}
     >
-      <ResourceToolbar
+      <div className="ui-table-card">
+        <ResourceToolbar
         ariaLabel={t('page.webhooks.resourceToolbar')}
         actions={
           <Inline gap="sm" className="webhook-toolbar-actions">
-            <Button variant="ghost" onClick={onImportRequested}>
+            <Button variant="secondary" size="sm" onClick={onImportRequested}>
               <TransferIcon action="import" /> {t('page.webhooks.import')}
             </Button>
-            <Button variant="ghost" onClick={() => void exportEndpoints('all')}>
+            <Button variant="secondary" size="sm" onClick={() => void exportEndpoints('all')}>
               <TransferIcon action="export" /> {t('page.webhooks.exportAll')}
             </Button>
-            <Button variant="ghost" onClick={() => void exportEndpoints('filtered')}>
+            <Button variant="secondary" size="sm" onClick={() => void exportEndpoints('filtered')}>
               <TransferIcon action="export" /> {t('page.webhooks.exportFiltered')}
             </Button>
           </Inline>
@@ -196,7 +197,7 @@ export function EndpointList({
         </div>
       )}
 
-      <Card className="webhook-endpoint-surface" padding="none">
+
         <div className="webhook-endpoint-table">
           <DataTable label={t('page.webhooks.allEndpoints')}>
             <thead>
@@ -269,6 +270,7 @@ export function EndpointList({
             </tbody>
           </DataTable>
         </div>
+      </div>
 
         <RecordList className="webhook-endpoint-cards">
           {pagedEndpoints.length === 0 ? (
@@ -357,7 +359,6 @@ export function EndpointList({
             </Select>
           </Inline>
         </div>
-      </Card>
     </Stack>
   );
 }

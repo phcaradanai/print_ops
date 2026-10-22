@@ -234,7 +234,7 @@ export default function Settings() {
     setNatsTesting(true);
     try {
       const result = await testNatsConnection();
-      setMessage({ text: result.ok ? 'NATS ready (' + result.durationMs + 'ms)' : 'NATS ' + result.stage + ': ' + result.message, kind: result.ok ? 'success' : 'error' });
+      setMessage({ text: result.ok ? t('settings.nats.testReady').replace('{ms}', String(result.durationMs)) : t('settings.nats.testFailed').replace('{stage}', result.stage).replace('{message}', result.message), kind: result.ok ? 'success' : 'error' });
     } catch (error) { setMessage({ text: errorMessage(error), kind: 'error' }); }
     finally { setNatsTesting(false); }
   }, []);
@@ -333,7 +333,7 @@ export default function Settings() {
       setNatsDirty(false);
       const live = await getNatsRuntimeStatus().catch(() => null);
       if (live) setNatsStatus(live);
-      setMessage({ text: live && live.enabled && !live.connected ? 'Settings saved, but NATS is not connected.' : t('settings.saved'), kind: live && live.enabled && !live.connected ? 'error' : 'success' });
+      setMessage({ text: live && live.enabled && !live.connected ? t('settings.nats.notConnectedAfterSave') : t('settings.saved'), kind: live && live.enabled && !live.connected ? 'error' : 'success' });
     } else {
       setMessage({
         text: `${t('settings.savedError')} ${errorMessage(saveNats.getError())}`,
@@ -380,7 +380,7 @@ export default function Settings() {
   const localhostNats = /^(nats:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|$)/i.test(natsDraft.url.trim());
 
   return (
-    <PageLayout width="full" title={t('settings.title')}>
+    <PageLayout width="full" title={t('settings.title')} description={t('settings.subtitle')}>
 
       {message && (
         <Alert
@@ -660,8 +660,8 @@ export default function Settings() {
               )}
 
               <Inline gap="sm">
-                <Button variant="secondary" busy={natsTesting} busyLabel="Testing…" onClick={() => void handleNatsTest()}>
-                  Test connection
+                <Button variant="secondary" busy={natsTesting} busyLabel={t('settings.nats.testing')} onClick={() => void handleNatsTest()}>
+                  {t('settings.nats.testConnection')}
                 </Button>
               </Inline>
 
@@ -689,7 +689,7 @@ export default function Settings() {
 
               {localhostNats && (
                 <Alert tone="warning">
-                  Warning: localhost and 127.0.0.1 mean this PrintOps workstation, not a remote broker.
+                  {t('settings.nats.localhostWarning')}
                 </Alert>
               )}
 

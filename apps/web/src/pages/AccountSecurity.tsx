@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { errorMessage } from '../api/errors.js';
 import { issuePasswordRecoveryCode } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
-import { Button, PageLayout, Panel } from '../components/ui/index.js';
+import { Alert, Button, CodeBlock, PageLayout, Panel, Stack, Text } from '../components/ui/index.js';
 
 export default function AccountSecurity() {
   const { t } = useLocale();
@@ -42,26 +42,24 @@ export default function AccountSecurity() {
       description={t('recovery.manageDescription')}
     >
       <Panel>
-        <div style={{ display: 'grid', gap: '1rem' }}>
-          <p>{t('recovery.codeStore')}</p>
-          <p>{t('recovery.noCodeHelp')}</p>
-          {error && <div className="login-error" role="alert">{error}</div>}
-          {recoveryCode && (
-            <>
-              <div className="login-hint" role="status" style={{ overflowWrap: 'anywhere', userSelect: 'all' }}>
-                <code>{recoveryCode}</code>
-              </div>
-              <p role="status">{t('recovery.generated')}</p>
-              <Button type="button" variant="ghost" onClick={() => void copyRecoveryCode()}>
-                {t('recovery.copy')}
-              </Button>
-              {copyMessage && <p role="status">{copyMessage}</p>}
-            </>
-          )}
-          <Button type="button" disabled={generating} busy={generating} onClick={() => void generateRecoveryCode()}>
-            {generating ? t('recovery.generating') : recoveryCode ? t('recovery.regenerate') : t('recovery.generate')}
-          </Button>
-        </div>
+          <Stack gap="lg">
+            <Text as="p">{t('recovery.codeStore')}</Text>
+            <Text as="p" tone="muted">{t('recovery.noCodeHelp')}</Text>
+            {error && <Alert tone="error">{error}</Alert>}
+            {recoveryCode && (
+              <>
+                <CodeBlock label={t('recovery.generated')} scroll={false}>{recoveryCode}</CodeBlock>
+                <Text as="p" role="status">{t('recovery.generated')}</Text>
+                <Button type="button" variant="ghost" onClick={() => void copyRecoveryCode()}>
+                  {t('recovery.copy')}
+                </Button>
+                {copyMessage && <Text as="p" role="status">{copyMessage}</Text>}
+              </>
+            )}
+            <Button type="button" disabled={generating} busy={generating} onClick={() => void generateRecoveryCode()}>
+              {generating ? t('recovery.generating') : recoveryCode ? t('recovery.regenerate') : t('recovery.generate')}
+            </Button>
+          </Stack>
       </Panel>
     </PageLayout>
   );

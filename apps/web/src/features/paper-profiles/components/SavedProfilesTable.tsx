@@ -23,11 +23,14 @@ import {
   Mono,
   SectionHeading,
   Select,
+  ResourceToolbar,
+  SearchField,
+  SelectFilter,
   Text,
 } from '../../../components/ui/index.js';
 
-const THUMBNAIL_MAX_WIDTH_REM = 3.4;
-const THUMBNAIL_MAX_HEIGHT_REM = 3.6;
+const THUMBNAIL_MAX_WIDTH_REM = 2.2;
+const THUMBNAIL_MAX_HEIGHT_REM = 2.0;
 
 function marginPercent(value: number, total: number): string {
   if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return '0%';
@@ -113,30 +116,17 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
   };
 
   return (
-    <section className="pp-saved-profiles" aria-labelledby="paper-profile-library-title">
-      <SectionHeading
-        id="paper-profile-library-title"
-        title={t('page.paperProfiles.profileLibrary')}
-        description={t('page.paperProfiles.libraryHint')}
-        className="pp-library-heading"
-        actions={
-          <>
-            {/* Native file picker stays native — the browser behavior is the feature. */}
-            <input type="file" ref={inputRef} accept=".json,application/json" hidden onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void persistence.importJson(file);
-              event.target.value = '';
-            }} />
-            <Button variant="ghost" onClick={() => inputRef.current?.click()}
-              title={t('page.paperProfiles.importJsonProfile')}>
-              <TransferIcon action="import" /> {t('page.paperProfiles.importJsonProfile')}
-            </Button>
-            <Button variant="ghost" onClick={() => void persistence.exportAll()}
-              disabled={persistence.profiles.length === 0} title={t('page.paperProfiles.exportAllProfiles')}>
-              <TransferIcon action="export" /> {t('page.paperProfiles.exportAllProfiles')}
-            </Button>
-          </>
-        }
+    <section className="pp-saved-profiles" aria-label={t('page.paperProfiles.profileLibrary')}>
+      <input
+        type="file"
+        id="pp-import-json-input"
+        accept=".json,application/json"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void persistence.importJson(file);
+          event.target.value = '';
+        }}
       />
 
       {persistence.feedback && (
@@ -165,33 +155,29 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
           } /></div>
       )}
       {resource.data !== undefined && resource.data.length > 0 && (
-        <>
-          <div className="pp-library-controls">
-            <Input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              aria-label={t('page.paperProfiles.searchProfiles')}
+        <div className="ui-table-card">
+          <ResourceToolbar ariaLabel={t('page.paperProfiles.profileLibrary')}>
+            <SearchField
+              label={t('page.paperProfiles.searchProfiles')}
               placeholder={t('page.paperProfiles.searchPlaceholder')}
-              leading={<PaperProfileIcon name="search" />}
+              value={query}
+              onValueChange={setQuery}
             />
-            <Inline gap="sm" className="pp-library-filter">
-              <Label htmlFor="pp-orientation-filter">{t('page.paperProfiles.orientation')}</Label>
-              <Select
-                id="pp-orientation-filter"
-                controlSize="sm"
-                value={orientation}
-                onChange={(event) => setOrientation(event.target.value as typeof orientation)}
-              >
-                <option value="all">{t('page.paperProfiles.allOrientations')}</option>
-                <option value="portrait">{t('page.paperProfiles.portrait')}</option>
-                <option value="landscape">{t('page.paperProfiles.landscape')}</option>
-              </Select>
-            </Inline>
-            <Text size="label" tone="muted" role="status" aria-live="polite" className="pp-library-count">
-              {t('page.paperProfiles.showingProfiles').replace('{shown}', String(filteredProfiles.length)).replace('{total}', String(persistence.profiles.length))}
-            </Text>
-          </div>
+            <SelectFilter
+              label={t('page.paperProfiles.orientation')}
+              value={orientation}
+              onValueChange={(val) => setOrientation(val as 'all' | 'portrait' | 'landscape')}
+            >
+              <option value="all">{t('page.paperProfiles.allOrientations')}</option>
+              <option value="portrait">{t('page.paperProfiles.portrait')}</option>
+              <option value="landscape">{t('page.paperProfiles.landscape')}</option>
+            </SelectFilter>
+            {normalizedQuery && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                {t('common.clear') || 'Clear'}
+              </Button>
+            )}
+          </ResourceToolbar>
 
           {filteredProfiles.length === 0 ? (
             <div className="pp-saved-profiles__state"><EmptyState title={t('page.paperProfiles.noMatchingProfiles')}
@@ -224,15 +210,10 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
                 {filteredProfiles.map((profile) => (
                   <tr key={profile.id} className="pp-profile-row">
                     <DataCell label={columns.code} className="pp-profile-cell--identity">
-                      <div className="pp-profile-identity">
+                      <Inline gap="xs" style={{ alignItems: 'center' }}>
                         <PaperProfileThumbnail profile={profile} />
-                        <div className="pp-profile-identity__copy">
-                          <Mono weight="semibold">{profile.code}</Mono>
-                          <Text size="label" tone="muted" className="pp-profile-identity__size">
-                            {effectiveSize(profile)}
-                          </Text>
-                        </div>
-                      </div>
+                        <Mono weight="semibold" nowrap>{profile.code}</Mono>
+                      </Inline>
                     </DataCell>
                     <DataCell label={columns.name}>
                       <Text weight="semibold" tone="strong">{profile.name}</Text>
@@ -250,10 +231,10 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
                       <Badge>{orientationLabel(profile)}</Badge>
                     </DataCell>
                     <DataCell label={columns.dpi}>
-                      <Mono>{profile.dpi}</Mono>
+                      <Mono nowrap>{profile.dpi}</Mono>
                     </DataCell>
                     <DataCell label={columns.fields}>
-                      <Mono>{profile.fields?.length ?? 0}</Mono>
+                      <Mono nowrap>{profile.fields?.length ?? 0}</Mono>
                     </DataCell>
                     <DataCell label={columns.actions} actions>
                       <Inline gap="xs" className="pp-saved-profiles__row-actions">
@@ -286,7 +267,7 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
               </tbody>
             </DataTable>
           )}
-        </>
+        </div>
       )}
     </section>
   );

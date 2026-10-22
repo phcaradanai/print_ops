@@ -12,6 +12,7 @@ export interface SearchFieldProps extends Omit<InputProps, 'type' | 'value' | 'd
   requiredLabel?: string;
   className?: string;
   inputClassName?: string;
+  hideLabel?: boolean;
 }
 
 /** Labelled controlled search input with shared field wiring and no route knowledge. */
@@ -26,14 +27,16 @@ export function SearchField({
   invalid = false,
   className = '',
   inputClassName,
+  hideLabel = true,
   ...inputProps
 }: SearchFieldProps) {
   const isInvalid = invalid || Boolean(error);
+  const labelText = typeof label === 'string' ? label : undefined;
 
   return (
     <div className={`ui-search-field${className ? ` ${className}` : ''}`}>
       <FormField
-        label={label}
+        label={hideLabel ? <span className="ui-visually-hidden">{label}</span> : label}
         hint={hint}
         error={error}
         required={required}
@@ -41,6 +44,8 @@ export function SearchField({
       >
         {(control) => (
           <Input
+            placeholder={inputProps.placeholder ?? labelText}
+            aria-label={labelText}
             {...inputProps}
             {...control}
             type="search"

@@ -23,54 +23,7 @@ export function TemplateWorkspaceInner() {
 
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
-  const actions = (
-    <Inline gap="sm" className="tpl-page-tools justify-start">
-      {!workspaceOpen ? (
-        <>
-          <Input
-            type="search"
-            controlSize="sm"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t('page.templates.searchPlaceholder')}
-            aria-label={t('page.templates.searchPlaceholder')}
-            leading={<TemplateIcon name="search" />}
-          />
-          <Button variant="ghost" onClick={exportTemplates}>
-            <TransferIcon action="export" /> {t('page.templates.exportBtn')}
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => importInputRef.current?.click()}
-            busy={busy}
-            busyLabel={t('page.templates.importing')}
-          >
-            <TransferIcon action="import" /> {t('page.templates.importBtn')}
-          </Button>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept="application/json,.json"
-            className="tpl-file-input ui-visually-hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = '';
-              if (file) void importTemplates(file);
-            }}
-          />
-          <Button onClick={newTemplate}>
-            <TemplateIcon name="plus" /> {t('page.templates.newTemplate')}
-          </Button>
-        </>
-      ) : (<Inline gap="sm">
-        <Button variant="ghost" onClick={requestCloseWorkspace}>
-          <TemplateIcon name="back" /> {t('page.templates.backToLibrary')}
-        </Button>
-        <Text weight="semibold">{editingId ? form.templateCode : t('page.templates.newTemplate')}</Text>
-      </Inline>)}
-    </Inline>
 
-  );
 
   return (
     <PageLayout
@@ -78,12 +31,50 @@ export function TemplateWorkspaceInner() {
       width="full"
       title={t('page.templates.title')}
       description={t('page.templates.subtitle')}
-      actions={<Freshness
-        lastSuccessAt={templatesResource.lastSuccessAt}
-        stale={templatesResource.stale}
-        refreshing={templatesResource.refreshing}
-        onRefresh={templatesResource.refresh}
-      />}
+      actions={
+        !workspaceOpen ? (
+          <Inline gap="sm">
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="tpl-file-input ui-visually-hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) void importTemplates(file);
+              }}
+            />
+            <Button variant="secondary" onClick={exportTemplates}>
+              <TransferIcon action="export" /> {t('page.templates.exportBtn')}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => importInputRef.current?.click()}
+              busy={busy}
+              busyLabel={t('page.templates.importing')}
+            >
+              <TransferIcon action="import" /> {t('page.templates.importBtn')}
+            </Button>
+            <Button onClick={newTemplate}>
+              <TemplateIcon name="plus" /> {t('page.templates.newTemplate')}
+            </Button>
+            <Freshness
+              lastSuccessAt={templatesResource.lastSuccessAt}
+              stale={templatesResource.stale}
+              refreshing={templatesResource.refreshing}
+              onRefresh={templatesResource.refresh}
+            />
+          </Inline>
+        ) : (
+          <Inline gap="sm">
+            <Button variant="secondary" onClick={requestCloseWorkspace}>
+              <TemplateIcon name="back" /> {t('page.templates.backToLibrary')}
+            </Button>
+            <Text weight="semibold">{editingId ? form.templateCode : t('page.templates.newTemplate')}</Text>
+          </Inline>
+        )
+      }
     >
       {message && (
         <Alert
@@ -110,7 +101,7 @@ export function TemplateWorkspaceInner() {
           onRetry={profilesResource.refresh}
         />
       )}
-      {actions}
+
       {workspaceOpen ? (
         <Stack gap="md">
 

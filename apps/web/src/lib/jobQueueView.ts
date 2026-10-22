@@ -1,6 +1,8 @@
 import { JOB_STATUSES, type JobStatus } from '@printerops/domain';
 
-export type JobQueueStatusFilter = 'ALL' | JobStatus;
+import { getJobVerdict } from './jobVerdict.js';
+
+export type JobQueueStatusFilter = 'ALL' | JobStatus | 'NEEDS_ATTENTION';
 
 export interface JobQueueListItem {
   id: string;
@@ -13,6 +15,18 @@ export interface JobQueueListItem {
   templateCode?: string;
   resolvedTemplateCode?: string;
   payloadSnapshot?: string;
+}
+
+/**
+ * Attention filter boundary: a job needs eyes when its verdict tone is
+ * caution (outcome not confirmed) or negative (known problem) — FAILED,
+ * UNVERIFIED, TIMEOUT, and any status this build does not recognise. Success
+ * states and ordinary pipeline progress never land here, so the filter cannot
+ * drift from the rest of the UI: both derive from the same verdict table.
+ */
+export function jobNeedsAttention(status: string): boolean {
+  const { tone } = getJobVerdict(status);
+  return tone === 'caution' || tone === 'negative';
 }
 
 export interface JobQueueView<T extends JobQueueListItem> {
@@ -42,7 +56,11 @@ export function buildJobQueueView<T extends JobQueueListItem>(
 
   const needle = input.search.trim().toLocaleLowerCase();
   const filtered = jobs.filter((job) => {
-    if (input.status !== 'ALL' && job.status !== input.status) return false;
+    if (input.status === 'NEEDS_ATTENTION') {
+      if (!jobNeedsAttention(job.status)) return false;
+    } else if (input.status !== 'ALL' && job.status !== input.status) {
+      return false;
+    }
     if (!needle) return true;
     return [
       job.id,

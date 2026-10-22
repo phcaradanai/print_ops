@@ -11,6 +11,8 @@ import {
   Alert,
   Badge,
   Button,
+  Checkbox,
+  CodeBlock,
   DataCell,
   DataHead,
   DataTable,
@@ -18,10 +20,12 @@ import {
   ErrorBanner,
   Freshness,
   Inline,
+  Input,
   LoadingState,
   Mono,
   PageLayout,
   Panel,
+  SectionHeading,
   Select,
   Stack,
   Text,
@@ -195,7 +199,7 @@ export default function WebControlContent() {
       phase: body.type === 'CONTENT_LIST' ? 'listing-content' : 'pulling-content',
       ...(body.type === 'CONTENT_PULL' ? { item: body.contentKey } : {}),
     });
-    setInventoryActivity(`Command ${issued.commandId} is ${issued.status.toLowerCase()}. Waiting for the client…`);
+    setInventoryActivity(t('control.content.commandWaiting').replace('{id}', issued.commandId).replace('{status}', issued.status.toLowerCase()));
     for (let attempt = 0; attempt < 40; attempt += 1) {
       const current = await apiFetch<ContentCommandDetail>(
         `/v1/control/devices/${encodeURIComponent(deviceId)}/commands/${encodeURIComponent(issued.commandId)}`,
@@ -206,10 +210,10 @@ export default function WebControlContent() {
       if (['FAILED', 'REJECTED', 'EXPIRED'].includes(current.status)) {
         throw new Error(current.failureReason || `Client command ${current.status.toLowerCase()}`);
       }
-      setInventoryActivity(`Command ${current.commandId} is ${current.status.toLowerCase()}. Waiting for the client…`);
+      setInventoryActivity(t('control.content.commandWaiting').replace('{id}', current.commandId).replace('{status}', current.status.toLowerCase()));
       await new Promise((resolve) => window.setTimeout(resolve, 750));
     }
-    throw new Error('The client has not returned a result yet. Refresh the client catalog to try again.');
+    throw new Error(t('control.content.notReturnedYet'));
   };
 
   const readClientCatalog = async () => {
@@ -230,12 +234,12 @@ export default function WebControlContent() {
       mode: 'steps',
       phase: 'listing-content',
     });
-    setInventoryActivity('Requesting profile and template list…');
+    setInventoryActivity(t('control.content.requestingList'));
     try {
       const result = await issueAndWaitForContentCommand(inventoryDeviceId, { type: 'CONTENT_LIST' });
-      if (!result.resultPayload?.index) throw new Error('The client completed without returning its content list.');
+      if (!result.resultPayload?.index) throw new Error(t('control.content.noListReturned'));
       setClientInventory(result.resultPayload.index);
-      setInventoryActivity(`Loaded ${result.resultPayload.index.profiles.length} paper profiles and ${result.resultPayload.index.templates.length} templates.`);
+      setInventoryActivity(t('control.content.loadedCatalog').replace('{profiles}', String(result.resultPayload.index.profiles.length)).replace('{templates}', String(result.resultPayload.index.templates.length)));
     } catch (error) {
       setInventoryError(error instanceof Error ? error.message : String(error));
       setInventoryActivity('');
@@ -263,7 +267,7 @@ export default function WebControlContent() {
       phase: 'pulling-content',
       item: item.name,
     });
-    setInventoryActivity(`Pulling ${item.kind === 'paper-profile' ? 'paper profile' : 'template'} ${item.code}…`);
+    setInventoryActivity(t('control.content.pullActivity').replace('{kind}', t(item.kind === 'paper-profile' ? 'control.content.profileWord' : 'control.content.templateWord')).replace('{code}', item.code));
     try {
       const result = await issueAndWaitForContentCommand(inventoryDeviceId, {
         type: 'CONTENT_PULL',
@@ -271,11 +275,11 @@ export default function WebControlContent() {
         contentKey: item.code,
       });
       const bundle = result.resultPayload?.bundle;
-      if (!bundle) throw new Error('The client completed without returning the selected content.');
+      if (!bundle) throw new Error(t('control.content.noContentReturned'));
       setPulledBundle(bundle);
       setPullCommandId(result.commandId);
       setImportCode(bundle.kind === 'paper-profile' ? bundle.profile!.code : bundle.template!.templateCode);
-      setInventoryActivity(`Pulled ${item.code}. Review the snapshot, then import it as a copy.`);
+      setInventoryActivity(t('control.content.pullDone').replace('{code}', item.code));
     } catch (error) {
       setInventoryError(error instanceof Error ? error.message : String(error));
       setInventoryActivity('');
@@ -402,7 +406,8 @@ export default function WebControlContent() {
 
   return (
     <PageLayout
-      title="Content Distribution"
+      title={t('control.content.title')}
+      description={t('control.content.subtitle')}
       density="compact"
       width="full"
       actions={
@@ -423,55 +428,55 @@ export default function WebControlContent() {
     >
       <Stack gap="lg">
         <Text size="body" tone="muted">
-          Web Control keeps the master paper profiles and templates. Choose one item and send it to enrolled PrintOps clients that are online and support content sync.
+          {t('control.content.intro')}
         </Text>
-        <Alert tone="info" title="Network visibility">
-          Only enrolled installations that report through the control agent appear here. Web Control does not scan the local network.
+        <Alert tone="info" title={t('control.content.networkTitle')}>
+          {t('control.content.networkBody')}
         </Alert>
 
         <Panel padding="md">
           <Stack gap="md">
-            <Inline gap="md" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <Stack gap="xs">
-                <Text size="title" weight="semibold">Read content from a PrintOps client</Text>
-                <Text size="label" tone="muted">Inspect client profiles and templates, pull one item, then import it as a Web Control copy.</Text>
-              </Stack>
-              <Inline gap="sm" style={{ alignItems: 'end' }}>
-                <Stack gap="xs" style={{ minWidth: '260px' }}>
-                  <Text size="label" weight="medium">Online client</Text>
-                  <Select
-                    value={inventoryDeviceId}
-                    disabled={contentReadableDevices.length === 0 || isReadingClient || isImporting}
-                    onChange={(event) => {
-                      setInventoryDeviceId(event.target.value);
-                      setClientInventory(null);
-                      setPulledBundle(null);
-                      setPullCommandId('');
-                      setImportResult(null);
-                    }}
+            <SectionHeading
+              title={t('control.content.readTitle')}
+              description={t('control.content.readDesc')}
+              actions={
+                <Inline gap="sm">
+                  <Stack gap="xs" className="wc-field-wide">
+                    <Text size="label" weight="medium">{t('control.content.onlineClient')}</Text>
+                    <Select
+                      value={inventoryDeviceId}
+                      disabled={contentReadableDevices.length === 0 || isReadingClient || isImporting}
+                      onChange={(event) => {
+                        setInventoryDeviceId(event.target.value);
+                        setClientInventory(null);
+                        setPulledBundle(null);
+                        setPullCommandId('');
+                        setImportResult(null);
+                      }}
+                    >
+                      {contentReadableDevices.length === 0
+                        ? <option value="">{t('control.content.noReadableClients')}</option>
+                        : contentReadableDevices.map((device) => (
+                          <option key={device.deviceId} value={device.deviceId}>
+                            {device.displayName || device.hostname} · {device.deviceId}
+                          </option>
+                        ))}
+                    </Select>
+                  </Stack>
+                  <Button
+                    variant="secondary"
+                    disabled={!inventoryDeviceId || isReadingClient || isImporting}
+                    onClick={() => void readClientCatalog()}
                   >
-                    {contentReadableDevices.length === 0
-                      ? <option value="">No compatible clients online</option>
-                      : contentReadableDevices.map((device) => (
-                        <option key={device.deviceId} value={device.deviceId}>
-                          {device.displayName || device.hostname} · {device.deviceId}
-                        </option>
-                      ))}
-                  </Select>
-                </Stack>
-                <Button
-                  variant="secondary"
-                  disabled={!inventoryDeviceId || isReadingClient || isImporting}
-                  onClick={() => void readClientCatalog()}
-                >
-                  {isReadingClient ? 'Contacting client…' : 'Read catalog'}
-                </Button>
-              </Inline>
-            </Inline>
+                    {isReadingClient ? t('control.content.contactingClient') : t('control.content.readCatalog')}
+                  </Button>
+                </Inline>
+              }
+            />
 
             {contentReadableDevices.length === 0 && devices.length > 0 && (
-              <Alert tone="warning" title="Client update required">
-                Client inventory and pull require the latest PrintOps control agent. Online clients without that capability remain visible in the device list.
+              <Alert tone="warning" title={t('control.content.updateRequiredTitle')}>
+                {t('control.content.updateRequiredBody')}
               </Alert>
             )}
             {inventoryError && <ErrorBanner error={inventoryError} />}
@@ -485,28 +490,28 @@ export default function WebControlContent() {
               />
             )}
             {clientInventory?.truncated && (
-              <Alert tone="warning" title="Client list is limited">
-                This client has more than 500 items in at least one category. The first 500 profiles and templates are shown.
+              <Alert tone="warning" title={t('control.content.truncatedTitle')}>
+                {t('control.content.truncatedBody')}
               </Alert>
             )}
 
             {clientInventory && (remoteContentEntries.length === 0 ? (
-              <EmptyState title="This client has no paper profiles or templates" />
+              <EmptyState title={t('control.content.clientEmpty')} />
             ) : (
-              <DataTable label="Client paper profiles and templates" responsive>
+              <DataTable label={t('control.content.clientCatalog')} responsive>
                 <thead>
-                  <tr><DataHead>Type</DataHead><DataHead>Code</DataHead><DataHead>Name</DataHead><DataHead>Details</DataHead><DataHead>Action</DataHead></tr>
+                  <tr><DataHead>{t('control.content.colType')}</DataHead><DataHead>{t('control.content.colCode')}</DataHead><DataHead>{t('control.content.colName')}</DataHead><DataHead>{t('control.content.colDetails')}</DataHead><DataHead>{t('control.content.colAction')}</DataHead></tr>
                 </thead>
                 <tbody>
                   {remoteContentEntries.map((item) => (
                     <tr key={`${item.kind}:${item.code}`}>
-                      <DataCell>{item.kind === 'paper-profile' ? 'Paper profile' : 'Template'}</DataCell>
+                      <DataCell>{t(item.kind === 'paper-profile' ? 'control.content.kindProfile' : 'control.content.kindTemplate')}</DataCell>
                       <DataCell><Mono size="label">{item.code}</Mono></DataCell>
                       <DataCell>{item.name}</DataCell>
                       <DataCell><Text size="label" tone="muted">{item.details}</Text></DataCell>
                       <DataCell>
                         <Button size="sm" variant="secondary" disabled={isReadingClient || isImporting} onClick={() => void pullClientItem(item)}>
-                          Pull for review
+                          {t('control.content.pullForReview')}
                         </Button>
                       </DataCell>
                     </tr>
@@ -517,25 +522,25 @@ export default function WebControlContent() {
 
             {pulledBundle && (
               <Stack gap="sm">
-                <Text size="label" weight="medium">Pulled snapshot from {inventoryDevice?.displayName || inventoryDevice?.hostname || inventoryDeviceId}</Text>
-                <pre style={{ maxHeight: '18rem', overflow: 'auto', padding: '0.75rem', borderRadius: '0.5rem', background: 'var(--surface-subtle, #f4f5f6)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: '0.75rem' }}>
+                <Text size="label" weight="medium">{t('control.content.pulledSnapshot').replace('{name}', inventoryDevice?.displayName || inventoryDevice?.hostname || inventoryDeviceId)}</Text>
+                <CodeBlock scroll label={t('control.content.pulledSnapshot').replace('{name}', inventoryDevice?.displayName || inventoryDevice?.hostname || inventoryDeviceId)}>
                   {JSON.stringify(pulledBundle, null, 2)}
-                </pre>
-                <Alert tone="info" title="Import creates a copy">
-                  Existing Web Control items are never replaced. Template copies are imported as drafts and can be edited before publishing.
+                </CodeBlock>
+                <Alert tone="info" title={t('control.content.importCopyTitle')}>
+                  {t('control.content.importCopyBody')}
                 </Alert>
-                <Inline gap="md" style={{ alignItems: 'end' }}>
-                  <Stack gap="xs" style={{ minWidth: '260px', maxWidth: '100%' }}>
-                    <Text size="label" weight="medium">Code in Web Control</Text>
-                    <input
+                <Inline gap="md">
+                  <Stack gap="xs" className="wc-field-wide">
+                    <Text size="label" weight="medium">{t('control.content.importCodeLabel')}</Text>
+                    <Input
                       value={importCode}
                       onChange={(event) => setImportCode(event.target.value)}
                       maxLength={128}
-                      aria-label="Code for imported copy"
+                      aria-label={t('control.content.importCodeAria')}
                     />
                   </Stack>
                   <Button variant="primary" disabled={isImporting || !importCode.trim() || !pullCommandId} onClick={() => void importPulledBundle()}>
-                    {isImporting ? 'Importing…' : 'Import copy'}
+                    {isImporting ? t('control.content.importing') : t('control.content.importCopy')}
                   </Button>
                   {importError && <Text size="label" tone="danger">{importError}</Text>}
                 </Inline>
@@ -543,13 +548,13 @@ export default function WebControlContent() {
             )}
 
             {importResult && (
-              <Alert tone="success" title={`${importResult.kind === 'paper-profile' ? 'Paper profile' : 'Template'} ${importResult.importedCode} is in Web Control`}>
-                {importResult.template === 'created' ? 'Imported as a draft. ' : ''}
-                {importResult.profile === 'created' ? 'Its paper profile dependency was imported too. ' : ''}
-                Open the catalog to edit the imported copy.
+              <Alert tone="success" title={t('control.content.importedTitle').replace('{kind}', t(importResult.kind === 'paper-profile' ? 'control.content.kindProfile' : 'control.content.kindTemplate')).replace('{code}', importResult.importedCode)}>
+                {importResult.template === 'created' ? `${t('control.content.importedDraft')} ` : ''}
+                {importResult.profile === 'created' ? `${t('control.content.importedProfile')} ` : ''}
+                {t('control.content.importedOpen')}
                 <div style={{ marginTop: '0.75rem' }}>
                   <Button variant="secondary" onClick={() => navigate(importResult.kind === 'paper-profile' ? '/control/paper-profiles' : '/control/templates')}>
-                    {importResult.kind === 'paper-profile' ? 'Open paper profiles' : 'Open templates'}
+                    {t(importResult.kind === 'paper-profile' ? 'control.content.openProfiles' : 'control.content.openTemplates')}
                   </Button>
                 </div>
               </Alert>
@@ -559,7 +564,7 @@ export default function WebControlContent() {
 
         {Boolean(hasCatalogError) && (
           <ErrorBanner
-            error={profilesResource.error ?? templatesResource.error ?? devicesResource.error ?? 'Unable to load content catalog'}
+            error={profilesResource.error ?? templatesResource.error ?? devicesResource.error ?? t('control.content.catalogLoadFailed')}
             onRetry={() => { profilesResource.refresh(); templatesResource.refresh(); devicesResource.refresh(); }}
           />
         )}
@@ -567,70 +572,63 @@ export default function WebControlContent() {
         <Panel padding="md">
           <Stack gap="md">
             <Inline gap="md">
-              <Stack gap="xs" style={{ minWidth: '180px' }}>
-                <Text size="label" weight="medium">Content type</Text>
+              <Stack gap="xs" className="wc-field-narrow">
+                <Text size="label" weight="medium">{t('control.content.typeLabel')}</Text>
                 <Select value={kind} onChange={(event) => { setKind(event.target.value as 'paper-profile' | 'template'); setItemId(''); }}>
-                  <option value="paper-profile">Paper profile</option>
-                  <option value="template">Template</option>
+                  <option value="paper-profile">{t('control.content.kindProfile')}</option>
+                  <option value="template">{t('control.content.kindTemplate')}</option>
                 </Select>
               </Stack>
-              <Stack gap="xs" style={{ flex: 1, minWidth: '240px' }}>
-                <Text size="label" weight="medium">Master item</Text>
+              <Stack gap="xs" className="wc-field-grow">
+                <Text size="label" weight="medium">{t('control.content.masterItem')}</Text>
                 <Select value={itemId} onChange={(event) => setItemId(event.target.value)} disabled={contentItems.length === 0}>
                   {contentItems.length === 0
-                    ? <option value="">No {kind === 'paper-profile' ? 'paper profiles' : 'templates'} in the catalog</option>
+                    ? <option value="">{t(kind === 'paper-profile' ? 'control.content.noProfilesInCatalog' : 'control.content.noTemplatesInCatalog')}</option>
                     : contentItems.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}
                 </Select>
               </Stack>
-              <Stack gap="xs" style={{ alignSelf: 'end' }}>
-                <Inline gap="sm">
-                  <Button variant="secondary" onClick={() => navigate('/control/paper-profiles')}>Manage profiles</Button>
-                  <Button variant="secondary" onClick={() => navigate('/control/templates')}>Manage templates</Button>
-                </Inline>
-              </Stack>
+              <Inline gap="sm">
+                <Button variant="secondary" onClick={() => navigate('/control/paper-profiles')}>{t('control.content.manageProfiles')}</Button>
+                <Button variant="secondary" onClick={() => navigate('/control/templates')}>{t('control.content.manageTemplates')}</Button>
+              </Inline>
             </Inline>
 
             {selectedContent && (
-              <Text size="label" tone="muted">Selected master: <Mono size="label">{selectedContent.code}</Mono> · {selectedContent.details}</Text>
+              <Text size="label" tone="muted">{t('control.content.selectedMaster')}: <Mono size="label">{selectedContent.code}</Mono> · {selectedContent.details}</Text>
             )}
 
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
-              <input
-                type="checkbox"
-                checked={overwriteExisting}
-                onChange={(event) => setOverwriteExisting(event.target.checked)}
-                aria-label="Replace matching client content"
-              />
-              <span>
-                <Text size="body" weight="medium">Replace matching codes on selected clients</Text>
-                <Text size="label" tone="muted">Off by default. Without this option, a different local item with the same code is kept and the client reports a conflict.</Text>
-              </span>
-            </label>
+            <Checkbox
+              label={t('control.content.overwriteLabel')}
+              description={t('control.content.overwriteHint')}
+              checked={overwriteExisting}
+              onChange={(event) => setOverwriteExisting(event.target.checked)}
+              aria-label={t('control.content.overwriteAria')}
+            />
           </Stack>
         </Panel>
 
         <Stack gap="sm">
           <Inline gap="md">
-            <Text size="title" weight="semibold">Target clients</Text>
-            <Badge tone="neutral">{compatibleOnlineDevices.length} online and compatible</Badge>
+            <Text size="title" weight="semibold">{t('control.content.targetClients')}</Text>
+            <Badge tone="neutral">{t('control.content.onlineCompatible').replace('{count}', String(compatibleOnlineDevices.length))}</Badge>
             <Button size="sm" variant="secondary" disabled={compatibleOnlineDevices.length === 0} onClick={selectAllCompatible}>
-              {selectedDeviceIds.length === compatibleOnlineDevices.length && compatibleOnlineDevices.length > 0 ? 'Clear selection' : 'Select compatible'}
+              {selectedDeviceIds.length === compatibleOnlineDevices.length && compatibleOnlineDevices.length > 0 ? t('control.content.clearSelection') : t('control.content.selectCompatible')}
             </Button>
           </Inline>
 
           {devicesResource.loading && !devicesResource.data ? <LoadingState /> : devices.length === 0 ? (
-            <EmptyState title="No enrolled PrintOps clients have reported in" />
+            <EmptyState title={t('control.content.noEnrolledClients')} />
           ) : (
-            <DataTable label="PrintOps clients available for content sync" responsive>
+            <DataTable label={t('control.content.availableDevices')} responsive>
               <thead>
                 <tr>
-                  <DataHead>Select</DataHead>
-                  <DataHead>Client</DataHead>
-                  <DataHead>Site</DataHead>
-                  <DataHead>Installed PrintOps version</DataHead>
-                  <DataHead>Network address</DataHead>
-                  <DataHead>Last seen</DataHead>
-                  <DataHead>Content sync</DataHead>
+                  <DataHead>{t('control.content.colSelect')}</DataHead>
+                  <DataHead>{t('control.content.colClient')}</DataHead>
+                  <DataHead>{t('control.content.colSite')}</DataHead>
+                  <DataHead>{t('control.content.colVersion')}</DataHead>
+                  <DataHead>{t('control.content.colAddress')}</DataHead>
+                  <DataHead>{t('control.content.colLastSeen')}</DataHead>
+                  <DataHead>{t('control.content.colContentSync')}</DataHead>
                 </tr>
               </thead>
               <tbody>
@@ -640,12 +638,13 @@ export default function WebControlContent() {
                   return (
                     <tr key={device.deviceId}>
                       <DataCell>
-                        <input
-                          type="checkbox"
+                        <Checkbox
+                          hideLabel
+                          label={device.displayName || device.hostname}
                           checked={selectedDeviceIds.includes(device.deviceId)}
                           disabled={!canSelect}
                           onChange={() => toggleDevice(device.deviceId)}
-                          aria-label={`Select ${device.displayName || device.hostname}`}
+                          aria-label={t('control.content.colSelect')}
                         />
                       </DataCell>
                       <DataCell>
@@ -656,11 +655,11 @@ export default function WebControlContent() {
                       </DataCell>
                       <DataCell>{device.siteId}</DataCell>
                       <DataCell><Mono size="body">v{device.appVersion}</Mono></DataCell>
-                      <DataCell><Text size="label">{device.ipAddresses?.join(', ') || 'Not reported'}</Text></DataCell>
-                      <DataCell><Text size="label" tone="muted">{device.lastSeenAt ? formatRelativeTime(t, device.lastSeenAt) : 'Never'}</Text></DataCell>
+                      <DataCell><Text size="label">{device.ipAddresses?.join(', ') || t('control.content.notReported')}</Text></DataCell>
+                      <DataCell><Text size="label" tone="muted">{device.lastSeenAt ? formatRelativeTime(t, device.lastSeenAt) : t('control.content.never')}</Text></DataCell>
                       <DataCell>
                         <Badge tone={supportsContentSync ? 'success' : 'warning'}>
-                          {supportsContentSync ? 'READY' : 'Client update required'}
+                          {supportsContentSync ? t('control.content.syncReady') : t('control.content.syncUpdateRequired')}
                         </Badge>
                       </DataCell>
                     </tr>
@@ -671,8 +670,8 @@ export default function WebControlContent() {
           )}
 
           {devices.length > 0 && compatibleOnlineDevices.length === 0 && (
-            <Alert tone="warning" title="No client can receive profiles yet">
-              Update the PrintOps client and its control agent to enable signed content sync. Existing app versions remain visible above.
+            <Alert tone="warning" title={t('control.content.noTargetTitle')}>
+              {t('control.content.noTargetBody')}
             </Alert>
           )}
 
@@ -682,7 +681,7 @@ export default function WebControlContent() {
               disabled={isPublishing || !selectedContent || selectedDeviceIds.length === 0}
               onClick={() => void publish()}
             >
-              {isPublishing ? 'Sending…' : `Publish to ${selectedDeviceIds.length} client${selectedDeviceIds.length === 1 ? '' : 's'}`}
+              {isPublishing ? t('control.content.publishing') : t(selectedDeviceIds.length === 1 ? 'control.content.publishOne' : 'control.content.publishMany').replace('{count}', String(selectedDeviceIds.length))}
             </Button>
             {publishError && <Text size="label" tone="danger">{publishError}</Text>}
           </Inline>
@@ -690,11 +689,11 @@ export default function WebControlContent() {
 
         {deployment && (
           <Stack gap="sm">
-            <Text size="title" weight="semibold">Latest distribution</Text>
+            <Text size="title" weight="semibold">{t('control.content.latestDistribution')}</Text>
             <Text size="label" tone="muted">{deployment.contentKey} · {deployment.deploymentId}</Text>
-            <DataTable label="Latest content distribution status" responsive>
+            <DataTable label={t('control.content.distributionStatus')} responsive>
               <thead>
-                <tr><DataHead>Client</DataHead><DataHead>Status</DataHead><DataHead>Progress</DataHead><DataHead>Result</DataHead></tr>
+                <tr><DataHead>{t('control.content.colClient')}</DataHead><DataHead>{t('control.content.colStatus')}</DataHead><DataHead>{t('control.content.colProgress')}</DataHead><DataHead>{t('control.content.colResult')}</DataHead></tr>
               </thead>
               <tbody>
                 {deployment.deployments.map((target) => {
@@ -715,7 +714,7 @@ export default function WebControlContent() {
                           compact
                         />
                       </DataCell>
-                      <DataCell><Text size="label" tone={target.errorMessage || target.failureReason ? 'danger' : 'muted'}>{target.errorMessage || target.failureReason || target.commandId || 'Not sent'}</Text></DataCell>
+                      <DataCell><Text size="label" tone={target.errorMessage || target.failureReason ? 'danger' : 'muted'}>{target.errorMessage || target.failureReason || target.commandId || t('control.content.notSent')}</Text></DataCell>
                     </tr>
                   );
                 })}

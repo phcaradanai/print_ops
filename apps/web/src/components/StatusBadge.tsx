@@ -15,9 +15,19 @@
  */
 
 import { getStatusBadgeColors } from '../statusColors.js';
+import { getJobVerdict, type VerdictTone } from '../lib/jobVerdict.js';
 import './StatusBadge.css';
 
 export type StatusBadgeSize = 'sm' | 'md' | 'lg';
+
+const STATUS_ICON_PATHS: Record<VerdictTone, string> = {
+  confirmed: 'm5 12 4 4L19 6',
+  progress: 'M20 8V3l-3 3a8 8 0 1 0 2 12M20 3h-5',
+  pending: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
+  caution: 'M12 3 2 21h20L12 3Zm0 5v6m0 3h.01',
+  negative: 'm6 6 12 12M6 18 18 6',
+  neutral: 'M5 12h14',
+};
 
 export function StatusBadge({
   status,
@@ -40,7 +50,10 @@ export function StatusBadge({
       }}
       title={title}
     >
-      {status}
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d={STATUS_ICON_PATHS[getJobVerdict(status).tone]} />
+      </svg>
+      <span>{status}</span>
     </span>
   );
 }

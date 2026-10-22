@@ -8,7 +8,7 @@ use std::sync::{
     Mutex, OnceLock,
 };
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::{Manager, Url};
+use tauri::Manager;
 
 #[cfg(windows)]
 use std::os::windows::io::AsRawHandle;
@@ -1464,45 +1464,6 @@ pub fn run() {
                 }
             });
 
-            // The config window is created before `setup` runs, so its first load
-            // races the server startup. Poll health off the main thread and
-            // navigate once the API answers, keeping the UI responsive meanwhile.
-            let handle = app.handle().clone();
-            let health_log = app_log.clone();
-            std::thread::spawn(move || {
-                let health_url = format!("{SERVER_URL}/health");
-                let deadline = std::time::Instant::now() + Duration::from_secs(60);
-                let mut healthy = false;
-                while std::time::Instant::now() < deadline {
-                    match ureq::get(&health_url)
-                        .timeout(Duration::from_secs(2))
-                        .call()
-                    {
-                        Ok(resp) if resp.status() == 200 => {
-                            healthy = true;
-                            break;
-                        }
-                        _ => std::thread::sleep(Duration::from_millis(500)),
-                    }
-                }
-
-                if !healthy {
-                    log_line(
-                        &health_log,
-                        "ERROR: server health check timed out after 60s",
-                    );
-                    return;
-                }
-                log_line(&health_log, "Server is healthy");
-
-                match (handle.get_webview_window("main"), Url::parse(SERVER_URL)) {
-                    (Some(window), Ok(url)) => match window.navigate(url) {
-                        Ok(()) => log_line(&health_log, "Webview navigated to app"),
-                        Err(e) => log_line(&health_log, &format!("ERROR: navigate failed: {e}")),
-                    },
-                    _ => log_line(&health_log, "ERROR: main window not found"),
-                }
-            });
 
             log_line(&app_log, "Desktop ready");
             Ok(())

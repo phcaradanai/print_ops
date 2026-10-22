@@ -23,6 +23,7 @@ import {
   Input,
   LoadingState,
   PageLayout,
+  Panel,
   SectionHeading,
   Select,
   Stack,
@@ -193,16 +194,6 @@ const DEFAULT_PAYLOAD = '{"label":"Test Label","barcode":"ABC123","hn_masked":"H
  * page's own section rhythm remains, because the sandbox column really is a
  * stack of rule-separated regions and nothing else in the product is.
  */
-const sectionStyle: React.CSSProperties = { borderBottom: '1px solid var(--neutral-border)', padding: '0.85rem 0' };
-const sectionLastStyle: React.CSSProperties = { padding: '0.85rem 0' };
-const sectionTitleStyle: React.CSSProperties = {
-  fontSize: 'var(--font-label-size)', fontWeight: 700, color: 'var(--neutral-deep)',
-  letterSpacing: '0.04em', marginBottom: '0.6rem',
-};
-const cardStyle: React.CSSProperties = {
-  background: 'var(--neutral-surface)', padding: '0 var(--spacing-xl)',
-  border: '1px solid var(--neutral-border)', borderRadius: 'var(--rounded-lg)',
-};
 
 export default function TemplateSandbox() {
   const { t } = useLocale();
@@ -216,6 +207,7 @@ export default function TemplateSandbox() {
   const [paperProfileId, setPaperProfileId] = useState('');
   const [printerId, setPrinterId] = useState('');
   const [payload, setPayload] = useState(DEFAULT_PAYLOAD);
+  const [payloadOpen, setPayloadOpen] = useState(false);
 
   // Print options
   const [copies, setCopies] = useState(1);
@@ -534,10 +526,10 @@ export default function TemplateSandbox() {
       ) : (
         <div className="template-sandbox-layout">
           {/* ===================== Config Panel ===================== */}
-          <section style={cardStyle}>
+          <Panel padding="md">
             {/* --- Printer --- */}
-            <div style={{ ...sectionStyle, paddingTop: '1.1rem' }}>
-              <div style={sectionTitleStyle}>{t('page.sandbox.printer')}</div>
+            <Stack gap="lg">
+              <SectionHeading title={t('page.sandbox.printer')} />
               <FormField label={t('page.sandbox.selectPrinter')}>
                 {(control) => (
                   <Select {...control} value={printerId} onChange={(e) => setPrinterId(e.target.value)}>
@@ -586,11 +578,9 @@ export default function TemplateSandbox() {
                   {printerReadinessWarning}
                 </Alert>
               )}
-            </div>
 
             {/* --- Paper & Template --- */}
-            <div style={sectionStyle}>
-              <div style={sectionTitleStyle}>{t('page.sandbox.templatePaper')}</div>
+              <SectionHeading title={t('page.sandbox.templatePaper')} />
               <FormField
                 label={t('page.sandbox.paperProfile')}
                 hint={paperProfileId ? t('page.sandbox.paperProfilePriorityHint') : undefined}
@@ -622,11 +612,9 @@ export default function TemplateSandbox() {
                   </Inline>
                 )}
               </Stack>
-            </div>
 
             {/* --- Print Options --- */}
-            <div style={sectionStyle}>
-              <div style={sectionTitleStyle}>{t('page.sandbox.printOptions')}</div>
+              <SectionHeading title={t('page.sandbox.printOptions')} />
               {/* Copy count drives how many physical labels come out, so it
                   keeps its stepper — but on shared controls. */}
               <Stack gap="xs">
@@ -713,27 +701,39 @@ export default function TemplateSandbox() {
                   ))}
                 </Inline>
               </Stack>
-            </div>
 
             {/* --- Payload --- */}
-            <details style={sectionLastStyle}>
-              <summary style={{ ...sectionTitleStyle, cursor: 'pointer' }}>Expert payload</summary>
-              <Stack gap="sm">
-                <Text size="label" tone="muted">Edit JSON only when troubleshooting a template proof.</Text>
-                <FormField label={t('page.sandbox.samplePayload')} error={payloadError ?? undefined}>
-                  {(control) => (
-                    <Textarea
-                      {...control}
-                      mono
-                      rows={6}
-                      invalid={Boolean(payloadError)}
-                      value={payload}
-                      onChange={(e) => setPayload(e.target.value)}
-                    />
-                  )}
-                </FormField>
-              </Stack>
-            </details>
+            <Stack gap="sm">
+              <SectionHeading
+                title={t('page.sandbox.expertPayload')}
+                actions={
+                  <Button
+                    variant="ghost"
+                    aria-expanded={payloadOpen}
+                    onClick={() => setPayloadOpen((open) => !open)}
+                  >
+                    {payloadOpen ? t('page.sandbox.expertPayloadHide') : t('page.sandbox.expertPayloadShow')}
+                  </Button>
+                }
+              />
+              {payloadOpen && (
+                <Stack gap="sm">
+                  <Text size="label" tone="muted">{t('page.sandbox.expertPayloadHint')}</Text>
+                  <FormField label={t('page.sandbox.samplePayload')} error={payloadError ?? undefined}>
+                    {(control) => (
+                      <Textarea
+                        {...control}
+                        mono
+                        rows={6}
+                        invalid={Boolean(payloadError)}
+                        value={payload}
+                        onChange={(e) => setPayload(e.target.value)}
+                      />
+                    )}
+                  </FormField>
+                </Stack>
+              )}
+            </Stack>
 
             {/* --- Actions ---
                 Render and Print are deliberately different weights: rendering a
@@ -772,10 +772,11 @@ export default function TemplateSandbox() {
                 {t('page.sandbox.testPrintBlocked').replace('{reason}', testPrintBlockedReason)}
               </Text>
             )}
-          </section>
+            </Stack>
+          </Panel>
 
           {/* ===================== Preview Panel ===================== */}
-          <section style={{ ...cardStyle, padding: '1.25rem' }}>
+          <Panel padding="lg">
             <SectionHeading
               title={t('page.sandbox.preview')}
               actions={preview ? <Text size="label" tone="muted">render {preview.renderTimeMs}ms</Text> : undefined}
@@ -849,7 +850,7 @@ export default function TemplateSandbox() {
                 {selectedTemplate && ` · ${selectedTemplate.templateCode}`}
               </Alert>
             )}
-          </section>
+          </Panel>
         </div>
       )}
     </PageLayout>

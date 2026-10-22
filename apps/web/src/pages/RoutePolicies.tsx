@@ -67,7 +67,9 @@ export default function RoutePolicies() {
   return (
     <PageLayout
       width="full"
+      density="compact"
       title={t('page.routePolicies.title')}
+      description={t('page.routePolicies.subtitle')}
       actions={<Freshness
           lastSuccessAt={policiesResource.lastSuccessAt}
           stale={policiesResource.stale}
@@ -109,7 +111,7 @@ export default function RoutePolicies() {
           <Button
             onClick={() => void createPolicy.run(raw)}
             busy={createPolicy.pending}
-            busyLabel={t('page.jobQueue.reprintSubmitting')}
+            busyLabel={t('page.routePolicies.creatingPolicy')}
             disabled={jsonError !== null}
           >
             {t('page.routePolicies.createPolicy')}

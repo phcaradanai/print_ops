@@ -1,6 +1,6 @@
 .ui-page-scaffold {
   display: grid;
-  width: min(100%, var(--page-content-wide));
+  width: min(100%, 86rem);
   min-width: 0;
   margin-inline: auto;
   grid-template-areas:
@@ -13,11 +13,11 @@
 }
 
 .ui-page-scaffold--standard {
-  width: min(100%, var(--page-content-standard));
+  width: min(100%, 64rem);
 }
 
 .ui-page-scaffold--full {
-  width: 100%;
+  width: min(100%, 88rem);
 }
 
 .ui-page-scaffold--compact {

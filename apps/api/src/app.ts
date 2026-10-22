@@ -284,7 +284,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const corsOrigin = corsAllowedOriginsEnv
     ? corsAllowedOriginsEnv.split(',').map((origin) => origin.trim()).filter(Boolean)
     : runtimeArchitecture.runtimeMode === 'packaged-windows-desktop'
-      ? ['http://127.0.0.1:31415', 'http://localhost:31415', 'tauri://localhost', 'https://tauri.localhost']
+      ? ['http://127.0.0.1:31415', 'http://localhost:31415', 'tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost']
       : true;
   await app.register(cors, { origin: corsOrigin });
 

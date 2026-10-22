@@ -12,6 +12,7 @@ export interface SelectFilterProps extends Omit<SelectProps, 'value' | 'defaultV
   requiredLabel?: string;
   className?: string;
   selectClassName?: string;
+  hideLabel?: boolean;
   children: ReactNode;
 }
 
@@ -27,15 +28,17 @@ export function SelectFilter({
   invalid = false,
   className = '',
   selectClassName,
+  hideLabel = true,
   children,
   ...selectProps
 }: SelectFilterProps) {
   const isInvalid = invalid || Boolean(error);
+  const labelText = typeof label === 'string' ? label : undefined;
 
   return (
     <div className={`ui-select-filter${className ? ` ${className}` : ''}`}>
       <FormField
-        label={label}
+        label={hideLabel ? <span className="ui-visually-hidden">{label}</span> : label}
         hint={hint}
         error={error}
         required={required}
@@ -43,6 +46,7 @@ export function SelectFilter({
       >
         {(control) => (
           <Select
+            aria-label={labelText}
             {...selectProps}
             {...control}
             value={value}

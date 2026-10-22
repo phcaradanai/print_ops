@@ -35,6 +35,7 @@ coverage/
 *.tsbuildinfo
 .turbo/
 /artifacts/
+.impeccable/review/
 
 # Go runner artifacts
 apps/runner-go/printops-runner

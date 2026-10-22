@@ -132,11 +132,6 @@
   white-space: nowrap;
 }
 
-.paper-profiles-page .pp-saved-profiles .ui-data-table-frame {
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
 
 .paper-profiles-page .pp-profile-library-table {
   table-layout: auto;
@@ -205,17 +200,12 @@
   position: relative;
   display: inline-block;
   flex: 0 0 auto;
-  width: 3.4rem;
-  max-height: 3.6rem;
-  min-height: 2rem;
-  overflow: hidden;
+  width: 28px;
+  height: 22px;
   border: 1px solid var(--neutral-border-strong);
-  /* Sub-scale corner: this is a 3.4rem depiction of a physical sheet, so it
-     takes a paper corner rather than the 4-8px UI scale. Same for the drop
-     shadow — it is the sheet lifting off the surface, not card elevation. */
   border-radius: 3px;
   background: var(--neutral-surface);
-  box-shadow: 0 5px 12px rgba(15, 23, 42, 0.12);
+  vertical-align: middle;
 }
 
 .paper-profiles-page .pp-profile-thumbnail::after {

@@ -3,6 +3,7 @@ import { apiFetch } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { formatRelativeTime } from '../lib/relativeTime.js';
+import { connectionTypeLabel, runnerHealth, type RunnerHealth } from '../lib/deviceHealth.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
 import { RunnerStatusBadge } from '../components/RunnerStatusBadge.js';
@@ -22,6 +23,8 @@ import {
   Mono,
   PageLayout,
   Panel,
+  ResourceToolbar,
+  SelectFilter,
   Stack,
   Text,
 } from '../components/ui/index.js';
@@ -66,6 +69,15 @@ export default function LocalDiagnostics() {
   const printersResource = useApiResource(fetchPrinters, { intervalMs: DIAGNOSTICS_POLL_MS });
   const runners = runnersResource.data ?? [];
   const printers = printersResource.data ?? [];
+  // Runner health filter, same buckets as /runners and the dashboard strip.
+  // Local state only: diagnostics is an inspection tool, and filtered links
+  // with ?status= belong to the jobs queue.
+  const [healthFilter, setHealthFilter] = useState<'ALL' | RunnerHealth>('ALL');
+  const problemCount = runners.filter((r) => runnerHealth(r.status) === 'attention').length;
+  const healthyCount = runners.length - problemCount;
+  const visibleRunners = healthFilter === 'ALL'
+    ? runners
+    : runners.filter((r) => runnerHealth(r.status) === healthFilter);
 
   const discover = useApiAction(async (runnerId: string) =>
     apiFetch<{ queued: boolean; knownPrinters: number }>(
@@ -187,8 +199,25 @@ export default function LocalDiagnostics() {
         <Text as="p" tone="muted">{t('page.diagnostics.runnersUnavailable')}</Text>
       )}
 
+      {/* The filter shares ResourceToolbar with the other device pages. It only
+          renders from a successful response: with `/runners` down there is no
+          honest count to offer. */}
+      {runnersResource.data !== undefined && runnersResource.data.length > 0 && (
+        <ResourceToolbar ariaLabel={t('page.diagnostics.filterHealth')}>
+          <SelectFilter
+            label={t('page.diagnostics.filterHealth')}
+            value={healthFilter}
+            onValueChange={(value) => setHealthFilter(value as 'ALL' | RunnerHealth)}
+          >
+            <option value="ALL">{t('page.diagnostics.filterAll')} ({runners.length})</option>
+            <option value="healthy">{t('page.diagnostics.filterHealthy')} ({healthyCount})</option>
+            <option value="attention">{t('page.diagnostics.filterProblem')} ({problemCount})</option>
+          </SelectFilter>
+        </ResourceToolbar>
+      )}
+
       <Stack gap="xl">
-        {runners.map((runner) => {
+        {visibleRunners.map((runner) => {
           const runnerPrinters = printers.filter((printer) => printer.runnerId === runner.id);
           const meta = runnerPrinters[0];
           const computerName = meta?.computerName ?? runner.hostname;
@@ -273,7 +302,7 @@ export default function LocalDiagnostics() {
                               map that disagreed with the one on Discovered Printers.
                               It is metadata, so it takes the neutral metadata tag. */}
                           <DataCell label={columns.type}>
-                            <Badge>{printer.connectionType}</Badge>
+                            <Badge>{connectionTypeLabel(printer.connectionType)}</Badge>
                           </DataCell>
                           {/* Was a bare '✓' glyph, which no screen reader announces
                               and which carries no label in the mobile card view. */}
@@ -299,6 +328,11 @@ export default function LocalDiagnostics() {
             </Panel>
           );
         })}
+        {/* Filter found nothing — only when there was something to filter.
+            An empty fleet keeps the honest "no runners connected" state above. */}
+        {visibleRunners.length === 0 && runners.length > 0 && (
+          <EmptyState title={t('page.diagnostics.noMatch')} />
+        )}
       </Stack>
     </PageLayout>
   );

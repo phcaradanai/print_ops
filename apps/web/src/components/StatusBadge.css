@@ -2,6 +2,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: var(--spacing-xs);
+  justify-self: start;
+  align-self: start;
   max-width: 100%;
   line-height: 1.2;
   vertical-align: middle;

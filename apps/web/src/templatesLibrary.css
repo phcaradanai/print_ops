@@ -39,19 +39,6 @@
   z-index: 1;
 }
 
-.templates-page .tpl-list .ui-data-table-frame {
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.templates-page .tpl-list .data-table,
-.templates-page .tpl-list .ui-data-table {
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
 .templates-page .tpl-list .data-table thead,
 .templates-page .tpl-list .ui-data-table thead {
   border-bottom-color: var(--tpl-library-accent);

@@ -9,6 +9,7 @@ import { shouldPollJobDetail, type JobDetailPollingInput } from '../lib/jobDetai
 import {
   getJobVerdict,
   offersReprint,
+  REPORTED_COMPLETE_COPY,
   reprintButtonVariant,
   verdictDetailKey,
   verdictHeadlineKey,
@@ -98,10 +99,7 @@ export interface PrintEvidence {
 export function verdictCopyKeys(verdict: JobVerdict, evidence?: PrintEvidence) {
   const printerConfirmed = evidence?.deviceConfirmed === true || evidence?.ippJobConfirmed === true;
   if (verdict.copyKey === 'printed' && !printerConfirmed) {
-    return {
-      headline: 'page.jobDetail.verdict.reportedComplete.headline',
-      detail: 'page.jobDetail.verdict.reportedComplete.detail',
-    };
+    return REPORTED_COMPLETE_COPY;
   }
 
   return {

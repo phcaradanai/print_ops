@@ -108,6 +108,15 @@ export function apiBase(): string {
   return '';
 }
 
+/** The bundled entry screen must work before the local HTTP service starts. */
+export function desktopBootstrapOrigin(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const { protocol, hostname } = window.location;
+  return protocol === 'tauri:' || hostname === 'tauri.localhost'
+    ? 'http://127.0.0.1:31415'
+    : undefined;
+}
+
 export interface NatsRuntimeStatus {
   enabled: boolean; state: string; connected: boolean; intakeReady: boolean; callbackPublishReady: boolean; streamReady: boolean; consumerReady: boolean; clientId?: string; subject?: string; stream?: string; durable?: string; server?: string; lastConnectedAt?: string; lastDisconnectedAt?: string; lastAttemptAt?: string; nextRetryAt?: string; lastErrorCode?: string; lastErrorStage?: string; lastErrorMessage?: string;
 }
@@ -165,7 +174,7 @@ export function getReadiness(): Promise<ReadinessSnapshot> {
 }
 
 export function healthUrl(): string {
-  return apiBase() + '/api/health';
+  return (desktopBootstrapOrigin() ?? apiBase()) + '/api/health';
 }
 
 function apiUrl(path: string): string {
