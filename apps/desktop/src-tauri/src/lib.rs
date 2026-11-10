@@ -398,7 +398,10 @@ fn wait_for_server_health(timeout: Duration) -> bool {
     false
 }
 
-#[tauri::command]
+// `async`: Tauri runs plain sync commands on the main (UI) thread. This one
+// kills/respawns server.exe and polls health for up to 20s, which froze the
+// WebView2 window white ("Not Responding") until it returned.
+#[tauri::command(async)]
 fn save_nats_settings(app: tauri::AppHandle, settings: NatsSettings) -> Result<(), String> {
     validate_nats_settings(&settings)?;
     let data_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
@@ -423,14 +426,23 @@ fn save_nats_settings(app: tauri::AppHandle, settings: NatsSettings) -> Result<(
     // the "saved NATS settings but they never take effect" bug. Restarting
     // only the child server process, inside this same already-running app,
     // sidesteps that race entirely: there is no second process launch.
-    kill_child(&state.server_child, &app_log, "server (applying new NATS settings)");
-
-    let cmd = build_server_command(&state.paths, &settings);
-    let new_child = spawn_child(cmd, &app_log, "server.exe");
-    let started = new_child.is_some();
-    if let Ok(mut guard) = state.server_child.lock() {
-        *guard = new_child;
-    }
+    //
+    // Kill and respawn under one lock hold: the supervisor thread treats an
+    // empty slot as "exited" and would otherwise spawn its own server.exe in
+    // the gap, orphaning one process and crash-looping the other on the port.
+    let started = {
+        let mut guard = state
+            .server_child
+            .lock()
+            .map_err(|_| "server process state is unavailable".to_string())?;
+        if let Some(mut child) = guard.take() {
+            log_line(&app_log, "Shutting down server (applying new NATS settings)...");
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        *guard = spawn_child(build_server_command(&state.paths, &settings), &app_log, "server.exe");
+        guard.is_some()
+    };
     if !started {
         return Err("Failed to restart the API server with the new NATS settings".into());
     }
