@@ -104,6 +104,7 @@
 .ui-check--bare > input { margin-top: 0; }
 
 .ui-switch {
+  position: relative;
   display: inline-flex;
   min-width: 0;
   min-height: 2rem;

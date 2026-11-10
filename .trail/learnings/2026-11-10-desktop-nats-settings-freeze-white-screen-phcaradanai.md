@@ -32,3 +32,8 @@ touches:
 - macOS: kill -9'd API leaves a stale sqlite lock socket in tmpdir -> PRINTOPS_DB_LOCKED; use a fresh DB path in repros.
 - After merging feature/web-control, run `npm run build:packages` before typecheck (stale packages/domain dist).
 - `enroll_control_device` (from feature/web-control) has the same sync-command freeze and kill/respawn gap; not fixed yet.
+
+## Correction (same day, after user's screen recording on v0.1.35)
+- The white screen was NOT the NATS save path. It happens on clicking the Switch itself (before Apply). Cause: `.ui-switch > input` is `position:absolute` (visually hidden) but `.ui-switch` was `position:static`, so the input sat ~3363px down the document; focusing it scrolled the whole document and pushed `.app-shell` out of view (body is overflow:hidden, so no scrollbar, just a white page; Refresh fixes it). Fix: `position: relative` on `.ui-switch` in apps/web/src/components/ui/inputs.css, test in src/__tests__/switchLayout.test.ts.
+- Reproduced in plain Chrome via Vite dev (the NATS panel renders there because the tauri import resolves); signature is `document.documentElement.scrollHeight` >> `innerHeight`.
+- The async `save_nats_settings` change is still valid hardening but did not fix the reported symptom. Ask for/inspect the recording before theorising about the backend.
