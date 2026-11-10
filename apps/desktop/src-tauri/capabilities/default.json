@@ -12,6 +12,7 @@
     "allow-write-export-file",
     "allow-get-nats-settings",
     "allow-save-nats-settings",
+    "allow-enroll-control-device",
     "shell:allow-execute",
     "shell:allow-open",
     {

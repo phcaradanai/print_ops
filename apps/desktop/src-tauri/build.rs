@@ -1,4 +1,4 @@
-const APP_COMMANDS: &[&str] = &["write_export_file", "get_nats_settings", "save_nats_settings"];
+const APP_COMMANDS: &[&str] = &["write_export_file", "get_nats_settings", "save_nats_settings", "enroll_control_device"];
 
 fn main() {
     println!("cargo:rerun-if-env-changed=PRINTOPS_BUILD_VERSION");
