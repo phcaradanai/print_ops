@@ -6,6 +6,10 @@
 let invokeFn: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null;
 
 async function getInvoke(): Promise<((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null> {
+  // The `@tauri-apps/api` import resolves in any browser, so it proves nothing:
+  // only the desktop shell injects `__TAURI_INTERNALS__`. Without this check a
+  // plain browser took the Tauri path and failed on `undefined.invoke`.
+  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return null;
   if (invokeFn !== null) return invokeFn;
   try {
     const mod = await import('@tauri-apps/api/core');
