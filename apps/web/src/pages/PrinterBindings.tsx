@@ -94,6 +94,7 @@ export default function PrinterBindings() {
   return (
     <PageLayout
       title={t('page.bindings.title')}
+      description={t('page.bindings.subtitle')}
       density="compact"
       width="full"
       actions={<Freshness

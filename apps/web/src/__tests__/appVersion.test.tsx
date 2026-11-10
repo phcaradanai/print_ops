@@ -11,4 +11,11 @@ describe('application version marker', () => {
     expect(markup).toContain(`v${webPackage.version}`);
     expect(markup).toContain(`aria-label="Application version: ${webPackage.version}"`);
   });
+
+  it('allows rendering custom control plane version independently from printops version', () => {
+    const markup = renderToStaticMarkup(<AppVersionBadge label="Control Plane" version="1.0.0" />);
+    expect(markup).toContain('v1.0.0');
+    expect(markup).toContain('aria-label="Control Plane: 1.0.0"');
+    expect(markup).not.toContain(`v${webPackage.version}`);
+  });
 });

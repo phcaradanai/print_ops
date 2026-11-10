@@ -3,9 +3,44 @@
 package updater
 
 import (
+	"fmt"
+	"os"
 	"reflect"
+	"syscall"
 	"testing"
+	"time"
+	"unsafe"
 )
+
+func TestDesktopShutdownEventObservesWindowsSignal(t *testing.T) {
+	name := fmt.Sprintf(`Local\PrintOpsUpdaterTest-%d-%d`, os.Getpid(), time.Now().UnixNano())
+	wideName, err := syscall.UTF16PtrFromString(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	createEvent := kernel32.NewProc("CreateEventW")
+	handle, _, createErr := createEvent.Call(0, 1, 0, uintptr(unsafe.Pointer(wideName)))
+	if handle == 0 {
+		t.Fatalf("CreateEventW: %v", createErr)
+	}
+	defer closeHandle.Call(handle)
+
+	event, err := openDesktopShutdownEvent(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer event.Close()
+	if event.IsSignaled() {
+		t.Fatal("new shutdown event is unexpectedly signaled")
+	}
+	setEvent := kernel32.NewProc("SetEvent")
+	if result, _, setErr := setEvent.Call(handle); result == 0 {
+		t.Fatalf("SetEvent: %v", setErr)
+	}
+	if !event.IsSignaled() {
+		t.Fatal("updater did not observe the Desktop shutdown signal")
+	}
+}
 
 func TestProcessTreeFromRecordsExcludesOnlyUpdaterDescendants(t *testing.T) {
 	records := []processRecord{

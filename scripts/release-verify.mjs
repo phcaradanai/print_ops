@@ -1,4 +1,4 @@
-import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
+import { createHash, sign, verify } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   existsSync,
@@ -16,9 +16,21 @@ import {
   inspectRequiredFile,
   versionConsistency,
 } from './release-verify-lib.mjs';
+import {
+  deriveOtaSigningKeys,
+  loadOtaBuildEnv,
+  publicKeysMatch,
+  resolveOtaPublicKey,
+  withoutOtaSigningSecret,
+} from './ota-signing.cjs';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const postBundle = process.argv.includes('--post-bundle');
+const otaEnv = loadOtaBuildEnv(root);
+delete process.env.PRINTOPS_OTA_SECRET;
+const childProcessEnv = withoutOtaSigningSecret();
+const requireSignature = otaEnv.PRINTOPS_OTA_REQUIRE_SIGNATURE !== 'false';
+let signingKeys;
 const failures = [];
 const checks = [];
 
@@ -38,6 +50,40 @@ function info(name, detail) {
   console.log(`[INFO] ${name}: ${detail}`);
 }
 
+function checkSigningConfig() {
+  const secret = otaEnv.PRINTOPS_OTA_SECRET;
+  if (!secret) {
+    if (requireSignature) {
+      fail('ota:secret', 'set PRINTOPS_OTA_SECRET in the process environment or CI secret store');
+    }
+    return;
+  }
+  try {
+    signingKeys = deriveOtaSigningKeys(secret);
+    pass('ota:secret', 'release signing secret loaded');
+  } catch (error) {
+    fail('ota:secret', error instanceof Error ? error.message : String(error));
+  }
+}
+
+function prepareBuildPublicKey() {
+  if (postBundle || failures.length !== 0 || !signingKeys) return;
+  const resourceRoot = join(root, 'apps/desktop/src-tauri/resources');
+  const publicKeyPath = join(resourceRoot, 'ota-public-key.txt');
+  const previousPublicKey = existsSync(publicKeyPath)
+    ? readFileSync(publicKeyPath, 'utf8').trim()
+    : '';
+  try {
+    const bundledPublicKey = resolveOtaPublicKey({
+      previousPublicKey,
+      derivedPublicKey: signingKeys.publicKeyPem,
+    });
+    mkdirSync(resourceRoot, { recursive: true });
+    writeFileSync(publicKeyPath, `${bundledPublicKey}\n`);
+  } catch (error) {
+    fail('ota:public-key', error instanceof Error ? error.message : String(error));
+  }
+}
 function commandVersion(name, args = ['--version']) {
   let executable = name;
   let commandArgs = args;
@@ -49,6 +95,7 @@ function commandVersion(name, args = ['--version']) {
   const result = spawnSync(executable, commandArgs, {
     cwd: root,
     encoding: 'utf8',
+    env: childProcessEnv,
     shell: false,
   });
   if (result.status !== 0) {
@@ -82,23 +129,6 @@ function canonicalJson(value) {
   throw new Error(`cannot canonicalize ${typeof value}`);
 }
 
-function publicKeyObject(value) {
-  const trimmed = value.trim();
-  if (trimmed.includes('BEGIN PUBLIC KEY')) return createPublicKey(trimmed);
-  const raw = /^[0-9a-f]{64}$/i.test(trimmed)
-    ? Buffer.from(trimmed, 'hex')
-    : Buffer.from(trimmed, 'base64');
-  if (raw.length !== 32) throw new Error('bundled OTA public key is not a 32-byte Ed25519 key');
-  return createPublicKey({
-    key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), raw]),
-    format: 'der',
-    type: 'spki',
-  });
-}
-
-function publicKeyBytes(value) {
-  return Buffer.from(publicKeyObject(value).export({ type: 'spki', format: 'der' }));
-}
 
 function signatureBytes(value) {
   const trimmed = value.trim();
@@ -200,7 +230,11 @@ function checkVersions() {
 }
 
 function checkForbiddenArtifacts() {
-  const tracked = execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' })
+  const tracked = execFileSync('git', ['ls-files'], {
+    cwd: root,
+    encoding: 'utf8',
+    env: childProcessEnv,
+  })
     .split(/\r?\n/)
     .filter(Boolean);
   const forbidden = forbiddenTrackedArtifacts(tracked);
@@ -222,12 +256,24 @@ function checkResources() {
   ];
   required.forEach((path) => requireFile(path));
   const publicKeyPath = join(resourceRoot, 'ota-public-key.txt');
-  if (process.env.PRINTOPS_OTA_REQUIRE_SIGNATURE !== 'false') {
-    const publicKey = readFileSync(publicKeyPath, 'utf8').trim();
-    if (!publicKey || publicKey === 'unconfigured') {
-      fail('ota:public-key', 'signed OTA is enabled but the bundled Ed25519 public key is unconfigured');
+  if (requireSignature) {
+    if (!existsSync(publicKeyPath)) {
+      fail('ota:public-key', 'bundled Ed25519 public key is missing');
     } else {
-      pass('ota:public-key', 'bundled Ed25519 verification key is configured');
+      const publicKey = readFileSync(publicKeyPath, 'utf8').trim();
+      if (!publicKey || publicKey === 'unconfigured') {
+        fail('ota:public-key', 'signed OTA is enabled but the bundled Ed25519 public key is unconfigured');
+      } else {
+        try {
+          if (!signingKeys || !publicKeysMatch(publicKey, signingKeys.publicKeyPem)) {
+            fail('ota:public-key', 'bundled Ed25519 public key does not match PRINTOPS_OTA_SECRET');
+          } else {
+            pass('ota:public-key', 'bundled Ed25519 verification key matches the release secret');
+          }
+        } catch (error) {
+          fail('ota:public-key', error instanceof Error ? error.message : String(error));
+        }
+      }
     }
   }
 
@@ -294,12 +340,15 @@ checkBuildHost();
 checkToolchain();
 const version = checkVersions();
 checkForbiddenArtifacts();
+checkSigningConfig();
+prepareBuildPublicKey();
 
 if (!postBundle && failures.length === 0) {
   console.log('[BUILD] Running the complete desktop resource build');
   try {
     execFileSync(process.execPath, ['apps/desktop/src-tauri/scripts/build-all.js'], {
       cwd: root,
+      env: childProcessEnv,
       stdio: 'inherit',
     });
     pass('build:resources', 'web, API, Go runner, and .NET helper built');
@@ -328,7 +377,11 @@ const manifestPath = join(outputDir, postBundle ? 'release-manifest.json' : 'res
 const manifest = {
   schemaVersion: 1,
   applicationVersion: version,
-  gitCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+  gitCommit: execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: root,
+    encoding: 'utf8',
+    env: childProcessEnv,
+  }).trim(),
   buildTimestamp: new Date().toISOString(),
   phase: postBundle ? 'post-bundle' : 'resource-verification',
   checks,
@@ -353,39 +406,31 @@ if (postBundle && failures.length === 0) {
   if (!nsis || !runner) {
     fail('ota:manifest', 'cannot emit OTA manifest without NSIS installer and runner artifact');
   } else {
-    const channel = process.env.PRINTOPS_OTA_CHANNEL ?? 'stable';
-    const rolloutPercentage = Number(process.env.PRINTOPS_OTA_ROLLOUT_PERCENTAGE ?? '100');
+    const channel = otaEnv.PRINTOPS_OTA_CHANNEL ?? 'stable';
+    const rolloutPercentage = Number(otaEnv.PRINTOPS_OTA_ROLLOUT_PERCENTAGE ?? '100');
     // A release must declare the compatibility floor explicitly. Falling back
     // to the target version makes every ordinary A -> B upgrade reject itself
     // because the running A version is below B.
-    const minSupportedVersion = process.env.PRINTOPS_OTA_MIN_SUPPORTED_VERSION?.trim();
-    const schemaVersion = Number(process.env.PRINTOPS_DB_SCHEMA_VERSION ?? '7');
-    const requireSignature = process.env.PRINTOPS_OTA_REQUIRE_SIGNATURE !== 'false';
-    const signingKey = process.env.PRINTOPS_OTA_PRIVATE_KEY;
+    const minSupportedVersion = otaEnv.PRINTOPS_OTA_MIN_SUPPORTED_VERSION?.trim();
+    const schemaVersion = Number(otaEnv.PRINTOPS_DB_SCHEMA_VERSION ?? '9');
     const bundledPublicKeyPath = join(root, 'apps/desktop/src-tauri/resources/ota-public-key.txt');
     const bundledPublicKey = existsSync(bundledPublicKeyPath)
       ? readFileSync(bundledPublicKeyPath, 'utf8').trim()
       : '';
     let signatures;
-    let privateKey;
-    let verificationKey;
     try {
-      if (requireSignature && !signingKey) throw new Error('PRINTOPS_OTA_PRIVATE_KEY is not configured');
-      privateKey = signingKey ? createPrivateKey(signingKey) : undefined;
+      if (requireSignature && !signingKeys) {
+        throw new Error('PRINTOPS_OTA_SECRET is required for signed OTA');
+      }
+      if (signingKeys && bundledPublicKey !== 'unconfigured' &&
+          !publicKeysMatch(bundledPublicKey, signingKeys.publicKeyPem)) {
+        throw new Error('the bundled OTA public key does not match PRINTOPS_OTA_SECRET');
+      }
       if (requireSignature && (!bundledPublicKey || bundledPublicKey === 'unconfigured')) {
         throw new Error('the Desktop bundle does not contain a configured OTA public key');
       }
-      if (bundledPublicKey && bundledPublicKey !== 'unconfigured') {
-        verificationKey = publicKeyObject(bundledPublicKey);
-      }
-      if (requireSignature && privateKey && verificationKey) {
-        const derived = Buffer.from(createPublicKey(privateKey).export({ type: 'spki', format: 'der' }));
-        if (!derived.equals(publicKeyBytes(bundledPublicKey))) {
-          throw new Error('the bundled OTA public key does not match PRINTOPS_OTA_PRIVATE_KEY');
-        }
-      }
-      const signDigest = (path) => privateKey
-        ? sign(null, Buffer.from(sha256(path), 'hex'), privateKey).toString('base64')
+      const signDigest = (path) => signingKeys
+        ? sign(null, Buffer.from(sha256(path), 'hex'), signingKeys.privateKey).toString('base64')
         : '';
       signatures = {
         desktop: signDigest(nsis.path),
@@ -404,16 +449,16 @@ if (postBundle && failures.length === 0) {
       fail('ota:manifest-min-version', 'PRINTOPS_OTA_MIN_SUPPORTED_VERSION must be a semantic version');
     } else if (!Number.isSafeInteger(schemaVersion) || schemaVersion < 0) {
       fail('ota:manifest-schema-version', 'PRINTOPS_DB_SCHEMA_VERSION must be a non-negative integer');
-      } else if (!signatures) {
-        fail('ota:manifest-signing', 'unable to produce required Ed25519 artifact signatures');
-      } else {
+    } else if (!signatures) {
+      fail('ota:manifest-signing', 'unable to produce required Ed25519 artifact signatures');
+    } else {
       const otaManifestPayload = {
         schema_version: 1,
         release: {
           version,
           channel,
           release_date: new Date().toISOString(),
-          notes: process.env.PRINTOPS_OTA_RELEASE_NOTES ?? '',
+          notes: otaEnv.PRINTOPS_OTA_RELEASE_NOTES ?? '',
         },
         artifacts: {
           desktop: {
@@ -444,8 +489,9 @@ if (postBundle && failures.length === 0) {
           rollout_percentage: rolloutPercentage,
         },
       };
-      const manifestSignature = privateKey
-        ? sign(null, Buffer.from(canonicalJson(otaManifestPayload), 'utf8'), privateKey).toString('base64')
+      const verificationKey = signingKeys?.publicKey;
+      const manifestSignature = signingKeys
+        ? sign(null, Buffer.from(canonicalJson(otaManifestPayload), 'utf8'), signingKeys.privateKey).toString('base64')
         : '';
       if (requireSignature) {
         const valid = verificationKey

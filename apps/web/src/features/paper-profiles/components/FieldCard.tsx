@@ -1,10 +1,11 @@
 import { clampFontSize } from '../model/geometry.js';
-import type { DynamicField } from '../model/types.js';
+import type { DynamicField, PaperForm } from '../model/types.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
-import { Checkbox, IconButton, Input, Select } from '../../../components/ui/index.js';
+import { Alert, Checkbox, IconButton, Input, Select } from '../../../components/ui/index.js';
 import { FieldBarcodePreview, FieldTypeControls } from './PaperCanvas.js';
 import { DraftNumberInput } from './DraftNumberInput.js';
 import type { Translate } from './types.js';
+import { formatMessage, formatValidationIssue, getDynamicFieldLimits, validateDynamicFieldDiagnostics } from '../model/validation.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
 
 export function FieldCard({ field, editor, t }: {
@@ -113,6 +114,7 @@ export function FieldCard({ field, editor, t }: {
           />
         </div>
       </div>
+      <FieldLimits form={editor.form} field={field} t={t} />
       <FieldBarcodePreview field={field} />
     </div>
   );
@@ -140,5 +142,39 @@ function FieldNumber({ id, label, value, disabled, normalize, onChange }: {
         onValueChange={onChange}
       />
     </div>
+  );
+}
+
+/**
+ * How much this field still prints at its position, rotation and font size —
+ * the character budget operators ask for — plus the warning when the configured
+ * content is already longer than that.
+ */
+function FieldLimits({ form, field, t }: {
+  form: PaperForm;
+  field: DynamicField;
+  t: Translate;
+}) {
+  const limits = getDynamicFieldLimits(form, field);
+  if (!limits || !limits.anchorInsidePaper) return null;
+  const warning = validateDynamicFieldDiagnostics(form, [field]).warnings[0];
+  return (
+    <>
+      <p className="pp-field-row__limits">
+        {limits.maxChars === null
+          ? formatMessage(t('page.paperProfiles.fieldLimitBox'), {
+            maxWidthMm: limits.maxWidthMm,
+            maxHeightMm: limits.maxHeightMm,
+          })
+          : formatMessage(t('page.paperProfiles.fieldLimitText'), {
+            maxChars: limits.maxChars,
+            charWidthMm: Number((limits.charWidthMm ?? 0).toFixed(2)),
+            fontSize: field.fontSize,
+          })}
+      </p>
+      {warning && (
+        <div className="pp-field-row__warning"><Alert tone="warning">{formatValidationIssue(t, warning)}</Alert></div>
+      )}
+    </>
   );
 }

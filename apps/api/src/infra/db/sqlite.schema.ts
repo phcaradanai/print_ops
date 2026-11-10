@@ -1,6 +1,6 @@
 import type { Database } from 'sql.js';
 
-export const CURRENT_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = 9;
 
 export function schemaVersion(db: Database): number {
   const result = db.exec('PRAGMA user_version');
@@ -39,7 +39,17 @@ export function runSchemaMigration(db: Database): void {
       `PRINTOPS_DB_NEWER_SCHEMA: database schema ${fromVersion} is newer than this application supports (${CURRENT_SCHEMA_VERSION}).`,
     );
   }
-  if (fromVersion === CURRENT_SCHEMA_VERSION) return;
+  if (fromVersion === CURRENT_SCHEMA_VERSION) {
+    db.run('BEGIN TRANSACTION');
+    try {
+      ensureOptionalControlExtensions(db);
+      db.run('COMMIT');
+    } catch (error) {
+      try { db.run('ROLLBACK'); } catch { /* retain the original extension error */ }
+      throw error;
+    }
+    return;
+  }
 
   db.run('PRAGMA journal_mode=WAL');
   db.run('PRAGMA foreign_keys=ON');
@@ -52,12 +62,72 @@ export function runSchemaMigration(db: Database): void {
     if (fromVersion < 5) migrateVersionFourToFive(db);
     if (fromVersion < 6) migrateVersionFiveToSix(db);
     if (fromVersion < 7) migrateVersionSixToSeven(db);
+    if (fromVersion < 8) migrateVersionSevenToEight(db);
+    if (fromVersion < 9) migrateVersionEightToNine(db);
+    ensureOptionalControlExtensions(db);
     db.run(`PRAGMA user_version=${CURRENT_SCHEMA_VERSION}`);
     db.run('COMMIT');
   } catch (error) {
     try { db.run('ROLLBACK'); } catch { /* retain the original migration error */ }
     throw error;
   }
+}
+
+/**
+ * Add optional remote-content and inventory columns without advancing the
+ * PrintOps schema version. Older PrintOps binaries can safely ignore these
+ * additive Web Control extensions during rollback.
+ */
+function ensureOptionalControlExtensions(db: Database): void {
+  const hasDevices = db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_devices'")[0]?.values.length === 1;
+  if (hasDevices) {
+    ensureColumn(db, 'control_devices', 'installation_path', 'TEXT');
+    ensureColumn(db, 'control_devices', 'data_path', 'TEXT');
+    ensureColumn(db, 'control_devices', 'os_version', 'TEXT');
+    ensureColumn(db, 'control_devices', 'ip_addresses_json', 'TEXT');
+    ensureColumn(db, 'control_devices', 'capabilities_json', 'TEXT');
+  }
+
+  const hasCommands = db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_commands'")[0]?.values.length === 1;
+  if (hasCommands) {
+    ensureColumn(db, 'control_commands', 'manifest_url', 'TEXT');
+    ensureColumn(db, 'control_commands', 'content_type', 'TEXT');
+    ensureColumn(db, 'control_commands', 'content_key', 'TEXT');
+    ensureColumn(db, 'control_commands', 'result_payload_json', 'TEXT');
+    ensureColumn(db, 'control_commands', 'progress_json', 'TEXT');
+    db.run(`
+      CREATE TABLE IF NOT EXISTS control_command_payloads (
+        command_id TEXT PRIMARY KEY NOT NULL,
+        content_type TEXT NOT NULL,
+        content_key TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        FOREIGN KEY(command_id) REFERENCES control_commands(command_id) ON DELETE CASCADE
+      )
+    `);
+  }
+
+  const hasReleases = db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_releases'")[0]?.values.length === 1;
+  if (hasReleases) {
+    ensureColumn(db, 'control_releases', 'is_lts', 'INTEGER DEFAULT 0');
+    ensureColumn(db, 'control_releases', 'is_latest', 'INTEGER DEFAULT 0');
+  }
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS control_storage_settings (
+      id TEXT PRIMARY KEY NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'local',
+      local_path TEXT NOT NULL DEFAULT '/data/releases',
+      minio_endpoint TEXT,
+      minio_port INTEGER DEFAULT 9000,
+      minio_use_ssl INTEGER DEFAULT 0,
+      minio_access_key TEXT,
+      minio_secret_key TEXT,
+      minio_bucket TEXT DEFAULT 'printops-releases',
+      minio_prefix TEXT DEFAULT '',
+      minio_public_url TEXT,
+      updated_at TEXT NOT NULL
+    )
+  `);
 }
 
 /**
@@ -159,6 +229,123 @@ function migrateVersionSixToSeven(db: Database): void {
     ensureColumn(db, 'print_templates', 'content_hash', 'TEXT');
   }
 }
+
+/**
+ * Web Control & Remote Management: persistent device registry, enrollment tokens,
+ * command plane, release catalog, and control audit logs.
+ */
+function migrateVersionSevenToEight(db: Database): void {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS control_devices (
+      device_id TEXT PRIMARY KEY NOT NULL,
+      installation_id TEXT NOT NULL UNIQUE,
+      site_id TEXT NOT NULL,
+      hostname TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      architecture TEXT NOT NULL,
+      app_version TEXT NOT NULL,
+      schema_version INTEGER NOT NULL,
+      runner_version TEXT NOT NULL,
+      runner_status TEXT,
+      print_readiness_summary TEXT,
+      enrolled_at TEXT NOT NULL,
+      last_seen_at TEXT,
+      connection_state TEXT NOT NULL DEFAULT 'ONLINE',
+      print_state TEXT NOT NULL DEFAULT 'IDLE',
+      ota_state TEXT NOT NULL DEFAULT 'IDLE',
+      last_ota_operation TEXT,
+      device_token_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      display_name TEXT
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_devices_site ON control_devices(site_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_devices_state ON control_devices(connection_state)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_devices_ota ON control_devices(ota_state)');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS control_enrollment_tokens (
+      token TEXT PRIMARY KEY NOT NULL,
+      site_id TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      consumed_at TEXT,
+      consumed_by_device_id TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_tokens_site ON control_enrollment_tokens(site_id)');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS control_commands (
+      command_id TEXT PRIMARY KEY NOT NULL,
+      device_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      target_version TEXT,
+      requested_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      requested_by TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      accepted_at TEXT,
+      completed_at TEXT,
+      terminal_state TEXT,
+      failure_reason TEXT,
+      UNIQUE(device_id, idempotency_key)
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_commands_device ON control_commands(device_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_commands_status ON control_commands(status)');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS control_releases (
+      id TEXT PRIMARY KEY NOT NULL,
+      version TEXT NOT NULL,
+      channel TEXT NOT NULL DEFAULT 'stable',
+      platform TEXT NOT NULL DEFAULT 'windows-x64',
+      architecture TEXT NOT NULL DEFAULT 'x64',
+      schema_version INTEGER NOT NULL,
+      manifest_ref TEXT NOT NULL,
+      artifact_ref TEXT NOT NULL,
+      sha256 TEXT NOT NULL,
+      signature TEXT NOT NULL,
+      min_supported_version TEXT NOT NULL DEFAULT '0.1.0',
+      status TEXT NOT NULL DEFAULT 'AVAILABLE',
+      release_notes TEXT,
+      is_lts INTEGER DEFAULT 0,
+      is_latest INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      UNIQUE(version, platform)
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_releases_version ON control_releases(version)');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS control_audit_logs (
+      id TEXT PRIMARY KEY NOT NULL,
+      actor TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      command_id TEXT,
+      action TEXT NOT NULL,
+      source_version TEXT,
+      target_version TEXT,
+      requested_at TEXT NOT NULL,
+      accepted_at TEXT,
+      terminal_state TEXT,
+      failure_reason TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_audit_device ON control_audit_logs(device_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_audit_action ON control_audit_logs(action)');
+}
+
+function migrateVersionEightToNine(db: Database): void {
+  if (db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'users'")[0]?.values.length !== 1) return;
+  ensureColumn(db, 'users', 'recovery_code_hash', 'TEXT');
+  ensureColumn(db, 'users', 'auth_version', 'INTEGER NOT NULL DEFAULT 0');
+}
+
 function migrateVersionZeroToOne(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS printers (

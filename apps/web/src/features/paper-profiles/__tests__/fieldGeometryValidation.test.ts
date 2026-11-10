@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { qrQuietZoneUpperBoundMm, resolveRenderTransform, resolveRenderTransformFrame } from '@printerops/shared';
 import { DEFAULT_BARCODE_HEIGHT_MM, DEFAULT_BARCODE_WIDTH_MM, DEFAULT_QR_SIZE_MM } from '../model/defaults.js';
 import { getVisualPaperGeometry } from '../model/geometry.js';
-import { getDynamicFieldTransformedBounds, validateDynamicFields } from '../model/validation.js';
+import {
+  formatValidationIssue,
+  getDynamicFieldTransformedBounds,
+  validateDynamicFieldDiagnostics,
+  validateDynamicFields,
+} from '../model/validation.js';
+import { t } from '../../../i18n/index.js';
 import type { DynamicField, PaperForm } from '../model/types.js';
 
 const form: PaperForm = {
@@ -115,9 +121,75 @@ describe('paper profile field transform bounds', () => {
     );
 
     expect(validateDynamicFields(candidate, [candidateField])).toEqual([
-      { field: 'fields.field-1', messageKey: 'validation.fieldOutsidePaper' },
+      {
+        field: 'fields.field-1',
+        messageKey: 'validation.fieldOutsidePaper',
+        params: {
+          name: 'Value',
+          widthMm: 27.6,
+          heightMm: 27.6,
+          maxWidthMm: 3,
+          maxHeightMm: 3,
+        },
+      },
     ]);
     expect(bounds.maxX > frame.width || bounds.maxY > frame.height || bounds.minX < 0 || bounds.minY < 0).toBe(true);
+  });
+
+  it('warns instead of blocking when a text label is longer than the paper', () => {
+    // Reported case: a 42-character label at 12 pt on a 100 mm label. The label
+    // is only the editor's placeholder; the value the server prints is what has
+    // to fit, so a long label must not stop the profile from saving.
+    const label = 'Hyoscine-N-butylbromide (BUSLI1) 400 MG 11';
+    const longLabelField = field({ label, defaultValue: '', xMm: 3, yMm: 20 });
+    const diagnostics = validateDynamicFieldDiagnostics(form, [longLabelField]);
+
+    expect(diagnostics.errors).toEqual([]);
+    expect(diagnostics.warnings).toEqual([
+      {
+        field: 'fields.field-1',
+        messageKey: 'validation.fieldTextOverflow',
+        params: { name: label, chars: 42, maxChars: 37, fontSize: 12 },
+      },
+    ]);
+  });
+
+  it('blocks a field whose anchor is off the paper, whatever its type', () => {
+    const diagnostics = validateDynamicFieldDiagnostics(form, [field({ xMm: 150, yMm: 20 })]); 
+
+    expect(diagnostics).toEqual({
+      errors: [
+        {
+          field: 'fields.field-1',
+          messageKey: 'validation.fieldAnchorOutsidePaper',
+          params: { name: 'Value', xMm: 150, yMm: 20 },
+        },
+      ],
+      warnings: [],
+    });
+  });
+
+  it('renders a field issue with its numbers in both dictionaries', () => {
+    const overflowingQr = field({ type: 'qrcode', xMm: 95, yMm: 40, qrSizeMm: DEFAULT_QR_SIZE_MM });
+    const label = 'Hyoscine-N-butylbromide (BUSLI1) 400 MG 11';
+    const longLabelField = field({ id: 'field-2', label, defaultValue: '', xMm: 3, yMm: 20 });
+    const diagnostics = validateDynamicFieldDiagnostics(form, [overflowingQr, longLabelField]);
+
+    for (const locale of ['en', 'th'] as const) {
+      const translate = (key: string) => t(locale, key);
+      const boxMessage = formatValidationIssue(translate, diagnostics.errors[0]);
+      const textMessage = formatValidationIssue(translate, diagnostics.warnings[0]);
+
+      expect(translate(diagnostics.errors[0].messageKey)).not.toBe(diagnostics.errors[0].messageKey);
+      expect(translate(diagnostics.warnings[0].messageKey)).not.toBe(diagnostics.warnings[0].messageKey);
+      expect(boxMessage).not.toContain('{');
+      expect(boxMessage).toContain('27.6 × 27.6');
+      expect(boxMessage).toContain('3 × 3');
+      expect(textMessage).not.toContain('{');
+      expect(textMessage).toContain(label);
+      expect(textMessage).toContain('42');
+      expect(textMessage).toContain('37');
+    }
   });
 });
 

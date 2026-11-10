@@ -18,6 +18,382 @@
   --popover-shadow: 0 8px 24px rgba(17, 24, 39, 0.14);
 }
 
+/* The content column stacks the desktop chrome above the routed canvas. */
+.app-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.app-content > .app-main {
+  flex: 1 1 auto;
+}
+
+.app-topbar {
+  display: none;
+}
+
+.app-breadcrumb {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-label-size);
+  font-weight: 600;
+}
+
+.app-breadcrumb__home {
+  color: var(--neutral-text-muted);
+  text-decoration: none;
+  border-radius: var(--rounded-sm);
+}
+
+.app-breadcrumb__home:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.app-breadcrumb__home:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.app-breadcrumb__sep {
+  color: var(--neutral-border-strong);
+}
+
+.app-breadcrumb__current {
+  min-width: 0;
+  color: var(--neutral-deep);
+  overflow-wrap: anywhere;
+}
+
+/* Language is a global concern, so it is one click from every page in both
+   layouts. It is a segmented control, not a dropdown, so the current value is
+   readable without opening anything. */
+.locale-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid var(--neutral-border-strong);
+  border-radius: var(--rounded-md);
+  background: var(--neutral-surface);
+}
+
+.locale-toggle__option {
+  min-height: 30px;
+  padding: 0 0.55rem;
+  border: 0;
+  border-radius: var(--rounded-sm);
+  background: transparent;
+  color: var(--neutral-text-muted);
+  font: inherit;
+  font-size: var(--font-label-size);
+  font-weight: 650;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.locale-toggle__option:hover {
+  color: var(--primary);
+}
+
+.locale-toggle__option.is-selected {
+  background: var(--state-info-surface);
+  color: var(--primary-hover);
+}
+
+.locale-toggle__option:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.app-nav .locale-toggle {
+  border-color: rgba(205, 214, 244, 0.28);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.app-nav .locale-toggle__option {
+  color: rgba(205, 214, 244, 0.72);
+}
+
+.app-nav .locale-toggle__option:hover {
+  color: var(--nav-text);
+}
+
+.app-nav .locale-toggle__option.is-selected {
+  border: 1px solid transparent;
+  background: rgba(30, 102, 245, 0.28);
+  color: var(--neutral-surface);
+}
+
+.user-chip {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 0.3rem 0.6rem 0.3rem 0.35rem;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-pill, 9999px);
+  background: var(--neutral-surface);
+  color: var(--neutral-text);
+  text-decoration: none;
+}
+
+.user-chip:hover {
+  border-color: var(--primary);
+}
+
+.user-chip:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.user-chip__avatar {
+  display: grid;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--neutral-surface);
+  font-size: var(--font-label-size);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.user-chip__name {
+  min-width: 0;
+  font-size: var(--font-label-size);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.user-chip__role {
+  color: var(--neutral-text-muted);
+  font-size: var(--font-label-size);
+}
+
+/* The gateway pill reports Web Control visibility/OTA only — never API
+   reachability, printer or runner readiness. Tone carries verification state:
+   green = confirmed connected, amber = blocked or unverifiable, neutral =
+   offline, dashed = still probing. Icons differ per tone so meaning survives
+   without color. */
+.client-control-status-symbol {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 3px 7px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: var(--rounded-pill, 9999px);
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  cursor: default;
+  user-select: none;
+}
+
+.client-control-status-symbol[data-tone='pending'] {
+  border-style: dashed;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.client-control-status-symbol[data-tone='connected'] {
+  border-color: rgba(16, 185, 129, 0.34);
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+
+.client-control-status-symbol[data-tone='blocked'],
+.client-control-status-symbol[data-tone='stale'] {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: rgba(245, 158, 11, 0.14);
+  color: #f59e0b;
+}
+
+.client-control-status-symbol__label {
+  font-size: var(--font-label-size);
+  font-weight: 650;
+  color: var(--nav-text);
+}
+
+.client-control-status-symbol[data-tone='blocked'] .client-control-status-symbol__label,
+.client-control-status-symbol[data-tone='stale'] .client-control-status-symbol__label {
+  color: #fbbf24;
+}
+
+.app-nav__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.app-nav__gateway {
+  flex: 0 0 auto;
+  padding-top: 0.15rem;
+}
+
+.nav-drawer-close {
+  position: absolute;
+  top: var(--spacing-lg);
+  right: var(--spacing-lg);
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid rgba(205, 214, 244, 0.24);
+  border-radius: var(--rounded-md);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--nav-text);
+  cursor: pointer;
+}
+
+.nav-drawer-close:hover {
+  border-color: rgba(205, 214, 244, 0.45);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--neutral-surface);
+}
+
+.nav-drawer-close:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+
+.session-card__tools {
+  display: flex;
+  justify-content: center;
+}
+.login-panel h1,
+.login-panel h1:focus,
+.login-panel h1:focus-visible {
+  outline: none !important;
+}
+
+
+/* Unified Table Card: wraps Toolbar + Table seamlessly into ONE card matching docs/design/ */
+.ui-table-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg);
+  background: var(--neutral-surface);
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.ui-table-card > .ui-resource-toolbar,
+.ui-table-card > .job-queue-toolbar,
+.ui-table-card .tpl-library-container > .ui-resource-toolbar {
+  border: 0;
+  border-bottom: 1px solid var(--neutral-border);
+  border-radius: 0;
+  margin-bottom: 0;
+  background: var(--neutral-surface);
+  padding: 0.75rem 1rem;
+  box-shadow: none;
+}
+
+.ui-table-card > .ui-data-table-frame,
+.ui-table-card .webhook-endpoint-surface,
+.ui-table-card .webhook-endpoint-table,
+.ui-table-card .tpl-library-container > .ui-data-table-frame,
+.ui-table-card .pp-saved-profiles .ui-data-table-frame {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Hide field gap when label is visually hidden in toolbars */
+.ui-field:has(.ui-visually-hidden) {
+  gap: 0;
+  margin-top: 0;
+}
+
+.ui-field:has(.ui-visually-hidden) .ui-field-label {
+  display: none;
+}
+
+@media (min-width: 861px) {
+
+  /* The rail is the navigation, so its close affordance and internal trail
+     belong to the drawer layout only. */
+  .nav-drawer-close {
+    display: none;
+  }
+
+  /* Global state (gateway tone, trail, language, identity) lives in the
+     topbar on desktop; the dark rail stays pure navigation. */
+  .app-nav__gateway {
+    display: none;
+  }
+
+  .app-nav .app-breadcrumb {
+    display: none;
+  }
+
+  /* One quiet bar above the content canvas: trail on the left, global state
+     and identity on the right. It replaces the old habit of stacking chrome
+     inside every page. */
+  .app-topbar {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-lg);
+    padding: 0 var(--spacing-3xl);
+    border-bottom: 1px solid var(--neutral-border);
+    background: var(--neutral-surface);
+    min-height: 56px;
+  }
+
+  .app-topbar__gateway {
+    display: flex;
+    align-items: center;
+  }
+
+  .app-topbar__gateway .client-control-status-symbol {
+    border-color: var(--neutral-border-strong);
+    background: var(--neutral-subtle);
+  }
+
+  .app-topbar__gateway .client-control-status-symbol[data-tone='pending'] {
+    border-color: var(--neutral-border-strong);
+    border-style: dashed;
+    background: var(--neutral-subtle);
+  }
+
+  .app-topbar__gateway .client-control-status-symbol[data-tone='connected'] {
+    border-color: rgba(5, 150, 105, 0.4);
+    background: rgba(16, 185, 129, 0.1);
+    color: #047857;
+  }
+
+  .app-topbar__gateway .client-control-status-symbol[data-tone='blocked'],
+  .app-topbar__gateway .client-control-status-symbol[data-tone='stale'] {
+    border-color: rgba(146, 64, 14, 0.4);
+    background: var(--state-warning-surface);
+    color: var(--state-warning-text);
+  }
+
+  .app-topbar__gateway .client-control-status-symbol__label,
+  .app-topbar__gateway .client-control-status-symbol[data-tone='blocked'] .client-control-status-symbol__label,
+  .app-topbar__gateway .client-control-status-symbol[data-tone='stale'] .client-control-status-symbol__label {
+    color: var(--neutral-text);
+  }
+
+  .app-topbar__tools {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+  }
+}
+
 body {
   background: var(--neutral-page);
   color: var(--neutral-text);
@@ -27,7 +403,7 @@ body {
 
 /* The rail is deliberately compact. Labels may wrap rather than forcing the
    entire application canvas to surrender width. */
-@media (min-width: 1025px) {
+@media (min-width: 861px) {
   .app-nav {
     width: 200px;
     flex-basis: 200px;
@@ -148,13 +524,15 @@ body {
   border-color: var(--primary);
   background: var(--primary);
   box-shadow: none;
+  min-height: 44px;
+  min-width: 44px;
 }
 
 .ui-button--primary:hover:not(:disabled),
 .ui-icon-button--primary:hover:not(:disabled) {
   border-color: var(--primary-hover);
   background: var(--primary-hover);
-  box-shadow: 0 3px 8px rgba(30, 102, 245, 0.3);
+  box-shadow: none;
 }
 
 .ui-button--danger,
@@ -168,7 +546,7 @@ body {
 .ui-icon-button--danger:hover:not(:disabled) {
   border-color: var(--danger-action-hover);
   background: var(--danger-action-hover);
-  box-shadow: 0 3px 8px rgba(159, 18, 57, 0.24);
+  box-shadow: none;
 }
 
 .ui-button--secondary:hover:not(:disabled) {
@@ -263,16 +641,19 @@ body {
 }
 
 .ui-data-cell {
-  max-width: 28rem;
-  padding: 0.68rem var(--spacing-md);
+  padding: 0.625rem 1rem;
   border-top-color: var(--neutral-border);
   white-space: normal;
-  overflow-wrap: anywhere;
-  text-overflow: clip;
+  overflow-wrap: break-word;
 }
 
-.ui-data-cell[data-actions] {
-  width: 1%;
+.ui-data-cell--nowrap,
+.ui-data-cell[data-actions],
+.ui-data-cell:has(.ui-badge),
+.ui-data-cell:has(.status-badge),
+.ui-data-cell:has(.ui-switch),
+.ui-data-cell:has(input[type='checkbox']),
+.ui-data-head--nowrap {
   white-space: nowrap;
 }
 
@@ -362,27 +743,34 @@ body {
   box-shadow: var(--popover-shadow);
 }
 
-/* Auth is a focused task, not an empty centered wireframe. */
-.login-screen,
-.splash-screen {
-  background:
-    linear-gradient(90deg, rgba(30, 102, 245, 0.035) 1px, transparent 1px),
-    linear-gradient(rgba(30, 102, 245, 0.035) 1px, transparent 1px),
-    var(--neutral-page);
-  background-size: 28px 28px;
+/* Auth is a focused task: one flat page, one elevated panel. No decorative
+   grid — the pinned concept keeps surfaces flat and lets the panel carry the
+   only elevation on screen. */
+.login-screen {
+  background: var(--neutral-page);
 }
 
-.login-panel,
-.splash-content {
+.login-panel {
   border: 1px solid var(--neutral-border);
-  border-radius: 12px;
+  border-radius: var(--rounded-lg);
   background: var(--neutral-surface);
   box-shadow: var(--shadow-floating);
 }
 
+.login-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.login-panel__head > div {
+  min-width: 0;
+}
+
 /* Responsive behavior. Existing component card conversions remain in place;
    these rules make the converted surfaces readable and touch-safe. */
-@media (max-width: 1024px) {
+@media (max-width: 860px) {
   .app-main {
     padding: var(--spacing-lg);
   }
@@ -396,7 +784,9 @@ body {
   .pp-page-header {
     align-items: stretch;
   }
+}
 
+@media (max-width: 768px) {
   .ui-data-table[data-responsive] tbody tr {
     box-shadow: none;
   }

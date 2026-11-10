@@ -1,22 +1,9 @@
 .job-queue-toolbar {
   position: relative;
-  overflow: hidden;
-  padding: var(--spacing-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
   border: 1px solid var(--neutral-border);
-  border-radius: 12px;
-  background:
-    linear-gradient(135deg, rgba(37, 99, 235, 0.055), rgba(255, 255, 255, 0) 44%),
-    var(--neutral-surface);
-  box-shadow: var(--shadow-subtle);
-}
-
-.job-queue-toolbar::before {
-  content: '';
-  position: absolute;
-  inset-block: 0;
-  inset-inline-start: 0;
-  width: 3px;
-  background: linear-gradient(180deg, var(--primary-strong), var(--semantic-info));
+  border-radius: var(--rounded-lg);
+  background: var(--neutral-surface);
 }
 
 .job-queue-toolbar .ui-resource-toolbar__controls {

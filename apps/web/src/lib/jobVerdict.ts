@@ -101,6 +101,18 @@ export function verdictDetailKey(verdict: JobVerdict): string {
   return `page.jobDetail.verdict.${verdict.copyKey}.detail`;
 }
 
+/**
+ * Copy keys for a `printed` verdict that cannot yet cite device evidence.
+ * List rows and the queue detail drawer only see the status, never
+ * `metadata.printEvidence`, so a completed job reads as reported-complete —
+ * not as confirmed output — until the full detail page proves it. Mirrors the
+ * rule inside `verdictCopyKeys` in `pages/JobDetail`.
+ */
+export const REPORTED_COMPLETE_COPY = {
+  headline: 'page.jobDetail.verdict.reportedComplete.headline',
+  detail: 'page.jobDetail.verdict.reportedComplete.detail',
+} as const;
+
 /** Whether a reprint control should appear at all for this status. */
 export function offersReprint(verdict: JobVerdict): boolean {
   return verdict.reprint !== 'none';

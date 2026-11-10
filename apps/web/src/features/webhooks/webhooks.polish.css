@@ -6,12 +6,10 @@
   container-type: inline-size;
 }
 
-.webhook-list .webhook-endpoint-table .ui-data-table {
-  min-width: 67rem;
-}
-
+.webhook-list .webhook-endpoint-table .ui-data-table,
 .webhook-delivery-history .webhook-delivery-table .ui-data-table {
-  min-width: 64rem;
+  min-width: 100%;
+  width: 100%;
 }
 
 .webhook-list .webhook-endpoint-table .ui-data-head,
@@ -21,29 +19,16 @@
   hyphens: none;
 }
 
-.webhook-list .webhook-endpoint-table th:nth-child(2),
-.webhook-list .webhook-endpoint-table td:nth-child(2) {
-  width: 10rem;
-}
-
-.webhook-list .webhook-endpoint-table th:nth-child(3),
-.webhook-list .webhook-endpoint-table td:nth-child(3) {
-  width: 7.5rem;
-}
-
-.webhook-list .webhook-endpoint-table th:nth-child(4),
-.webhook-list .webhook-endpoint-table td:nth-child(4) {
-  width: 5rem;
-}
-
-.webhook-list .webhook-endpoint-table th:nth-child(5),
-.webhook-list .webhook-endpoint-table td:nth-child(5) {
-  width: 11.5rem;
+.webhook-list .webhook-endpoint-table th:nth-child(1),
+.webhook-list .webhook-endpoint-table td:nth-child(1) {
+  width: 44px;
+  text-align: center;
 }
 
 .webhook-list .webhook-endpoint-table th:nth-child(6),
 .webhook-list .webhook-endpoint-table td:nth-child(6) {
-  width: 6rem;
+  min-width: 9.5rem;
+  white-space: nowrap;
 }
 
 .webhook-list .webhook-endpoint-table th:nth-child(7),
@@ -58,7 +43,8 @@
 
 .webhook-list .webhook-endpoint-table th:nth-child(9),
 .webhook-list .webhook-endpoint-table td:nth-child(9) {
-  width: 7rem;
+  width: 8rem;
+  white-space: nowrap;
 }
 
 @media (min-width: 861px) and (max-width: 1180px) {

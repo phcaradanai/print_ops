@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { JobStatus } from '@printerops/domain';
-import { Link, useNavigate } from 'react-router-dom';
+import { JOB_STATUSES, type JobStatus } from '@printerops/domain';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { flushSync } from 'react-dom';
-import { apiFetch } from '../api/client.js';
+import { apiFetch, apiDownload } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
 import { JobQueueControls } from '../components/JobQueueControls.js';
+import { JobVerdictBand } from '../components/JobVerdict.js';
+import { ActionIcon } from '../components/ActionIcon.js';
+import { TransferIcon } from '../components/TransferIcon.js';
+import { formatCreatedAt } from '../lib/formatCreatedAt.js';
+import './jobQueue.css';
 import {
   Alert,
   Button,
@@ -16,6 +21,7 @@ import {
   DataHead,
   DataTable,
   Dialog,
+  Drawer,
   EmptyState,
   ErrorBanner,
   ErrorState,
@@ -23,6 +29,7 @@ import {
   CardDetail,
   FormField,
   Freshness,
+  IconButton,
   Inline,
   Input,
   LoadingState,
@@ -30,14 +37,23 @@ import {
   PageLayout,
   Stack,
   StatusBadge,
+  TableEmpty,
   Text,
   Textarea,
 } from '../components/ui/index.js';
 import {
   buildJobQueueView,
+  jobNeedsAttention,
   type JobQueueStatusFilter,
 } from '../lib/jobQueueView.js';
-import { getJobVerdict, offersReprint, reprintButtonVariant } from '../lib/jobVerdict.js';
+import {
+  getJobVerdict,
+  offersReprint,
+  reprintButtonVariant,
+  REPORTED_COMPLETE_COPY,
+  verdictDetailKey,
+  verdictHeadlineKey,
+} from '../lib/jobVerdict.js';
 
 export interface Job {
   id: string;
@@ -77,11 +93,8 @@ function payloadHint(snapshot?: string): string | null {
   return null;
 }
 
-function formatCreatedAt(createdAt: string): string {
-  return new Date(createdAt).toLocaleString(undefined, {
-    month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit',
-  });
-}
+// Rendering moved to lib/formatCreatedAt so the dashboard's recent-jobs table
+// shows the same timestamps the same way.
 
 /** Queue cadence. Suspended while the window is hidden and never overlapping —
  *  see `lib/pollController.ts`. */
@@ -92,23 +105,26 @@ export default function JobQueue() {
   const { t } = useLocale();
   const navigate = useNavigate();
 
-  const handleJobClick = (e: React.MouseEvent<HTMLAnchorElement>, jobId: string) => {
-    e.preventDefault();
-    const row = e.currentTarget.closest('tr');
+  const openJobFull = (jobId: string, row: HTMLTableRowElement | null = null) => {
     if (row) {
       row.style.viewTransitionName = 'job-card-morph';
     }
-    
+
     if (!document.startViewTransition) {
       navigate(`/jobs/${jobId}`);
       return;
     }
-    
+
     document.startViewTransition(() => {
       flushSync(() => {
         navigate(`/jobs/${jobId}`);
       });
     });
+  };
+
+  const handleJobClick = (e: React.MouseEvent<HTMLAnchorElement>, jobId: string) => {
+    e.preventDefault();
+    openJobFull(jobId, e.currentTarget.closest('tr'));
   };
 
   const fetchJobs = useCallback(() => apiFetch<Job[]>('/jobs?limit=1000'), []);
@@ -122,13 +138,21 @@ export default function JobQueue() {
   const [reprintReason, setReprintReason] = useState('');
   const [reprintCopies, setReprintCopies] = useState(1);
   const [duplicateRisk, setDuplicateRisk] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<JobQueueStatusFilter>('ALL');
+  // `?status=` deep links (dashboard attention strip, saved filters) seed the
+  // filter; later changes sync back so the filtered queue stays shareable.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState<JobQueueStatusFilter>(() => {
+    const requested = searchParams.get('status');
+    if (requested === 'NEEDS_ATTENTION') return 'NEEDS_ATTENTION';
+    return JOB_STATUSES.includes(requested as JobStatus) ? (requested as JobStatus) : 'ALL';
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchModal, setBatchModal] = useState<'reprint' | null>(null);
   const [batchReason, setBatchReason] = useState('');
   const [batchDuplicateRisk, setBatchDuplicateRisk] = useState(false);
+  const [drawerJobId, setDrawerJobId] = useState<string | null>(null);
 
   const view = useMemo(
     () => buildJobQueueView(jobs, {
@@ -139,6 +163,26 @@ export default function JobQueue() {
     }),
     [jobs, page, searchQuery, statusFilter],
   );
+  const attentionCount = useMemo(
+    () => jobs.reduce((count, job) => (jobNeedsAttention(job.status) ? count + 1 : count), 0),
+    [jobs],
+  );
+
+  // Rows keep polling at 1.5s, so the drawer tracks the id and re-reads the row
+  // on each refresh — the summary can never fall behind the live queue.
+  const drawerJob = useMemo(
+    () => jobs.find((job) => job.id === drawerJobId) ?? null,
+    [jobs, drawerJobId],
+  );
+  // The drawer only has list-level data: no printEvidence, no device trace. A
+  // completed job must therefore read as reported-complete there, never as
+  // confirmed output — the full detail page owns the decisive evidence.
+  const drawerVerdict = drawerJob ? getJobVerdict(drawerJob.status) : null;
+  const drawerCopy = drawerVerdict
+    ? drawerVerdict.copyKey === 'printed'
+      ? REPORTED_COMPLETE_COPY
+      : { headline: verdictHeadlineKey(drawerVerdict), detail: verdictDetailKey(drawerVerdict) }
+    : null;
 
   // Auto-refresh may remove the last row on the current page. Clamp the page,
   // but preserve the operator's selected filter and search query.
@@ -304,16 +348,27 @@ export default function JobQueue() {
   return (
     <PageLayout
       title={t('page.jobQueue.title')}
+      description={t('page.jobQueue.subtitle')}
       density="compact"
       width="full"
-      actions={<Freshness
-          lastSuccessAt={queue.lastSuccessAt}
-          stale={queue.stale}
-          refreshing={queue.refreshing}
-          paused={queue.paused}
-          onRefresh={queue.refresh}
-        />}
+      actions={
+        <Inline gap="sm">
+          <Button variant="secondary" onClick={() => void apiDownload('/exports/jobs.csv', 'jobs.csv')}>
+            <TransferIcon action="export" /> {t('page.jobQueue.exportCsv')}
+          </Button>
+          <Freshness
+            lastSuccessAt={queue.lastSuccessAt}
+            stale={queue.stale}
+            refreshing={queue.refreshing}
+            paused={queue.paused}
+            onRefresh={queue.refresh}
+          />
+        </Inline>
+      }
     >
+      <Alert tone="warning">
+        {t('page.jobQueue.physicalOutputWarning')}
+      </Alert>
 
       {message && (
         <Alert
@@ -340,64 +395,84 @@ export default function JobQueue() {
         </Alert>
       )}
 
-      <JobQueueControls
+      <div className="ui-table-card">
+        <JobQueueControls
         status={statusFilter}
         search={searchQuery}
         counts={view.counts as Record<JobStatus, number>}
         totalCount={jobs.length}
         labels={{
           status: t('page.jobQueue.statusFilter'),
+          attention: t('page.jobQueue.attentionFilter'),
           all: t('page.jobQueue.statusAll'),
           search: t('page.jobQueue.search'),
           searchPlaceholder: t('page.jobQueue.searchPlaceholder'),
         }}
-        onStatusChange={(next) => { setStatusFilter(next); setPage(1); }}
+        attentionCount={attentionCount}
+        onStatusChange={(next) => {
+          setStatusFilter(next);
+          setPage(1);
+          setSearchParams((previous) => {
+            if (next === 'ALL') previous.delete('status');
+            else previous.set('status', next);
+            return previous;
+          }, { replace: true });
+        }}
         onSearchChange={(next) => { setSearchQuery(next); setPage(1); }}
       />
 
-      {queue.loading && !queue.data ? <LoadingState /> : queue.error != null && !queue.data ? (
+      {queue.loading && !queue.data ? (
+        <LoadingState />
+      ) : queue.error != null && !queue.data ? (
         <ErrorState error={queue.error} title={t('page.jobQueue.loadFailed')} onRetry={queue.refresh} />
       ) : (
         <>
-          {view.rows.length === 0 ? (
-            <EmptyState title={jobs.length === 0 ? t('page.jobQueue.noJobs') : t('page.jobQueue.noMatchingJobs')} />
-          ) : (
-            /* One semantic table that becomes labelled cards under 1024px.
-               Previously a `<table>` and a parallel `<ul>` of the same rows were
-               both mounted, so every selection checkbox and every Reprint button
-               existed twice in the accessibility tree — on a page whose buttons
-               put paper through a physical device. */
-            <DataTable label={t('page.jobQueue.title')} responsive>
-              <thead>
-                <tr>
-                  <DataHead>
-                    <Checkbox
-                      hideLabel
-                      label={t('page.jobQueue.selectAllPage')}
-                      checked={allPageSelected}
-                      onChange={toggleSelectAllPage}
-                      disabled={currentPageJobIds.length === 0}
-                    />
-                  </DataHead>
-                  <DataHead>{t('page.jobQueue.status')}</DataHead>
-                  <DataHead>{t('page.jobQueue.document')}</DataHead>
-                  <DataHead>{t('page.jobQueue.printer')}</DataHead>
-                  <DataHead>{t('page.jobQueue.source')}</DataHead>
-                  <DataHead>{t('page.jobQueue.copies')}</DataHead>
-                  <DataHead>{t('page.jobQueue.latencyMs')}</DataHead>
-                  <DataHead>{t('page.jobQueue.created')}</DataHead>
-                  <DataHead><span className="ui-visually-hidden">{t('page.jobQueue.batchActions')}</span></DataHead>
-                </tr>
-              </thead>
-              <tbody>
-                {view.rows.map((j) => {
+          <DataTable label={t('page.jobQueue.title')} responsive>
+            <thead>
+              <tr>
+                <DataHead>
+                  <Checkbox
+                    hideLabel
+                    label={t('page.jobQueue.selectAllPage')}
+                    checked={allPageSelected}
+                    onChange={toggleSelectAllPage}
+                    disabled={currentPageJobIds.length === 0}
+                  />
+                </DataHead>
+                <DataHead>{t('page.jobQueue.status')}</DataHead>
+                <DataHead>{t('page.jobQueue.document')}</DataHead>
+                <DataHead>{t('page.jobQueue.printer')}</DataHead>
+                <DataHead>{t('page.jobQueue.source')}</DataHead>
+                <DataHead>{t('page.jobQueue.copies')}</DataHead>
+                <DataHead>{t('page.jobQueue.latencyMs')}</DataHead>
+                <DataHead>{t('page.jobQueue.created')}</DataHead>
+                <DataHead><span className="ui-visually-hidden">{t('page.jobQueue.batchActions')}</span></DataHead>
+              </tr>
+            </thead>
+            <tbody>
+              {view.rows.length === 0 ? (
+                <TableEmpty columns={9}>
+                  <EmptyState title={jobs.length === 0 ? t('page.jobQueue.noJobs') : t('page.jobQueue.noMatchingJobs')} />
+                </TableEmpty>
+              ) : (
+                view.rows.map((j) => {
                   const template = j.resolvedTemplateCode ?? j.templateCode;
                   const hint = payloadHint(j.payloadSnapshot);
                   const isReprintable = offersReprint(getJobVerdict(j.status));
                   const isSelected = selectedIds.has(j.id);
                   return (
-                    <tr key={j.id} className={`job-row ${j.status.toLowerCase()} ${isSelected ? 'is-selected' : ''}`}>
-                      <DataCell label={t('page.jobQueue.selectAllPage')}>
+                    <tr
+                      key={j.id}
+                      className={`job-row ${j.status.toLowerCase()} job-row--selectable${isSelected || drawerJob?.id === j.id ? ' is-selected' : ''}`}
+                      onClick={(e) => {
+                        // Row click is the convenience path to the read-only
+                        // drawer; controls inside the row keep their own click.
+                        const target = e.target as HTMLElement;
+                        if (target.closest('a, button, input, label, select, textarea')) return;
+                        setDrawerJobId(j.id);
+                      }}
+                    >
+                      <DataCell label={t('common.select')}>
                         <Checkbox
                           hideLabel
                           label={t('page.jobQueue.selectJob').replace('{id}', j.id.slice(0, 8))}
@@ -452,6 +527,14 @@ export default function JobQueue() {
                         <Text size="label" tone="muted" nowrap>{formatCreatedAt(j.createdAt)}</Text>
                       </DataCell>
                       <DataCell label={t('page.jobQueue.batchActions')} actions>
+                        {/* Keyboard parity for the row-click drawer. */}
+                        <IconButton
+                          size="sm"
+                          label={t('page.jobQueue.viewDetails')}
+                          onClick={() => setDrawerJobId(j.id)}
+                        >
+                          <ActionIcon name="eye" />
+                        </IconButton>
                         {isReprintable && <Button
                           variant={reprintButtonVariant(getJobVerdict(j.status))}
                           size="sm"
@@ -465,10 +548,10 @@ export default function JobQueue() {
                       </DataCell>
                     </tr>
                   );
-                })}
-              </tbody>
-            </DataTable>
-          )}
+                })
+              )}
+            </tbody>
+          </DataTable>
 
           {selectedJobs.length > 0 && (
             <div className="batch-action-bar" role="region" aria-label={t('page.jobQueue.batchActions')}>
@@ -500,6 +583,7 @@ export default function JobQueue() {
           )}
         </>
       )}
+      </div>
       {view.filteredCount > 0 && (
         <nav className="job-queue-pagination" aria-label={t('page.jobQueue.pagination')}>
           <Button
@@ -548,6 +632,101 @@ export default function JobQueue() {
           </ul>
         </Alert>
       )}
+      {/* Read-only row drawer: quick triage without losing the operator's
+          filter, selection and scroll position. Summary data only — every
+          value shown is read straight from the job row; no reprint control
+          lives here, the full detail page owns evidence and reprint semantics. */}
+      <Drawer
+        open={drawerJob !== null}
+        onClose={() => setDrawerJobId(null)}
+        title={`${t('page.jobDetail.title')}: ${(drawerJobId ?? '').slice(0, 8)}`}
+        closeLabel={t('page.jobQueue.closeDetails')}
+        footer={
+          drawerJob && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setDrawerJobId(null);
+                openJobFull(drawerJob.id);
+              }}
+            >
+              {t('page.jobQueue.openFullDetails')}
+            </Button>
+          )
+        }
+      >
+        {drawerJob && drawerVerdict && drawerCopy && (
+          <Stack gap="lg">
+            <JobVerdictBand
+              verdict={drawerVerdict}
+              headline={t(drawerCopy.headline)}
+              detail={t(drawerCopy.detail)}
+              badge={<StatusBadge status={drawerJob.status} size="sm" />}
+            />
+            <CardDetail>
+              <CardDetailItem label={t('page.jobQueue.created')}>
+                {new Date(drawerJob.createdAt).toLocaleString()}
+              </CardDetailItem>
+              {drawerJob.completedAt && (
+                <CardDetailItem label={t('page.jobQueue.reprintCompletedAt')}>
+                  {new Date(drawerJob.completedAt).toLocaleString()}
+                </CardDetailItem>
+              )}
+              <CardDetailItem label={t('page.jobQueue.printer')}>
+                <Link
+                  to={`/printers/${drawerJob.printerId}`}
+                  className="ui-link"
+                  onClick={() => setDrawerJobId(null)}
+                >
+                  {drawerJob.printerCode ?? drawerJob.printerId}
+                </Link>
+              </CardDetailItem>
+              <CardDetailItem label={t('page.jobQueue.copies')}>
+                <Mono>{drawerJob.copies}</Mono>
+              </CardDetailItem>
+              {(drawerJob.resolvedTemplateCode ?? drawerJob.templateCode) && (
+                <CardDetailItem label={t('page.jobQueue.document')}>
+                  {drawerJob.resolvedTemplateCode ?? drawerJob.templateCode}
+                </CardDetailItem>
+              )}
+              {drawerJob.sourceSystem && (
+                <CardDetailItem label={t('page.jobQueue.source')}>
+                  {drawerJob.sourceSystem}
+                </CardDetailItem>
+              )}
+              {drawerJob.sourceReference && (
+                <CardDetailItem label={t('page.jobQueue.documentNumber')}>
+                  {drawerJob.sourceReference}
+                </CardDetailItem>
+              )}
+              {drawerJob.requestId && (
+                <CardDetailItem label={t('page.jobQueue.reprintOriginalRequestId')}>
+                  <Mono>{drawerJob.requestId}</Mono>
+                </CardDetailItem>
+              )}
+              {drawerJob.runnerId && (
+                <CardDetailItem label={t('page.jobQueue.reprintRunner')}>
+                  <Mono>{drawerJob.runnerId}</Mono>
+                </CardDetailItem>
+              )}
+              {drawerJob.latency?.totalLatencyMs != null && (
+                <CardDetailItem label={t('page.jobQueue.latencyMs')}>
+                  {t('page.jobQueue.latencyValue').replace('{value}', String(drawerJob.latency.totalLatencyMs))}
+                </CardDetailItem>
+              )}
+              {payloadHint(drawerJob.payloadSnapshot) && (
+                <CardDetailItem label={t('page.jobDetail.payloadFields')}>
+                  {payloadHint(drawerJob.payloadSnapshot)}
+                </CardDetailItem>
+              )}
+            </CardDetail>
+            <Text as="p" size="label" tone="muted">
+              {t('page.jobQueue.drawerSnapshotNote')}
+            </Text>
+          </Stack>
+        )}
+      </Drawer>
+
       {/* Reprint confirmation. Safety semantics are unchanged: the submit stays
           blocked without an explicit duplicate-risk acknowledgement, a reason,
           a runner id and the original request id. Only the wording moved into

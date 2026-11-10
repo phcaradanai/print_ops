@@ -102,6 +102,9 @@ export class SqliteUserRepository implements UserRepositoryPort {
     if ('role' in patch) add('role', patch.role);
     if ('allowedPages' in patch) add('allowed_pages_json', patch.allowedPages ? JSON.stringify(patch.allowedPages) : null);
     if ('isActive' in patch) add('is_active', patch.isActive ? 1 : 0);
+    if ('passwordHash' in patch || 'role' in patch || 'allowedPages' in patch || 'isActive' in patch) {
+      fields.push('auth_version = auth_version + 1');
+    }
 
     add('updated_at', dateStr(new Date()));
 
@@ -111,6 +114,51 @@ export class SqliteUserRepository implements UserRepositoryPort {
     saveDb();
 
     return (await this.findById(id))!;
+  }
+
+  async getAuthVersion(id: string): Promise<number> {
+    const db = getDb();
+    const stmt = db.prepare('SELECT auth_version FROM users WHERE id = ?');
+    stmt.bind([id]);
+    if (!stmt.step()) {
+      stmt.free();
+      return 0;
+    }
+    const version = Number(stmt.getAsObject()['auth_version'] ?? 0);
+    stmt.free();
+    return version;
+  }
+
+  async issuePasswordRecoveryCode(id: string, codeHash: string): Promise<boolean> {
+    const db = getDb();
+    db.run('UPDATE users SET recovery_code_hash = ? WHERE id = ? AND is_active = 1', [codeHash, id]);
+    const issued = db.getRowsModified() === 1;
+    if (issued) saveDb();
+    return issued;
+  }
+
+  async resetPasswordWithRecoveryCode(email: string, codeHash: string, passwordHash: string, nextCodeHash: string): Promise<boolean> {
+    const db = getDb();
+    db.run('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      db.run(
+        `UPDATE users
+         SET password_hash = ?, recovery_code_hash = ?, auth_version = auth_version + 1, updated_at = ?
+         WHERE lower(email) = lower(?) AND is_active = 1 AND recovery_code_hash = ?`,
+        [passwordHash, nextCodeHash, dateStr(new Date()), email, codeHash],
+      );
+      const updated = db.getRowsModified() === 1;
+      if (!updated) {
+        db.run('ROLLBACK');
+        return false;
+      }
+      db.run('COMMIT');
+      saveDb();
+      return true;
+    } catch (error) {
+      try { db.run('ROLLBACK'); } catch { /* retain the original update error */ }
+      throw error;
+    }
   }
 
   seed(user: User): void {

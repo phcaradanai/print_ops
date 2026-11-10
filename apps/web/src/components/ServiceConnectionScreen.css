@@ -1,0 +1,225 @@
+/* ServiceConnectionScreen — startup / connection-recovery entry state.
+   Scoped under `.service-connection*`; buttons come from the shared UI kit. */
+
+.service-connection {
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 1.5rem 1rem;
+  background: var(--neutral-page);
+  color: var(--neutral-text);
+  font-family: var(--font-body-family, system-ui, sans-serif);
+  font-size: var(--font-body-size, 0.875rem);
+  line-height: var(--font-body-line-height, 1.5);
+}
+
+.service-connection-card {
+  width: min(100%, 34rem);
+  padding: 2rem;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg, 8px);
+  background: var(--neutral-surface);
+}
+
+.service-connection-head {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+}
+
+.service-connection-mark {
+  display: inline-flex;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--primary) 25%, var(--neutral-border));
+  border-radius: var(--rounded-md, 6px);
+  background: color-mix(in srgb, var(--primary) 6%, var(--neutral-surface));
+  color: var(--primary-hover);
+}
+
+.service-connection-mark--error {
+  border-color: color-mix(in srgb, var(--state-warning-text) 35%, var(--neutral-border));
+  background: var(--state-warning-surface);
+  color: var(--state-warning-text);
+}
+
+.service-connection-titles {
+  min-width: 0;
+}
+
+.service-connection-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--neutral-deep);
+  text-wrap: balance;
+}
+
+.service-connection-subtitle {
+  margin: 0;
+  color: var(--neutral-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.service-connection-status {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin: 1.5rem 0 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-md, 6px);
+  background: var(--neutral-paper);
+}
+
+.service-connection-spinner {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--neutral-border-strong);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: service-connection-spin 0.9s linear infinite;
+}
+
+@keyframes service-connection-spin {
+  to { transform: rotate(360deg); }
+}
+
+.service-connection-outcome {
+  color: var(--neutral-text);
+}
+
+.service-connection-outcome--error {
+  color: var(--state-warning-text);
+  font-weight: 600;
+}
+
+.service-connection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: center;
+  margin-top: 1.5rem;
+}
+
+.service-connection-hint {
+  margin: 0;
+  color: var(--neutral-text-muted);
+}
+
+/* Kept mounted while closed so the toggle's `aria-controls` target always exists. */
+.service-connection-details {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-md, 6px);
+  background: var(--neutral-paper);
+}
+
+.service-connection-details[hidden] {
+  display: none;
+}
+
+.service-connection-details-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--neutral-text-muted);
+}
+
+.service-connection-facts {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.service-connection-fact {
+  display: grid;
+  grid-template-columns: minmax(8rem, 10rem) 1fr;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+}
+
+.service-connection-fact dt {
+  color: var(--neutral-text-muted);
+  font-size: var(--font-label-size, 0.75rem);
+  font-weight: 600;
+}
+
+.service-connection-fact dd {
+  margin: 0;
+  color: var(--neutral-text);
+  overflow-wrap: anywhere;
+}
+
+.service-connection-fact dd code {
+  font-family: var(--font-mono-family, ui-monospace, monospace);
+  font-size: var(--font-mono-size, 0.8rem);
+}
+
+.service-connection-safety {
+  margin: 1rem 0 0;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--state-warning-text) 30%, var(--neutral-border));
+  border-radius: var(--rounded-sm, 4px);
+  background: var(--state-warning-surface);
+  color: var(--state-warning-text);
+}
+
+.service-connection-scope {
+  margin: 0.75rem 0 0;
+  color: var(--neutral-text-muted);
+  font-size: var(--font-label-size, 0.75rem);
+}
+
+@media (min-width: 1024px) {
+  .service-connection {
+    padding: 2rem;
+  }
+
+  .service-connection-card {
+    padding: 2.5rem;
+  }
+}
+
+@media (max-width: 390px) {
+  .service-connection {
+    padding: 1rem 0.75rem;
+  }
+
+  .service-connection-card {
+    padding: 1.25rem;
+  }
+
+  .service-connection-head {
+    flex-direction: column;
+  }
+
+  .service-connection-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .service-connection-actions .ui-button {
+    min-height: 44px;
+  }
+
+  .service-connection-fact {
+    grid-template-columns: 1fr;
+    gap: 0.1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .service-connection-spinner {
+    animation-duration: 3s;
+  }
+}

@@ -18,16 +18,15 @@
 }
 
 .ops-page--full {
-  width: 100%;
-  max-width: none;
+  width: min(100%, 88rem);
+  max-width: 88rem;
 }
 
 .ops-page.templates-page,
 .ops-page.paper-profiles-page,
 .ops-page.template-sandbox-page {
-  max-width: none;
+  max-width: 88rem;
   margin: 0 auto;
-  padding: 0;
 }
 
 .ops-page__header {

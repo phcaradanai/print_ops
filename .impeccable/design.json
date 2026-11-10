@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-02T15:28:03Z",
+  "generatedAt": "2026-10-22",
   "title": "Design System: PrintOps",
   "extensions": {
     "colorMeta": {
@@ -869,7 +869,7 @@
       {
         "name": "floating-panel",
         "value": "0 8px 24px rgba(0, 0, 0, 0.08)",
-        "purpose": "Login and splash panels, drawers."
+        "purpose": "Login panels and drawers."
       },
       {
         "name": "popover",
@@ -880,11 +880,6 @@
         "name": "drawer",
         "value": "-4px 0 24px rgba(0, 0, 0, 0.12)",
         "purpose": "Side drawers; depth is cast away from the attached edge."
-      },
-      {
-        "name": "action-lift",
-        "value": "0 3px 8px rgba(30, 102, 245, 0.30)",
-        "purpose": "Hover feedback on the primary button; rose equivalent at 0.24 alpha for danger. Absent at rest, pressed, and disabled."
       },
       {
         "name": "backdrop-dialog",
@@ -956,9 +951,9 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Action-blue control for direct task progression. Flat at rest; the lift is hover-only.",
+      "description": "Flat action-blue control with a 44px interaction floor at every viewport. Hover changes color, not elevation.",
       "html": "<button class=\"ds-button-primary\">Save changes</button>",
-      "css": ".ds-button-primary { display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem; min-height: 38px; padding: 0.48rem 1.15rem; border: 1px solid var(--primary, #1e66f5); border-radius: var(--rounded-md, 6px); background: var(--primary, #1e66f5); color: var(--neutral-surface, #ffffff); font-family: system-ui, sans-serif; font-size: 0.825rem; font-weight: 600; letter-spacing: 0.012em; white-space: nowrap; cursor: pointer; transition: background-color 160ms cubic-bezier(0.16,1,0.3,1), border-color 160ms cubic-bezier(0.16,1,0.3,1), box-shadow 160ms cubic-bezier(0.16,1,0.3,1); } .ds-button-primary:hover { background: var(--primary-hover, #1654d1); border-color: var(--primary-hover, #1654d1); box-shadow: 0 3px 8px rgba(30, 102, 245, 0.30); } .ds-button-primary:active { box-shadow: none; } .ds-button-primary:focus-visible { outline: 2px solid var(--primary, #1e66f5); outline-offset: 2px; }"
+      "css": ".ds-button-primary { display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem; min-width: 44px; min-height: 44px; padding: 0.48rem 1.15rem; border: 1px solid var(--primary); border-radius: var(--rounded-md); background: var(--primary); color: var(--neutral-surface); font: 600 0.825rem/1.4 system-ui, sans-serif; cursor: pointer; box-shadow: none; } .ds-button-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); } .ds-button-primary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }"
     },
     {
       "name": "Secondary Button",
@@ -974,7 +969,7 @@
       "refersTo": "button-danger",
       "description": "Consequence Rose. Destructive or physically consequential confirmation only.",
       "html": "<button class=\"ds-button-danger\">Delete printer</button>",
-      "css": ".ds-button-danger { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0.48rem 1.15rem; border: 1px solid var(--danger-action, #9f1239); border-radius: var(--rounded-md, 6px); background: var(--danger-action, #9f1239); color: var(--neutral-surface, #ffffff); font-family: system-ui, sans-serif; font-size: 0.825rem; font-weight: 600; letter-spacing: 0.012em; cursor: pointer; transition: background-color 160ms cubic-bezier(0.16,1,0.3,1), box-shadow 160ms cubic-bezier(0.16,1,0.3,1); } .ds-button-danger:hover { background: var(--danger-action-hover, #830e2e); border-color: var(--danger-action-hover, #830e2e); box-shadow: 0 3px 8px rgba(159, 18, 57, 0.24); } .ds-button-danger:focus-visible { outline: 2px solid var(--primary, #1e66f5); outline-offset: 2px; }"
+      "css": ".ds-button-danger { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0.48rem 1.15rem; border: 1px solid var(--danger-action); border-radius: var(--rounded-md); background: var(--danger-action); color: var(--neutral-surface); font: 600 0.825rem/1.4 system-ui, sans-serif; cursor: pointer; box-shadow: none; } .ds-button-danger:hover { background: var(--danger-action-hover); border-color: var(--danger-action-hover); } .ds-button-danger:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }"
     },
     {
       "name": "Disabled Button",
@@ -1004,9 +999,9 @@
       "name": "Job Status Badge",
       "kind": "chip",
       "refersTo": "status-badge",
-      "description": "Outlined pill carrying the literal server status. Border and text share one contrast-safe color; the fill stays transparent.",
-      "html": "<span class=\"ds-status ds-status--success\">SUCCESS</span><span class=\"ds-status ds-status--unverified\">UNVERIFIED</span><span class=\"ds-status ds-status--failed\">FAILED</span>",
-      "css": ".ds-status { display: inline-flex; align-items: center; justify-content: center; min-height: 24px; padding: 3px 9px; margin-right: 0.5rem; border: 1.5px solid currentcolor; border-radius: var(--rounded-pill, 9999px); background: transparent; font-family: system-ui, sans-serif; font-size: 0.75rem; font-weight: 600; line-height: 1.2; letter-spacing: 0.025em; } .ds-status--success { color: var(--status-success, #166534); } .ds-status--unverified { color: var(--status-unverified, #92400e); } .ds-status--failed { color: var(--status-failed, #9f1239); }"
+      "description": "Literal server status plus a verdict-shaped SVG; color is supplementary. UNVERIFIED stays amber and never implies physical confirmation.",
+      "html": "<span class=\"ds-status ds-status--unverified\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M12 3 2 21h20L12 3Zm0 5v6m0 3h.01\"/></svg><span>UNVERIFIED</span></span>",
+      "css": ".ds-status { display: inline-flex; align-items: center; justify-content: center; gap: var(--spacing-xs); min-height: 24px; padding: 3px 9px; border: 1.5px solid currentColor; border-radius: var(--rounded-pill); background: transparent; font: 600 0.75rem/1.2 system-ui, sans-serif; } .ds-status--success { color: var(--status-success); } .ds-status--unverified { color: var(--status-unverified); } .ds-status--failed { color: var(--status-failed); }"
     },
     {
       "name": "Device Status Indicator",
@@ -1020,9 +1015,9 @@
       "name": "Metric Tile",
       "kind": "card",
       "refersTo": "metric-tile",
-      "description": "At-a-glance count. Tone comes from the value, not the concept — a zero UNVERIFIED count is an ordinary tile.",
-      "html": "<div class=\"ds-metric\"><div class=\"ds-metric__value\">128</div><div class=\"ds-metric__label\">Printed today</div></div><div class=\"ds-metric ds-metric--attention\"><div class=\"ds-metric__value\">3</div><div class=\"ds-metric__label\"><span class=\"ds-metric__dot\"></span>Unverified</div></div>",
-      "css": ".ds-metric { display: inline-grid; gap: 0.35rem; min-width: 11rem; padding: 1rem; margin-right: 0.75rem; border: 1px solid var(--neutral-border, #e5e7eb); border-radius: var(--rounded-lg, 8px); background: var(--neutral-surface, #ffffff); font-family: system-ui, sans-serif; } .ds-metric__value { color: var(--neutral-deep, #1e1e2e); font-size: 2rem; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; } .ds-metric__label { display: flex; align-items: center; gap: 0.35rem; color: var(--neutral-text-muted, #6b7280); font-size: 0.75rem; font-weight: 600; } .ds-metric__dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: currentcolor; } .ds-metric--attention { border-color: color-mix(in srgb, var(--state-warning-text, #92400e) 35%, var(--neutral-border, #e5e7eb)); background: var(--state-warning-surface, #fef3c7); color: var(--state-warning-text, #92400e); } .ds-metric--attention .ds-metric__value, .ds-metric--attention .ds-metric__label { color: var(--state-warning-text, #92400e); }"
+      "description": "A low-height segment inside one bordered summary strip, not a floating card. Values in this preview are illustrative.",
+      "html": "<div class=\"ds-metric-strip\"><div class=\"ds-metric\"><div class=\"ds-metric__value\">12</div><div class=\"ds-metric__label\">Queued</div></div><div class=\"ds-metric\"><div class=\"ds-metric__value\">3</div><div class=\"ds-metric__label\">Unverified</div></div></div>",
+      "css": ".ds-metric-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--neutral-border); border-radius: var(--rounded-lg); background: var(--neutral-border); } .ds-metric { display: grid; min-width: 0; gap: var(--spacing-xs); padding: var(--spacing-md) var(--spacing-lg); border: 0; border-radius: 0; background: var(--neutral-surface); font-family: system-ui, sans-serif; } .ds-metric__value { color: var(--neutral-deep); font-size: 1.5rem; font-weight: 600; font-variant-numeric: tabular-nums; } .ds-metric__label { color: var(--neutral-text-muted); font-size: 0.75rem; }"
     },
     {
       "name": "Evidence Canvas",
@@ -1167,7 +1162,7 @@
       "Don't write a literal hex, rem, or shadow value into a stylesheet when a token expresses it. #1e66f5 is var(--primary).",
       "Don't add another global override stylesheet to correct a page. Fix the shared component, or scope the fix to the feature that owns it.",
       "Don't invent a competing page frame, a fifth breakpoint for one surface, or a one-off font size.",
-      "Don't use color gradients, decorative glows, oversized display type, or animation as decoration. The auth graph-paper field is the single sanctioned exception and does not generalize.",
+      "Don't use color gradients, decorative glows, oversized display type, or animation as decoration. Authentication and recovery use the same flat visual language.",
       "Don't extend the Evidence Canvas beyond authored code and payload editing. Application chrome, dashboards, tables, and forms stay light.",
       "Don't create terminal-dense dashboards or expose expert payload controls as the default operator workflow.",
       "Don't uppercase or letter-space anything that can hold localized copy — table headers, field labels, legends, nav headings, or badge text.",

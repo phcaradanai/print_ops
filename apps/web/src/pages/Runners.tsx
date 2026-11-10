@@ -1,7 +1,8 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { apiFetch } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 import { formatRelativeTime } from '../lib/relativeTime.js';
+import { runnerHealth, type RunnerHealth } from '../lib/deviceHealth.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { RunnerStatusBadge } from '../components/RunnerStatusBadge.js';
 import {
@@ -15,6 +16,9 @@ import {
   LoadingState,
   Mono,
   PageLayout,
+  ResourceToolbar,
+  SelectFilter,
+  SearchField,
   TableEmpty,
   Text,
 } from '../components/ui/index.js';
@@ -35,6 +39,7 @@ export default function Runners() {
   const runnersResource = useApiResource(fetchRunners, { intervalMs: RUNNERS_POLL_MS });
   const runners = runnersResource.data ?? [];
 
+  const [search, setSearch] = useState('');
   const heartbeatAge = (ts?: string): string => formatRelativeTime(t, ts);
 
   const columns = {
@@ -44,11 +49,25 @@ export default function Runners() {
     status: t('page.runners.status'),
     heartbeat: t('page.runners.lastHeartbeat'),
     registered: t('page.runners.registered'),
+    health: t('page.runners.filterHealth'),
   };
 
+  // Health buckets share lib/deviceHealth with the dashboard attention strip.
+  // `busy`/`draining` are working states, not problems; offline and anything
+  // unknown needs eyes. Counts are last-known data when the endpoint errors.
+  const [healthFilter, setHealthFilter] = useState<'ALL' | RunnerHealth>('ALL');
+  const problemCount = runners.filter((r) => runnerHealth(r.status) === 'attention').length;
+  const healthyCount = runners.length - problemCount;
+  const normalizedSearch = search.trim().toLowerCase();
+  const visibleRunners = runners.filter((r) => {
+    if (healthFilter !== 'ALL' && runnerHealth(r.status) !== healthFilter) return false;
+    if (!normalizedSearch) return true;
+    return `${r.name} ${r.hostname} ${r.supportedProtocols?.join(' ') ?? ''}`.toLowerCase().includes(normalizedSearch);
+  });
   return (
     <PageLayout
       title={t('page.runners.title')}
+      description={t('page.runners.subtitle')}
       density="compact"
       width="full"
       actions={<Freshness
@@ -77,7 +96,25 @@ export default function Runners() {
         // used to mount a `<table>` AND a parallel `<ul>` of the same runners,
         // so every row existed twice in the accessibility tree and the two
         // copies had already drifted apart in what they showed.
-        <DataTable label={t('page.runners.title')} responsive>
+        <div className="ui-table-card">
+          <ResourceToolbar ariaLabel={columns.health}>
+            <SearchField
+              label={t('page.runners.search')}
+              placeholder={t('page.runners.searchPlaceholder')}
+              value={search}
+              onValueChange={setSearch}
+            />
+            <SelectFilter
+              label={columns.health}
+              value={healthFilter}
+              onValueChange={(value) => setHealthFilter(value as 'ALL' | RunnerHealth)}
+            >
+              <option value="ALL">{t('page.runners.filterAll')} ({runners.length})</option>
+              <option value="healthy">{t('page.runners.filterHealthy')} ({healthyCount})</option>
+              <option value="attention">{t('page.runners.filterProblem')} ({problemCount})</option>
+            </SelectFilter>
+          </ResourceToolbar>
+          <DataTable label={t('page.runners.title')} responsive>
           <thead>
             <tr>
               <DataHead>{columns.name}</DataHead>
@@ -89,7 +126,7 @@ export default function Runners() {
             </tr>
           </thead>
           <tbody>
-            {runners.map((runner) => (
+            {visibleRunners.map((runner) => (
               <tr key={runner.id}>
                 <DataCell label={columns.name}>
                   <Text weight="semibold" tone="strong">{runner.name}</Text>
@@ -111,13 +148,16 @@ export default function Runners() {
                 </DataCell>
               </tr>
             ))}
-            {runners.length === 0 && (
+            {visibleRunners.length === 0 && (
               <TableEmpty columns={6}>
-                <EmptyState title={t('page.runners.noRunners')} />
+                <EmptyState
+                  title={runners.length === 0 ? t('page.runners.noRunners') : t('page.runners.noMatch')}
+                />
               </TableEmpty>
             )}
           </tbody>
         </DataTable>
+        </div>
       )}
     </PageLayout>
   );

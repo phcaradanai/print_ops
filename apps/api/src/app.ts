@@ -1,7 +1,7 @@
 import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
-
+import os from 'node:os';
 import { InMemoryPrinterRepository } from './infra/repos/in-memory-printer.repo.js';
 import { InMemoryJobRepository } from './infra/repos/in-memory-job.repo.js';
 import { InMemoryTraceRepository } from './infra/repos/in-memory-trace.repo.js';
@@ -36,6 +36,20 @@ import { SqliteWebhookRoutePolicyRepository } from './infra/repos/sqlite/sqlite-
 import { SqliteImportedDesignRepository } from './infra/repos/sqlite/sqlite-imported-design.repo.js';
 import { SqlitePrinterPaperCalibrationRepository } from './infra/repos/sqlite/sqlite-printer-paper-calibration.repo.js';
 import { SqliteOtaUpdateStateRepository } from './infra/repos/sqlite/sqlite-ota-state.repo.js';
+import {
+  InMemoryDeviceRegistryRepository,
+  InMemoryEnrollmentTokenRepository,
+  InMemoryControlCommandRepository,
+  InMemoryReleaseCatalogRepository,
+  InMemoryControlAuditRepository,
+} from './infra/repos/in-memory-control.repo.js';
+import {
+  SqliteDeviceRegistryRepository,
+  SqliteEnrollmentTokenRepository,
+  SqliteControlCommandRepository,
+  SqliteReleaseCatalogRepository,
+  SqliteControlAuditRepository,
+} from './infra/repos/sqlite/sqlite-control.repo.js';
 
 import { InMemoryEventBus } from './infra/eventbus/in-memory-eventbus.js';
 import { InMemoryJobQueue } from './infra/queue/in-memory-queue.js';
@@ -45,6 +59,7 @@ import { buildApiKeyAuth, hashApiKey, apiKeyPrefix } from './infra/middleware/ap
 import { SimpleTemplateRenderer } from './infra/template/simple-template-renderer.js';
 
 import { AdapterRegistry, FakePrinterAdapter, WindowsSpoolerAdapter } from '@printerops/adapters';
+import type { ControlCommandEnvelope, ControlOtaTransitionEvent, DeviceHeartbeatPayload } from '@printerops/domain';
 import { generateId } from '@printerops/shared';
 
 import { CreatePrinterService } from './services/create-printer.service.js';
@@ -63,6 +78,8 @@ import { DynamicIntakeService } from './services/dynamic-intake.service.js';
 import { ResolvePrinterBindingService } from './services/resolve-printer-binding.service.js';
 import { DynamicPrintService } from './services/dynamic-print.service.js';
 import { ImportPaperProfileService } from './services/import-paper-profile.service.js';
+import { ControlContentSyncService } from './services/control-content-sync.service.js';
+import { getLocalControlDeviceInfo, LOCAL_CONTROL_CAPABILITIES } from './services/control-device-info.service.js';
 import { SandboxService } from './services/sandbox.service.js';
 import { PrinterConnectivityService } from './services/printer-connectivity.service.js';
 
@@ -95,6 +112,11 @@ import { sandboxRoutes } from './routes/v1/sandbox.routes.js';
 import { printerCalibrationRoutes } from './routes/v1/printer-calibration.routes.js';
 import { printIntakeConfigFromEnv, type PrintIntakeConfig } from './infra/nats/print-intake.js';
 import { NatsConnectionManager } from './infra/nats/nats-connection-manager.js';
+import {
+  controlPlaneTransportConfigFromEnv,
+  startControlPlaneTransport,
+  type ControlPlaneTransport,
+} from './infra/nats/control-plane-transport.js';
 import { v1PrintFlowRoutes } from './routes/v1/print-flow.routes.js';
 import { join, dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -115,6 +137,17 @@ import { PrintAdmissionGate } from './services/print-admission-gate.js';
 import { FileOtaArtifactStateStore } from './services/ota-artifact-state.js';
 import { ExternalUpdaterInstaller, externalUpdaterConfigured, type ExternalUpdaterConfig } from './services/external-updater-installer.js';
 import { FileOtaPolicyStateStore, OtaUpdatePolicyWorker } from './services/ota-update-policy.js';
+import { controlRoutes } from './routes/v1/control.routes.js';
+import { WebControlRegistryService } from './services/web-control-registry.service.js';
+import { ReleaseCatalogService } from './services/release-catalog.service.js';
+import { ControlCommandService } from './services/control-command.service.js';
+import { ReleaseStorageService } from './services/release-storage.service.js';
+import { SqliteStorageSettingsRepository } from './infra/repos/sqlite/sqlite-storage-settings.repo.js';
+import { InMemoryStorageSettingsRepository } from './infra/repos/in-memory-storage-settings.repo.js';
+import { PrintOpsControlAgent } from './services/control-agent.service.js';
+import { DeviceIdentityStore } from './services/device-identity.js';
+import { signControlMessageWithToken, verifyControlMessageWithToken } from './services/control-message-auth.js';
+import { CURRENT_SCHEMA_VERSION } from './infra/db/sqlite.schema.js';
 
 /** Dev-only API key — override via PRINTOPS_DEV_API_KEY env var */
 export const DEV_API_KEY =
@@ -167,6 +200,24 @@ const resultCallbackHttpSender: CallbackHttpSender = async (url, body, opts) => 
   }
 };
 
+function parseSignedControlMessage(
+  value: Record<string, unknown>,
+): { payload: Record<string, unknown>; signature: string } | undefined {
+  const payload = value['payload'];
+  const signature = value['signature'];
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || typeof signature !== 'string') {
+    return undefined;
+  }
+  return { payload: payload as Record<string, unknown>, signature };
+}
+
+function deviceIdFromControlSubject(subject: string, kind: 'event' | 'heartbeat'): string | undefined {
+  const prefix = `printops.control.${kind}.`;
+  if (!subject.startsWith(prefix)) return undefined;
+  const deviceId = subject.slice(prefix.length);
+  return deviceId && !deviceId.includes('.') ? deviceId : undefined;
+}
+
 // __dirname is available in the CJS bundle produced by esbuild/pkg
 declare var __dirname: string;
 
@@ -181,12 +232,15 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
           'req.headers.x-printops-ota-token',
           'req.body.password',
           'req.body.passwordConfirmation',
+          'req.body.newPassword',
+          'req.body.recoveryCode',
           'req.body.authorizationPassword',
           'req.body.secret',
           'req.body.apiKey',
           'req.body.callbackSecret',
           'req.body.payload',
           'res.body.apiKey',
+          'res.body.recoveryCode',
         ],
         censor: '[REDACTED]',
       },
@@ -230,7 +284,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const corsOrigin = corsAllowedOriginsEnv
     ? corsAllowedOriginsEnv.split(',').map((origin) => origin.trim()).filter(Boolean)
     : runtimeArchitecture.runtimeMode === 'packaged-windows-desktop'
-      ? ['http://127.0.0.1:31415', 'http://localhost:31415', 'tauri://localhost', 'https://tauri.localhost']
+      ? ['http://127.0.0.1:31415', 'http://localhost:31415', 'tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost']
       : true;
   await app.register(cors, { origin: corsOrigin });
 
@@ -288,10 +342,32 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const runnerRepo = useSqlite ? new SqliteRunnerRepository() : new InMemoryRunnerRepository();
   const auditRepo = useSqlite ? new SqliteAuditRepository() : new InMemoryAuditRepository();
   const userRepo = useSqlite ? new SqliteUserRepository() : new InMemoryUserRepository();
+  app.addHook('onRequest', async (req, reply) => {
+    const authorization = req.headers.authorization;
+    if (typeof authorization !== 'string' || !/^Bearer\s+/i.test(authorization)) return;
+
+    try {
+      await req.jwtVerify();
+    } catch {
+      // Public routes such as login and recovery must still run; protected
+      // routes perform their normal verification and return the auth error.
+      return;
+    }
+
+    const identity = req.user as { sub?: unknown; authVersion?: unknown };
+    if (typeof identity.sub !== 'string') return;
+    const user = await userRepo.findById(identity.sub);
+    if (!user) return;
+    const authVersion = await userRepo.getAuthVersion(user.id);
+    if (!user.isActive || Number(identity.authVersion ?? 0) !== authVersion) {
+      return reply.status(401).send({ error: 'Session expired. Sign in again.' });
+    }
+  });
   const serviceAccountRepo = useSqlite ? new SqliteServiceAccountRepository() : new InMemoryServiceAccountRepository();
   const discoveredPrinterRepo = useSqlite ? new SqliteDiscoveredPrinterRepository() : new InMemoryDiscoveredPrinterRepository();
   const templateRepo = useSqlite ? new SqlitePrintTemplateRepository() : new InMemoryPrintTemplateRepository();
   const paperRepo = useSqlite ? new SqlitePaperProfileRepository() : new InMemoryPaperProfileRepository();
+  const controlContentSyncService = new ControlContentSyncService(paperRepo, templateRepo);
   const calibrationRepo = useSqlite ? new SqlitePrinterPaperCalibrationRepository() : new InMemoryPrinterPaperCalibrationRepository();
   const bindingRepo = useSqlite ? new SqlitePrinterTemplateBindingRepository() : new InMemoryPrinterTemplateBindingRepository();
   const webhookEndpointRepo = useSqlite ? new SqliteWebhookEndpointRepository() : new InMemoryWebhookEndpointRepository();
@@ -315,6 +391,11 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const callbackDeliveryRepo = useSqlite
     ? new SqliteCallbackDeliveryRepository()
     : new InMemoryCallbackDeliveryRepository();
+  const controlDeviceRepo = useSqlite ? new SqliteDeviceRegistryRepository() : new InMemoryDeviceRegistryRepository();
+  const controlTokenRepo = useSqlite ? new SqliteEnrollmentTokenRepository() : new InMemoryEnrollmentTokenRepository();
+  const controlCommandRepo = useSqlite ? new SqliteControlCommandRepository() : new InMemoryControlCommandRepository();
+  const controlReleaseRepo = useSqlite ? new SqliteReleaseCatalogRepository() : new InMemoryReleaseCatalogRepository();
+  const controlAuditRepo = useSqlite ? new SqliteControlAuditRepository() : new InMemoryControlAuditRepository();
   const eventBus = new InMemoryEventBus({
     onHandlerError: (event, err) => app.log.error({ err, eventType: event.eventType }, 'event subscriber failed'),
   });
@@ -336,12 +417,14 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   }
   let localPrintScheduler: LocalPrintScheduler | undefined;
   const otaConfig = otaConfigFromEnv();
+  const desktopShutdownEventName = process.env['PRINTOPS_DESKTOP_SHUTDOWN_EVENT']?.trim();
   const externalUpdaterConfig: ExternalUpdaterConfig | undefined = otaConfig.updaterPath
     && otaConfig.updaterRequestDirectory
     && otaConfig.updaterStatePath
     && otaConfig.installRoot
     && otaConfig.desktopPath
     && otaConfig.desktopPid
+    && desktopShutdownEventName
     && otaConfig.healthToken
     ? {
         executablePath: otaConfig.updaterPath,
@@ -350,6 +433,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         installRoot: otaConfig.installRoot,
         desktopPath: otaConfig.desktopPath,
         desktopPid: otaConfig.desktopPid,
+        desktopShutdownEventName,
         apiUrl: otaConfig.apiUrl ?? 'http://127.0.0.1:31415',
         healthToken: otaConfig.healthToken,
         publicKey: otaConfig.publicKey,
@@ -973,6 +1057,164 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     ),
   );
   natsManager.setIntakeCallbacks(intakeOutcomeCallbacks);
+  const deviceIdentityStore = new DeviceIdentityStore({
+    appVersion: process.env['PRINTOPS_APP_VERSION'] ?? '0.1.32',
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+  });
+  const enrolledIdentity = deviceIdentityStore.getIdentity();
+  const controlRole = process.env['PRINTOPS_CONTROL_ROLE']
+    ?? (deviceIdentityStore.isEnrolled() ? 'device' : 'control-plane');
+  if (controlRole !== 'device' && controlRole !== 'control-plane') {
+    throw new Error('PRINTOPS_CONTROL_ROLE must be "device" or "control-plane"');
+  }
+  if (controlRole === 'device' && !deviceIdentityStore.isEnrolled()) {
+    throw new Error('PRINTOPS_CONTROL_ROLE=device requires an enrolled device identity');
+  }
+  const controlTransportConfig = process.env['PRINTOPS_CONTROL_NATS_URL']
+    ? controlRole === 'device'
+      ? controlPlaneTransportConfigFromEnv({ role: 'device', deviceId: enrolledIdentity.deviceId! })
+      : controlPlaneTransportConfigFromEnv({ role: 'control-plane' })
+    : undefined;
+  let controlPlaneTransport: ControlPlaneTransport | undefined;
+  let deviceControlTransport: ControlPlaneTransport | undefined;
+  let lastAuthenticatedControlHeartbeatAt = 0;
+
+  const webControlRegistry = new WebControlRegistryService({
+    deviceRegistry: controlDeviceRepo,
+    enrollmentTokens: controlTokenRepo,
+    audit: controlAuditRepo,
+    config: {
+      natsUrl: process.env['PRINTOPS_CONTROL_PUBLIC_NATS_URL'] ?? process.env['PRINTOPS_CONTROL_NATS_URL'],
+      natsStream: process.env['PRINTOPS_CONTROL_NATS_STREAM'],
+    },
+  });
+  const releaseCatalogService = new ReleaseCatalogService({
+    releases: controlReleaseRepo,
+  });
+  const storageSettingsRepo = useSqlite
+    ? new SqliteStorageSettingsRepository()
+    : new InMemoryStorageSettingsRepository();
+  const releaseStorageService = new ReleaseStorageService(storageSettingsRepo);
+  await releaseStorageService.initialize();
+  const controlCommandService = new ControlCommandService({
+    commands: controlCommandRepo,
+    devices: controlDeviceRepo,
+    audit: controlAuditRepo,
+    natsPublisher: controlRole === 'control-plane' && controlTransportConfig
+      ? async (subject, payload, opts) => {
+          if (!controlPlaneTransport || !opts?.msgId) {
+            throw new Error('control JetStream transport is not ready for command publication');
+          }
+          await controlPlaneTransport.publishCommand(subject, payload, opts.msgId);
+          return { acknowledged: true };
+        }
+      : undefined,
+  });
+  const controlAgent = controlTransportConfig?.role === 'device' ? new PrintOpsControlAgent({
+    identityStore: deviceIdentityStore,
+    otaService: otaUpdateService,
+    getPrintStatus: () => otaUpdateService.getPrintSystemStatus(),
+    applyContentBundle: (bundle, onProgress) => controlContentSyncService.applyBundle(bundle, onProgress),
+    getClientContentIndex: () => controlContentSyncService.createClientContentIndex(),
+    exportClientContent: (kind, code) => controlContentSyncService.createClientContentBundle(kind, code),
+    eventPublisher: async (subject, event) => {
+      const deviceToken = deviceIdentityStore.getDeviceToken();
+      if (!deviceControlTransport || !deviceToken) {
+        throw new Error('control JetStream transport is not ready for device event publication');
+      }
+      const signed = signControlMessageWithToken(deviceToken, event);
+      await deviceControlTransport.publishEvent(
+        subject,
+        signed as unknown as Record<string, unknown>,
+        event.eventId,
+      );
+    },
+    heartbeatPublisher: async (subject, heartbeat) => {
+      const deviceToken = deviceIdentityStore.getDeviceToken();
+      if (!deviceControlTransport || !deviceToken) {
+        throw new Error('control JetStream transport is not ready for heartbeat publication');
+      }
+      const signed = signControlMessageWithToken(deviceToken, heartbeat);
+      await deviceControlTransport.publishHeartbeat(
+        subject,
+        signed as unknown as Record<string, unknown>,
+        `heartbeat-${heartbeat.deviceId}-${heartbeat.timestamp}`,
+      );
+    },
+    onHeartbeatAcknowledged: () => { lastAuthenticatedControlHeartbeatAt = Date.now(); },
+    logger: app.log,
+  }) : undefined;
+
+  if (controlTransportConfig && controlRole === 'control-plane') {
+    controlPlaneTransport = await startControlPlaneTransport(controlTransportConfig, {
+      onEvent: async (message, subject) => {
+        const signed = parseSignedControlMessage(message);
+        const deviceId = deviceIdFromControlSubject(subject, 'event');
+        if (!signed || !deviceId) {
+          app.log.warn({ subject }, 'discarding malformed control event');
+          return;
+        }
+        const authenticated = await webControlRegistry.authenticateDeviceMessage(
+          deviceId,
+          signed.payload,
+          signed.signature,
+        );
+        if (!authenticated) {
+          app.log.warn({ subject }, 'discarding unauthenticated control event');
+          return;
+        }
+        await controlCommandService.handleDeviceEvent(signed.payload as unknown as ControlOtaTransitionEvent);
+      },
+      onHeartbeat: async (message, subject) => {
+        const signed = parseSignedControlMessage(message);
+        const deviceId = deviceIdFromControlSubject(subject, 'heartbeat');
+        if (!signed || !deviceId) {
+          app.log.warn({ subject }, 'discarding malformed control heartbeat');
+          return;
+        }
+        const authenticated = await webControlRegistry.authenticateDeviceMessage(
+          deviceId,
+          signed.payload,
+          signed.signature,
+        );
+        if (!authenticated) {
+          app.log.warn({ subject }, 'discarding unauthenticated control heartbeat');
+          return;
+        }
+        await webControlRegistry.recordHeartbeat(signed.payload as unknown as DeviceHeartbeatPayload);
+      },
+    }, { logger: app.log, allowOfflineStartup: true });
+  } else if (controlTransportConfig && controlRole === 'device') {
+    const deviceId = enrolledIdentity.deviceId!;
+    deviceControlTransport = await startControlPlaneTransport(controlTransportConfig, {
+      onCommand: async (message, subject) => {
+        if (subject !== `printops.control.command.${deviceId}`) {
+          app.log.warn({ subject }, 'discarding command delivered on an unexpected subject');
+          return;
+        }
+        const signed = parseSignedControlMessage(message);
+        const deviceToken = deviceIdentityStore.getDeviceToken();
+        if (!signed || !deviceToken || !verifyControlMessageWithToken(
+          deviceToken,
+          signed.payload,
+          signed.signature,
+        )) {
+          app.log.warn({ subject }, 'discarding unauthenticated control command');
+          return;
+        }
+        const command = signed.payload as unknown as ControlCommandEnvelope;
+        await controlAgent!.handleCommand(command, { waitForCompletion: true });
+      },
+    }, { logger: app.log, allowOfflineStartup: true });
+    controlAgent!.startHeartbeat();
+  } else if (deviceIdentityStore.isEnrolled()) {
+    app.log.info('control agent is offline: PRINTOPS_CONTROL_NATS_URL is not configured');
+  }
+  app.addHook('onClose', async () => {
+    controlAgent?.stopHeartbeat();
+    await deviceControlTransport?.stop();
+    await controlPlaneTransport?.stop();
+  });
 
   // Health check (no auth). /api is the canonical dashboard namespace; the
   // root alias remains for runner/deployment compatibility.
@@ -1032,7 +1274,76 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       audit: auditRepo,
       internalToken: otaConfig.healthToken,
     });
-    await otaRoutes(v1, { service: otaUpdateService, internalToken: otaConfig.healthToken });
+    await otaRoutes(v1, {
+      service: otaUpdateService,
+      internalToken: otaConfig.healthToken,
+      contentSync: controlContentSyncService,
+      deviceInfo: getLocalControlDeviceInfo,
+      onControlAgentHeartbeat: () => { lastAuthenticatedControlHeartbeatAt = Date.now(); },
+    });
+    v1.get('/control/device-info', async (_req, reply) => {
+      const identity = deviceIdentityStore.getIdentity();
+      return reply.send({
+        installationId: identity.installationId,
+        deviceId: identity.deviceId,
+        hostname: os.hostname(),
+        platform: process.platform === 'win32' ? 'windows-x64' : process.platform,
+        architecture: process.arch,
+        appVersion: process.env['PRINTOPS_APP_VERSION'] || '0.1.32',
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        capabilities: LOCAL_CONTROL_CAPABILITIES,
+        status: 'READY',
+      });
+    });
+
+    v1.get('/control/client-status', async (_req, reply) => {
+      const identity = deviceIdentityStore.getIdentity();
+      const latestRemoteCommand = deviceIdentityStore.getLatestControlCommand();
+      const isEnrolled = deviceIdentityStore.isEnrolled();
+      let otaState = 'IDLE';
+      try {
+        const otaStatus = await otaUpdateService.getStatus();
+        otaState = otaStatus.state.state;
+      } catch {
+        // ignore
+      }
+      const isRecoveryBlocked = ['ROLLBACK_FAILED', 'RECOVERY_REQUIRED'].includes(otaState);
+      const recentlyContacted = (Date.now() - lastAuthenticatedControlHeartbeatAt) < 90_000;
+      // Enrollment is identity, not liveness. Presence requires an acknowledged
+      // NATS heartbeat reported by the in-process agent or authenticated sidecar.
+      const visibleToControlPlane = isEnrolled && recentlyContacted;
+      const otaReady = visibleToControlPlane && !isRecoveryBlocked;
+
+      return reply.send({
+        deviceId: identity.deviceId,
+        installationId: identity.installationId,
+        hostname: identity.hostname,
+        isEnrolled,
+        visibleToControlPlane,
+        otaReady,
+        otaState,
+        remoteCommand: latestRemoteCommand ? {
+          commandType: latestRemoteCommand.commandType,
+          targetVersion: latestRemoteCommand.targetVersion,
+          state: latestRemoteCommand.lastCommandState,
+          replayStatus: latestRemoteCommand.replayStatus,
+          progress: latestRemoteCommand.progress,
+          updatedAt: latestRemoteCommand.lastCommandAt,
+        } : null,
+        // Endpoints this installation was issued at enrollment; null until it
+        // is enrolled. Lets the UI show what the client is connecting to.
+        controlPlane: deviceIdentityStore.getControlPlane() ?? null,
+        connectionState: visibleToControlPlane ? 'ONLINE' : 'DISCONNECTED',
+      });
+    });
+    await controlRoutes(v1, {
+      registry: webControlRegistry,
+      commands: controlCommandService,
+      releases: releaseCatalogService,
+      audit: controlAuditRepo,
+      content: controlContentSyncService,
+      storage: releaseStorageService,
+    });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
   if (printIntakeCfg) {

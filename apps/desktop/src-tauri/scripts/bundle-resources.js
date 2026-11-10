@@ -1,13 +1,19 @@
 const f = require('fs');
 const path = require('path');
-const d = 'src-tauri/resources';
+const root = path.resolve(__dirname, '../../../..');
+const { assertNoLocalOtaSigningSecret, resolveOtaPublicKey } = require(
+  path.join(root, 'scripts', 'ota-signing.cjs'),
+);
+delete process.env.PRINTOPS_OTA_SECRET;
+assertNoLocalOtaSigningSecret(root);
+const d = path.join(root, 'apps', 'desktop', 'src-tauri', 'resources');
 
 // Ensure resources directory exists
 f.mkdirSync(d, { recursive: true });
 
 // ── Copy web static files into API static dir ──────────────────────────
-const webDist = '../web/dist';
-const apiStatic = '../api/dist/static';
+const webDist = path.join(root, 'apps', 'web', 'dist');
+const apiStatic = path.join(root, 'apps', 'api', 'dist', 'static');
 if (f.existsSync(webDist)) {
   f.cpSync(webDist, apiStatic, { recursive: true });
   console.log('[bundle] Copied web/dist → api/dist/static');
@@ -16,7 +22,7 @@ if (f.existsSync(webDist)) {
 }
 
 // ── Copy API server binary ─────────────────────────────────────────────
-const serverExe = '../api/dist/server.exe';
+const serverExe = path.join(root, 'apps', 'api', 'dist', 'server.exe');
 if (f.existsSync(serverExe)) {
   f.cpSync(serverExe, path.join(d, 'server.exe'));
   console.log('[bundle] Copied server.exe');
@@ -33,7 +39,7 @@ if (f.existsSync(apiStatic)) {
 }
 
 // ── Copy SQLite WASM binary (needed by pkg-bundled server.exe) ─────────
-const wasmPath = '../api/dist/sql-wasm.wasm';
+const wasmPath = path.join(root, 'apps', 'api', 'dist', 'sql-wasm.wasm');
 if (f.existsSync(wasmPath)) {
   f.cpSync(wasmPath, path.join(d, 'sql-wasm.wasm'));
   console.log('[bundle] Copied sql-wasm.wasm');
@@ -42,7 +48,7 @@ if (f.existsSync(wasmPath)) {
 }
 
 // ── Copy Go Runner binary (optional: app works without it) ─────────────
-const runnerExe = '../runner-go/printops-runner.exe';
+const runnerExe = path.join(root, 'apps', 'runner-go', 'printops-runner.exe');
 if (f.existsSync(runnerExe)) {
   f.cpSync(runnerExe, path.join(d, 'printops-runner.exe'));
   console.log('[bundle] Copied printops-runner.exe');
@@ -52,7 +58,7 @@ if (f.existsSync(runnerExe)) {
 }
 
 // ── External OTA updater (must survive the Desktop process it replaces) ────
-const updaterExe = '../updater-go/printops-updater.exe';
+const updaterExe = path.join(root, 'apps', 'updater-go', 'printops-updater.exe');
 if (f.existsSync(updaterExe)) {
   f.cpSync(updaterExe, path.join(d, 'printops-updater.exe'));
   console.log('[bundle] Copied printops-updater.exe');
@@ -60,14 +66,17 @@ if (f.existsSync(updaterExe)) {
   console.warn('[bundle] WARNING: printops-updater.exe not found — run the desktop build first');
 }
 
-const publicKeyFile = process.env.PRINTOPS_OTA_PUBLIC_KEY_FILE;
 const publicKeyPath = path.join(d, 'ota-public-key.txt');
-if (publicKeyFile && f.existsSync(publicKeyFile)) {
-  f.cpSync(publicKeyFile, publicKeyPath);
-} else if (process.env.PRINTOPS_OTA_PUBLIC_KEY?.trim()) {
-  f.writeFileSync(publicKeyPath, `${process.env.PRINTOPS_OTA_PUBLIC_KEY.trim()}\n`);
-} else if (!f.existsSync(publicKeyPath)) {
-  f.writeFileSync(publicKeyPath, 'unconfigured\n');
-}
+const previousPublicKey = f.existsSync(publicKeyPath)
+  ? f.readFileSync(publicKeyPath, 'utf8').trim()
+  : '';
+const acceptanceBuild = process.env.PRINTOPS_OTA_NATIVE_ACCEPTANCE_BUILD === '1';
+const acceptancePublicKeyFile = process.env.PRINTOPS_OTA_PUBLIC_KEY_FILE;
+const bundledPublicKey = resolveOtaPublicKey({
+  previousPublicKey,
+  acceptanceBuild,
+  acceptancePublicKeyFile,
+});
+f.writeFileSync(publicKeyPath, `${bundledPublicKey}\n`);
 
 console.log('[bundle] Resources prepared successfully');

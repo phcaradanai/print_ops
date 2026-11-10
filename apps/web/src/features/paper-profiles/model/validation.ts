@@ -1,12 +1,17 @@
 import {
+  fieldContentBounds,
+  fieldContentFitsPaper,
+  maxFieldContentMm,
+  maxFieldSymbolSizeMm,
+  qrQuietZoneUpperBoundMm,
   resolveRenderTransform,
   resolveRenderTransformFrame,
-  qrQuietZoneUpperBoundMm,
-  transformedRectBounds,
+  type FieldContentBounds,
+  type FieldContentBox,
 } from '@printerops/shared';
 import type { DynamicField, PaperForm, ValidationIssue } from './types.js';
 import { DEFAULT_BARCODE_HEIGHT_MM, DEFAULT_BARCODE_WIDTH_MM, DEFAULT_QR_SIZE_MM } from './defaults.js';
-import { getVisualPaperGeometry, mapPrintablePointToVisual } from './geometry.js';
+import { getVisualPaperGeometry } from './geometry.js';
 
 type PaperFormForValidation = Pick<
   PaperForm,
@@ -71,52 +76,51 @@ export function validatePaperForm(form: PaperFormForValidation): ValidationIssue
   return issues;
 }
 
-export function getDynamicFieldTransformedBounds(form: PaperForm, field: DynamicField) {
-  const geometry = getVisualPaperGeometry(form);
-  const transform = resolveRenderTransform(form);
-  const frame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, transform);
-  const point = mapPrintablePointToVisual(field.xMm, field.yMm, geometry);
-  const size = getDynamicFieldSize(field);
-  const anchorX = geometry.marginLeftMm + point.xMm;
-  const anchorY = geometry.marginTopMm + point.yMm;
-  const left = field.align === 'center' ? anchorX - size.widthMm / 2
-    : field.align === 'right' ? anchorX - size.widthMm
-      : anchorX;
-  const bounds = transformedRectBounds(
-    left,
-    anchorY,
-    size.widthMm,
-    size.heightMm,
-    geometry.widthMm,
-    geometry.heightMm,
-    transform,
-  );
+/**
+ * Text advance estimate, deliberately crude and shared with nothing else: a
+ * glyph is `TEXT_GLYPH_ADVANCE_EM` of the font size wide and a line is
+ * `TEXT_LINE_HEIGHT_EM` tall. It over-estimates proportional lowercase and
+ * under-estimates wide scripts, so it only ever quotes a character budget or
+ * warns an operator — it never moves a field on its own.
+ */
+const TEXT_GLYPH_ADVANCE_EM = 0.6;
+const TEXT_LINE_HEIGHT_EM = 1.2;
+
+/** Advance width of one glyph at `fontSizePt`, in millimetres. */
+export function textGlyphWidthMm(fontSizePt: number): number {
+  if (!Number.isFinite(fontSizePt) || fontSizePt <= 0) return 0;
+  return (fontSizePt * 25.4 * TEXT_GLYPH_ADVANCE_EM) / 72;
+}
+
+/** One-line text box estimate: `text.length` glyphs wide, one line high. */
+export function estimateTextFieldSizeMm(text: string, fontSizePt: number): { widthMm: number; heightMm: number } {
+  const glyphWidthMm = textGlyphWidthMm(fontSizePt);
   return {
-    ...bounds,
-    minX: bounds.minX + frame.offsetX,
-    minY: bounds.minY + frame.offsetY,
-    maxX: bounds.maxX + frame.offsetX,
-    maxY: bounds.maxY + frame.offsetY,
+    widthMm: Math.max(glyphWidthMm, text.length * glyphWidthMm),
+    heightMm: (fontSizePt * 25.4 * TEXT_LINE_HEIGHT_EM) / 72,
   };
 }
 
-export function validateDynamicFields(form: PaperForm, fields: DynamicField[]): ValidationIssue[] {
-  const geometry = getVisualPaperGeometry(form);
-  const transform = resolveRenderTransform(form);
-  const frame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, transform);
-  if (![geometry.widthMm, geometry.heightMm, frame.width, frame.height].every(Number.isFinite)) return [];
-  const epsilon = 0.0001;
-  return fields.flatMap((field) => {
-    const bounds = getDynamicFieldTransformedBounds(form, field);
-    const fits = bounds.minX >= -epsilon
-      && bounds.minY >= -epsilon
-      && bounds.maxX <= frame.width + epsilon
-      && bounds.maxY <= frame.height + epsilon;
-    return fits ? [] : [{ field: `fields.${field.id}`, messageKey: 'validation.fieldOutsidePaper' }];
-  });
+/**
+ * Characters that still fit on one line in `availableWidthMm` at `fontSizePt`,
+ * floored so the quoted budget never names a count that itself overflows.
+ */
+export function textFieldMaxCharacters(availableWidthMm: number, fontSizePt: number): number {
+  const glyphWidthMm = textGlyphWidthMm(fontSizePt);
+  if (glyphWidthMm <= 0 || !Number.isFinite(availableWidthMm) || availableWidthMm <= 0) return 0;
+  return Math.floor((availableWidthMm - 1e-9) / glyphWidthMm);
 }
 
-function getDynamicFieldSize(field: DynamicField): { widthMm: number; heightMm: number } {
+function isMachineReadableField(field: DynamicField): boolean {
+  return field.type === 'barcode' || field.type === 'qrcode';
+}
+
+/** Text a field is measured with while nothing has been printed yet. */
+function sampleTextForField(field: DynamicField): string {
+  return field.defaultValue || field.label || field.key || 'field';
+}
+
+export function getDynamicFieldSize(field: DynamicField): { widthMm: number; heightMm: number } {
   if (field.type === 'qrcode') {
     const sizeMm = field.qrSizeMm ?? DEFAULT_QR_SIZE_MM;
     const quietZoneMm = qrQuietZoneUpperBoundMm(sizeMm);
@@ -128,12 +132,129 @@ function getDynamicFieldSize(field: DynamicField): { widthMm: number; heightMm: 
       heightMm: field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM,
     };
   }
-  const sample = field.defaultValue || field.label || field.key || 'field';
-  const charWidthMm = field.fontSize * 25.4 * 0.6 / 72;
+  return estimateTextFieldSizeMm(sampleTextForField(field), field.fontSize);
+}
+
+export function getDynamicFieldContentBox(field: DynamicField): FieldContentBox {
+  const size = getDynamicFieldSize(field);
   return {
-    widthMm: Math.max(charWidthMm, sample.length * charWidthMm),
-    heightMm: field.fontSize * 25.4 * 1.2 / 72,
+    xMm: field.xMm,
+    yMm: field.yMm,
+    widthMm: size.widthMm,
+    heightMm: size.heightMm,
+    align: field.align,
   };
+}
+
+/** Frame-relative bounds of the field's printed content, in millimetres. */
+export function getDynamicFieldTransformedBounds(form: PaperForm, field: DynamicField): FieldContentBounds {
+  return fieldContentBounds(getVisualPaperGeometry(form), resolveRenderTransform(form), getDynamicFieldContentBox(field));
+}
+
+export interface DynamicFieldLimits {
+  maxWidthMm: number;
+  maxHeightMm: number;
+  /** Characters that fit on one line, or null for barcode/QR codes, whose
+   * limits are the box itself. */
+  maxChars: number | null;
+  charWidthMm: number | null;
+  /** Whether the anchor itself — not just the content — is on the paper. */
+  anchorInsidePaper: boolean;
+}
+
+/** What this field can still hold at its position, rotation and font size. */
+export function getDynamicFieldLimits(form: PaperForm, field: DynamicField): DynamicFieldLimits | null {
+  const geometry = getVisualPaperGeometry(form);
+  const transform = resolveRenderTransform(form);
+  const frame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, transform);
+  if (![geometry.widthMm, geometry.heightMm, frame.width, frame.height].every(Number.isFinite)) return null;
+  const box = getDynamicFieldContentBox(field);
+  const isText = !isMachineReadableField(field);
+  // Text keeps its font size, so only the width can grow; a symbol keeps its
+  // shape, so both sides grow together.
+  const limits = isText
+    ? maxFieldContentMm(geometry, transform, box)
+    : maxFieldSymbolSizeMm(geometry, transform, box);
+  return {
+    maxWidthMm: limits.maxWidthMm,
+    maxHeightMm: limits.maxHeightMm,
+    charWidthMm: isText ? textGlyphWidthMm(field.fontSize) : null,
+    maxChars: isText ? textFieldMaxCharacters(limits.maxWidthMm, field.fontSize) : null,
+    anchorInsidePaper: fieldContentFitsPaper(geometry, transform, { ...box, widthMm: 0, heightMm: 0 }),
+  };
+}
+
+export interface DynamicFieldDiagnostics {
+  /** Blocking: the profile cannot print this field where it is configured. */
+  errors: ValidationIssue[];
+  /** Content that prints clipped. The payload decides the real width, so this
+   * warns instead of blocking a save. */
+  warnings: ValidationIssue[];
+}
+
+export function validateDynamicFieldDiagnostics(form: PaperForm, fields: DynamicField[]): DynamicFieldDiagnostics {
+  const geometry = getVisualPaperGeometry(form);
+  const transform = resolveRenderTransform(form);
+  const errors: ValidationIssue[] = [];
+  const warnings: ValidationIssue[] = [];
+  for (const field of fields) {
+    const box = getDynamicFieldContentBox(field);
+    const name = field.label.trim() || field.key.trim() || field.id;
+    if (!fieldContentFitsPaper(geometry, transform, { ...box, widthMm: 0, heightMm: 0 })) {
+      errors.push({
+        field: `fields.${field.id}`,
+        messageKey: 'validation.fieldAnchorOutsidePaper',
+        params: { name, xMm: Number(field.xMm.toFixed(1)), yMm: Number(field.yMm.toFixed(1)) },
+      });
+      continue;
+    }
+    if (fieldContentFitsPaper(geometry, transform, box)) continue;
+    if (isMachineReadableField(field)) {
+      const limits = maxFieldSymbolSizeMm(geometry, transform, box);
+      errors.push({
+        field: `fields.${field.id}`,
+        messageKey: 'validation.fieldOutsidePaper',
+        params: {
+          name,
+          widthMm: Number(box.widthMm.toFixed(1)),
+          heightMm: Number(box.heightMm.toFixed(1)),
+          maxWidthMm: limits.maxWidthMm,
+          maxHeightMm: limits.maxHeightMm,
+        },
+      });
+      continue;
+    }
+    const limits = maxFieldContentMm(geometry, transform, box);
+    warnings.push({
+      field: `fields.${field.id}`,
+      messageKey: 'validation.fieldTextOverflow',
+      params: {
+        name,
+        chars: sampleTextForField(field).length,
+        maxChars: textFieldMaxCharacters(limits.maxWidthMm, field.fontSize),
+        fontSize: field.fontSize,
+      },
+    });
+  }
+  return { errors, warnings };
+}
+
+/** Blocking field problems only. */
+export function validateDynamicFields(form: PaperForm, fields: DynamicField[]): ValidationIssue[] {
+  return validateDynamicFieldDiagnostics(form, fields).errors;
+}
+
+/** Fill `{name}` placeholders, the shape the dictionaries already use. */
+export function formatMessage(template: string, params: Record<string, string | number>): string {
+  let message = template;
+  for (const [key, value] of Object.entries(params)) {
+    message = message.split(`{${key}}`).join(String(value));
+  }
+  return message;
+}
+
+export function formatValidationIssue(translate: (key: string) => string, issue: ValidationIssue): string {
+  return formatMessage(translate(issue.messageKey), issue.params ?? {});
 }
 
 export interface ImportDraftForValidation extends PaperFormForValidation {

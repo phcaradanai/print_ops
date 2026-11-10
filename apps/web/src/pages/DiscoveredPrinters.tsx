@@ -4,6 +4,7 @@ import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
+import { connectionTypeLabel } from '../lib/deviceHealth.js';
 import {
   Alert,
   Badge,
@@ -19,6 +20,9 @@ import {
   LoadingState,
   Mono,
   PageLayout,
+  ResourceToolbar,
+  SelectFilter,
+  TableEmpty,
   Text,
 } from '../components/ui/index.js';
 
@@ -36,21 +40,6 @@ interface DiscoveredPrinter {
   registeredPrinterId?: string;
 }
 
-/**
- * Connection type is metadata, not operational status, so it takes the neutral
- * metadata tag rather than a colour of its own. The previous version assigned
- * each type a hex and rendered it at `color + '20'` — six accent colours that
- * appear nowhere else in the product, carrying no state an operator can act on.
- */
-const CONNECTION_LABEL: Record<string, string> = {
-  usb: 'USB',
-  tcp_ip: 'TCP/IP',
-  wsd: 'WSD',
-  lpt_com: 'LPT/COM',
-  network_share: 'Network Share',
-  unknown: 'Unknown',
-};
-
 export default function DiscoveredPrinters() {
   const { t } = useLocale();
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
@@ -59,6 +48,19 @@ export default function DiscoveredPrinters() {
   const fetchPrinters = useCallback(() => apiFetch<DiscoveredPrinter[]>('/v1/discovered-printers'), []);
   const printersResource = useApiResource(fetchPrinters);
   const printers = printersResource.data ?? [];
+
+  // Discovery registration filter. Shares the toolbar anatomy with the other
+  // device pages; unlike Runners/Printers there is no health contract here —
+  // discovery is metadata about what the runner sees, so the honest split is
+  // registered vs not-yet-registered.
+  const [registrationFilter, setRegistrationFilter] = useState<'ALL' | 'REGISTERED' | 'UNREGISTERED'>('ALL');
+  const unregisteredCount = printers.filter((p) => !p.registeredPrinterId).length;
+  const registeredCount = printers.length - unregisteredCount;
+  const visiblePrinters = registrationFilter === 'ALL'
+    ? printers
+    : printers.filter(
+        (p) => (registrationFilter === 'REGISTERED') === Boolean(p.registeredPrinterId),
+      );
 
   const register = useApiAction(async (printer: DiscoveredPrinter) => {
     await apiFetch(`/v1/discovered-printers/${printer.id}/register`, {
@@ -95,8 +97,8 @@ export default function DiscoveredPrinters() {
     lastSeen: t('page.discovery.lastSeen'),
     status: t('page.discovery.status'),
     action: t('page.discovery.action'),
+    registration: t('page.discovery.filterRegistration'),
   };
-
   return (
     <PageLayout
       title={t('page.discovery.title')}
@@ -138,7 +140,19 @@ export default function DiscoveredPrinters() {
       )}
 
       {printers.length > 0 && (
-        <DataTable label={t('page.discovery.title')} responsive>
+        <div className="ui-table-card">
+          <ResourceToolbar ariaLabel={columns.registration}>
+            <SelectFilter
+              label={columns.registration}
+              value={registrationFilter}
+              onValueChange={(value) => setRegistrationFilter(value as 'ALL' | 'REGISTERED' | 'UNREGISTERED')}
+            >
+              <option value="ALL">{t('page.discovery.filterAll')} ({printers.length})</option>
+              <option value="UNREGISTERED">{t('page.discovery.filterUnregistered')} ({unregisteredCount})</option>
+              <option value="REGISTERED">{t('page.discovery.filterRegistered')} ({registeredCount})</option>
+            </SelectFilter>
+          </ResourceToolbar>
+          <DataTable label={t('page.discovery.title')} responsive>
           <thead>
             <tr>
               <DataHead>{columns.name}</DataHead>
@@ -152,7 +166,7 @@ export default function DiscoveredPrinters() {
             </tr>
           </thead>
           <tbody>
-            {printers.map((p) => (
+            {visiblePrinters.map((p) => (
               <tr key={p.id}>
                 {/* Long device names are clipped on desktop but carry the full
                     string in `title`, and the responsive card view shows them
@@ -171,8 +185,12 @@ export default function DiscoveredPrinters() {
                 <DataCell label={columns.port}>
                   <Mono tone="muted" truncate title={p.portName ?? '—'}>{p.portName ?? '—'}</Mono>
                 </DataCell>
+                {/* Connection type is metadata. `connectionTypeLabel` shows a
+                    recognised type as its short name and an unrecognised one
+                    verbatim so the raw value still tells whoever reads it what
+                    the agent actually reported. */}
                 <DataCell label={columns.connection}>
-                  <Badge>{CONNECTION_LABEL[p.connectionType] ?? CONNECTION_LABEL['unknown']!}</Badge>
+                  <Badge>{connectionTypeLabel(p.connectionType)}</Badge>
                 </DataCell>
                 <DataCell label={columns.runner}>
                   <Mono tone="muted" title={p.runnerId}>{p.runnerId.slice(0, 8)}…</Mono>
@@ -199,8 +217,14 @@ export default function DiscoveredPrinters() {
                 </DataCell>
               </tr>
             ))}
+            {visiblePrinters.length === 0 && (
+              <TableEmpty columns={8}>
+                <EmptyState title={t('page.discovery.noMatch')} />
+              </TableEmpty>
+            )}
           </tbody>
         </DataTable>
+        </div>
       )}
 
       {/* Replaces window.confirm(): a native modal blocks the whole WebView,

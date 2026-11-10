@@ -18,6 +18,8 @@ import { PaperProfileIcon } from './components/PaperProfileIcon.js';
 import { UnsavedChangesDialog } from './components/UnsavedChangesDialog.js';
 import type { PaperProfile } from './model/types.js';
 import { PageLayout } from '../../components/PageLayout.js';
+import { Button, Inline } from '../../components/ui/index.js';
+import { TransferIcon } from '../../components/TransferIcon.js';
 
 const DEFAULT_CANVAS_OPTIONS: CanvasOptions = {
   verticalGrid: false,
@@ -129,8 +131,45 @@ export default function PaperProfileWorkspace() {
     <PageLayout
       className="paper-profiles-page"
       width="full"
-      header={<PaperProfilePageHeader editor={editor} popups={popups} stage={stage}
-        onCreate={openCreate} onBack={returnToLibrary} t={t} />}
+      title={stage === 'library' ? t('page.paperProfiles.title') : undefined}
+      description={stage === 'library' ? t('page.paperProfiles.libraryDescription') : undefined}
+      actions={
+        stage === 'library' ? (
+          <Inline gap="sm">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const input = document.getElementById('pp-import-json-input') as HTMLInputElement | null;
+                input?.click();
+              }}
+            >
+              <TransferIcon action="import" /> {t('page.paperProfiles.importJsonProfile')}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => void persistence.exportAll()}
+              disabled={persistence.profiles.length === 0}
+            >
+              <TransferIcon action="export" /> {t('page.paperProfiles.exportAllProfiles')}
+            </Button>
+            <Button onClick={openCreate}>
+              <PaperProfileIcon name="plus" /> {t('page.paperProfiles.createProfile')}
+            </Button>
+          </Inline>
+        ) : undefined
+      }
+      header={
+        stage === 'editor' ? (
+          <PaperProfilePageHeader
+            editor={editor}
+            popups={popups}
+            stage={stage}
+            onCreate={openCreate}
+            onBack={returnToLibrary}
+            t={t}
+          />
+        ) : undefined
+      }
     >
       {notice && <div className="pp-sticky-note" role="status"><PaperProfileIcon name="info" />{notice}</div>}
       {stage === 'library' ? (

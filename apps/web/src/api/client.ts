@@ -108,6 +108,15 @@ export function apiBase(): string {
   return '';
 }
 
+/** The bundled entry screen must work before the local HTTP service starts. */
+export function desktopBootstrapOrigin(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const { protocol, hostname } = window.location;
+  return protocol === 'tauri:' || hostname === 'tauri.localhost'
+    ? 'http://127.0.0.1:31415'
+    : undefined;
+}
+
 export interface NatsRuntimeStatus {
   enabled: boolean; state: string; connected: boolean; intakeReady: boolean; callbackPublishReady: boolean; streamReady: boolean; consumerReady: boolean; clientId?: string; subject?: string; stream?: string; durable?: string; server?: string; lastConnectedAt?: string; lastDisconnectedAt?: string; lastAttemptAt?: string; nextRetryAt?: string; lastErrorCode?: string; lastErrorStage?: string; lastErrorMessage?: string;
 }
@@ -165,7 +174,7 @@ export function getReadiness(): Promise<ReadinessSnapshot> {
 }
 
 export function healthUrl(): string {
-  return apiBase() + '/api/health';
+  return (desktopBootstrapOrigin() ?? apiBase()) + '/api/health';
 }
 
 function apiUrl(path: string): string {
@@ -293,6 +302,31 @@ export async function login(email: string, password: string): Promise<SessionUse
   return data.user;
 }
 
+export async function recoverPassword(email: string, recoveryCode: string, newPassword: string): Promise<{ recoveryCode: string }> {
+  const path = '/auth/forgot-password';
+  let res: Response;
+  try {
+    res = await fetch(apiBase() + '/api' + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, recoveryCode, newPassword }),
+    });
+  } catch (cause) {
+    const error = networkApiError(path, cause);
+    logError('recoverPassword', error);
+    throw error;
+  }
+
+  if (!res.ok) throw await apiErrorFromResponse(res, path);
+  return await res.json() as { recoveryCode: string };
+}
+
+export async function issuePasswordRecoveryCode(): Promise<{ recoveryCode: string }> {
+  const result = await apiFetch<{ recoveryCode: string }>('/auth/recovery-code', { method: 'POST' });
+  if (!result) throw new Error('The server did not return a recovery code.');
+  return result;
+}
+
 export type BootstrapState = 'READY' | 'REQUIRED_NEW' | 'MIGRATION_REQUIRED';
 export interface BootstrapInfo { state: BootstrapState; ownerEmailHints: string[] }
 
@@ -310,7 +344,7 @@ export async function bootstrapOwner(input: {
   passwordConfirmation: string;
   authorizationEmail?: string;
   authorizationPassword?: string;
-}): Promise<SessionUser> {
+}): Promise<{ user: SessionUser; recoveryCode: string }> {
   const path = '/auth/bootstrap';
   const res = await fetch(apiBase() + '/api' + path, {
     method: 'POST',
@@ -318,9 +352,9 @@ export async function bootstrapOwner(input: {
     body: JSON.stringify(input),
   });
   if (!res.ok) throw await apiErrorFromResponse(res, path);
-  const data = await res.json() as { token: string; user: SessionUser };
+  const data = await res.json() as { token: string; user: SessionUser; recoveryCode: string };
   storageSet('token', data.token);
-  return data.user;
+  return { user: data.user, recoveryCode: data.recoveryCode };
 }
 
 export async function getCurrentUser(): Promise<SessionUser> {
@@ -362,6 +396,28 @@ export async function apiDownload(path: string, filename: string): Promise<void>
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+export function getDownloadUrl(path: string): string {
+  const authToken = token();
+  const apiKey = getApiKey();
+  const separator = path.includes('?') ? '&' : '?';
+  let url = apiUrl(path);
+  if (authToken) {
+    url += `${separator}token=${encodeURIComponent(authToken)}`;
+  } else if (apiKey) {
+    url += `${separator}apiKey=${encodeURIComponent(apiKey)}`;
+  }
+  return url;
+}
+
+export function triggerDirectDownload(path: string, filename?: string): void {
+  const url = getDownloadUrl(path);
+  const a = document.createElement('a');
+  a.href = url;
+  if (filename) a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
 /** Safely read a File as a base64 data URI string. */
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

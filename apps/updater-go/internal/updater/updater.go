@@ -37,6 +37,22 @@ func (u *Updater) Apply(ctx context.Context, request Request) error {
 		return fmt.Errorf("persist updater state: %w", err)
 	}
 
+	var shutdownEvent desktopShutdownEvent
+	if request.DesktopPID > 0 {
+		if request.DesktopShutdownEventName == "" {
+			return u.fail(request, &state, PhaseFailed, errors.New("desktop shutdown signal is missing; refusing unattended OTA"))
+		}
+		var err error
+		shutdownEvent, err = u.openShutdownSignal(request.DesktopShutdownEventName)
+		if err != nil {
+			return u.fail(request, &state, PhaseFailed, fmt.Errorf("desktop is no longer open; canceling OTA: %w", err))
+		}
+		defer shutdownEvent.Close()
+		if shutdownEvent.IsSignaled() {
+			return u.fail(request, &state, PhaseFailed, errors.New("PrintOps is closing; OTA canceled"))
+		}
+	}
+
 	if request.HandoffDelayMs > 0 {
 		if err := sleepContext(ctx, time.Duration(request.HandoffDelayMs)*time.Millisecond); err != nil {
 			return u.fail(request, &state, PhaseFailed, err)
@@ -50,6 +66,9 @@ func (u *Updater) Apply(ctx context.Context, request Request) error {
 	}
 
 	if request.DesktopPID > 0 {
+		if shutdownEvent.IsSignaled() {
+			return u.fail(request, &state, PhaseFailed, errors.New("PrintOps is closing; OTA canceled"))
+		}
 		if err := u.validateDesktopProcess(request); err != nil {
 			return u.fail(request, &state, PhaseFailed, err)
 		}
@@ -58,8 +77,17 @@ func (u *Updater) Apply(ctx context.Context, request Request) error {
 		return err
 	}
 	if request.DesktopPID > 0 {
+		if shutdownEvent.IsSignaled() {
+			return u.fail(request, &state, PhaseFailed, errors.New("PrintOps is closing; OTA canceled"))
+		}
 		if err := u.Runtime.StopProcessTree(request.DesktopPID, time.Duration(request.ShutdownTimeoutMs)*time.Millisecond); err != nil {
+			if shutdownEvent.IsSignaled() {
+				return u.fail(request, &state, PhaseFailed, fmt.Errorf("PrintOps closed before OTA handoff: %w", err))
+			}
 			return u.rollbackBeforeInstall(request, &state, err)
+		}
+		if shutdownEvent.IsSignaled() {
+			return u.fail(request, &state, PhaseFailed, errors.New("PrintOps closed before OTA handoff; update canceled"))
 		}
 	}
 
@@ -112,6 +140,12 @@ func (u *Updater) Apply(ctx context.Context, request Request) error {
 	}
 	_ = u.report(request, "COMPLETED", "")
 	return nil
+}
+func (u *Updater) openShutdownSignal(name string) (desktopShutdownEvent, error) {
+	if u.openShutdownEvent != nil {
+		return u.openShutdownEvent(name)
+	}
+	return openDesktopShutdownEvent(name)
 }
 
 func (u *Updater) Recover(ctx context.Context, statePath string, currentDesktopPID int) error {
@@ -219,16 +253,40 @@ func (u *Updater) Rollback(ctx context.Context, statePath string, currentDesktop
 		u.Probe = HTTPHealthProbe{}
 	}
 	request := state.Request
+	request.DesktopPID = 0
+	request.DesktopShutdownEventName = ""
 	if currentDesktopPID > 0 {
 		request.DesktopPID = currentDesktopPID
-	}
-	if request.DesktopPID > 0 {
-		if path, err := u.Runtime.ProcessPath(request.DesktopPID); err == nil && samePath(path, request.DesktopPath) {
-			if err := u.Runtime.KillProcessTree(request.DesktopPID, time.Duration(request.ShutdownTimeoutMs)*time.Millisecond); err != nil {
-				return u.rollbackFailed(request, &state, err)
+		request.DesktopShutdownEventName = u.DesktopShutdownEventName
+		if u.DesktopShutdownEventName == "" {
+			return errors.New("desktop shutdown signal is missing; refusing unattended rollback")
+		}
+		shutdownEvent, err := u.openShutdownSignal(u.DesktopShutdownEventName)
+		if err != nil {
+			return fmt.Errorf("desktop is no longer open; canceling rollback: %w", err)
+		}
+		defer shutdownEvent.Close()
+		if shutdownEvent.IsSignaled() {
+			return errors.New("PrintOps is closing; rollback canceled")
+		}
+		if err := u.validateDesktopProcess(request); err != nil {
+			return err
+		}
+		if err := u.Runtime.KillProcessTree(request.DesktopPID, time.Duration(request.ShutdownTimeoutMs)*time.Millisecond); err != nil {
+			if shutdownEvent.IsSignaled() {
+				return fmt.Errorf("PrintOps closed before rollback handoff: %w", err)
 			}
+			return u.rollbackFailed(request, &state, err)
+		}
+		if shutdownEvent.IsSignaled() {
+			return errors.New("PrintOps closed before rollback handoff; rollback canceled")
+		}
+	} else if previousPID := state.Request.DesktopPID; previousPID > 0 {
+		if path, err := u.Runtime.ProcessPath(previousPID); err == nil && samePath(path, request.DesktopPath) {
+			return errors.New("PrintOps Desktop is still running; supply --desktop-pid to coordinate rollback")
 		}
 	}
+	state.Request = request
 	if err := u.transition(statePath, &state, PhaseRollingBack, ""); err != nil {
 		return err
 	}
@@ -238,25 +296,27 @@ func (u *Updater) Rollback(ctx context.Context, statePath string, currentDesktop
 	if err := restoreDatabaseIfNeeded(request, &state); err != nil {
 		return u.rollbackFailed(request, &state, err)
 	}
-	if _, err := u.Runtime.StartDesktop(request.DesktopPath, request.InstallRoot); err != nil {
-		return u.rollbackFailed(request, &state, err)
-	}
-	if err := u.Probe.Wait(request.APIURL, request.HealthToken, request.PreviousVersion, time.Duration(request.HealthTimeoutMs)*time.Millisecond); err != nil {
-		return u.rollbackFailed(request, &state, err)
+	if currentDesktopPID > 0 {
+		if _, err := u.Runtime.StartDesktop(request.DesktopPath, request.InstallRoot); err != nil {
+			return u.rollbackFailed(request, &state, err)
+		}
+		if err := u.Probe.Wait(request.APIURL, request.HealthToken, request.PreviousVersion, time.Duration(request.HealthTimeoutMs)*time.Millisecond); err != nil {
+			return u.rollbackFailed(request, &state, err)
+		}
 	}
 	if err := u.transition(statePath, &state, PhaseRolledBack, ""); err != nil {
 		return err
 	}
-	_ = u.report(request, "ROLLED_BACK", "manual rollback restored the previous version")
+	if currentDesktopPID > 0 {
+		_ = u.report(request, "ROLLED_BACK", "manual rollback restored the previous version")
+	}
 	return nil
 }
 
 func (u *Updater) validateDesktopProcess(request Request) error {
 	path, err := u.Runtime.ProcessPath(request.DesktopPID)
 	if err != nil {
-		// The desktop may already have exited cleanly before the updater got the
-		// handoff. In that case there is no process to stop, so continue.
-		return nil
+		return fmt.Errorf("PrintOps Desktop process %d is not running: %w", request.DesktopPID, err)
 	}
 	if !samePath(path, request.DesktopPath) {
 		return fmt.Errorf("desktop PID %d does not resolve to the requested PrintOps executable", request.DesktopPID)

@@ -6,6 +6,7 @@
   "build": {
     "beforeDevCommand": "",
     "devUrl": "http://localhost:3000",
+    "frontendDist": "../../web/dist",
     "beforeBuildCommand": "node src-tauri/scripts/build-all.js"
   },
   "app": {
@@ -14,7 +15,7 @@
       {
         "label": "main",
         "title": "PrintOps",
-        "url": "http://127.0.0.1:31415",
+        "url": "index.html",
         "width": 1280,
         "height": 800,
         "resizable": true,
@@ -48,6 +49,7 @@
     ],
     "resources": [
       "resources/server.exe",
+      "resources/printops-control-agent.exe",
       "resources/static",
       "resources/sql-wasm.wasm",
       "resources/printops-runner.exe",

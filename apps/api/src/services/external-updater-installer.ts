@@ -13,6 +13,7 @@ export interface ExternalUpdaterConfig {
   installRoot: string;
   desktopPath: string;
   desktopPid: number;
+  desktopShutdownEventName: string;
   apiUrl: string;
   healthToken: string;
   publicKey?: string;
@@ -39,6 +40,7 @@ export function externalUpdaterConfigured(config: ExternalUpdaterConfig | undefi
     && config.installRoot
     && config.desktopPath
     && config.desktopPid > 0
+    && config.desktopShutdownEventName.trim()
     && config.apiUrl
     && config.healthToken,
   );
@@ -77,6 +79,7 @@ export class ExternalUpdaterInstaller implements OtaInstallerPort {
       install_root: this.config.installRoot,
       desktop_path: this.config.desktopPath,
       desktop_pid: this.config.desktopPid,
+      desktop_shutdown_event_name: this.config.desktopShutdownEventName,
       api_url: this.config.apiUrl,
       health_token: this.config.healthToken,
       database_path: input.databasePath ?? this.config.databasePath ?? '',
@@ -139,6 +142,10 @@ export class ExternalUpdaterInstaller implements OtaInstallerPort {
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
+      env: {
+        ...process.env,
+        PRINTOPS_DESKTOP_SHUTDOWN_EVENT: this.config.desktopShutdownEventName,
+      },
     });
     await new Promise<void>((resolve, reject) => {
       const onSpawn = () => {

@@ -24,6 +24,7 @@ import { pipeline } from 'node:stream/promises';
 import type { PrintAdmissionGatePort } from './print-admission-gate.js';
 import type { OtaArtifactStateStorePort } from './ota-artifact-state.js';
 import { isExternalUpdaterTerminalPhase, readExternalUpdaterState } from './ota-updater-state.js';
+import { CURRENT_SCHEMA_VERSION } from '../infra/db/sqlite.schema.js';
 
 const ARTIFACT_COMPONENTS = ['desktop', 'runner', 'api'] as const;
 const ARTIFACT_PLATFORMS = ['windows-x64', 'node-bundle'] as const;
@@ -36,7 +37,7 @@ const DEFAULT_QUEUE_POLL_MS = 5_000;
 const DEFAULT_HEALTH_CHECK_TIMEOUT_MS = 20_000;
 const DEFAULT_UPDATER_SHUTDOWN_TIMEOUT_MS = 30_000;
 const DEFAULT_UPDATER_HANDOFF_DELAY_MS = 500;
-const DEFAULT_SCHEMA_VERSION = 7;
+const DEFAULT_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION;
 const DEFAULT_AUTO_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 const DEFAULT_AUTO_UPDATE_JITTER_MS = 5 * 60 * 1_000;
 const DEFAULT_AUTO_UPDATE_RETRY_BASE_MS = 60 * 1_000;
@@ -127,12 +128,18 @@ export interface UpdateCheckResult {
   compatibility?: ReleaseManifest['compatibility'];
 }
 
+export interface OtaArtifactDownloadProgress {
+  downloadedBytes: number;
+  totalBytes: number;
+}
+
 export interface DownloadUpdateRequest {
   version: string;
   component?: ArtifactComponent;
   platform?: ArtifactPlatform;
+  manifestUrl?: string;
+  onProgress?: (progress: OtaArtifactDownloadProgress) => void | Promise<void>;
 }
-
 export interface DownloadUpdateResult {
   downloaded: boolean;
   alreadyCurrent: boolean;
@@ -145,12 +152,15 @@ export interface DownloadUpdateResult {
   signatureVerification: 'verified' | 'deferred';
 }
 
+export type OtaInstallProgressState = 'WAITING_FOR_IDLE' | 'INSTALLING' | 'RESTART_PENDING';
 export interface OtaInstallRequest {
   version: string;
   component?: ArtifactComponent;
   platform?: ArtifactPlatform;
+  manifestUrl?: string;
   /** Automatic policy uses a non-blocking idle/defer protocol. */
   mode?: 'manual' | 'automatic';
+  onProgress?: (state: OtaInstallProgressState) => void | Promise<void>;
 }
 
 export interface OtaInstallInput {
@@ -205,7 +215,7 @@ export interface OtaRollbackResult {
 
 export interface OtaUpdateServicePort {
   getStatus(): Promise<OtaStatus>;
-  checkForUpdate(): Promise<UpdateCheckResult>;
+  checkForUpdate(manifestUrl?: string): Promise<UpdateCheckResult>;
   downloadUpdate(request: DownloadUpdateRequest): Promise<DownloadUpdateResult>;
   installUpdate(request: OtaInstallRequest): Promise<OtaInstallResult>;
   rollbackUpdate(): Promise<OtaRollbackResult>;
@@ -652,6 +662,19 @@ function manifestUrlForSource(value: string): string {
   return url.toString();
 }
 
+function validateManifestUrl(value: string): string {
+  if (value.length > 2048) throw new ValidationError('manifestUrl is too long');
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+      throw new Error('unsupported manifest URL');
+    }
+    return url.toString();
+  } catch {
+    throw new ValidationError('manifestUrl must be an absolute http(s) URL without credentials');
+  }
+}
+
 function artifactUrl(manifestUrl: string, value: string): string {
   let url: URL;
   try {
@@ -784,7 +807,36 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     };
   }
 
-  async checkForUpdate(): Promise<UpdateCheckResult> {
+  async getPrintSystemStatus(): Promise<{
+    state: 'IDLE' | 'PRINTING' | 'PAUSED' | 'ERROR';
+    queueDepth: number;
+    readiness: string;
+  }> {
+    const metrics = this.deps.queue
+      ? await this.deps.queue.getMetrics()
+      : { size: 0, inflight: 0 };
+    const activeJobs = this.deps.jobs
+      ? await Promise.all(
+        NON_TERMINAL_JOB_STATUSES.map((status) => this.deps.jobs!.findAll({ status })),
+      )
+      : [];
+    const activeJobCount = activeJobs.reduce((count, jobs) => count + jobs.length, 0);
+    const printingJobs = activeJobs[NON_TERMINAL_JOB_STATUSES.indexOf('PRINTING')]?.length ?? 0;
+    const maintenanceActive = this.deps.admission?.isMaintenanceActive() ?? false;
+
+    return {
+      state: metrics.inflight > 0 || printingJobs > 0
+        ? 'PRINTING'
+        : maintenanceActive
+          ? 'PAUSED'
+          : 'IDLE',
+      queueDepth: Math.max(metrics.size + metrics.inflight, activeJobCount),
+      readiness: maintenanceActive ? 'MAINTENANCE' : 'READY',
+    };
+  }
+
+
+  async checkForUpdate(manifestUrl?: string): Promise<UpdateCheckResult> {
     if (!this.deps.config.enabled) {
       return {
         enabled: false,
@@ -811,7 +863,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           reason: 'IN_PROGRESS' as const,
         };
       }
-      return this.checkForUpdateInternal();
+      return this.checkForUpdateInternal(manifestUrl);
     });
   }
 
@@ -861,7 +913,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
       const partPath = this.artifactPath(request.version, component, platform) + '.part';
       const finalPath = this.artifactPath(request.version, component, platform);
       try {
-        const resolution = await this.resolveManifest();
+        const resolution = await this.resolveManifest(request.manifestUrl);
         if (resolution.manifest.release.version !== request.version) {
           throw new ConflictError(
             `Requested OTA version ${request.version} is not the available release (${resolution.manifest.release.version})`,
@@ -889,7 +941,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           await rm(finalPath, { force: true });
         }
 
-        if (!cached) await this.downloadToPart(url, partPath, entry);
+        if (!cached) await this.downloadToPart(url, partPath, entry, request.onProgress);
         await this.deps.state.update({ state: 'DOWNLOADED' });
 
         phase = 'verify';
@@ -977,7 +1029,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
 
       let staged: StagedInstallArtifact;
       try {
-        staged = await this.getStagedInstallArtifact(request.version, component, platform);
+        staged = await this.getStagedInstallArtifact(request.version, component, platform, request.manifestUrl);
       } catch (error) {
         if (error instanceof AppError && error.code === 'OTA_VERIFY_FAILED') {
           await this.recordFailure('VERIFY_FAILED', error);
@@ -1007,6 +1059,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           startedAt,
           errorMessage: null,
         });
+        await request.onProgress?.('WAITING_FOR_IDLE');
         if (automatic && !(await this.printSystemIsIdle())) return deferred();
 
         if (this.deps.admission) {
@@ -1029,6 +1082,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
         }
 
         await this.deps.state.update({ state: 'INSTALLING' });
+        await request.onProgress?.('INSTALLING');
         installStarted = true;
         const launch = await this.deps.installer!.install(staged);
         if (launch && launch.kind === 'external') {
@@ -1036,6 +1090,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
           // the Desktop process. The external bootstrapper owns the rest of
           // INSTALL → HEALTH_CHECK → ROLLBACK and persists its outcome.
           await this.deps.state.update({ state: 'RESTART_PENDING' });
+          await request.onProgress?.('RESTART_PENDING');
           maintenanceTransferred = true;
           return {
             installed: false,
@@ -1205,7 +1260,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     });
   }
 
-  private async checkForUpdateInternal(): Promise<UpdateCheckResult> {
+  private async checkForUpdateInternal(manifestUrl?: string): Promise<UpdateCheckResult> {
     const startedAt = this.now();
     await this.deps.state.update({
       state: 'CHECKING',
@@ -1214,7 +1269,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
       errorMessage: null,
     });
     try {
-      const resolution = await this.resolveManifest();
+      const resolution = await this.resolveManifest(manifestUrl);
       const manifest = resolution.manifest;
       this.assertManifestCompatible(manifest);
       this.assertManifestTrust(manifest);
@@ -1287,6 +1342,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     version: string,
     component: ArtifactComponent,
     platform: ArtifactPlatform,
+    manifestUrl?: string,
   ): Promise<StagedInstallArtifact> {
     const path = this.artifactPath(version, component, platform);
     const persisted = this.stagedArtifact ?? await this.loadPersistedArtifact();
@@ -1318,7 +1374,7 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     // The staged path survives an API restart, while the in-memory descriptor
     // does not. Re-read the manifest to recover the expected digest instead of
     // trusting a file merely because its name contains a release version.
-    const resolution = await this.resolveManifest();
+    const resolution = await this.resolveManifest(manifestUrl);
     if (resolution.manifest.release.version !== version) {
       throw new ConflictError(
         `Requested OTA version ${version} is not the available release (${resolution.manifest.release.version})`,
@@ -1417,8 +1473,10 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     return false;
   }
 
-  private async resolveManifest(): Promise<ResolvedManifest> {
-    const candidates = this.sourceCandidates();
+  private async resolveManifest(manifestUrl?: string): Promise<ResolvedManifest> {
+    const candidates = manifestUrl === undefined
+      ? this.sourceCandidates()
+      : [{ kind: 'wan' as const, url: manifestUrlForSource(validateManifestUrl(manifestUrl)) }];
     if (candidates.length === 0) {
       throw new AppError(
         'OTA_NOT_CONFIGURED',
@@ -1571,7 +1629,12 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     return join(this.deps.config.cacheDir, version, `${component}-${platform}.artifact`);
   }
 
-  private async downloadToPart(url: string, partPath: string, entry: ArtifactEntry): Promise<void> {
+  private async downloadToPart(
+    url: string,
+    partPath: string,
+    entry: ArtifactEntry,
+    onProgress?: DownloadUpdateRequest['onProgress'],
+  ): Promise<void> {
     if (entry.size > this.deps.config.maxArtifactBytes) {
       throw new AppError('OTA_DOWNLOAD_FAILED', 'Artifact exceeds the configured download size limit', 413);
     }
@@ -1585,9 +1648,29 @@ export class OtaUpdateService implements OtaUpdateServicePort {
     }
     if (!response.body) throw new AppError('OTA_DOWNLOAD_FAILED', 'Artifact response has no body', 503);
 
+    let downloadedBytes = 0;
+    let lastReportedPercent = -1;
+    let lastReportedAt = 0;
+    const source = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
+    const reportChunks = async function* () {
+      for await (const chunk of source) {
+        downloadedBytes += chunk.byteLength;
+        const percent = entry.size > 0
+          ? Math.min(100, Math.floor((downloadedBytes / entry.size) * 100))
+          : 100;
+        const now = Date.now();
+        if (percent === 100 || percent - lastReportedPercent >= 5 || now - lastReportedAt >= 1_000) {
+          lastReportedPercent = percent;
+          lastReportedAt = now;
+          await onProgress?.({ downloadedBytes: Math.min(downloadedBytes, entry.size), totalBytes: entry.size });
+        }
+        yield chunk;
+      }
+    };
+
     try {
       await pipeline(
-        Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
+        Readable.from(reportChunks()),
         createWriteStream(partPath, { flags: 'wx' }),
       );
       const info = await stat(partPath);

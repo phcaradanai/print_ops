@@ -3,7 +3,7 @@
   min-width: min(14rem, 100%);
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 768px) {
   .ui-select-filter {
     flex-basis: 100%;
     min-width: 0;

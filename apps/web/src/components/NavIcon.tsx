@@ -151,6 +151,18 @@ const ICON_PATHS: Record<string, ReactNode> = {
       <circle cx="5" cy="11.5" r="1.5" />
     </>
   ),
+  '/control/devices': (
+    <>
+      <rect x="2" y="3" width="12" height="8" rx="1.5" />
+      <path d="M5 14h6M8 11v3" />
+    </>
+  ),
+  '/control/releases': (
+    <>
+      <path d="M2.5 5.5 8 2.25l5.5 3.25v5L8 13.75l-5.5-3.25V5.5Z" />
+      <path d="M8 7.5v6.25M2.5 5.5 8 8.75l5.5-3.25" />
+    </>
+  ),
 };
 
 /** Decorative by contract: the adjacent label carries the meaning. */

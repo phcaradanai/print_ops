@@ -1,5 +1,5 @@
+import type { PaperGeometry } from '@printerops/shared';
 import { mapPrintablePointToVisual, mapVisualPointToPrintable } from './geometry.js';
-import type { VisualPaperGeometry } from './types.js';
 
 export function resolveSelectionAfterDelete(
   fields: { id: string }[],
@@ -13,7 +13,7 @@ export function resolveSelectionAfterDelete(
 
 export function centerFieldAnchorHorizontal(
   field: { xMm: number; yMm: number },
-  geometry: VisualPaperGeometry,
+  geometry: PaperGeometry,
 ): { xMm: number; yMm: number } {
   const visualPoint = mapPrintablePointToVisual(field.xMm, field.yMm, geometry);
   const visualCenterX = Number((geometry.printableWidthMm / 2).toFixed(1));
@@ -22,7 +22,7 @@ export function centerFieldAnchorHorizontal(
 
 export function centerFieldAnchorVertical(
   field: { xMm: number; yMm: number },
-  geometry: VisualPaperGeometry,
+  geometry: PaperGeometry,
 ): { xMm: number; yMm: number } {
   const visualPoint = mapPrintablePointToVisual(field.xMm, field.yMm, geometry);
   const visualCenterY = Number((geometry.printableHeightMm / 2).toFixed(1));

@@ -94,6 +94,7 @@ function startServer(port, targetDbPath = dbPath, targetLog = serverLog) {
       PRINTOPS_LOCAL_WORKER: 'true',
       PRINTOPS_DISCOVERY_RUNNER_JOBS_ENABLED: 'false',
       PRINTOPS_DB_PATH: targetDbPath,
+      PRINTOPS_DATA_DIR: work,
       PRINTOPS_LOG_DIR: logsDir,
       PRINTOPS_APP_VERSION: '0.1.15',
       PRINTOPS_GIT_COMMIT: 'packaged-sidecar-smoke',

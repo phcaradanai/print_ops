@@ -70,6 +70,7 @@ export default function AuditLogs() {
   return (
     <PageLayout
       title={t('page.auditLogs.title')}
+      description={t('page.auditLogs.subtitle')}
       density="compact"
       width="full"
       actions={<Freshness

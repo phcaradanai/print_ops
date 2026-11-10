@@ -10,7 +10,27 @@ export interface PaperGeometryInput {
   orientation: PaperOrientation;
 }
 
-export function getOrientedPaperGeometry(input: PaperGeometryInput) {
+/**
+ * Physical paper geometry in the coordinate system fields are laid out in:
+ * media size after `orientation`, its margins, and the printable area between
+ * them.
+ */
+export interface PaperGeometry {
+  /** True when the stored media dimensions were swapped to reach `orientation`. */
+  rotated: boolean;
+  widthMm: number;
+  heightMm: number;
+  marginTopMm: number;
+  marginRightMm: number;
+  marginBottomMm: number;
+  marginLeftMm: number;
+  sourcePrintableWidthMm: number;
+  sourcePrintableHeightMm: number;
+  printableWidthMm: number;
+  printableHeightMm: number;
+}
+
+export function getOrientedPaperGeometry(input: PaperGeometryInput): PaperGeometry {
   const natural = input.widthMm > input.heightMm ? 'landscape' : 'portrait';
   const rotated = natural !== input.orientation;
   const marginTopMm = rotated ? input.marginLeftMm : input.marginTopMm;
@@ -226,7 +246,7 @@ function stabilizeTransformNumber(value: number): number {
 export function mapPrintablePointToVisual(
   xMm: number,
   yMm: number,
-  geometry: Pick<ReturnType<typeof getOrientedPaperGeometry>, 'rotated' | 'sourcePrintableHeightMm'>,
+  geometry: Pick<PaperGeometry, 'rotated' | 'sourcePrintableHeightMm'>,
 ) {
   if (!geometry.rotated) return { xMm, yMm };
   return { xMm: geometry.sourcePrintableHeightMm - yMm, yMm: xMm };
@@ -235,7 +255,7 @@ export function mapPrintablePointToVisual(
 export function mapVisualPointToPrintable(
   xMm: number,
   yMm: number,
-  geometry: Pick<ReturnType<typeof getOrientedPaperGeometry>, 'rotated' | 'sourcePrintableHeightMm'>,
+  geometry: Pick<PaperGeometry, 'rotated' | 'sourcePrintableHeightMm'>,
 ) {
   if (!geometry.rotated) return { xMm, yMm };
   return { xMm: yMm, yMm: geometry.sourcePrintableHeightMm - xMm };

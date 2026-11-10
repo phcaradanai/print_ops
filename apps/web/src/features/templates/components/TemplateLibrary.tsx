@@ -2,9 +2,9 @@ import { useMemo, useRef } from 'react';
 import { useLocale } from '../../../i18n/index.js';
 import { useTemplateWorkspace } from '../hooks/useTemplateWorkspace.js';
 import {
-  Badge, Button, Card, Chip, DataCell, DataHead, DataTable, EmptyState,
+  Badge, Button, Chip, DataCell, DataHead, DataTable, EmptyState,
   StateBadge,
-  Heading, IconButton, Inline, LoadingState, Mono, Select, TableEmpty, Text, type BadgeTone
+  IconButton, Inline, LoadingState, Mono, ResourceToolbar, SearchField, Select, TableEmpty, Text, type BadgeTone
 } from '../../../components/ui/index.js';
 import { TemplateIcon } from './TemplateIcon.js';
 import { TemplateRowMenu } from './TemplateRowMenu.js';
@@ -34,13 +34,13 @@ export function TemplateLibrary() {
   const { t, locale } = useLocale();
   const {
     templates, templatesResource, load,
-    search, chip, setChip, sortDesc, setSortDesc,
+    search, setSearch, chip, setChip, sortDesc, setSortDesc,
     page, setPage, pageSize, setPageSize,
     selectedId, startEdit, newTemplate, duplicate, renderServerPreview, publish,
     setPendingDelete
   } = useTemplateWorkspace();
 
-  const libraryRef = useRef<HTMLElement | null>(null);
+  const libraryRef = useRef<HTMLDivElement | null>(null);
 
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -88,38 +88,15 @@ export function TemplateLibrary() {
   }, [currentPage, pageCount]);
 
   return (
-    <Card ref={libraryRef} > 
-      <Inline style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--spacing-md)' }}>
-        <Heading level={2}>{t('page.templates.listTitle')}</Heading>
-        <Inline gap="xs">
-          <IconButton
-            label={t('common.refresh')}
-            onClick={() => void load()}
-            busy={templatesResource.refreshing}
-          >
-            <TemplateIcon name="refresh" spin={templatesResource.refreshing} />
-          </IconButton>
-          <IconButton
-            label={t('page.templates.sortByUpdated')}
-            title={t('page.templates.updated')}
-            onClick={() => setSortDesc(!sortDesc)}
-            aria-pressed={sortDesc}
-          >
-            <TemplateIcon name={sortDesc ? 'sortDesc' : 'sortAsc'} />
-          </IconButton>
-        </Inline>
-      </Inline>
-
-      {templatesResource.loading && templatesResource.data === undefined ? (
-        <LoadingState />
-      ) : templatesResource.error != null && templatesResource.data === undefined ? null : templates.length === 0 ? (
-        <EmptyState
-          title={t('page.templates.emptyTitle')}
-          hint={t('page.templates.emptyHint')}
-          action={<Button onClick={newTemplate}><TemplateIcon name="plus" /> {t('page.templates.newTemplate')}</Button>}
+    <div ref={libraryRef} className="ui-table-card tpl-library-container">
+      <ResourceToolbar ariaLabel={t('page.templates.listTitle')}>
+        <SearchField
+          label={t('page.templates.searchPlaceholder')}
+          placeholder={t('page.templates.searchPlaceholder')}
+          value={search}
+          onValueChange={setSearch}
         />
-      ) : <>
-        <Inline gap="xs" aria-label={t('page.templates.filters')} style={{ padding: '0 var(--spacing-md) var(--spacing-md)' }}>
+        <Inline gap="xs" aria-label={t('page.templates.filters')}>
           <Chip selected={chip === 'ALL'} onClick={() => setChip('ALL')}>
             {t('page.templates.filterAll')} <Text size="label" weight="bold">{templates.length}</Text>
           </Chip>
@@ -134,7 +111,32 @@ export function TemplateLibrary() {
             </Chip>
           ))}
         </Inline>
+        <IconButton
+          label={t('common.refresh')}
+          onClick={() => void load()}
+          busy={templatesResource.refreshing}
+        >
+          <TemplateIcon name="refresh" spin={templatesResource.refreshing} />
+        </IconButton>
+        <IconButton
+          label={t('page.templates.sortByUpdated')}
+          title={t('page.templates.updated')}
+          onClick={() => setSortDesc(!sortDesc)}
+          aria-pressed={sortDesc}
+        >
+          <TemplateIcon name={sortDesc ? 'sortDesc' : 'sortAsc'} />
+        </IconButton>
+      </ResourceToolbar>
 
+      {templatesResource.loading && templatesResource.data === undefined ? (
+        <LoadingState />
+      ) : templatesResource.error != null && templatesResource.data === undefined ? null : templates.length === 0 ? (
+        <EmptyState
+          title={t('page.templates.emptyTitle')}
+          hint={t('page.templates.emptyHint')}
+          action={<Button onClick={newTemplate}><TemplateIcon name="plus" /> {t('page.templates.newTemplate')}</Button>}
+        />
+      ) : <>
         <DataTable label={t('page.templates.listTitle')} responsive>
           <thead>
             <tr>
@@ -150,7 +152,7 @@ export function TemplateLibrary() {
           <tbody>
             {pageRows.map((tpl: Template) => (
               <tr key={tpl.id} className={tpl.id === selectedId ? 'is-selected' : undefined}>
-                <DataCell label={t('page.templates.code')}><Mono>{tpl.templateCode}</Mono></DataCell>
+                <DataCell label={t('page.templates.code')}><Mono nowrap>{tpl.templateCode}</Mono></DataCell>
                 <DataCell label={t('page.templates.name')}>
                   <Text truncate title={tpl.name}>{tpl.name}</Text>
                 </DataCell>
@@ -164,7 +166,7 @@ export function TemplateLibrary() {
                 <DataCell label={t('page.templates.updated')}>
                   <Text size="label" tone="muted" nowrap>{formatDate(tpl.updatedAt ?? tpl.createdAt, locale)}</Text>
                 </DataCell>
-                <DataCell label={t('page.templates.actions')} actions>
+                <DataCell label={t('page.templates.actions')} actions className="ui-data-cell--nowrap">
                   <Inline gap="xs">
                     <IconButton
                       size="sm"
@@ -259,6 +261,6 @@ export function TemplateLibrary() {
           </Select>
         </Inline>
       </>}
-    </Card>
+    </div>
   );
 }

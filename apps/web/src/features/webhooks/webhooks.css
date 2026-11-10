@@ -69,16 +69,6 @@
 }
 
 /* Endpoint and delivery tables ------------------------------------------ */
-.webhook-endpoint-surface,
-.webhook-delivery-history > .ui-card {
-  overflow: hidden;
-}
-
-.webhook-endpoint-surface .ui-data-table-frame,
-.webhook-delivery-history .ui-data-table-frame {
-  border: 0;
-  border-radius: 0;
-}
 
 .webhook-endpoint-table,
 .webhook-delivery-table {
@@ -89,24 +79,22 @@
 .webhook-endpoint-table .ui-data-table,
 .webhook-delivery-table .ui-data-table {
   width: 100%;
-  min-width: 56rem;
-  table-layout: fixed;
+  min-width: 100%;
+  table-layout: auto;
 }
 
 .webhook-endpoint-table .ui-data-head,
 .webhook-delivery-table .ui-data-head {
-  padding-block: var(--spacing-sm);
+  padding: 0.625rem 1rem;
   font-size: var(--font-label-size);
   line-height: var(--font-label-line-height);
-  white-space: normal;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .webhook-endpoint-table .ui-data-cell,
 .webhook-delivery-table .ui-data-cell {
-  padding-block: var(--spacing-md);
+  padding: 0.625rem 1rem;
   vertical-align: middle;
-  overflow-wrap: anywhere;
 }
 
 .webhook-endpoint-table tbody tr,

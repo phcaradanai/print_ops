@@ -51,6 +51,7 @@ export function CallbackDeliveryLog({ controller }: { controller: WebhookWorkspa
 
   return (
     <Stack gap="md" className="webhook-delivery-history">
+    <div className="ui-table-card">
       <ResourceToolbar
         ariaLabel={t('page.webhooks.deliveryFilters')}
         actions={
@@ -98,7 +99,7 @@ export function CallbackDeliveryLog({ controller }: { controller: WebhookWorkspa
         </SelectFilter>
       </ResourceToolbar>
 
-      <Card padding="none">
+
         <div className="webhook-delivery-table">
           <DataTable label={t('page.webhooks.callbackLogTitle')}>
             <thead>
@@ -170,7 +171,7 @@ export function CallbackDeliveryLog({ controller }: { controller: WebhookWorkspa
             </RecordCard>
           ))}
         </RecordList>
-      </Card>
+    </div>
     </Stack>
   );
 }

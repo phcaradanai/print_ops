@@ -182,7 +182,6 @@ export class NatsConnectionManager {
   private runPromise?: Promise<void>;
   private status: NatsRuntimeStatus;
   private messages?: AsyncIterable<JsMsg> & { close?: () => Promise<void | Error> };
-
   constructor(
     private readonly cfg: PrintIntakeConfig | undefined,
     private readonly deps: {

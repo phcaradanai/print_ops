@@ -11,7 +11,7 @@ import {
   updatePaperProfile,
 } from '../api/paperProfilesApi.js';
 import { stringifyProfiles } from '../model/serialization.js';
-import { validateDynamicFields, validatePaperForm } from '../model/validation.js';
+import { formatMessage, validateDynamicFields, validatePaperForm } from '../model/validation.js';
 import type { PaperProfile } from '../model/types.js';
 import type { PaperProfileEditor } from './usePaperProfileEditor.js';
 
@@ -40,7 +40,11 @@ export function usePaperProfilePersistence(
       ...validatePaperForm(editor.form),
       ...validateDynamicFields(editor.form, editor.ux.dynamicFields),
     ];
-    if (issues.length > 0) throw new Error(issues.map((issue) => messages.validationMessage(issue.messageKey)).join('; '));
+    if (issues.length > 0) {
+      throw new Error(issues
+        .map((issue) => formatMessage(messages.validationMessage(issue.messageKey), issue.params ?? {}))
+        .join('; '));
+    }
     const payload = {
       ...editor.form,
       code: editor.form.code || editor.form.name.toLowerCase().replace(/\s+/g, '_'),

@@ -1,0 +1,9 @@
+/* Scoped to JobQueue.tsx. The queue's table/batch/pagination styles are shared
+   (`styles.css`); this file only adds the row-level affordance that did not
+   exist before the read-only detail drawer. */
+
+/* The whole row opens the summary drawer; controls inside (checkbox, links,
+   Reprint button, view icon) keep their own cursor and click handling. */
+.job-row--selectable {
+  cursor: pointer;
+}

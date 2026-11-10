@@ -62,4 +62,58 @@ describe('JobQueue status filter', () => {
     expect(view.page).toBe(1);
     expect(view.rows.map((job) => job.id)).toEqual(['job-c']);
   });
+
+  it('NEEDS_ATTENTION keeps every unresolved outcome and drops resolved ones', () => {
+    const mixed = [
+      ...jobs,
+      { id: 'job-d', printerId: 'p1', printerCode: 'LAB', status: 'FAILED', requestId: 'REQ-4', sourceSystem: 'medisync' },
+      { id: 'job-e', printerId: 'p1', printerCode: 'LAB', status: 'TIMEOUT', requestId: 'REQ-5', sourceSystem: 'medisync' },
+      { id: 'job-f', printerId: 'p1', printerCode: 'LAB', status: 'SOME_UNKNOWN_STATUS', requestId: 'REQ-6', sourceSystem: 'medisync' },
+      { id: 'job-g', printerId: 'p1', printerCode: 'LAB', status: 'CANCELLED', requestId: 'REQ-7', sourceSystem: 'medisync' },
+      { id: 'job-h', printerId: 'p1', printerCode: 'LAB', status: 'DUPLICATE_RETURNED', requestId: 'REQ-8', sourceSystem: 'medisync' },
+    ];
+    const view = buildJobQueueView(mixed, { status: 'NEEDS_ATTENTION', search: '', page: 1, pageSize: 20 });
+    const kept = new Set(view.rows.map((job) => job.id));
+    // The boundary is the job verdict tone, not a hardcoded status list: an
+    // unknown status is an operator item too (UNKNOWN_VERDICT is caution).
+    expect(kept.has('job-c')).toBe(true); // UNVERIFIED — reported complete, never confirmed
+    expect(kept.has('job-d')).toBe(true); // FAILED
+    expect(kept.has('job-e')).toBe(true); // TIMEOUT
+    expect(kept.has('job-f')).toBe(true); // unknown status from a newer build
+    for (const resolved of ['job-a', 'job-b', 'job-g', 'job-h']) {
+      expect(kept.has(resolved)).toBe(false); // QUEUED / SUCCESS / CANCELLED / DUPLICATE_RETURNED
+    }
+    expect(view.filteredCount).toBe(4);
+    // The counters stay full-fleet: the filter changes rows, not the counts.
+    expect(view.counts.QUEUED).toBe(1);
+    expect(view.counts.UNVERIFIED).toBe(1);
+    expect(view.counts.FAILED).toBe(1);
+  });
+
+  it('offers the attention option only when a label is provided', () => {
+    const view = buildJobQueueView(jobs, { status: 'ALL', search: '', page: 1, pageSize: 20 });
+    const render = (attention?: string) => renderToStaticMarkup(
+      <JobQueueControls
+        status="ALL"
+        search=""
+        counts={view.counts}
+        totalCount={jobs.length}
+        attentionCount={4}
+        labels={{
+          status: 'Filter by status',
+          all: 'All',
+          search: 'Search',
+          searchPlaceholder: 'Search jobs',
+          ...(attention !== undefined ? { attention } : {}),
+        }}
+        onStatusChange={() => {}}
+        onSearchChange={() => {}}
+      />,
+    );
+    expect(render('Needs attention')).toContain('value="NEEDS_ATTENTION"');
+    expect(render('Needs attention')).toContain('Needs attention (4)');
+    // Without the label the option disappears entirely — an empty/meaningless
+    // entry is worse than none.
+    expect(render(undefined)).not.toContain('value="NEEDS_ATTENTION"');
+  });
 });

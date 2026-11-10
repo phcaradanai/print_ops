@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/errors.js';
-import { apiFetch, apiFetchVoid, getBootstrapState, healthUrl, login, onUnauthorized } from '../api/client.js';
+import { apiFetch, apiFetchVoid, desktopBootstrapOrigin, getBootstrapState, healthUrl, login, onUnauthorized } from '../api/client.js';
 import { clearRecentErrors, logError, recentErrors } from '../lib/logError.js';
 
 const realFetch = globalThis.fetch;
@@ -21,6 +21,27 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = realFetch;
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe('desktop startup health checks', () => {
+  it.each(['tauri://localhost/index.html', 'http://tauri.localhost/index.html'])(
+    'reaches the local service before it can serve the UI from %s',
+    (url) => {
+      vi.stubGlobal('window', { location: new URL(url) });
+      expect(desktopBootstrapOrigin()).toBe('http://127.0.0.1:31415');
+      expect(healthUrl()).toBe('http://127.0.0.1:31415/api/health');
+    },
+  );
+
+  it.each(['http://127.0.0.1:31415/jobs', 'https://printops.example/jobs', 'https://tauri.localhost.example/jobs'])(
+    'keeps the existing API origin after bootstrap or in a browser at %s',
+    (url) => {
+      vi.stubGlobal('window', { location: new URL(url) });
+      expect(desktopBootstrapOrigin()).toBeUndefined();
+      expect(healthUrl()).toBe('/api/health');
+    },
+  );
 });
 
 describe('apiFetch', () => {

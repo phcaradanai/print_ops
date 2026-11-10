@@ -1,0 +1,82 @@
+/* Scoped to Dashboard.tsx — the attention-first strip that lead the page.
+   Colors reuse the job-status and device-condition tokens so a FAILED count in
+   the strip is literally the same color as the FAILED badge elsewhere. */
+
+.ops-attention__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs) var(--spacing-xl);
+  margin-bottom: var(--spacing-sm);
+}
+
+.ops-attention__title {
+  flex-shrink: 0;
+}
+
+/* Whole item is one link: count + label move together into the filtered view. */
+.ops-attention__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--rounded-md);
+  text-decoration: none;
+}
+
+.ops-attention__item:hover {
+  background: var(--neutral-subtle);
+}
+
+.ops-attention__item:hover .ops-attention__label {
+  text-decoration: underline;
+}
+
+.ops-attention__item:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.ops-attention__count {
+  font-size: var(--font-heading-size);
+  font-weight: var(--font-heading-weight);
+  line-height: var(--font-heading-line-height);
+}
+
+/* Colour is never the only signal: the label beside each count names it, and
+   UNVERIFIED stays in its own amber family, away from FAILED's red. */
+.ops-attention__item--unverified .ops-attention__count { color: var(--status-unverified); }
+.ops-attention__item--timeout .ops-attention__count { color: var(--status-timeout); }
+.ops-attention__item--failed .ops-attention__count { color: var(--status-failed); }
+.ops-attention__item--device .ops-attention__count { color: var(--device-down); }
+
+.ops-attention__label {
+  color: var(--neutral-text);
+  font-size: var(--font-body-size);
+}
+
+.ops-attention__all-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--state-success-text);
+  font-size: var(--font-label-size);
+  font-weight: var(--font-label-weight);
+}
+
+.ops-attention__hint {
+  margin-top: var(--spacing-xs);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: var(--spacing-xl);
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

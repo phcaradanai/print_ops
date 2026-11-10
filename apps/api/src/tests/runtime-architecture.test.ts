@@ -47,6 +47,35 @@ describe('runtime executor architecture', () => {
     })).toThrow(/DESKTOP_EXECUTOR_INVARIANT/);
   });
 
+  it('lets the bundled Windows entry screen check health without opening CORS to other origins', async () => {
+    vi.stubEnv('PRINTOPS_RUNTIME_MODE', 'packaged-windows-desktop');
+    vi.stubEnv('PRINTOPS_LOCAL_WORKER', 'true');
+    vi.stubEnv('PRINTOPS_DISCOVERY_RUNNER_JOBS_ENABLED', 'false');
+    vi.stubEnv('PRINTOPS_DEV_SEED', 'false');
+    vi.stubEnv('DB_MODE', 'memory');
+    vi.stubEnv('CORS_ALLOWED_ORIGINS', '');
+    const { app } = await buildApp({ jwtSecret: 'desktop-bootstrap-test-secret' });
+    try {
+      const bundled = await app.inject({
+        method: 'GET',
+        url: '/api/health',
+        headers: { origin: 'http://tauri.localhost' },
+      });
+      expect(bundled.statusCode).toBe(200);
+      expect(bundled.headers['access-control-allow-origin']).toBe('http://tauri.localhost');
+      expect(bundled.json().status).toBe('ok');
+
+      const unrelated = await app.inject({
+        method: 'GET',
+        url: '/api/health',
+        headers: { origin: 'https://unrelated.example' },
+      });
+      expect(unrelated.headers['access-control-allow-origin']).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('exposes the validated architecture through the authenticated diagnostics route', async () => {
     vi.stubEnv('PRINTOPS_RUNTIME_MODE', 'packaged-windows-desktop');
     vi.stubEnv('PRINTOPS_LOCAL_WORKER', 'true');

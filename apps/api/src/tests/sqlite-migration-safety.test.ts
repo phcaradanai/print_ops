@@ -155,6 +155,44 @@ describe('versioned SQLite migration', () => {
     expect(reopened?.allowedPages).toEqual(['/', '/jobs']);
   });
 
+  it('persists one-time recovery hashes and increments the authentication version', async () => {
+    const directory = temporaryDirectory();
+    process.env['PRINTOPS_DB_PATH'] = join(directory, 'printops.db');
+    process.env['SQL_WASM_PATH'] = SQL_WASM_PATH;
+    await initDatabase();
+    const users = new SqliteUserRepository();
+    const user = await users.create({
+      email: 'owner@example.test',
+      name: 'Owner',
+      passwordHash: await hashPassword('Original-password1!'),
+      role: 'OWNER',
+      isActive: true,
+    });
+    const oldCodeHash = 'sha256-old-recovery-hash';
+    const nextCodeHash = 'sha256-next-recovery-hash';
+    expect(await users.issuePasswordRecoveryCode(user.id, oldCodeHash)).toBe(true);
+    expect(await users.resetPasswordWithRecoveryCode(
+      user.email,
+      oldCodeHash,
+      await hashPassword('Replacement-password2!'),
+      nextCodeHash,
+    )).toBe(true);
+    expect(await users.getAuthVersion(user.id)).toBe(1);
+
+    closeDatabase({ save: false });
+    await initDatabase();
+    const reopenedUsers = new SqliteUserRepository();
+    const reopened = await reopenedUsers.findById(user.id);
+    expect(await verifyPassword('Replacement-password2!', reopened?.passwordHash)).toBe(true);
+    expect(await reopenedUsers.getAuthVersion(user.id)).toBe(1);
+    expect(await reopenedUsers.resetPasswordWithRecoveryCode(
+      user.email,
+      oldCodeHash,
+      'unused-hash',
+      'unused-next-code-hash',
+    )).toBe(false);
+  });
+
   it('preserves a corrupt database and returns an actionable startup error', async () => {
     const directory = temporaryDirectory();
     const target = join(directory, 'printops.db');

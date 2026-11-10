@@ -1,0 +1,68 @@
+services:
+  nats:
+    image: nats:2.10.29-alpine
+    command: ["-js", "-sd", "/data"]
+    ports:
+      - "127.0.0.1:4222:4222"
+    volumes:
+      - control_nats:/data
+    restart: unless-stopped
+
+  control-stream:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.api
+    image: printops-api-control:local
+    command: ["node", "ensure-control-stream.mjs"]
+    environment:
+      PRINTOPS_CONTROL_NATS_URL: nats://nats:4222
+      PRINTOPS_CONTROL_NATS_STREAM: PRINTOPS_CONTROL
+    depends_on:
+      - nats
+    restart: "no"
+
+  api:
+    image: printops-api-control:local
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3001"
+      DB_MODE: sqlite
+      PRINTOPS_DB_PATH: /data/printops.db
+      SQL_WASM_PATH: /app/node_modules/sql.js/dist/sql-wasm.wasm
+      PRINTOPS_DEVICE_IDENTITY_PATH: /data/device-identity.json
+      PRINTOPS_DEV_SEED: "true"
+      PRINTOPS_CONTROL_ROLE: control-plane
+      PRINTOPS_CONTROL_NATS_URL: nats://nats:4222
+      PRINTOPS_CONTROL_PUBLIC_NATS_URL: nats://127.0.0.1:4222
+      PRINTOPS_CONTROL_NATS_STREAM: PRINTOPS_CONTROL
+      JWT_SECRET: ${PRINTOPS_CONTROL_JWT_SECRET:?Set PRINTOPS_CONTROL_JWT_SECRET to a unique random secret}
+    volumes:
+      - control_api:/data
+    depends_on:
+      control-stream:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.web
+    image: printops-web-control:local
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  release:
+    image: nginx:alpine
+    ports:
+      - "127.0.0.1:3002:80"
+    volumes:
+      - ../../artifacts/control-ota-release:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+volumes:
+  control_nats:
+  control_api:

@@ -77,19 +77,6 @@ export interface PaperProfileUx {
   dynamicFields: DynamicField[];
 }
 
-export interface VisualPaperGeometry {
-  rotated: boolean;
-  widthMm: number;
-  heightMm: number;
-  marginTopMm: number;
-  marginRightMm: number;
-  marginBottomMm: number;
-  marginLeftMm: number;
-  sourcePrintableWidthMm: number;
-  sourcePrintableHeightMm: number;
-  printableWidthMm: number;
-  printableHeightMm: number;
-}
 
 export interface ImportAnalyzeResult {
   detectedMimeType: string;
@@ -126,7 +113,10 @@ export interface ImportRequestBody {
   fitMode: ImportFitMode;
 }
 
+/** A problem in the editor, located at `field` and phrased by `messageKey`
+ * with `{name}`-style placeholders filled from `params`. */
 export interface ValidationIssue {
   field: string;
   messageKey: string;
+  params?: Record<string, string | number>;
 }
