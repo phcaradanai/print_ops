@@ -61,6 +61,18 @@ function valueAt(payload: Record<string, unknown>, field: string): unknown {
   }, payload);
 }
 
+/** Fills keys the caller omitted (or sent empty) with the paper-profile field's defaultValue. */
+function withFieldDefaults(payload: Record<string, unknown>, paperProfile?: PaperProfile): Record<string, unknown> {
+  const merged = { ...payload };
+  for (const f of paperProfile?.fields ?? []) {
+    const key = f.key?.trim();
+    if (!key || !f.defaultValue) continue;
+    const v = valueAt(merged, key);
+    if (v == null || v === '') merged[key] = f.defaultValue;
+  }
+  return merged;
+}
+
 function renderContent(content: string, payload: Record<string, unknown>): { rendered: string; warnings: string[] } {
   const warnings: string[] = [];
   const rendered = content.replace(FIELD_PATTERN, (_raw, field: string) => {
@@ -244,7 +256,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     const t0 = Date.now();
     await this.compileTemplate(template);
     const print = await this.renderPrintPayload(template, payload, paperProfile, renderOptions);
-    const renderedPreview = await this.previewMarkup(template, payload, paperProfile, renderOptions);
+    const renderedPreview = await this.previewMarkup(template, withFieldDefaults(payload, paperProfile), paperProfile, renderOptions);
     return {
       templateCode: template.templateCode,
       paperProfile,
@@ -263,6 +275,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     renderOptions?: RenderTransformOverrides,
   ): Promise<{ renderedPrintPayload: string; warnings: string[]; renderTimeMs: number }> {
     const t0 = Date.now();
+    payload = withFieldDefaults(payload, paperProfile);
     const validation = await this.validateTemplate(template);
     const warnings = [...validation.warnings];
     const tokens = findBarcodeTokens(template.content, paperProfile);
