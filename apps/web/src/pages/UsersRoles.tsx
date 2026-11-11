@@ -1,4 +1,5 @@
 import { useCallback, useState, type FormEvent } from 'react';
+import './users-roles.css';
 import { useLocale } from '../i18n/index.js';
 import { apiFetch, getCurrentUser, type SessionUser } from '../api/client.js';
 import { errorMessage } from '../api/errors.js';
@@ -16,7 +17,7 @@ import {
   ErrorState,
   Fieldset,
   Freshness,
-  Grid,
+  Dialog,
   Inline,
   Input,
   LoadingState,
@@ -35,7 +36,27 @@ interface UserItem {
   allowedPages?: string[];
 }
 
-const PAGE_OPTIONS = ['/', '/printers', '/jobs', '/runners', '/templates', '/paper-profiles', '/discovered-printers', '/diagnostics', '/template-sandbox', '/webhooks', '/route-policies', '/printer-bindings', '/print-flow', '/audit-logs', '/users', '/export', '/settings'];
+const PAGE_OPTIONS = [
+  { path: '/', group: 'operations', labelKey: 'nav.dashboard' },
+  { path: '/printers', group: 'operations', labelKey: 'nav.printers' },
+  { path: '/jobs', group: 'operations', labelKey: 'nav.jobQueue' },
+  { path: '/runners', group: 'operations', labelKey: 'nav.runners' },
+  { path: '/templates', group: 'content', labelKey: 'nav.templates' },
+  { path: '/paper-profiles', group: 'content', labelKey: 'nav.paperProfiles' },
+  { path: '/discovered-printers', group: 'administration', labelKey: 'nav.discovery' },
+  { path: '/diagnostics', group: 'administration', labelKey: 'nav.diagnostics' },
+  { path: '/template-sandbox', group: 'content', labelKey: 'nav.sandbox' },
+  { path: '/webhooks', group: 'integrations', labelKey: 'nav.webhooks' },
+  { path: '/route-policies', group: 'integrations', labelKey: 'nav.routePolicies' },
+  { path: '/printer-bindings', group: 'integrations', labelKey: 'nav.bindings' },
+  { path: '/print-flow', group: 'integrations', labelKey: 'nav.printFlow' },
+  { path: '/audit-logs', group: 'administration', labelKey: 'nav.auditLogs' },
+  { path: '/users', group: 'administration', labelKey: 'nav.usersRoles' },
+  { path: '/export', group: 'administration', labelKey: 'nav.export' },
+  { path: '/settings', group: 'administration', labelKey: 'nav.settings' },
+];
+
+const PAGE_GROUPS = ['operations', 'content', 'integrations', 'administration'] as const;
 
 const ROLE_LEVELS: Record<SessionUser['role'], number> = {
   VIEWER: 1,
@@ -64,6 +85,7 @@ export default function UsersRoles() {
   const [showPassword, setShowPassword] = useState(false);
   const [accessUserId, setAccessUserId] = useState<string | null>(null);
   const [selectedPages, setSelectedPages] = useState<string[]>([]);
+  const accessUser = users.find((user) => user.id === accessUserId);
   const [statusUserId, setStatusUserId] = useState<string | null>(null);
 
   const changePassword = useApiAction(async (targetId: string, password: string) => {
@@ -125,55 +147,21 @@ export default function UsersRoles() {
 
   const renderUserActions = (user: UserItem) => (
     <Stack gap="sm">
-      {accessUserId === user.id ? (
-        <Fieldset legend={t('page.usersRoles.pageAccess')}>
-          <Grid columns="auto" gap="sm" dense>
-            {PAGE_OPTIONS.map((page) => (
-              <Checkbox
-                key={page}
-                label={page}
-                checked={selectedPages.includes(page)}
-                onChange={() => setSelectedPages((pages) => pages.includes(page) ? pages.filter((item) => item !== page) : [...pages, page])}
-              />
-            ))}
-          </Grid>
-          <Inline gap="sm">
-            <Button
-              size="sm"
-              busy={changeAccess.pending}
-              busyLabel={t('common.saving')}
-              onClick={() => void changeAccess.run(user.id, selectedPages).then((ok) => {
-                if (ok) {
-                  setAccessUserId(null);
-                  void directory.refresh();
-                }
-              })}
-            >
-              {t('common.save')}
-            </Button>
-            <Button size="sm" variant="secondary" disabled={changeAccess.pending} onClick={() => setAccessUserId(null)}>
-              {t('common.cancel')}
-            </Button>
-          </Inline>
-        </Fieldset>
-      ) : canEditAccess(user) ? (
+      {canEditAccess(user) && (
         <div>
           <Button
             size="sm"
             variant="secondary"
+            aria-haspopup="dialog"
             onClick={() => {
               setAccessUserId(user.id);
-              setSelectedPages(user.allowedPages ?? PAGE_OPTIONS);
+              setSelectedPages(user.allowedPages ?? PAGE_OPTIONS.map(({ path }) => path));
               changeAccess.reset();
             }}
           >
             {t('page.usersRoles.pageAccess')}
           </Button>
         </div>
-      ) : null}
-
-      {changeAccess.error != null && accessUserId === user.id && (
-        <Text tone="danger" size="label" role="alert">{errorMessage(changeAccess.error, t('page.usersRoles.accessError'))}</Text>
       )}
 
       {editingUserId === user.id ? (
@@ -287,7 +275,7 @@ export default function UsersRoles() {
                   </Inline>
                 </DataCell>
                 <DataCell label={t('page.usersRoles.email')}>{user.email}</DataCell>
-                <DataCell label={t('page.usersRoles.role')}><Badge>{user.role}</Badge></DataCell>
+                <DataCell label={t('page.usersRoles.role')}><Badge>{t(`session.role.${user.role}`)}</Badge></DataCell>
                 <DataCell label={t('page.usersRoles.status')}>
                   <StateBadge
                     value={user.isActive}
@@ -305,6 +293,86 @@ export default function UsersRoles() {
             )}
           </tbody>
       </DataTable>
+
+      <Dialog
+        open={Boolean(accessUser)}
+        title={t('page.usersRoles.pageAccess')}
+        closeLabel={changeAccess.pending ? undefined : t('common.close')}
+        onClose={() => { if (!changeAccess.pending) setAccessUserId(null); }}
+        dismissOnBackdrop={false}
+        dismissOnEscape={!changeAccess.pending}
+        footer={<>
+          <Button variant="secondary" disabled={changeAccess.pending} onClick={() => setAccessUserId(null)}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            busy={changeAccess.pending}
+            busyLabel={t('common.saving')}
+            onClick={() => {
+              if (!accessUser) return;
+              void changeAccess.run(accessUser.id, selectedPages).then((ok) => {
+                if (ok) {
+                  setAccessUserId(null);
+                  void directory.refresh();
+                }
+              });
+            }}
+          >
+            {t('common.save')}
+          </Button>
+        </>}
+      >
+        {accessUser && (
+          <Stack gap="lg" className="users-access">
+            <div className="users-access__identity">
+              <Stack gap="xs">
+                <Text weight="semibold" tone="strong">{accessUser.name}</Text>
+                <Text tone="muted" size="label" className="users-access__email">{accessUser.email}</Text>
+              </Stack>
+              <Badge>{t(`session.role.${accessUser.role}`)}</Badge>
+            </div>
+            <Text tone="muted" size="label">{t('page.usersRoles.accessHint')}</Text>
+            <div className="users-access__toolbar">
+              <Text role="status" size="label" weight="semibold">
+                {t('page.usersRoles.selectedPages')
+                  .replace('{count}', String(PAGE_OPTIONS.filter(({ path }) => selectedPages.includes(path)).length))
+                  .replace('{total}', String(PAGE_OPTIONS.length))}
+              </Text>
+              <Inline gap="sm">
+                <Button size="sm" variant="ghost" disabled={changeAccess.pending} onClick={() => setSelectedPages(PAGE_OPTIONS.map(({ path }) => path))}>
+                  {t('page.usersRoles.selectAll')}
+                </Button>
+                <Button size="sm" variant="ghost" disabled={changeAccess.pending} onClick={() => setSelectedPages([])}>
+                  {t('page.usersRoles.clearSelection')}
+                </Button>
+              </Inline>
+            </div>
+            <div className="users-access__groups">
+              {PAGE_GROUPS.map((group) => (
+                <Fieldset
+                  key={group}
+                  legend={t(`page.usersRoles.group.${group}`)}
+                  className="users-access__group"
+                  disabled={changeAccess.pending}
+                >
+                  {PAGE_OPTIONS.filter((page) => page.group === group).map(({ path, labelKey }) => (
+                    <Checkbox
+                      key={path}
+                      className="users-access__option"
+                      label={t(labelKey)}
+                      checked={selectedPages.includes(path)}
+                      onChange={() => setSelectedPages((pages) => pages.includes(path) ? pages.filter((item) => item !== path) : [...pages, path])}
+                    />
+                  ))}
+                </Fieldset>
+              ))}
+            </div>
+            {changeAccess.error != null && (
+              <Text tone="danger" size="label" role="alert">{errorMessage(changeAccess.error, t('page.usersRoles.accessError'))}</Text>
+            )}
+          </Stack>
+        )}
+      </Dialog>
     </PageLayout>
   );
 }
