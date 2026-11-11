@@ -105,7 +105,7 @@ a Docker-internal hostname is not reachable from a workstation.
 | `PRINTOPS_WEB_BIND_ADDRESS` | `127.0.0.1` | Host interface for the web port; keep loopback behind a reverse proxy. |
 | `PRINTOPS_WEB_PORT` | `8080` | Published web port. |
 | `PRINTOPS_CONTROL_PUBLIC_HTTP_URL` | Optional HTTP(S) origin | Client-reachable origin for hosted OTA manifests, e.g. `http://printops.node1.ch3.local` or `https://printops.example:8443`. Set explicitly behind a TLS proxy. Defaults to the request protocol and Host, including port. |
-| `PRINTOPS_CONTROL_PLANE_VERSION` | `1.0.0` | Control Plane image tag/version; independent of the PrintOps app version. |
+| `PRINTOPS_CONTROL_PLANE_VERSION` | `1.0.5` | Control Plane image tag/version; independent of the PrintOps app version. |
 | `PRINTOPS_IMAGE_PREFIX` | Optional for source builds; required by registry stack | Registry/repository prefix for API and Web images. |
 | `PRINTOPS_API_UPSTREAM` | `api:3001` | API service DNS name and port reachable by the web container; override when its Docker network alias differs. |
 | `PRINTOPS_RELEASE_IMPORT_MAX_MIB` | Positive whole number; default `128` | Maximum Base64 JSON import request size in MiB, shared by API and Web. |
