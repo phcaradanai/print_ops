@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PrintCommand } from '@printerops/domain';
-import { applyDplCalibration, applyHtmlCalibration, isDatamaxI4208, resolveHtmlPageSettings, textPayloadToHtml } from './windows-spooler.adapter.js';
+import { applyDplCalibration, applyHtmlCalibration, applyHtmlMarginCompensation, isDatamaxI4208, resolveHtmlPageSettings, textPayloadToHtml } from './windows-spooler.adapter.js';
 
 describe('Datamax-O\'Neil I-4208 label routing', () => {
   it('recognises the hardware from model metadata and the Windows queue name', () => {
@@ -16,6 +16,21 @@ describe('Datamax-O\'Neil I-4208 label routing', () => {
     expect(html).toContain('&quot;AB&#39;');
     expect(html).toContain('white-space:pre-wrap');
     expect(html).toContain('overflow:hidden');
+  });
+
+  it('re-pivots a 180 degree turn about the printable box so the top row is not clipped', () => {
+    const page = {
+      widthMm: 80, heightMm: 50, marginTopMm: 2, marginRightMm: 1,
+      marginBottomMm: 4, marginLeftMm: 3, orientation: 'landscape' as const,
+    };
+    const command = (rotation: number) => ({
+      jobId: 'j', printerId: 'p', traceId: 't', mimeType: 'text/html', copies: 1,
+      duplex: false, colorMode: 'monochrome' as const,
+      metadata: { paperProfile: { rotation } },
+    });
+    const rotated = applyHtmlMarginCompensation('<i>x</i>', page, command(180) as never);
+    expect(rotated).toContain('left:-4mm;top:-6mm');
+    expect(applyHtmlMarginCompensation('<i>x</i>', page, command(0) as never)).toBe('<i>x</i>');
   });
 
   it('translates signed calibration dots into a physical HTML origin shift', () => {

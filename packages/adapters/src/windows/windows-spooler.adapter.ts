@@ -1657,7 +1657,11 @@ if ($null -eq $workOffline -and $null -ne $win32) { $workOffline = $win32.WorkOf
       const renderOverrides = resolveCommandRenderTransformOverrides(command);
       const page = resolveHtmlPageSettings(html, command.metadata, renderOverrides);
       const transformedHtml = applyHtmlRenderTransform(html, page, command, renderOverrides);
-      const calibratedHtml = applyHtmlCalibration(transformedHtml, page, command);
+      const calibratedHtml = applyHtmlCalibration(
+        applyHtmlMarginCompensation(transformedHtml, page, command, renderOverrides),
+        page,
+        command,
+      );
       await writeFile(file, calibratedHtml, 'utf-8');
       const jobName = `PrintOps:${command.jobId ?? jobId}`;
       // Serve-mode requests omit resultPath/userDataFolder: the result goes
@@ -2225,6 +2229,42 @@ function resolveHtmlSourcePage(
 
 function formatCalibrationMm(value: number): string {
   return Number(value.toFixed(6)).toString();
+}
+
+/**
+ * The print helper clips the document to the printable box (page minus margins)
+ * whose origin is the margin corner, while transformed content is paper-sized
+ * and rotated/flipped about the full-paper centre. For a 180 deg turn or a flip
+ * the content that sat in the printable box lands in the margin strip on the
+ * opposite side and is clipped (the first row disappears). Re-pivot the
+ * transform about the printable box centre by translating the layer by
+ * (I - L) * (cPrintable - cPaper), which is zero for an unrotated page.
+ * shortcut: only 0/180 deg (+flips); 90/270 keep the existing behaviour.
+ */
+export function applyHtmlMarginCompensation(
+  html: string,
+  page: HtmlPageSettings,
+  command: PrintCommand,
+  renderOverrides: RenderTransformOverrides = resolveCommandRenderTransformOverrides(command),
+): string {
+  const profile = command.metadata?.['paperProfile'];
+  const profileValues = profile && typeof profile === 'object' && !Array.isArray(profile)
+    ? profile as Record<string, unknown>
+    : command.metadata ?? {};
+  const transform = resolveRenderTransform(profileValues, renderOverrides);
+  if (transform.rotation !== 0 && transform.rotation !== 180) return html;
+  const turn = transform.rotation === 180 ? -1 : 1;
+  const sx = turn * (transform.flipHorizontal ? -1 : 1);
+  const sy = turn * (transform.flipVertical ? -1 : 1);
+  const dxMm = (1 - sx) * -(page.marginLeftMm + page.marginRightMm) / 2;
+  const dyMm = (1 - sy) * -(page.marginTopMm + page.marginBottomMm) / 2;
+  if (dxMm === 0 && dyMm === 0) return html;
+  return '<div data-printops-margin-pivot="true" style="position:relative;width:' +
+    formatCalibrationMm(page.widthMm) + 'mm;height:' + formatCalibrationMm(page.heightMm) +
+    'mm;box-sizing:border-box;"><div style="position:absolute;left:' + formatCalibrationMm(dxMm) +
+    'mm;top:' + formatCalibrationMm(dyMm) + 'mm;width:' + formatCalibrationMm(page.widthMm) +
+    'mm;height:' + formatCalibrationMm(page.heightMm) + 'mm;overflow:visible;box-sizing:border-box;">' +
+    html + '</div></div>';
 }
 
 /**
