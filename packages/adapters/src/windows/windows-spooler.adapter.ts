@@ -679,7 +679,7 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
       evidence['ippJobConfirmed'] = false;
       evidence['correlationIssues'] = correlationIssues;
 
-      // WSD-only printers (e.g. Microsoft IPP Class Driver over WSD) expose no
+      // USB printers and LAN drivers without IPP job history expose no
       // reachable printer-side IPP/SNMP endpoint, so no exact device-level proof
       // can EVER arrive. When the local spooler nonetheless observed this exact
       // job and reports it delivered (left-queue/finished), that is the strongest
@@ -689,11 +689,16 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
         && !!ippObservation?.baselineError;
       const spoolerDelivered = spooler.outcome === 'left-queue' || spooler.outcome === 'finished';
       const exactJobObserved = observedJobIds.size === copies;
+      const submissionFault = submissions.some((submission) =>
+        submission.jobs.some((job) => isBlockedStatus(job.status)),
+      );
       if (ippStructurallyUnavailable && spoolerDelivered && exactJobObserved
+        && !spooler.telemetryError && !spooler.transientFault && !submissionFault
         && spooler.competingJobIds.length === 0 && preexistingUnsafeJobs.length === 0) {
         evidence['deviceConfirmed'] = true;
         evidence['deviceConfirmation'] = 'local-spooler-delivery';
-        evidence['verificationBasis'] = 'spooler-delivery (printer-side IPP/SNMP unavailable)';
+        evidence['verificationBasis'] = 'spooler-delivery (printer-side IPP unavailable)';
+        evidence['physicalOutputConfirmed'] = false;
         return {
           success: true,
           jobId,
@@ -722,7 +727,8 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
         errorCode: 'PRINT_NOT_VERIFIABLE',
         message:
           `WindowsSpoolerAdapter: ${subject} on "${printerName}" was submitted, but ` +
-          `${ippConfirmation.detail}. Physical output cannot be attributed safely; do not auto-retry.`,
+          `${ippConfirmation.detail}; Windows spooler: ${spooler.detail} ` +
+          `(matched ${observedJobIds.size}/${copies} job ids). Physical output cannot be attributed safely; do not auto-retry.`,
         raw: evidence,
       };
     }
@@ -1645,6 +1651,7 @@ if ($null -eq $workOffline -and $null -ne $win32) { $workOffline = $win32.WorkOf
     const jobId = (command.jobId ?? `job-${Date.now()}`).replace(/[^A-Za-z0-9_-]/g, '_');
     const file = join(session.dir, `doc-${jobId}.html`);
     const requestFile = join(session.dir, `request-${jobId}.json`);
+    const stagedRequestFile = `${requestFile}.pending`;
     const resultFile = join(session.dir, `result-${jobId}.json`);
     try {
       const renderOverrides = resolveCommandRenderTransformOverrides(command);
@@ -1656,7 +1663,9 @@ if ($null -eq $workOffline -and $null -ne $win32) { $workOffline = $win32.WorkOf
       // Serve-mode requests omit resultPath/userDataFolder: the result goes
       // to result-<jobId>.json and the WebView2 data folder is shared and
       // long-lived (created once by the helper at startup).
-      await writeFile(requestFile, JSON.stringify({
+      // The helper only watches request-*.json. Publish atomically from
+      // PowerShell after its queue baseline, so fast jobs cannot precede it.
+      await writeFile(stagedRequestFile, JSON.stringify({
         filePath: file,
         printerName,
         jobName,
@@ -1675,7 +1684,7 @@ if ($null -eq $workOffline -and $null -ne $win32) { $workOffline = $win32.WorkOf
       let stdout: string;
       try {
         stdout = await this.deps.runPowerShell(
-          buildHtmlPrintServeScript(session.dir, resultFile, printerName, jobName),
+          buildHtmlPrintServeScript(session.dir, resultFile, printerName, jobName, requestFile),
           60_000,
         );
       } catch (err) {
@@ -1711,7 +1720,10 @@ if ($null -eq $workOffline -and $null -ne $win32) { $workOffline = $win32.WorkOf
         const message = err instanceof Error ? err.message : String(err);
         throw new Error(`PRINT_RESULT_NOT_READABLE: ${message}`);
       }
-      const jobs = Array.isArray(parsed.jobs) ? parsed.jobs : [];
+      // A concurrent browser/manual job must never stand in for this request.
+      const jobs = Array.isArray(parsed.jobs)
+        ? parsed.jobs.filter((job) => normaliseIppJobName(job.documentName) === normaliseIppJobName(jobName))
+        : [];
       const jobIds = jobs.map((job) => String(job.id ?? '')).filter(Boolean);
       return {
         jobIds,
@@ -1725,6 +1737,7 @@ if ($null -eq $workOffline -and $null -ne $win32) { $workOffline = $win32.WorkOf
       // folder inside it live for the life of the helper process.
       await rm(file, { force: true }).catch(() => {});
       await rm(requestFile, { force: true }).catch(() => {});
+      await rm(stagedRequestFile, { force: true }).catch(() => {});
       await rm(resultFile, { force: true }).catch(() => {});
     }
   }
@@ -1898,7 +1911,7 @@ export function buildHtmlPrintScript(
         $documentName = [string]$_.DocumentName;
         if (-not $before.ContainsKey($id)) {
           if ($null -eq $observed.at) { $observed.at = [DateTime]::UtcNow.ToString('o') }
-          $seen[$id] = [ordered]@{ id=[int]$_.Id; status=[string]$_.JobStatus; documentName=$documentName; expectedDocumentName=($documentName -eq '${safeDocumentName}'); submittedTime=$_.SubmittedTime };
+          $seen[$id] = [ordered]@{ id=[int]$_.Id; status=[string]$_.JobStatus; documentName=$documentName; expectedDocumentName=($documentName -eq '${safeDocumentName}' -or $documentName -eq '${safeDocumentName.replace(/:/g, '_')}'); submittedTime=$_.SubmittedTime };
         }
       }
     }
@@ -1931,17 +1944,20 @@ export function buildHtmlPrintScript(
  *
  * The adapter keeps one `printops-html-print.exe --serve <dir>` process alive
  * per printer, so WebView2 initialises once instead of once per job
- * (DEFECT-05). This script no longer starts the helper: the adapter writes
- * `request-<jobId>.json` into the serve dir before invoking this script, the
- * helper writes `result-<jobId>.json` when the print finishes, and this
- * script observes the Windows queue while waiting for that result file.
+ * (DEFECT-05). The adapter stages a .pending request. This script takes
+ * the queue baseline before publishing it as request-<jobId>.json, then
+ * observes the queue while the persistent helper prints it.
  */
 export function buildHtmlPrintServeScript(
   serveDir: string,
   resultFile: string,
   printerName: string,
   expectedDocumentName: string,
+  requestFile?: string,
 ): string {
+  const publishRequest = requestFile
+    ? `Move-Item -LiteralPath '${`${requestFile}.pending`.replace(/'/g, "''")}' -Destination '${requestFile.replace(/'/g, "''")}' -ErrorAction Stop;`
+    : '';
   const safeResult = resultFile.replace(/'/g, "''");
   const safePrinterName = printerName.replace(/'/g, "''");
   const safeDocumentName = expectedDocumentName.replace(/'/g, "''");
@@ -1957,10 +1973,11 @@ export function buildHtmlPrintServeScript(
         $documentName = [string]$_.DocumentName;
         if (-not $before.ContainsKey($id)) {
           if ($null -eq $observed.at) { $observed.at = [DateTime]::UtcNow.ToString('o') }
-          $seen[$id] = [ordered]@{ id=[int]$_.Id; status=[string]$_.JobStatus; documentName=$documentName; expectedDocumentName=($documentName -eq '${safeDocumentName}'); submittedTime=$_.SubmittedTime };
+          $seen[$id] = [ordered]@{ id=[int]$_.Id; status=[string]$_.JobStatus; documentName=$documentName; expectedDocumentName=($documentName -eq '${safeDocumentName}' -or $documentName -eq '${safeDocumentName.replace(/:/g, '_')}'); submittedTime=$_.SubmittedTime };
         }
       }
     }
+    ${publishRequest}
     $deadline = [DateTime]::UtcNow.AddSeconds(45);
     while (-not (Test-Path -LiteralPath '${safeResult}') -and [DateTime]::UtcNow -lt $deadline) {
       Capture-PrintOpsJobs;
@@ -1969,6 +1986,13 @@ export function buildHtmlPrintServeScript(
     if (-not (Test-Path -LiteralPath '${safeResult}')) {
       throw 'WEBVIEW2_PRINT_TIMEOUT: serve helper did not produce a result within 45 seconds';
     }
+    # PrintAsync may finish before the driver publishes its queue row.
+    $observeDeadline = [DateTime]::UtcNow.AddSeconds(2);
+    do {
+      Capture-PrintOpsJobs;
+      if (@($seen.Values | Where-Object { $_.expectedDocumentName }).Count -gt 0) { break }
+      Start-Sleep -Milliseconds 50;
+    } while ([DateTime]::UtcNow -lt $observeDeadline);
     $helper = Get-Content -Raw -LiteralPath '${safeResult}' | ConvertFrom-Json;
     if (-not $helper.success) {
       throw "WEBVIEW2_PRINT_FAILED: phase=$($helper.phase); status=$($helper.status); $($helper.message)";

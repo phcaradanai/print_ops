@@ -73,6 +73,9 @@ function makeServeHarness(opts: {
   htmlSubmissionError?: string;
   htmlSubmission?: ReturnType<typeof exactHtmlSubmission>;
   confirmIpp?: boolean;
+  usb?: boolean;
+  printerStatus?: string;
+  queueError?: boolean;
   /** When set, htmlPrintHelperPath is prefixed with it (e.g. '\\\\?\\'). */
   helperPathPrefix?: string;
 } = {}): ServeHarness {
@@ -108,6 +111,8 @@ function makeServeHarness(opts: {
         }
         return JSON.stringify(opts.htmlSubmission ?? exactHtmlSubmission(currentJobId));
       }
+      if (command.includes('PrinterStatus')) return opts.printerStatus ?? 'Normal';
+      if (opts.queueError && command.includes('Get-PrintJob')) throw new Error('queue unavailable');
       return '';
     },
     async pipeToPowerShell() {},
@@ -119,7 +124,7 @@ function makeServeHarness(opts: {
       return jobPageReads === 1 ? pageBase : pageBase + 1;
     },
     async resolveSnmpHost() {
-      return SNMP_HOST;
+      return opts.usb ? undefined : SNMP_HOST;
     },
     async queryIppJobs(endpoint) {
       if (!opts.confirmIpp) {
@@ -191,6 +196,21 @@ describe('buildHtmlPrintServeScript', () => {
     expect(script).toContain('PRINTER_NOT_FOUND');
   });
 
+  it('publishes a staged request after the baseline and observes delayed queue rows', () => {
+    const published = buildHtmlPrintServeScript(
+      'C:\\serve', "C:\\serve\\result-doctor's-job.json",
+      "Doctor's printer", "PrintOps:doctor's-job",
+      "C:\\serve\\request-doctor's-job.json",
+    );
+    expect(published).toContain("request-doctor''s-job.json.pending");
+    expect(published.indexOf('Move-Item')).toBeGreaterThan(published.indexOf('$before[[string]$_.Id]'));
+    expect(published.indexOf('Move-Item')).toBeLessThan(published.indexOf('while (-not (Test-Path'));
+    expect(published).not.toContain('// PrintAsync');
+    expect(published).toContain('Where-Object { $_.expectedDocumentName }');
+    expect(published).toContain('$observeDeadline = [DateTime]::UtcNow.AddSeconds(2)');
+    expect(published).toContain('while ([DateTime]::UtcNow -lt $observeDeadline)');
+  });
+
   it('escapes PowerShell single quotes in the printer name and result path', () => {
     const quoted = buildHtmlPrintServeScript(
       'C:\\PrintOps\\serve',
@@ -256,7 +276,13 @@ describe('persistent serve-mode helper sessions', () => {
         if (command.includes('expectedDocumentName=')) {
           // Inspect the request the adapter wrote for the helper.
           const files = await readdir(servedDir);
-          const requestFile = files.find((f) => f.startsWith('request-')) as string;
+          // The live helper must not see a request until PowerShell has
+          // taken its queue baseline; only a staged file may exist here.
+          expect(files.filter((f) => /^request-.*\.json$/.test(f))).toEqual([]);
+          const requestFile = files.find((f) => f.endsWith('.json.pending')) as string;
+          expect(requestFile).toBeTruthy();
+          expect(command.indexOf('Move-Item')).toBeGreaterThan(command.indexOf('$before[[string]$_.Id]'));
+          expect(command.indexOf('Move-Item')).toBeLessThan(command.indexOf('while (-not (Test-Path'));
           const request = JSON.parse(readFileSync(join(servedDir, requestFile), 'utf-8'));
           expect(request.printerName).toBe(PRINTER_NAME);
           expect(request.paperWidthMm).toBe(70);
@@ -326,6 +352,53 @@ describe('persistent serve-mode helper sessions', () => {
     expect(h.spawns).toHaveLength(1);
     expect(h.spawns[0]?.helperPath).not.toMatch(/^\\\\\?\\/);
     expect(h.spawns[0]?.helperPath).toBe(process.execPath);
+  });
+
+  it.each([true, false])('tracks single and consecutive jobs without IPP (USB=%s)', async (usb) => {
+    const h = makeServeHarness({ usb });
+    for (const jobId of ['job-1', 'job-2']) {
+      const result = await h.adapter.executeCommand(htmlPrintCommand({ jobId }));
+      expect(result.success).toBe(true);
+      expect(result.raw).toMatchObject({ deviceConfirmation: 'local-spooler-delivery' });
+    }
+  });
+
+  it.each([true, false])('accepts the driver colon-to-underscore job name (USB=%s)', async (usb) => {
+    const submission = exactHtmlSubmission();
+    submission.jobs[0]!.documentName = 'PrintOps_job-1';
+    const h = makeServeHarness({ usb, htmlSubmission: submission });
+    const result = await h.adapter.executeCommand(htmlPrintCommand());
+    expect(result.success).toBe(true);
+  });
+
+  it.each([true, false])('never substitutes another document for a missed job (USB=%s)', async (usb) => {
+    const h = makeServeHarness({ usb, htmlSubmission: exactHtmlSubmission('another-job') });
+    const result = await h.adapter.executeCommand(htmlPrintCommand());
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe('PRINT_NOT_VERIFIABLE');
+  });
+
+  it.each([true, false])('keeps missed jobs unverified (USB=%s)', async (usb) => {
+    const h = makeServeHarness({ usb, htmlSubmission: { ...exactHtmlSubmission(), jobs: [] } });
+    const result = await h.adapter.executeCommand(htmlPrintCommand());
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe('PRINT_NOT_VERIFIABLE');
+  });
+
+  it('does not claim delivery when a captured USB job had an error then disappeared', async () => {
+    const submission = exactHtmlSubmission();
+    submission.jobs[0]!.status = 'Error';
+    const h = makeServeHarness({ usb: true, htmlSubmission: submission });
+    const result = await h.adapter.executeCommand(htmlPrintCommand());
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe('PRINT_NOT_VERIFIABLE');
+  });
+
+  it.each([{ printerStatus: 'Offline' }, { queueError: true }])('does not claim delivery with unreliable queue evidence: %o', async (fault) => {
+    const h = makeServeHarness({ usb: true, ...fault });
+    const result = await h.adapter.executeCommand(htmlPrintCommand());
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe('PRINT_NOT_VERIFIABLE');
   });
 
   it('reports SUCCESS via spooler delivery when printer-side IPP is structurally unavailable', async () => {
