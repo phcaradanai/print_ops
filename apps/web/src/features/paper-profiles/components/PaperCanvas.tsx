@@ -1,6 +1,6 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { qrQuietZoneMm, renderBarcodeSvg } from '../../../lib/barcode.js';
-import { inverseTransformVector, renderTransformCss, resolveRenderTransform, resolveRenderTransformFrame } from '@printerops/shared';
+import { PRINT_FONT_FAMILY, PRINT_LINE_HEIGHT, inverseTransformVector, renderTransformCss, resolveRenderTransform, resolveRenderTransformFrame } from '@printerops/shared';
 import { useLocale } from '../../../i18n/index.js';
 import { anchorTransform, anchorTransformOrigin } from '../model/fieldGeometry.js';
 import { fontPointSizeToPreviewPixels, getVisualPaperGeometry, mapPrintablePointToVisual } from '../model/geometry.js';
@@ -287,6 +287,7 @@ export function FieldBarcodePreview({ field }: { field: DynamicField }) {
             height: `${heightMm}mm`,
             width: `${widthMm}mm`,
             padding: quietMm ? `${quietMm}mm` : undefined,
+            boxSizing: 'content-box',
             background: quietMm ? 'var(--neutral-surface)' : undefined,
             lineHeight: 0,
           }}
@@ -328,6 +329,9 @@ function FieldPreviewContent({ field, scale }: { field: DynamicField; scale: num
             height: heightPx,
             width: widthPx,
             padding: quietPx || undefined,
+            // Print adds the quiet zone outside the symbol; the global
+            // border-box rule would otherwise shrink the QR on the canvas.
+            boxSizing: 'content-box',
             background: quietPx ? '#fff' : undefined,
             lineHeight: 0,
           }}
@@ -520,9 +524,9 @@ export function PaperCanvas({
             style={{
               position: 'absolute', left: point.xMm * scale, top: point.yMm * scale,
               fontSize: fontPointSizeToPreviewPixels(f.fontSize, scale), fontWeight: f.bold ? 700 : 400,
-              lineHeight: 1.2,
+              lineHeight: PRINT_LINE_HEIGHT,
               color: f.color, whiteSpace: 'nowrap',
-              fontFamily: ux.fontFamily, pointerEvents: interactive ? 'auto' : 'none',
+              fontFamily: PRINT_FONT_FAMILY, pointerEvents: interactive ? 'auto' : 'none',
               cursor: interactive ? 'grab' : 'default',
               // No padding and no border: this element's box IS the printed
               // field. Both are layout-affecting, so either one offsets the text

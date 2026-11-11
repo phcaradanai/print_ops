@@ -8,7 +8,7 @@ import type {
   TemplateRendererPort,
   PrinterRepositoryPort,
 } from '@printerops/domain';
-import { getOrientedPaperGeometry, mapPrintablePointToVisual } from '@printerops/shared';
+import { PRINT_FONT_FAMILY, PRINT_LINE_HEIGHT, getOrientedPaperGeometry, mapPrintablePointToVisual } from '@printerops/shared';
 import { actor, requirePermission } from './permission-guard.js';
 import {
   coerceImportNumber,
@@ -77,7 +77,7 @@ function buildFieldsTemplateHtml(profile: PaperProfile): string {
       return `  <span style="${style}">{{${placeholderKey}}}</span>`;
     })
     .join('\n');
-  return `<div style="position:relative;width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;">\n${spans}\n</div>`;
+  return `<div style="position:relative;width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;font-family:${escapeHtmlAttr(PRINT_FONT_FAMILY)};line-height:${PRINT_LINE_HEIGHT};">\n${spans}\n</div>`;
 }
 
 export async function templateRoutes(

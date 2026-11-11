@@ -19,16 +19,6 @@ export const PAPER_PRESETS = [
 
 export const DPI_OPTIONS = [203, 300, 600] as const;
 export const DISPLAY_UNITS: DisplayUnit[] = ['mm', 'cm', 'px'];
-export const FONT_LIST = [
-  'system-ui, sans-serif',
-  'ui-monospace, monospace',
-  'Arial, sans-serif',
-  '"Courier New", monospace',
-  '"Times New Roman", serif',
-  '"Segoe UI", sans-serif',
-  'Tahoma, sans-serif',
-  'Verdana, sans-serif',
-];
 
 export const DEFAULT_FORM: PaperForm = {
   code: '',
@@ -51,7 +41,6 @@ export const DEFAULT_FORM: PaperForm = {
 
 export const DEFAULT_UX: PaperProfileUx = {
   displayUnit: 'mm',
-  fontFamily: 'system-ui, sans-serif',
   fontSize: 12,
   fontWeight: 'normal',
   fontColor: '#000000',

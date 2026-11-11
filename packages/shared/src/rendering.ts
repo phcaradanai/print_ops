@@ -120,6 +120,14 @@ export function isValidRotation(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value < 360;
 }
 
+/**
+ * The one font stack used by both the design canvas and the printed HTML, so
+ * text width matches. Without it WebView2 prints in its default serif font.
+ * Tahoma ships with Thai glyphs on Windows and macOS.
+ */
+export const PRINT_FONT_FAMILY = 'Tahoma, "Leelawadee UI", "Noto Sans Thai", sans-serif';
+export const PRINT_LINE_HEIGHT = 1.2;
+
 export function resolveRenderTransform(
   profile: RenderTransformProfile = {},
   overrides: RenderTransformOverrides = {},

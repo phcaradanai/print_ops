@@ -255,6 +255,7 @@ export class AcceptExternalJobService {
         printerId: '',
         printerCode: req.printer_code,
         templateCode: req.template_code,
+        paperProfileId: paperProfileMetadata?.['paperProfileId'] as string | undefined,
         sourceSystem: req.source_system,
         sourceReference: req.source_reference,
         requestId: req.request_id,

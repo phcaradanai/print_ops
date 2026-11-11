@@ -67,7 +67,6 @@ export interface PaperProfile extends Omit<PaperForm, 'rotation' | 'flipHorizont
 
 export interface PaperProfileUx {
   displayUnit: DisplayUnit;
-  fontFamily: string;
   fontSize: number;
   fontWeight: 'normal' | 'bold';
   fontColor: string;

@@ -52,7 +52,6 @@ const UX: PaperProfileUx = {
   dynamicFields: [FIELD],
   bgColor: '#ffffff',
   fontColor: '#111827',
-  fontFamily: 'system-ui',
   watermarkText: '',
   watermarkOpacity: 0,
   displayUnit: 'mm',
