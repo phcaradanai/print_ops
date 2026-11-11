@@ -22,8 +22,8 @@ export default function ExportCenter() {
   // export (permission denied, API down) was an unhandled rejection and a
   // button that appeared to do nothing at all.
   const download = useApiAction(async (item: ExportItem) => {
-    await apiDownload(item.path, item.filename);
-    return item.filename;
+    // null = user cancelled the save dialog; no success alert.
+    return apiDownload(item.path, item.filename);
   });
 
   const run = async (item: ExportItem) => {

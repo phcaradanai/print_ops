@@ -85,6 +85,14 @@ export async function enrollControlDevice(
   })) as ControlEnrollmentResult;
 }
 
+function fileExtension(filename: string): string {
+  return filename.split('.').pop()?.toLowerCase() || 'json';
+}
+
+function mimeType(filename: string): string {
+  return fileExtension(filename) === 'csv' ? 'text/csv' : 'application/json';
+}
+
 let saveDialogFn: ((options: Record<string, unknown>) => Promise<string | null>) | null = null;
 
 async function getSaveDialog(): Promise<((options: Record<string, unknown>) => Promise<string | null>) | null> {
@@ -114,7 +122,8 @@ export async function saveExportFile(
   const invoke = await getInvoke();
   if (!save || !invoke) return null;
   const defaultPath = suggestedDir ? `${suggestedDir.replace(/[\\/]+$/, '')}/${filename}` : filename;
-  const path = await save({ defaultPath, filters: [{ name: 'JSON', extensions: ['json'] }] });
+  const ext = fileExtension(filename);
+  const path = await save({ defaultPath, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] });
   if (!path) return null;
   await invoke('write_export_file', { path, content });
   return path;
@@ -158,8 +167,8 @@ export async function exportJsonFile(
         suggestedName: filename,
         types: [
           {
-            description: 'JSON File (*.json)',
-            accept: { 'application/json': ['.json'] },
+            description: `${fileExtension(filename).toUpperCase()} File (*.${fileExtension(filename)})`,
+            accept: { [mimeType(filename)]: [`.${fileExtension(filename)}`] },
           },
         ],
       });
@@ -180,7 +189,7 @@ export async function exportJsonFile(
 
   // 3. Browser blob download fallback
   try {
-    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+    const blob = new Blob([content], { type: `${mimeType(filename)};charset=utf-8` });
     const url = URL.createObjectURL(blob);
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', url);

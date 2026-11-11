@@ -1,5 +1,6 @@
 import { ApiError, apiErrorFromResponse, networkApiError } from './errors.js';
 import { logError } from '../lib/logError.js';
+import { exportJsonFile } from '../tauri.js';
 
 export { ApiError, errorMessage, errorTechnicalSummary } from './errors.js';
 
@@ -365,7 +366,8 @@ export function logout(): void {
   storageRemove('token');
 }
 
-export async function apiDownload(path: string, filename: string): Promise<void> {
+/** Resolves to the saved path/name, or null if the user cancelled the save dialog. */
+export async function apiDownload(path: string, filename: string): Promise<string | null> {
   const authToken = token();
   const apiKey = getApiKey();
   const a = document.createElement('a');
@@ -389,11 +391,22 @@ export async function apiDownload(path: string, filename: string): Promise<void>
     logError('apiDownload', error);
     throw error;
   }
+  // The desktop webview ignores blob `<a download>` clicks, so text exports go
+  // through the shared save path (native Save dialog in Tauri, picker/blob in browsers).
+  // shortcut: binary files (.db backup) keep the blob link because write_export_file
+  // only takes strings; add a bytes command if desktop backups must download too.
+  if (!filename.endsWith('.db')) {
+    const result = await exportJsonFile(filename, await res.text());
+    if (result.cancelled) return null;
+    if (!result.success) throw new Error(result.message ?? 'Export failed');
+    return result.path ?? filename;
+  }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   a.href = url;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return filename;
 }
 
 export function getDownloadUrl(path: string): string {
