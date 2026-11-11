@@ -542,14 +542,6 @@ export function PaperCanvas({
             }}
           >
             <FieldPreviewContent field={f} scale={scale} />
-            {showDimensions && selectedFieldId === f.id && (
-              <span className="pp-field-measurement" aria-hidden="true">
-                X {f.xMm.toFixed(1)} · Y {f.yMm.toFixed(1)} mm
-                {(f.type === 'qrcode' || f.type === 'barcode')
-                  ? ` · ${f.type === 'qrcode' ? `${(f.qrSizeMm ?? DEFAULT_QR_SIZE_MM).toFixed(1)} × ` : ''}${(f.type === 'qrcode' ? f.qrSizeMm : f.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM)?.toFixed(1)} mm`
-                  : ` · ${f.fontSize} pt`}
-              </span>
-            )}
           </button>
             );
           })()
