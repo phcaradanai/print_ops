@@ -588,7 +588,7 @@ export function otaConfigFromEnv(env: NodeJS.ProcessEnv = process.env): OtaConfi
       'PRINTOPS_OTA_HEALTH_CHECK_TIMEOUT_MS',
       1,
     ),
-    requireSignature: boolFromEnv(env['PRINTOPS_OTA_REQUIRE_SIGNATURE'], enabled),
+    requireSignature: boolFromEnv(env['PRINTOPS_OTA_REQUIRE_SIGNATURE'], false),
     publicKey: env['PRINTOPS_OTA_PUBLIC_KEY']?.trim() || undefined,
     updaterPath: env['PRINTOPS_OTA_UPDATER_PATH']?.trim() || undefined,
     updaterRequestDirectory: env['PRINTOPS_OTA_UPDATER_REQUEST_DIR']?.trim()

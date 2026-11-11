@@ -97,6 +97,7 @@ export default function WebControlReleases() {
   const [importUrlOrPath, setImportUrlOrPath] = useState('');
   const [importMode, setImportMode] = useState<'file' | 'path'>('file');
   const [importError, setImportError] = useState<string | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
 
   // Edit / Designation dialog state
   const [editingRelease, setEditingRelease] = useState<ReleaseItem | null>(null);
@@ -275,12 +276,14 @@ export default function WebControlReleases() {
     setEditIsLts(Boolean(release.isLts || release.channel === 'lts'));
     setEditIsLatest(Boolean(release.isLatest));
     setEditNotes(release.releaseNotes ?? '');
+    setEditError(null);
     setEditModalOpen(true);
   };
 
   const handleSaveEdit = async () => {
     if (!editingRelease) return;
     setIsSubmitting(true);
+    setEditError(null);
     try {
       await apiFetch(`/v1/control/releases/${editingRelease.id}`, {
         method: 'PATCH',
@@ -297,7 +300,7 @@ export default function WebControlReleases() {
       setEditingRelease(null);
       releasesResource.refresh();
     } catch (err) {
-      setDownloadNotice(t('control.releases.saveFailed').replace('{message}', err instanceof Error ? err.message : String(err)));
+      setEditError(t('control.releases.saveFailed').replace('{message}', err instanceof Error ? err.message : String(err)));
     } finally {
       setIsSubmitting(false);
     }
@@ -466,7 +469,6 @@ export default function WebControlReleases() {
                   <DataCell><Mono size="body">v{rel.schemaVersion}</Mono></DataCell>
                   <DataCell>
                     <Stack gap="xs">
-                      <Badge tone="neutral">{t('control.releases.signatureUnverified')}</Badge>
                       <Mono size="label" tone="muted" title={rel.sha256}>
                         {rel.sha256.slice(0, 12)}…
                       </Mono>
@@ -802,6 +804,8 @@ export default function WebControlReleases() {
           <Text size="body" tone="muted">
             {t('control.releases.editDesc').replace('{version}', editingRelease?.version ?? '')}
           </Text>
+
+          {editError && <Alert tone="error">{editError}</Alert>}
 
           <Stack gap="md">
             <Inline gap="md">

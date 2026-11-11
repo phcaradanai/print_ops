@@ -284,4 +284,39 @@ export class ReleaseStorageService {
 
     throw new Error(`Artifact file not found: ${artifactRef}`);
   }
+
+  async getArtifactMetadata(artifactRef: string): Promise<{ size: number; sha256?: string }> {
+    if (/^(minio|s3):\/\//.test(artifactRef)) {
+      const raw = artifactRef.replace(/^(minio|s3):\/\//, '');
+      const slash = raw.indexOf('/');
+      if (slash < 1) throw new Error('Invalid object storage artifact reference');
+      if (!this.minioClient) this.initMinioClient();
+      if (!this.minioClient) throw new Error('MinIO client is not configured');
+      const info = await this.minioClient.statObject(raw.slice(0, slash), raw.slice(slash + 1));
+      return { size: info.size };
+    }
+    if (/^https?:\/\//.test(artifactRef)) {
+      const response = await fetch(artifactRef, { signal: AbortSignal.timeout(60_000) });
+      if (!response.ok || !response.body) throw new Error(`Artifact returned HTTP ${response.status}`);
+      const hash = createHash('sha256');
+      let size = 0;
+      const reader = response.body.getReader();
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > 512 * 1024 * 1024) throw new Error('Artifact exceeds 512 MiB');
+          hash.update(value);
+        }
+      } finally {
+        await reader.cancel();
+      }
+      return { size, sha256: hash.digest('hex') };
+    }
+    for (const path of [artifactRef, resolve(process.cwd(), artifactRef), join(resolve(this.config.localPath), artifactRef)]) {
+      if (existsSync(path) && statSync(path).isFile()) return { size: statSync(path).size };
+    }
+    throw new Error('Artifact file not found');
+  }
 }

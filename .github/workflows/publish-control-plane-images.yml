@@ -1,0 +1,44 @@
+name: Publish Web Control images
+
+on:
+  push:
+    branches: [mvp_nippon]
+    paths: ['.github/workflows/publish-control-plane-images.yml']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Web Control image version
+        required: true
+        default: '1.0.5'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-control-plane-${{ inputs.version || '1.0.5' }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PRINTOPS_IMAGE_PREFIX: registry.pg.xenex.io/printops-control-plane
+      PRINTOPS_CONTROL_PLANE_VERSION: ${{ inputs.version || '1.0.5' }}
+      PRINTOPS_BUILD_PLATFORMS: linux/amd64
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and publish API and Web
+        run: node scripts/publish-control-plane-images.mjs
+      - name: Verify published images
+        run: |
+          docker buildx imagetools inspect "${PRINTOPS_IMAGE_PREFIX}-api:${PRINTOPS_CONTROL_PLANE_VERSION}"
+          docker buildx imagetools inspect "${PRINTOPS_IMAGE_PREFIX}-web:${PRINTOPS_CONTROL_PLANE_VERSION}"

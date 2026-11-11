@@ -159,8 +159,11 @@ Actions:
 - The Ed25519 signature covers the complete canonical `manifest` payload,
   including channel, compatibility floor, schema version, artifact URLs,
   hashes, sizes, signatures, and rollout metadata.
-- The client verifies that signature with the exact bundled public key before
-  processing any release fields.
+- When `PRINTOPS_OTA_REQUIRE_SIGNATURE=true`, the client verifies that signature
+  with the bundled public key before processing any release fields. Closed-network
+  desktop deployments default to `false`: Web Control generates download metadata
+  from the uploaded installer, without requiring a separate manifest or public key.
+  File size and SHA-256 checks remain mandatory in both modes.
 - Each artifact is independently SHA-256 checked and, when signatures are
   required, independently Ed25519 verified over its raw SHA-256 digest.
 - The release pipeline self-verifies both the payload signature and artifact
@@ -183,7 +186,7 @@ UPDATE_AVAILABLE
 DOWNLOADING
   ↓ (download complete)
 DOWNLOADED
-  ↓ (verify checksum + signature)
+  ↓ (verify checksum + signature when required)
 VERIFIED
   ↓ (automatic preflight may defer while printing is busy)
 WAITING_FOR_IDLE
@@ -219,7 +222,7 @@ HEALTH_CHECK → HEALTH_CHECK_FAILED → ROLLING_BACK → ROLLED_BACK
 | UPDATE_AVAILABLE | DOWNLOADING | user approval or auto-update policy | — |
 | DOWNLOADING | DOWNLOADED | download complete | file size matches manifest |
 | DOWNLOADING | DOWNLOAD_FAILED | network error, disk full | — |
-| DOWNLOADED | VERIFIED | checksum + signature valid | sha256 matches, signature valid |
+| DOWNLOADED | VERIFIED | checksum valid; signature valid when required | sha256 matches |
 | DOWNLOADED | VERIFY_FAILED | checksum mismatch, invalid signature | — |
 | VERIFIED | WAITING_FOR_IDLE | automatic preflight observes printing activity | print admission remains open |
 | VERIFIED | WAITING_FOR_IDLE | install initiated | — |

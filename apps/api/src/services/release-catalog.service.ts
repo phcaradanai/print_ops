@@ -68,6 +68,7 @@ export class ReleaseCatalogService {
       releaseNotes?: string;
       isLts?: boolean;
       isLatest?: boolean;
+      sha256?: string;
     },
   ): Promise<ReleaseCatalogRecord> {
     const existing = await this.releases.findById(id);

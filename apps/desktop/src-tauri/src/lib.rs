@@ -419,11 +419,11 @@ fn build_server_command(paths: &ServerPaths, nats_settings: &NatsSettings) -> Co
         .env("PRINTOPS_APP_VERSION", DESKTOP_APP_VERSION)
         .env("PRINTOPS_GIT_COMMIT", env!("PRINTOPS_GIT_COMMIT"))
         .env("PRINTOPS_DB_SCHEMA_VERSION", DESKTOP_DB_SCHEMA_VERSION)
+        .env("PRINTOPS_OTA_ENABLED", "true")
         .env(
-            "PRINTOPS_OTA_ENABLED",
-            paths.ota_public_key.is_some().to_string(),
+            "PRINTOPS_OTA_REQUIRE_SIGNATURE",
+            std::env::var("PRINTOPS_OTA_REQUIRE_SIGNATURE").unwrap_or_else(|_| "false".to_string()),
         )
-        .env("PRINTOPS_OTA_REQUIRE_SIGNATURE", "true")
         .env("SQL_WASM_PATH", &paths.wasm_path)
         .env("JWT_SECRET", &paths.jwt_secret)
         .env(

@@ -104,10 +104,33 @@ a Docker-internal hostname is not reachable from a workstation.
 | `PRINTOPS_CONTROL_NATS_PORT` | `4222` | Published NATS port. |
 | `PRINTOPS_WEB_BIND_ADDRESS` | `127.0.0.1` | Host interface for the web port; keep loopback behind a reverse proxy. |
 | `PRINTOPS_WEB_PORT` | `8080` | Published web port. |
+| `PRINTOPS_CONTROL_PUBLIC_HTTP_URL` | Optional HTTP(S) origin | Client-reachable origin for hosted OTA manifests, e.g. `http://printops.node1.ch3.local` or `https://printops.example:8443`. Set explicitly behind a TLS proxy. Defaults to the request protocol and Host, including port. |
 | `PRINTOPS_CONTROL_PLANE_VERSION` | `1.0.0` | Control Plane image tag/version; independent of the PrintOps app version. |
 | `PRINTOPS_IMAGE_PREFIX` | Optional for source builds; required by registry stack | Registry/repository prefix for API and Web images. |
 | `PRINTOPS_API_UPSTREAM` | `api:3001` | API service DNS name and port reachable by the web container; override when its Docker network alias differs. |
 | `PRINTOPS_RELEASE_IMPORT_MAX_MIB` | Positive whole number; default `128` | Maximum Base64 JSON import request size in MiB, shared by API and Web. |
+
+For self-hosted OTA, upload the PrintOps NSIS `.exe` installer, select a device,
+and request the update. Existing uploaded installers also work without another
+upload. The control plane automatically supplies the download metadata; no
+manifest file, public key, or signing step is required. File size and SHA-256,
+version/schema compatibility, waiting for print idle, backups and rollback remain
+active. Publisher signature verification is off by default; deployments that
+explicitly set `PRINTOPS_OTA_REQUIRE_SIGNATURE=true` retain signed-release checks.
+
+The OTA endpoints serve available release files without an operator login;
+management and ordinary download APIs retain their permission checks. Revoking
+or deprecating a release blocks its OTA endpoints.
+
+Set `PRINTOPS_CONTROL_PUBLIC_HTTP_URL` to an origin every PrintOps client can
+reach, including a non-default port. A hostname mapped in the administrator's
+hosts file also needs to resolve on every client; otherwise use the server's
+reachable IP as this setting.
+
+Clients running an older desktop build that hardcodes signature verification
+still need a one-time local upgrade to this desktop build (or a matching signed
+release). Changing the control plane cannot change validation in an already
+installed client executable.
 
 Validate and start the stack:
 

@@ -1,8 +1,33 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReleaseStorageService } from './release-storage.service.js';
+import * as Minio from 'minio';
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe('ReleaseStorageService OTA metadata', () => {
+  it('gets an uploaded MinIO installer size from its object metadata', async () => {
+    vi.spyOn(Minio.Client.prototype, 'statObject').mockImplementation(async (bucket, object) => {
+      if (bucket !== 'releases' || object !== 'apps/PrintOps.exe') throw new Error('Object not found');
+      return { size: 12345, etag: 'etag', metaData: {}, lastModified: new Date() };
+    });
+    const service = new ReleaseStorageService(undefined, { provider: 'minio' });
+    await expect(service.getArtifactMetadata('minio://releases/apps/PrintOps.exe')).resolves.toEqual({ size: 12345 });
+  });
+
+  it('derives an external installer checksum from file bytes rather than its URL', async () => {
+    vi.stubGlobal('fetch', async (url: string) => {
+      if (url !== 'https://releases.local/PrintOps.exe') throw new Error('Unexpected artifact URL');
+      return new Response('abc');
+    });
+    const service = new ReleaseStorageService(undefined, { provider: 'local' });
+    await expect(service.getArtifactMetadata('https://releases.local/PrintOps.exe')).resolves.toEqual({
+      size: 3, sha256: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+    });
+  });
 });
 
 describe('ReleaseStorageService provider defaults', () => {

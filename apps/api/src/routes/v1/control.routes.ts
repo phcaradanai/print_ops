@@ -13,10 +13,12 @@ import type { ControlCommandService } from '../../services/control-command.servi
 import type { ReleaseCatalogService } from '../../services/release-catalog.service.js';
 import type { ControlContentSyncService } from '../../services/control-content-sync.service.js';
 import type { ReleaseStorageService, MinioStorageConfig } from '../../services/release-storage.service.js';
+import { ValidationError } from '@printerops/shared';
 import { requirePermission, actor } from './permission-guard.js';
 import { randomUUID, createHash } from 'node:crypto';
-import { createReadStream, existsSync, statSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { createReadStream, existsSync, statSync, mkdirSync, writeFileSync, readFileSync, renameSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import { parseReleaseManifestEnvelope } from '../../services/ota-update.service.js';
 import { Readable } from 'node:stream';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 
@@ -224,7 +226,7 @@ export async function controlRoutes(
         if (!compatibility.compatible && !installedReleaseCheck) {
           return reply.status(409).send({ error: compatibility.reason });
         }
-        manifestUrl = release.manifestRef;
+        manifestUrl = resolveControlManifestUrl(release.manifestRef, req, release.platform);
         if (body.type === 'OTA_CHECK') targetVersion = release.version;
       }
 
@@ -564,6 +566,7 @@ export async function controlRoutes(
         releaseNotes?: string;
         isLts?: boolean;
         isLatest?: boolean;
+        signedManifest?: unknown;
       };
 
       const releasesDir = process.env['PRINTOPS_RELEASES_DIR'] || resolve(process.cwd(), 'data/releases');
@@ -607,12 +610,17 @@ export async function controlRoutes(
       }
 
       if (!sha256) {
-        sha256 = createHash('sha256').update(artifactRef).digest('hex');
+        const manifest = body.signedManifest === undefined ? undefined : parseReleaseManifestEnvelope(body.signedManifest).manifest;
+        const platform = body.platform ?? 'windows-x64';
+        sha256 = manifest?.artifacts[platform === 'windows-x64' ? 'desktop' : 'api']?.[platform]?.sha256
+          ?? createHash('sha256').update(artifactRef).digest('hex');
       }
 
-      const signature = body.signature?.trim() || `sig_auto_${sha256.slice(0, 32)}`;
-      const manifestRef = `/v1/control/releases/${version}/manifest.json`;
       const platform = body.platform ?? 'windows-x64';
+      const manifestRef = `/api/v1/control/releases/${version}${platform === 'node-bundle' ? '/node-bundle' : ''}/manifest.json`;
+      const manifestEntry = body.signedManifest === undefined ? undefined
+        : validateHostedManifest(body.signedManifest, { version, platform, schemaVersion: body.schemaVersion ?? 8, sha256 });
+      const signature = manifestEntry?.signature || body.signature?.trim() || `sig_auto_${sha256.slice(0, 32)}`;
       const isLts = Boolean(body.isLts || body.channel === 'lts');
       const channel = body.channel ?? (isLts ? 'lts' : 'stable');
 
@@ -632,9 +640,59 @@ export async function controlRoutes(
         isLatest: body.isLatest,
       });
 
+      if (body.signedManifest !== undefined) saveHostedManifest(created, body.signedManifest);
+
       return reply.status(201).send(created);
     },
   );
+
+  app.put('/control/releases/:id/manifest', { onRequest: [requirePermission('control:manage')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const release = await deps.releases.getRelease(id);
+    if (!release) return reply.status(404).send({ error: 'Release not found' });
+    if (release.status !== 'AVAILABLE') return reply.status(409).send({ error: 'Release is not available' });
+    if (!isHostedManifestRef(release.manifestRef)) {
+      return reply.status(409).send({ error: 'This release uses an external manifest URL' });
+    }
+    const { signedManifest } = (req.body ?? {}) as { signedManifest?: unknown };
+    // Older URL-only imports hashed the URL text because no file bytes were
+    // available. Replace only that recognizable placeholder with the manifest's
+    // content hash; real file checksums must always match, never be overwritten.
+    const legacyUrlChecksum = /^https?:\/\//.test(release.artifactRef)
+      && release.signature.startsWith('sig_auto_')
+      && release.sha256 === createHash('sha256').update(release.artifactRef).digest('hex');
+    const manifest = legacyUrlChecksum ? parseReleaseManifestEnvelope(signedManifest).manifest : undefined;
+    const sha256 = manifest?.artifacts[release.platform === 'windows-x64' ? 'desktop' : 'api']?.[release.platform]?.sha256 ?? release.sha256;
+    validateHostedManifest(signedManifest, { ...release, sha256 });
+    saveHostedManifest(release, signedManifest);
+    if (sha256 !== release.sha256) await deps.releases.updateRelease(id, { sha256 });
+    return reply.send({ manifestRef: release.manifestRef });
+  });
+
+  // Published OTA files are fetched by the updater without an operator JWT.
+  // Only AVAILABLE catalog entries are served. Uploaded installers need no
+  // accompanying manifest: metadata is derived from their stored file details.
+  for (const path of ['/control/releases/:version/:filename', '/control/releases/:version/:platform/:filename']) {
+    app.get(path, async (req, reply) => {
+      const { version, filename, platform } = req.params as { version: string; filename: string; platform?: string };
+      const release = await deps.releases.findReleaseByVersion(version, platform ?? 'windows-x64');
+      if (!release || !isHostedManifestRef(release.manifestRef)) return reply.status(404).send({ error: 'Release not found' });
+      if (release.status !== 'AVAILABLE') return reply.status(403).send({ error: 'Release is not available' });
+      const manifestPath = hostedManifestPath(release);
+      const envelope: unknown = existsSync(manifestPath)
+        ? JSON.parse(readFileSync(manifestPath, 'utf8'))
+        : await generatedReleaseManifest(release, deps);
+      const parsed = parseReleaseManifestEnvelope(envelope).manifest;
+      const entry = parsed.artifacts[release.platform === 'windows-x64' ? 'desktop' : 'api']?.[release.platform];
+      if (!entry) return reply.status(404).send({ error: 'Artifact not found' });
+      reply.header('Cache-Control', 'no-store');
+      if (filename === 'manifest.json') return reply.send(envelope);
+      if (filename !== entry.url || filename === '.' || filename === '..') {
+        return reply.status(404).send({ error: 'Artifact not found in signed manifest' });
+      }
+      return serveReleaseArtifact(release, req, reply, undefined, deps.storage);
+    });
+  }
 
   // ─── Audit Logs ─────────────────────────────────────────────────────────────
 
@@ -703,6 +761,101 @@ export async function controlRoutes(
     },
   );
 }
+
+function isHostedManifestRef(ref: string): boolean {
+  return /^\/(?:api\/)?v1\/control\/releases\/[^/]+\/(?:node-bundle\/)?manifest\.json$/.test(ref);
+}
+
+async function generatedReleaseManifest(release: ReleaseCatalogRecord, deps: ControlRoutesDeps) {
+  const metadata = deps.storage
+    ? await deps.storage.getArtifactMetadata(release.artifactRef)
+    : { size: statSync(release.artifactRef).size };
+  if (!Number.isSafeInteger(metadata.size) || metadata.size <= 0) throw new ValidationError('Installer file is empty or unavailable');
+  let sha256 = release.sha256;
+  if (metadata.sha256 && metadata.sha256 !== sha256) {
+    const legacyPlaceholder = release.signature.startsWith('sig_auto_')
+      && sha256 === createHash('sha256').update(release.artifactRef).digest('hex');
+    if (!legacyPlaceholder) throw new ValidationError('Installer checksum does not match the registered release');
+    sha256 = metadata.sha256;
+    await deps.releases.updateRelease(release.id, { sha256 });
+  }
+  const component = release.platform === 'windows-x64' ? 'desktop' : 'api';
+  return {
+    schema_version: 1,
+    release: { version: release.version, channel: release.channel === 'lts' ? 'stable' : release.channel,
+      release_date: release.createdAt.toISOString(), notes: release.releaseNotes ?? '' },
+    artifacts: { [component]: { [release.platform]: {
+      url: getArtifactFilename(release), size: metadata.size, sha256,
+      format: release.platform === 'windows-x64' ? 'nsis-installer' : 'archive',
+    } } },
+    compatibility: { min_supported_version: release.minSupportedVersion ?? '0.1.0', schema_version: release.schemaVersion },
+    rollout: { staged: false, rollout_percentage: 100 },
+  };
+}
+
+function hostedManifestPath(release: Pick<ReleaseCatalogRecord, 'id'>): string {
+  const directory = process.env['PRINTOPS_RELEASES_DIR'] || resolve(process.cwd(), 'data/releases');
+  return join(directory, `${encodeURIComponent(release.id)}.manifest.json`);
+}
+
+function validateHostedManifest(input: unknown, release: Pick<ReleaseCatalogRecord, 'version' | 'platform' | 'schemaVersion' | 'sha256'>) {
+  let parsed: ReturnType<typeof parseReleaseManifestEnvelope>;
+  try {
+    if (Buffer.byteLength(JSON.stringify(input) ?? '', 'utf8') > 1_048_576) throw new Error('Manifest exceeds 1 MiB');
+    parsed = parseReleaseManifestEnvelope(input);
+  } catch {
+    throw new ValidationError('signedManifest must be a valid signed OTA manifest envelope (at most 1 MiB)');
+  }
+  const entry = parsed.manifest.artifacts[release.platform === 'windows-x64' ? 'desktop' : 'api']?.[release.platform];
+  if (Buffer.from(parsed.signature, 'base64').length !== 64 || !entry || Buffer.from(entry.signature, 'base64').length !== 64) {
+    throw new ValidationError('signedManifest must include Ed25519 manifest and artifact signatures from the release build');
+  }
+  if (parsed.manifest.release.version !== release.version || parsed.manifest.compatibility.schemaVersion !== release.schemaVersion
+    || entry.sha256 !== release.sha256.toLowerCase()) {
+    throw new ValidationError('signedManifest version, schema and artifact SHA-256 must match the release');
+  }
+  // Relative installer URLs must be a sibling filename so the signed payload
+  // can stay byte-for-byte unchanged while this host serves the uploaded file.
+  if (!/^[a-zA-Z0-9_. -]+$/.test(entry.url) || entry.url === '.' || entry.url === '..' || entry.url === 'manifest.json') {
+    let url: URL;
+    try { url = new URL(entry.url); } catch { throw new ValidationError('Manifest artifact URL must be a sibling filename or absolute http(s) URL'); }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+      throw new ValidationError('Manifest artifact URL must be a sibling filename or absolute http(s) URL without credentials');
+    }
+  }
+  return entry;
+}
+
+function saveHostedManifest(release: ReleaseCatalogRecord, envelope: unknown): void {
+  const directory = process.env['PRINTOPS_RELEASES_DIR'] || resolve(process.cwd(), 'data/releases');
+  mkdirSync(directory, { recursive: true });
+  const destination = hostedManifestPath(release);
+  const temporary = `${destination}.${randomUUID()}.tmp`;
+  writeFileSync(temporary, JSON.stringify(envelope));
+  renameSync(temporary, destination);
+}
+
+function resolveControlManifestUrl(manifestRef: string, req: FastifyRequest, platform: ReleaseCatalogRecord['platform']): string {
+  // Resolve only local references. Absolute catalog URLs still go through the
+  // command service's protocol/credential validation without being rewritten.
+  if (!manifestRef.startsWith('/') || /^\/[\\/]/.test(manifestRef)) return manifestRef;
+  const publicUrl = process.env['PRINTOPS_CONTROL_PUBLIC_HTTP_URL'] || `${req.protocol}://${req.hostname}`;
+  let origin: URL;
+  try {
+    origin = new URL(publicUrl);
+    if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password
+      || origin.pathname !== '/' || origin.search || origin.hash) throw new Error('Invalid origin');
+  } catch {
+    throw new ValidationError('PRINTOPS_CONTROL_PUBLIC_HTTP_URL must be an absolute http(s) origin without credentials');
+  }
+  // Releases imported by older control planes used the frontend's /v1 path.
+  let path = manifestRef.startsWith('/v1/control/releases/') ? `/api${manifestRef}` : manifestRef;
+  if (platform === 'node-bundle' && /\/releases\/[^/]+\/manifest\.json$/.test(path)) {
+    path = path.replace(/\/manifest\.json$/, '/node-bundle/manifest.json');
+  }
+  return new URL(path, origin).href;
+}
+
 function getArtifactFilename(release: ReleaseCatalogRecord): string {
   const ext = release.platform === 'windows-x64' ? '.exe' : '.tar.gz';
   const urlOrPath = release.artifactRef;
