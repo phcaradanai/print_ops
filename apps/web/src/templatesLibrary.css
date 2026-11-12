@@ -110,3 +110,14 @@
     min-height: 44px;
   }
 }
+
+.tpl-pagination {
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md);
+}
+
+.tpl-pagination > .ui-select {
+  flex: 0 0 auto;
+  width: auto;
+}

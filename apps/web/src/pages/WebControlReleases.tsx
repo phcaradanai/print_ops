@@ -8,6 +8,7 @@ import {
   Alert,
   Badge,
   Button,
+  Checkbox,
   DataCell,
   DataHead,
   DataTable,
@@ -15,14 +16,19 @@ import {
   EmptyState,
   ErrorBanner,
   ErrorState,
+  FormField,
   Freshness,
+  Grid,
   Inline,
   Input,
   LoadingState,
   Mono,
   PageLayout,
+  RowActionMenu,
   Select,
   Stack,
+  Tab,
+  TabList,
   Text,
 } from '../components/ui/index.js';
 import type { DeviceListItem } from './WebControlDevices.js';
@@ -106,6 +112,7 @@ export default function WebControlReleases() {
   const [editIsLts, setEditIsLts] = useState(false);
   const [editIsLatest, setEditIsLatest] = useState(false);
   const [editNotes, setEditNotes] = useState('');
+  const [revokeTarget, setRevokeTarget] = useState<ReleaseItem | null>(null);
 
   // Storage settings dialog state
   const [storageModalOpen, setStorageModalOpen] = useState(false);
@@ -306,18 +313,25 @@ export default function WebControlReleases() {
     }
   };
 
-  const handleToggleStatus = async (release: ReleaseItem) => {
-    const nextStatus = release.status === 'AVAILABLE' ? 'REVOKED' : 'AVAILABLE';
+  const setReleaseStatus = async (release: ReleaseItem, status: ReleaseItem['status']) => {
     try {
       await apiFetch(`/v1/control/releases/${release.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({ status }),
       });
       releasesResource.refresh();
-    } catch {
-      // handled
+    } catch (err) {
+      setDownloadNotice(t('control.releases.statusFailed').replace('{message}', err instanceof Error ? err.message : String(err)));
     }
+  };
+
+  const handleConfirmRevoke = async () => {
+    if (!revokeTarget) return;
+    setIsSubmitting(true);
+    await setReleaseStatus(revokeTarget, 'REVOKED');
+    setIsSubmitting(false);
+    setRevokeTarget(null);
   };
 
   const handleOpenStorageModal = async () => {
@@ -376,20 +390,20 @@ export default function WebControlReleases() {
         <Inline gap="md">
           {latestAvailableRelease && (
             <Button
-              variant="primary"
+              variant="secondary"
               onClick={() => handleDownloadRelease(latestAvailableRelease)}
             >
               {t('control.releases.downloadLatest')} (v{latestAvailableRelease.version})
             </Button>
           )}
-          <Button variant="primary" onClick={() => { setImportError(null); setImportModalOpen(true); }}>
-            {t('control.releases.importApp')}
+          <Button variant="secondary" onClick={handleOpenStorageModal}>
+            {t('control.storage.button')}
           </Button>
           <Button variant="secondary" onClick={() => { setRegisterError(null); setRegisterModalOpen(true); }}>
             {t('control.releases.registerRelease')}
           </Button>
-          <Button variant="secondary" onClick={handleOpenStorageModal}>
-            {t('control.storage.button')}
+          <Button variant="primary" onClick={() => { setImportError(null); setImportModalOpen(true); }}>
+            {t('control.releases.importApp')}
           </Button>
           <Freshness
             lastSuccessAt={releasesResource.lastSuccessAt}
@@ -401,7 +415,7 @@ export default function WebControlReleases() {
         </Inline>
       }
     >
-      <Inline gap="md" style={{ alignItems: 'center' }}>
+      <Inline gap="md">
         <Text size="body" tone="muted">
           {t('control.releases.intro')}
         </Text>
@@ -450,7 +464,7 @@ export default function WebControlReleases() {
               const deployed = deploymentCounts.get(rel.version) ?? 0;
               return (
                 <tr key={rel.id}>
-                  <DataCell>
+                  <DataCell label={t('control.releases.colVersion')}>
                     <Stack gap="xs">
                       <Inline gap="xs" style={{ alignItems: 'center' }}>
                         <Mono size="body" weight="semibold">v{rel.version}</Mono>
@@ -460,78 +474,48 @@ export default function WebControlReleases() {
                       {rel.releaseNotes && <Text size="label" tone="muted">{rel.releaseNotes}</Text>}
                     </Stack>
                   </DataCell>
-                  <DataCell><Mono size="body">{rel.platform}</Mono></DataCell>
-                  <DataCell>
+                  <DataCell label={t('control.releases.platform')}><Mono size="body">{rel.platform}</Mono></DataCell>
+                  <DataCell label={t('control.releases.channel')}>
                     <Badge tone={rel.channel === 'lts' ? 'info' : rel.channel === 'stable' ? 'neutral' : 'warning'}>
                       {rel.channel}
                     </Badge>
                   </DataCell>
-                  <DataCell><Mono size="body">v{rel.schemaVersion}</Mono></DataCell>
-                  <DataCell>
+                  <DataCell label={t('control.releases.schemaVersion')}><Mono size="body">v{rel.schemaVersion}</Mono></DataCell>
+                  <DataCell label={t('control.releases.colSignatureProvenance')}>
                     <Stack gap="xs">
                       <Mono size="label" tone="muted" title={rel.sha256}>
                         {rel.sha256.slice(0, 12)}…
                       </Mono>
                     </Stack>
                   </DataCell>
-                  <DataCell>
+                  <DataCell label={t('control.releases.colStatus')}>
                     <Badge tone={statusTone}>{rel.status}</Badge>
                   </DataCell>
-                  <DataCell>
+                  <DataCell label={t('control.releases.colDeployments')}>
                     <Inline gap="xs">
                       <Text size="body" weight="semibold">{deployed}</Text>
                       <Text size="label" tone="muted">{t(deployed === 1 ? 'control.releases.deviceOne' : 'control.releases.deviceMany')}</Text>
                     </Inline>
                   </DataCell>
-                  <DataCell>
+                  <DataCell label={t('control.releases.colCreated')}>
                     <Text size="label" tone="muted">{formatRelativeTime(t, rel.createdAt)}</Text>
                   </DataCell>
-                  <DataCell>
-                    <Inline gap="xs" style={{ flexWrap: 'wrap' }}>
-                      {rel.status === 'AVAILABLE' && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => handleDownloadRelease(rel)}
-                          title={`${t('control.releases.downloadApp')} v${rel.version}`}
-                        >
-                          {t('common.download')}
-                        </Button>
-                      )}
-                      {rel.status === 'AVAILABLE' && !rel.isLatest && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => handleSetLatest(rel)}
-                          title={t('control.releases.setLatest')}
-                        >
-                          {t('control.releases.setLatest')}
-                        </Button>
-                      )}
-                      {rel.status === 'AVAILABLE' && (
-                        <Button
-                          size="sm"
-                          variant={rel.isLts ? 'primary' : 'secondary'}
-                          onClick={() => handleToggleLts(rel)}
-                          title={rel.isLts ? t('control.releases.unsetLts') : t('control.releases.setLts')}
-                        >
-                          {rel.isLts ? t('control.releases.ltsOn') : t('control.releases.setLts')}
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleOpenEdit(rel)}
-                      >
+                  <DataCell label={t('control.releases.colAction')}>
+                    <Inline gap="xs">
+                      <Button size="sm" variant="secondary" onClick={() => handleOpenEdit(rel)}>
                         {t('control.releases.manage')}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant={rel.status === 'AVAILABLE' ? 'danger' : 'secondary'}
-                        onClick={() => handleToggleStatus(rel)}
-                      >
-                        {rel.status === 'AVAILABLE' ? t('control.releases.revoke') : t('control.releases.activate')}
-                      </Button>
+                      <RowActionMenu
+                        label={t('control.releases.rowActions').replace('{version}', rel.version)}
+                        items={rel.status === 'AVAILABLE' ? [
+                          { id: 'download', label: `${t('control.releases.downloadApp')} v${rel.version}`, onSelect: () => handleDownloadRelease(rel) },
+                          ...(rel.isLatest ? [] : [{ id: 'latest', label: t('control.releases.setLatest'), onSelect: () => void handleSetLatest(rel) }]),
+                          { id: 'lts', label: rel.isLts ? t('control.releases.unsetLts') : t('control.releases.setLts'), onSelect: () => void handleToggleLts(rel) },
+                          { id: 'revoke', label: t('control.releases.revoke'), danger: true, onSelect: () => setRevokeTarget(rel) },
+                        ] : [
+                          { id: 'activate', label: t('control.releases.activate'), onSelect: () => void setReleaseStatus(rel, 'AVAILABLE') },
+                        ]}
+                      />
                     </Inline>
                   </DataCell>
                 </tr>
@@ -546,6 +530,18 @@ export default function WebControlReleases() {
         open={registerModalOpen}
         onClose={() => !isSubmitting && setRegisterModalOpen(false)}
         title={t('control.releases.registerRelease')}
+        footer={<>
+          <Button variant="secondary" disabled={isSubmitting} onClick={() => setRegisterModalOpen(false)}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="primary"
+            disabled={isSubmitting || !formVersion || !formManifestRef || !formArtifactRef || !formSha256 || !formSignature}
+            onClick={handleRegister}
+          >
+            {isSubmitting ? t('control.releases.registering') : t('control.releases.registerSubmit')}
+          </Button>
+        </>}
       >
         <Stack gap="lg">
           <Text size="body" tone="muted">
@@ -559,77 +555,50 @@ export default function WebControlReleases() {
           )}
 
           <Stack gap="md">
-            <Inline gap="md">
-              <Stack gap="xs" style={{ flex: 1 }}>
-                <Text size="label" weight="medium">{t('control.releases.versionLabel')}</Text>
-                <Input placeholder="0.1.29" value={formVersion} onChange={(e) => setFormVersion(e.target.value)} />
-              </Stack>
-              <Stack gap="xs" style={{ width: '140px' }}>
-                <Text size="label" weight="medium">{t('control.releases.channel')}</Text>
-                <Select value={formChannel} onChange={(e) => setFormChannel(e.target.value as 'stable' | 'beta' | 'rc')}>
-                  <option value="stable">stable</option>
-                  <option value="beta">beta</option>
-                  <option value="rc">rc</option>
-                </Select>
-              </Stack>
-            </Inline>
+            <Grid columns={2} gap="md">
+              <FormField label={t('control.releases.versionLabel')} required>
+                {(control) => <Input {...control} placeholder="0.1.29" value={formVersion} onChange={(e) => setFormVersion(e.target.value)} />}
+              </FormField>
+              <FormField label={t('control.releases.channel')}>
+                {(control) => (
+                  <Select {...control} value={formChannel} onChange={(e) => setFormChannel(e.target.value as 'stable' | 'beta' | 'rc')}>
+                    <option value="stable">stable</option>
+                    <option value="beta">beta</option>
+                    <option value="rc">rc</option>
+                  </Select>
+                )}
+              </FormField>
+              <FormField label={t('control.releases.platform')}>
+                {(control) => (
+                  <Select {...control} value={formPlatform} onChange={(e) => setFormPlatform(e.target.value as 'windows-x64' | 'node-bundle')}>
+                    <option value="windows-x64">windows-x64</option>
+                    <option value="node-bundle">node-bundle</option>
+                  </Select>
+                )}
+              </FormField>
+              <FormField label={t('control.releases.schemaVersion')}>
+                {(control) => <Input {...control} type="number" value={formSchemaVersion} onChange={(e) => setFormSchemaVersion(Number(e.target.value))} />}
+              </FormField>
+            </Grid>
 
-            <Inline gap="md">
-              <Stack gap="xs" style={{ flex: 1 }}>
-                <Text size="label" weight="medium">{t('control.releases.platform')}</Text>
-                <Select value={formPlatform} onChange={(e) => setFormPlatform(e.target.value as 'windows-x64' | 'node-bundle')}>
-                  <option value="windows-x64">windows-x64</option>
-                  <option value="node-bundle">node-bundle</option>
-                </Select>
-              </Stack>
-              <Stack gap="xs" style={{ width: '140px' }}>
-                <Text size="label" weight="medium">{t('control.releases.schemaVersion')}</Text>
-                <Input type="number" value={formSchemaVersion} onChange={(e) => setFormSchemaVersion(Number(e.target.value))} />
-              </Stack>
-            </Inline>
-
-            <Stack gap="xs">
-              <Text size="label" weight="medium">{t('control.releases.manifestRef')}</Text>
-              <Input placeholder="https://releases.local/v0.1.29/manifest.json" value={formManifestRef} onChange={(e) => setFormManifestRef(e.target.value)} />
-            </Stack>
-
-            <Stack gap="xs">
-              <Text size="label" weight="medium">{t('control.releases.artifactRef')}</Text>
-              <Input placeholder="https://releases.local/v0.1.29/setup.exe" value={formArtifactRef} onChange={(e) => setFormArtifactRef(e.target.value)} />
-            </Stack>
-
-            <Stack gap="xs">
-              <Text size="label" weight="medium">{t('control.releases.sha256Field')}</Text>
-              <Input placeholder="64-character hex hash" value={formSha256} onChange={(e) => setFormSha256(e.target.value)} />
-            </Stack>
-
-            <Stack gap="xs">
-              <Text size="label" weight="medium">{t('control.releases.signatureField')}</Text>
-              <Input placeholder="base64 / hex signature string" value={formSignature} onChange={(e) => setFormSignature(e.target.value)} />
-            </Stack>
-
-            <Stack gap="xs">
-              <Text size="label" weight="medium">{t('control.releases.minSupportedVersion')}</Text>
-              <Input placeholder="0.1.20" value={formMinVersion} onChange={(e) => setFormMinVersion(e.target.value)} />
-            </Stack>
-
-            <Stack gap="xs">
-              <Text size="label" weight="medium">{t('control.releases.releaseNotes')}</Text>
-              <Input placeholder="Summary of changes" value={formNotes} onChange={(e) => setFormNotes(e.target.value)} />
-            </Stack>
-
-            <Inline gap="xs">
-              <Button variant="ghost" disabled={isSubmitting} onClick={() => setRegisterModalOpen(false)}>
-                {t('common.cancel')}
-              </Button>
-              <Button
-                variant="primary"
-                disabled={isSubmitting || !formVersion || !formManifestRef || !formArtifactRef || !formSha256 || !formSignature}
-                onClick={handleRegister}
-              >
-                {isSubmitting ? t('control.releases.registering') : t('control.releases.registerSubmit')}
-              </Button>
-            </Inline>
+            <FormField label={t('control.releases.manifestRef')} required>
+              {(control) => <Input {...control} placeholder="https://releases.local/v0.1.29/manifest.json" value={formManifestRef} onChange={(e) => setFormManifestRef(e.target.value)} />}
+            </FormField>
+            <FormField label={t('control.releases.artifactRef')} required>
+              {(control) => <Input {...control} placeholder="https://releases.local/v0.1.29/setup.exe" value={formArtifactRef} onChange={(e) => setFormArtifactRef(e.target.value)} />}
+            </FormField>
+            <FormField label={t('control.releases.sha256Field')} required>
+              {(control) => <Input {...control} placeholder="64-character hex hash" value={formSha256} onChange={(e) => setFormSha256(e.target.value)} />}
+            </FormField>
+            <FormField label={t('control.releases.signatureField')} required>
+              {(control) => <Input {...control} placeholder="base64 / hex signature string" value={formSignature} onChange={(e) => setFormSignature(e.target.value)} />}
+            </FormField>
+            <FormField label={t('control.releases.minSupportedVersion')}>
+              {(control) => <Input {...control} placeholder="0.1.20" value={formMinVersion} onChange={(e) => setFormMinVersion(e.target.value)} />}
+            </FormField>
+            <FormField label={t('control.releases.releaseNotes')}>
+              {(control) => <Input {...control} placeholder="Summary of changes" value={formNotes} onChange={(e) => setFormNotes(e.target.value)} />}
+            </FormField>
           </Stack>
         </Stack>
       </Dialog>
@@ -639,6 +608,18 @@ export default function WebControlReleases() {
         open={importModalOpen}
         onClose={() => !isSubmitting && setImportModalOpen(false)}
         title={t('control.releases.importTitle')}
+        footer={<>
+          <Button variant="secondary" disabled={isSubmitting} onClick={() => setImportModalOpen(false)}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="primary"
+            disabled={isSubmitting || !importVersion || (importMode === 'file' ? !importFile : !importUrlOrPath.trim())}
+            onClick={handleImportRelease}
+          >
+            {isSubmitting ? t('control.releases.importing') : t('control.releases.importSubmit')}
+          </Button>
+        </>}
       >
         <Stack gap="lg">
           <Text size="body" tone="muted">
@@ -652,144 +633,95 @@ export default function WebControlReleases() {
           )}
 
           <Stack gap="md">
-            <Inline gap="md">
-              <Button
-                size="sm"
-                variant={importMode === 'file' ? 'primary' : 'secondary'}
-                onClick={() => setImportMode('file')}
-              >
+            <TabList label={t('control.releases.importSource')}>
+              <Tab selected={importMode === 'file'} onClick={() => setImportMode('file')}>
                 {t('control.releases.uploadModeFile')}
-              </Button>
-              <Button
-                size="sm"
-                variant={importMode === 'path' ? 'primary' : 'secondary'}
-                onClick={() => setImportMode('path')}
-              >
+              </Tab>
+              <Tab selected={importMode === 'path'} onClick={() => setImportMode('path')}>
                 {t('control.releases.uploadModePath')}
-              </Button>
-            </Inline>
+              </Tab>
+            </TabList>
 
             {importMode === 'file' ? (
-              <Stack gap="xs">
-                <Text size="label" weight="medium">{t('control.releases.installerFile')}</Text>
-                <input
-                  type="file"
-                  accept=".exe,.tar.gz,.zip,.msi"
-                  onChange={handleFileChange}
-                  style={{
-                    padding: '8px',
-                    border: '1px dashed var(--color-border, #cbd5e1)',
-                    borderRadius: '6px',
-                    background: 'var(--color-bg-subtle, #f8fafc)',
-                  }}
-                />
-                {importFile && (
-                  <Text size="label" tone="muted">
-                    {t('control.releases.selectedFile').replace('{name}', importFile.name).replace('{size}', (importFile.size / (1024 * 1024)).toFixed(2))}
-                  </Text>
-                )}
-              </Stack>
+              <FormField
+                label={t('control.releases.installerFile')}
+                required
+                hint={importFile ? t('control.releases.selectedFile').replace('{name}', importFile.name).replace('{size}', (importFile.size / (1024 * 1024)).toFixed(2)) : undefined}
+              >
+                {(control) => <Input {...control} type="file" accept=".exe,.tar.gz,.zip,.msi" onChange={handleFileChange} />}
+              </FormField>
             ) : (
-              <Stack gap="xs">
-                <Text size="label" weight="medium">{t('control.releases.pathInput')}</Text>
-                <Input
-                  placeholder="e.g. C:/dist/PrintOps_Setup_v0.1.32_windows-x64.exe or https://cdn.example.com/setup.exe"
-                  value={importUrlOrPath}
-                  onChange={(e) => {
-                    setImportUrlOrPath(e.target.value);
-                    const match = e.target.value.match(/v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)/);
-                    if (match && !importVersion) setImportVersion(match[1]);
-                  }}
-                />
-              </Stack>
+              <FormField label={t('control.releases.pathInput')} required>
+                {(control) => (
+                  <Input
+                    {...control}
+                    placeholder="e.g. C:/dist/PrintOps_Setup_v0.1.32_windows-x64.exe or https://cdn.example.com/setup.exe"
+                    value={importUrlOrPath}
+                    onChange={(e) => {
+                      setImportUrlOrPath(e.target.value);
+                      const match = e.target.value.match(/v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)/);
+                      if (match && !importVersion) setImportVersion(match[1]);
+                    }}
+                  />
+                )}
+              </FormField>
             )}
 
-            <Inline gap="md">
-              <Stack gap="xs" style={{ flex: 1 }}>
-                <Text size="label" weight="medium">{t('control.releases.versionLabel')}</Text>
-                <Input
-                  placeholder="e.g. 0.1.32"
-                  value={importVersion}
-                  onChange={(e) => setImportVersion(e.target.value)}
-                />
-              </Stack>
-              <Stack gap="xs" style={{ width: '140px' }}>
-                <Text size="label" weight="medium">{t('control.releases.channel')}</Text>
-                <Select
-                  value={importIsLts ? 'lts' : importChannel}
-                  onChange={(e) => {
-                    const ch = e.target.value as 'stable' | 'lts' | 'beta' | 'rc';
-                    setImportChannel(ch);
-                    if (ch === 'lts') setImportIsLts(true);
-                  }}
-                >
-                  <option value="stable">stable</option>
-                  <option value="lts">lts</option>
-                  <option value="beta">beta</option>
-                  <option value="rc">rc</option>
-                </Select>
-              </Stack>
-            </Inline>
+            <Grid columns={2} gap="md">
+              <FormField label={t('control.releases.versionLabel')} required>
+                {(control) => <Input {...control} placeholder="e.g. 0.1.32" value={importVersion} onChange={(e) => setImportVersion(e.target.value)} />}
+              </FormField>
+              <FormField label={t('control.releases.channel')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={importIsLts ? 'lts' : importChannel}
+                    onChange={(e) => {
+                      const ch = e.target.value as 'stable' | 'lts' | 'beta' | 'rc';
+                      setImportChannel(ch);
+                      if (ch === 'lts') setImportIsLts(true);
+                    }}
+                  >
+                    <option value="stable">stable</option>
+                    <option value="lts">lts</option>
+                    <option value="beta">beta</option>
+                    <option value="rc">rc</option>
+                  </Select>
+                )}
+              </FormField>
+            </Grid>
 
-            <Inline gap="md">
-              <Stack gap="xs" style={{ flex: 1 }}>
-                <Text size="label" weight="medium">{t('control.releases.platform')}</Text>
-                <Select
-                  value={importPlatform}
-                  onChange={(e) => setImportPlatform(e.target.value as 'windows-x64' | 'node-bundle')}
-                >
+            <FormField label={t('control.releases.platform')}>
+              {(control) => (
+                <Select {...control} value={importPlatform} onChange={(e) => setImportPlatform(e.target.value as 'windows-x64' | 'node-bundle')}>
                   <option value="windows-x64">windows-x64</option>
                   <option value="node-bundle">node-bundle</option>
                 </Select>
-              </Stack>
-            </Inline>
+              )}
+            </FormField>
 
-            <Stack gap="sm" style={{ padding: '8px 12px', background: 'var(--color-bg-subtle, #f8fafc)', borderRadius: '6px' }}>
+            <Stack gap="sm" role="group" aria-label={t('control.releases.designations')}>
               <Text size="label" weight="semibold">{t('control.releases.designations')}</Text>
-              <Inline gap="lg">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={importIsLatest}
-                    onChange={(e) => setImportIsLatest(e.target.checked)}
-                  />
-                  <strong>{t('control.releases.setAsLatest')}</strong> ({t('control.releases.setAsLatestHint')})
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={importIsLts}
-                    onChange={(e) => {
-                      setImportIsLts(e.target.checked);
-                      if (e.target.checked) setImportChannel('lts');
-                    }}
-                  />
-                  <strong>{t('control.releases.setAsLts')}</strong> ({t('control.releases.setAsLtsHint')})
-                </label>
-              </Inline>
-            </Stack>
-
-            <Stack gap="xs">
-              <Text size="label" weight="medium">{t('control.releases.releaseNotes')}</Text>
-              <Input
-                placeholder="Key features, bug fixes, or deployment guidelines"
-                value={importNotes}
-                onChange={(e) => setImportNotes(e.target.value)}
+              <Checkbox
+                label={t('control.releases.setAsLatest')}
+                description={t('control.releases.setAsLatestHint')}
+                checked={importIsLatest}
+                onChange={(e) => setImportIsLatest(e.target.checked)}
+              />
+              <Checkbox
+                label={t('control.releases.setAsLts')}
+                description={t('control.releases.setAsLtsHint')}
+                checked={importIsLts}
+                onChange={(e) => {
+                  setImportIsLts(e.target.checked);
+                  if (e.target.checked) setImportChannel('lts');
+                }}
               />
             </Stack>
 
-            <Inline gap="xs" style={{ justifyContent: 'flex-end' }}>
-              <Button variant="ghost" disabled={isSubmitting} onClick={() => setImportModalOpen(false)}>
-                {t('common.cancel')}
-              </Button>
-              <Button
-                variant="primary"
-                disabled={isSubmitting || !importVersion || (importMode === 'file' ? !importFile : !importUrlOrPath.trim())}
-                onClick={handleImportRelease}
-              >
-                {isSubmitting ? t('control.releases.importing') : t('control.releases.importSubmit')}
-              </Button>
-            </Inline>
+            <FormField label={t('control.releases.releaseNotes')}>
+              {(control) => <Input {...control} placeholder="Key features, bug fixes, or deployment guidelines" value={importNotes} onChange={(e) => setImportNotes(e.target.value)} />}
+            </FormField>
           </Stack>
         </Stack>
       </Dialog>
@@ -799,6 +731,14 @@ export default function WebControlReleases() {
         open={editModalOpen}
         onClose={() => !isSubmitting && setEditModalOpen(false)}
         title={t('control.releases.editTitle')}
+        footer={<>
+          <Button variant="secondary" disabled={isSubmitting} onClick={() => setEditModalOpen(false)}>
+            {t('common.cancel')}
+          </Button>
+          <Button variant="primary" disabled={isSubmitting} onClick={handleSaveEdit}>
+            {isSubmitting ? t('common.saving') : t('control.releases.saveChanges')}
+          </Button>
+        </>}
       >
         <Stack gap="lg">
           <Text size="body" tone="muted">
@@ -808,79 +748,76 @@ export default function WebControlReleases() {
           {editError && <Alert tone="error">{editError}</Alert>}
 
           <Stack gap="md">
-            <Inline gap="md">
-              <Stack gap="xs" style={{ flex: 1 }}>
-                <Text size="label" weight="medium">{t('control.releases.channel')}</Text>
-                <Select
-                  value={editChannel}
-                  onChange={(e) => {
-                    const ch = e.target.value as 'stable' | 'beta' | 'rc' | 'lts';
-                    setEditChannel(ch);
-                    if (ch === 'lts') setEditIsLts(true);
-                  }}
-                >
-                  <option value="stable">stable</option>
-                  <option value="lts">lts</option>
-                  <option value="beta">beta</option>
-                  <option value="rc">rc</option>
-                </Select>
-              </Stack>
-              <Stack gap="xs" style={{ flex: 1 }}>
-                <Text size="label" weight="medium">{t('control.releases.colStatus')}</Text>
-                <Select
-                  value={editStatus}
-                  onChange={(e) => setEditStatus(e.target.value as ReleaseItem['status'])}
-                >
-                  <option value="AVAILABLE">AVAILABLE</option>
-                  <option value="DEPRECATED">DEPRECATED</option>
-                  <option value="REVOKED">REVOKED</option>
-                </Select>
-              </Stack>
-            </Inline>
-
-            <Stack gap="sm" style={{ padding: '8px 12px', background: 'var(--color-bg-subtle, #f8fafc)', borderRadius: '6px' }}>
-              <Text size="label" weight="semibold">{t('control.releases.designations')}</Text>
-              <Inline gap="lg">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={editIsLatest}
-                    onChange={(e) => setEditIsLatest(e.target.checked)}
-                  />
-                  <strong>{t('control.releases.setAsLatest')}</strong>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={editIsLts}
+            <Grid columns={2} gap="md">
+              <FormField label={t('control.releases.channel')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={editChannel}
                     onChange={(e) => {
-                      setEditIsLts(e.target.checked);
-                      if (e.target.checked) setEditChannel('lts');
+                      const ch = e.target.value as 'stable' | 'beta' | 'rc' | 'lts';
+                      setEditChannel(ch);
+                      if (ch === 'lts') setEditIsLts(true);
                     }}
-                  />
-                  <strong>{t('control.releases.setAsLts')}</strong>
-                </label>
-              </Inline>
-            </Stack>
+                  >
+                    <option value="stable">stable</option>
+                    <option value="lts">lts</option>
+                    <option value="beta">beta</option>
+                    <option value="rc">rc</option>
+                  </Select>
+                )}
+              </FormField>
+              <FormField label={t('control.releases.colStatus')}>
+                {(control) => (
+                  <Select {...control} value={editStatus} onChange={(e) => setEditStatus(e.target.value as ReleaseItem['status'])}>
+                    <option value="AVAILABLE">AVAILABLE</option>
+                    <option value="DEPRECATED">DEPRECATED</option>
+                    <option value="REVOKED">REVOKED</option>
+                  </Select>
+                )}
+              </FormField>
+            </Grid>
 
-            <Stack gap="xs">
-              <Text size="label" weight="medium">{t('control.releases.releaseNotes')}</Text>
-              <Input
-                value={editNotes}
-                onChange={(e) => setEditNotes(e.target.value)}
+            <Stack gap="sm" role="group" aria-label={t('control.releases.designations')}>
+              <Text size="label" weight="semibold">{t('control.releases.designations')}</Text>
+              <Checkbox
+                label={t('control.releases.setAsLatest')}
+                checked={editIsLatest}
+                onChange={(e) => setEditIsLatest(e.target.checked)}
+              />
+              <Checkbox
+                label={t('control.releases.setAsLts')}
+                checked={editIsLts}
+                onChange={(e) => {
+                  setEditIsLts(e.target.checked);
+                  if (e.target.checked) setEditChannel('lts');
+                }}
               />
             </Stack>
 
-            <Inline gap="xs" style={{ justifyContent: 'flex-end' }}>
-              <Button variant="ghost" disabled={isSubmitting} onClick={() => setEditModalOpen(false)}>
-                {t('common.cancel')}
-              </Button>
-              <Button variant="primary" disabled={isSubmitting} onClick={handleSaveEdit}>
-                {isSubmitting ? t('common.saving') : t('control.releases.saveChanges')}
-              </Button>
-            </Inline>
+            <FormField label={t('control.releases.releaseNotes')}>
+              {(control) => <Input {...control} value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />}
+            </FormField>
           </Stack>
         </Stack>
+      </Dialog>
+
+      {/* Revoke confirmation: a revoked release can no longer be downloaded by stations. */}
+      <Dialog
+        open={revokeTarget != null}
+        onClose={() => !isSubmitting && setRevokeTarget(null)}
+        title={t('control.releases.revokeConfirmTitle').replace('{version}', revokeTarget?.version ?? '')}
+        dismissOnBackdrop={false}
+        footer={<>
+          <Button variant="secondary" disabled={isSubmitting} onClick={() => setRevokeTarget(null)}>
+            {t('common.cancel')}
+          </Button>
+          <Button variant="danger" busy={isSubmitting} onClick={() => void handleConfirmRevoke()}>
+            {t('control.releases.revoke')}
+          </Button>
+        </>}
+      >
+        <Text size="body">{t('control.releases.revokeConfirmBody')}</Text>
       </Dialog>
 
       {/* Storage Settings Dialog */}
@@ -888,6 +825,29 @@ export default function WebControlReleases() {
         open={storageModalOpen}
         onClose={() => !storageSaving && setStorageModalOpen(false)}
         title={t('control.storage.title')}
+        footer={<>
+          <Button
+            variant="secondary"
+            disabled={storageTesting || storageSaving}
+            busy={storageTesting}
+            busyLabel={t('control.storage.testing')}
+            onClick={handleTestStorage}
+          >
+            {t('control.storage.test')}
+          </Button>
+          <Button variant="secondary" disabled={storageSaving} onClick={() => setStorageModalOpen(false)}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="primary"
+            disabled={storageSaving}
+            busy={storageSaving}
+            busyLabel={t('control.storage.saving')}
+            onClick={handleSaveStorage}
+          >
+            {t('control.storage.save')}
+          </Button>
+        </>}
       >
         <Stack gap="lg">
           <Text size="body" tone="muted">
@@ -901,179 +861,118 @@ export default function WebControlReleases() {
           )}
 
           <Stack gap="md">
-            <Stack gap="xs">
-              <Text size="label" weight="medium">{t('control.storage.provider')}</Text>
-              <Inline gap="md">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <input
-                    type="radio"
-                    name="storage-provider"
-                    value="minio"
-                    checked={storageConfig.provider === 'minio'}
-                    onChange={() => setStorageConfig({ ...storageConfig, provider: 'minio' })}
-                  />
-                  <strong>{t('control.storage.minio')}</strong>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <input
-                    type="radio"
-                    name="storage-provider"
-                    value="local"
-                    checked={storageConfig.provider === 'local'}
-                    onChange={() => setStorageConfig({ ...storageConfig, provider: 'local' })}
-                  />
-                  <span>{t('control.storage.local')}</span>
-                </label>
-              </Inline>
-              <Text size="body" tone="muted">{t('control.storage.providerHelp')}</Text>
-              <Text size="body" tone="muted">
-                {storageConfig.provider === 'local'
-                  ? t('control.storage.localHelp')
-                  : t('control.storage.minioHelp')}
-              </Text>
-            </Stack>
+            <FormField
+              label={t('control.storage.provider')}
+              hint={<>
+                {t('control.storage.providerHelp')}{' '}
+                {storageConfig.provider === 'local' ? t('control.storage.localHelp') : t('control.storage.minioHelp')}
+              </>}
+            >
+              {(control) => (
+                <Select
+                  {...control}
+                  value={storageConfig.provider}
+                  onChange={(e) => setStorageConfig({ ...storageConfig, provider: e.target.value as StorageSettingsData['provider'] })}
+                >
+                  <option value="local">{t('control.storage.local')}</option>
+                  <option value="minio">{t('control.storage.minio')}</option>
+                </Select>
+              )}
+            </FormField>
 
             {storageConfig.provider === 'local' ? (
-              <Stack gap="xs">
-                <Text size="label" weight="medium">{t('control.storage.localPath')}</Text>
-                <Input
-                  placeholder="/data/releases"
-                  value={storageConfig.localPath}
-                  onChange={(e) => setStorageConfig({ ...storageConfig, localPath: e.target.value })}
-                />
-                <Text size="label" tone="muted">
-                  {t('control.storage.localPathHelp')}
-                </Text>
-              </Stack>
+              <FormField label={t('control.storage.localPath')} hint={t('control.storage.localPathHelp')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    placeholder="/data/releases"
+                    value={storageConfig.localPath}
+                    onChange={(e) => setStorageConfig({ ...storageConfig, localPath: e.target.value })}
+                  />
+                )}
+              </FormField>
             ) : (
               <>
-                <Inline gap="md">
-                  <Stack gap="xs" style={{ flex: 2 }}>
-                    <Text size="label" weight="medium">{t('control.storage.endpoint')}</Text>
-                    <Input
-                      placeholder="minio or localhost"
-                      value={storageConfig.minio.endPoint}
-                      onChange={(e) => setStorageConfig({
-                        ...storageConfig,
-                        minio: { ...storageConfig.minio, endPoint: e.target.value },
-                      })}
-                    />
-                  </Stack>
-                  <Stack gap="xs" style={{ width: '120px' }}>
-                    <Text size="label" weight="medium">{t('control.storage.port')}</Text>
-                    <Input
-                      type="number"
-                      value={storageConfig.minio.port}
-                      onChange={(e) => setStorageConfig({
-                        ...storageConfig,
-                        minio: { ...storageConfig.minio, port: Number(e.target.value) || 9000 },
-                      })}
-                    />
-                  </Stack>
-                </Inline>
+                <Grid columns={2} gap="md">
+                  <FormField label={t('control.storage.endpoint')}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        placeholder="minio or localhost"
+                        value={storageConfig.minio.endPoint}
+                        onChange={(e) => setStorageConfig({ ...storageConfig, minio: { ...storageConfig.minio, endPoint: e.target.value } })}
+                      />
+                    )}
+                  </FormField>
+                  <FormField label={t('control.storage.port')}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        type="number"
+                        value={storageConfig.minio.port}
+                        onChange={(e) => setStorageConfig({ ...storageConfig, minio: { ...storageConfig.minio, port: Number(e.target.value) || 9000 } })}
+                      />
+                    )}
+                  </FormField>
+                  <FormField label={t('control.storage.bucket')}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        placeholder="printops-releases"
+                        value={storageConfig.minio.bucket}
+                        onChange={(e) => setStorageConfig({ ...storageConfig, minio: { ...storageConfig.minio, bucket: e.target.value } })}
+                      />
+                    )}
+                  </FormField>
+                  <FormField label={t('control.storage.prefix')}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        placeholder="releases/"
+                        value={storageConfig.minio.prefix}
+                        onChange={(e) => setStorageConfig({ ...storageConfig, minio: { ...storageConfig.minio, prefix: e.target.value } })}
+                      />
+                    )}
+                  </FormField>
+                  <FormField label={t('control.storage.accessKey')}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        value={storageConfig.minio.accessKey}
+                        onChange={(e) => setStorageConfig({ ...storageConfig, minio: { ...storageConfig.minio, accessKey: e.target.value } })}
+                      />
+                    )}
+                  </FormField>
+                  <FormField label={t('control.storage.secretKey')}>
+                    {(control) => (
+                      <Input
+                        {...control}
+                        type="password"
+                        value={storageConfig.minio.secretKey}
+                        onChange={(e) => setStorageConfig({ ...storageConfig, minio: { ...storageConfig.minio, secretKey: e.target.value } })}
+                      />
+                    )}
+                  </FormField>
+                </Grid>
 
-                <Inline gap="md">
-                  <Stack gap="xs" style={{ flex: 1 }}>
-                    <Text size="label" weight="medium">{t('control.storage.bucket')}</Text>
-                    <Input
-                      placeholder="printops-releases"
-                      value={storageConfig.minio.bucket}
-                      onChange={(e) => setStorageConfig({
-                        ...storageConfig,
-                        minio: { ...storageConfig.minio, bucket: e.target.value },
-                      })}
-                    />
-                  </Stack>
-                  <Stack gap="xs" style={{ flex: 1 }}>
-                    <Text size="label" weight="medium">{t('control.storage.prefix')}</Text>
-                    <Input
-                      placeholder="releases/"
-                      value={storageConfig.minio.prefix}
-                      onChange={(e) => setStorageConfig({
-                        ...storageConfig,
-                        minio: { ...storageConfig.minio, prefix: e.target.value },
-                      })}
-                    />
-                  </Stack>
-                </Inline>
+                <Checkbox
+                  label={t('control.storage.useSSL')}
+                  checked={storageConfig.minio.useSSL}
+                  onChange={(e) => setStorageConfig({ ...storageConfig, minio: { ...storageConfig.minio, useSSL: e.target.checked } })}
+                />
 
-                <Inline gap="md">
-                  <Stack gap="xs" style={{ flex: 1 }}>
-                    <Text size="label" weight="medium">{t('control.storage.accessKey')}</Text>
+                <FormField label={t('control.storage.publicUrl')}>
+                  {(control) => (
                     <Input
-                      value={storageConfig.minio.accessKey}
-                      onChange={(e) => setStorageConfig({
-                        ...storageConfig,
-                        minio: { ...storageConfig.minio, accessKey: e.target.value },
-                      })}
+                      {...control}
+                      placeholder="http://localhost:9000/printops-releases"
+                      value={storageConfig.minio.publicUrl || ''}
+                      onChange={(e) => setStorageConfig({ ...storageConfig, minio: { ...storageConfig.minio, publicUrl: e.target.value } })}
                     />
-                  </Stack>
-                  <Stack gap="xs" style={{ flex: 1 }}>
-                    <Text size="label" weight="medium">{t('control.storage.secretKey')}</Text>
-                    <Input
-                      type="password"
-                      value={storageConfig.minio.secretKey}
-                      onChange={(e) => setStorageConfig({
-                        ...storageConfig,
-                        minio: { ...storageConfig.minio, secretKey: e.target.value },
-                      })}
-                    />
-                  </Stack>
-                </Inline>
-
-                <Inline gap="lg">
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={storageConfig.minio.useSSL}
-                      onChange={(e) => setStorageConfig({
-                        ...storageConfig,
-                        minio: { ...storageConfig.minio, useSSL: e.target.checked },
-                      })}
-                    />
-                    <span>{t('control.storage.useSSL')}</span>
-                  </label>
-                </Inline>
-
-                <Stack gap="xs">
-                  <Text size="label" weight="medium">{t('control.storage.publicUrl')}</Text>
-                  <Input
-                    placeholder="http://localhost:9000/printops-releases"
-                    value={storageConfig.minio.publicUrl || ''}
-                    onChange={(e) => setStorageConfig({
-                      ...storageConfig,
-                      minio: { ...storageConfig.minio, publicUrl: e.target.value },
-                    })}
-                  />
-                </Stack>
+                  )}
+                </FormField>
               </>
             )}
-
-            <Inline gap="xs" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem' }}>
-              <Button
-                variant="secondary"
-                disabled={storageTesting || storageSaving}
-                busy={storageTesting}
-                busyLabel={t('control.storage.testing')}
-                onClick={handleTestStorage}
-              >
-                {t('control.storage.test')}
-              </Button>
-              <Inline gap="xs">
-                <Button variant="ghost" disabled={storageSaving} onClick={() => setStorageModalOpen(false)}>
-                  {t('common.cancel')}
-                </Button>
-                <Button
-                  variant="primary"
-                  disabled={storageSaving}
-                  busy={storageSaving}
-                  busyLabel={t('control.storage.saving')}
-                  onClick={handleSaveStorage}
-                >
-                  {t('control.storage.save')}
-                </Button>
-              </Inline>
-            </Inline>
           </Stack>
         </Stack>
       </Dialog>

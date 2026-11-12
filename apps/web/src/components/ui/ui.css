@@ -339,12 +339,13 @@
   .ui-data-table[data-responsive] thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .ui-data-table[data-responsive] tbody { display: grid; gap: var(--spacing-md); }
   .ui-data-table[data-responsive] tbody tr { overflow: hidden; border: 1px solid var(--neutral-border); border-radius: var(--rounded-lg); background: var(--neutral-surface); }
-  .ui-data-table[data-responsive] .ui-data-cell { display: grid; grid-template-columns: minmax(6.5rem, 35%) minmax(0, 1fr); gap: var(--spacing-md); padding: var(--spacing-md) var(--spacing-lg); border-top: 1px solid var(--neutral-border); overflow-wrap: anywhere; }
+  /* height: auto — the desktop 48px row height acts as a minimum only in table layout; on a card it would clip. */
+  .ui-data-table[data-responsive] .ui-data-cell { display: grid; height: auto; justify-items: start; grid-template-columns: minmax(6.5rem, 35%) minmax(0, 1fr); gap: var(--spacing-md); padding: var(--spacing-md) var(--spacing-lg); border-top: 1px solid var(--neutral-border); overflow-wrap: anywhere; }
   .ui-data-table[data-responsive] .ui-data-cell:first-child { border-top: 0; }
   .ui-data-table[data-responsive] .ui-data-cell::before { content: attr(data-label); color: color-mix(in srgb, var(--primary) 70%, var(--neutral-inverse)); font-size: var(--font-label-size); font-weight: 600; line-height: 1; display: flex; align-items: center; }
   .ui-data-table[data-responsive] .ui-data-cell[data-actions] { display: block; }
   .ui-data-table[data-responsive] .ui-data-cell[data-actions]::before { display: block; margin-bottom: var(--spacing-sm); }
-  .ui-data-table[data-responsive] .ui-data-cell[colspan] { display: block; text-align: center; }
+  .ui-data-table[data-responsive] .ui-data-cell[colspan] { display: block; justify-items: stretch; text-align: center; }
   .ui-data-table[data-responsive] .ui-data-cell[colspan]::before { display: none; }
   .ui-data-table[data-responsive] tr.ui-table-empty { border: 0; background: transparent; }
 }

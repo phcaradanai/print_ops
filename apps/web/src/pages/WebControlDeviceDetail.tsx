@@ -398,11 +398,11 @@ export default function WebControlDeviceDetail() {
                   const statusTone = cmd.status === 'COMPLETED' ? 'success' : cmd.status === 'FAILED' ? 'danger' : 'warning';
                   return (
                     <tr key={cmd.commandId}>
-                      <DataCell><Mono size="label">{cmd.commandId}</Mono></DataCell>
-                      <DataCell><Mono size="body">{cmd.type}</Mono></DataCell>
-                      <DataCell><Mono size="body">{cmd.targetVersion ? `v${cmd.targetVersion}` : '—'}</Mono></DataCell>
-                      <DataCell><Badge tone={statusTone}>{cmd.status}</Badge></DataCell>
-                      <DataCell>
+                      <DataCell label={t('control.devices.colCommandId')}><Mono size="label">{cmd.commandId}</Mono></DataCell>
+                      <DataCell label={t('control.devices.colType')}><Mono size="body">{cmd.type}</Mono></DataCell>
+                      <DataCell label={t('control.devices.colTargetVersion')}><Mono size="body">{cmd.targetVersion ? `v${cmd.targetVersion}` : '—'}</Mono></DataCell>
+                      <DataCell label={t('control.devices.colStatus')}><Badge tone={statusTone}>{cmd.status}</Badge></DataCell>
+                      <DataCell label={t('control.devices.colProgress')}>
                         <RemoteCommandProgress
                           progress={cmd.progress ?? (['PENDING', 'DELIVERED', 'ACCEPTED'].includes(cmd.status)
                             ? {
@@ -419,10 +419,10 @@ export default function WebControlDeviceDetail() {
                           compact
                         />
                       </DataCell>
-                      <DataCell><Text size="body">{cmd.terminalState || '—'}</Text></DataCell>
-                      <DataCell><Text size="label">{cmd.requestedBy}</Text></DataCell>
-                      <DataCell><Text size="label">{formatRelativeTime(t, cmd.requestedAt)}</Text></DataCell>
-                      <DataCell><Text size="label" tone="muted">{cmd.failureReason || '—'}</Text></DataCell>
+                      <DataCell label={t('control.devices.colTerminalState')}><Text size="body">{cmd.terminalState || '—'}</Text></DataCell>
+                      <DataCell label={t('control.devices.colRequestedBy')}><Text size="label">{cmd.requestedBy}</Text></DataCell>
+                      <DataCell label={t('control.devices.colRequestedAt')}><Text size="label">{formatRelativeTime(t, cmd.requestedAt)}</Text></DataCell>
+                      <DataCell label={t('control.devices.colDetails')}><Text size="label" tone="muted">{cmd.failureReason || '—'}</Text></DataCell>
                     </tr>
                   );
                 })}

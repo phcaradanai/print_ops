@@ -1,7 +1,6 @@
 import { JOB_STATUSES, type JobStatus } from '@printerops/domain';
 import type { JobQueueStatusFilter } from '../lib/jobQueueView.js';
 import { ResourceToolbar, SearchField, SelectFilter } from './ui/index.js';
-import './JobQueueControls.css';
 
 export interface JobQueueControlsProps {
   status: JobQueueStatusFilter;

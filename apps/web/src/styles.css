@@ -4524,13 +4524,15 @@ body {
 
 .ui-field-hint {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: var(--font-label-size);
+  line-height: var(--font-label-line-height);
   color: var(--neutral-text-muted, #6c7086);
 }
 
 .ui-field-error {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: var(--font-label-size);
+  line-height: var(--font-label-line-height);
   color: var(--danger-action);
   font-weight: 500;
 }

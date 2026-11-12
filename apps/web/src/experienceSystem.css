@@ -263,11 +263,6 @@
   outline-offset: 2px;
 }
 
-
-.session-card__tools {
-  display: flex;
-  justify-content: center;
-}
 .login-panel h1,
 .login-panel h1:focus,
 .login-panel h1:focus-visible {
@@ -288,7 +283,6 @@
 }
 
 .ui-table-card > .ui-resource-toolbar,
-.ui-table-card > .job-queue-toolbar,
 .ui-table-card .tpl-library-container > .ui-resource-toolbar {
   border: 0;
   border-bottom: 1px solid var(--neutral-border);

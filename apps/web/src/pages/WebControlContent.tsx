@@ -18,6 +18,7 @@ import {
   DataTable,
   EmptyState,
   ErrorBanner,
+  FormField,
   Freshness,
   Inline,
   Input,
@@ -442,26 +443,29 @@ export default function WebControlContent() {
               actions={
                 <Inline gap="sm">
                   <Stack gap="xs" className="wc-field-wide">
-                    <Text size="label" weight="medium">{t('control.content.onlineClient')}</Text>
-                    <Select
-                      value={inventoryDeviceId}
-                      disabled={contentReadableDevices.length === 0 || isReadingClient || isImporting}
-                      onChange={(event) => {
-                        setInventoryDeviceId(event.target.value);
-                        setClientInventory(null);
-                        setPulledBundle(null);
-                        setPullCommandId('');
-                        setImportResult(null);
-                      }}
-                    >
-                      {contentReadableDevices.length === 0
-                        ? <option value="">{t('control.content.noReadableClients')}</option>
-                        : contentReadableDevices.map((device) => (
-                          <option key={device.deviceId} value={device.deviceId}>
-                            {device.displayName || device.hostname} · {device.deviceId}
-                          </option>
-                        ))}
-                    </Select>
+                    <FormField label={t('control.content.onlineClient')}>
+                      {(control) => (
+                      <Select {...control}
+                        value={inventoryDeviceId}
+                        disabled={contentReadableDevices.length === 0 || isReadingClient || isImporting}
+                        onChange={(event) => {
+                          setInventoryDeviceId(event.target.value);
+                          setClientInventory(null);
+                          setPulledBundle(null);
+                          setPullCommandId('');
+                          setImportResult(null);
+                        }}
+                      >
+                        {contentReadableDevices.length === 0
+                          ? <option value="">{t('control.content.noReadableClients')}</option>
+                          : contentReadableDevices.map((device) => (
+                            <option key={device.deviceId} value={device.deviceId}>
+                              {device.displayName || device.hostname} · {device.deviceId}
+                            </option>
+                          ))}
+                      </Select>
+                      )}
+                    </FormField>
                   </Stack>
                   <Button
                     variant="secondary"
@@ -505,11 +509,11 @@ export default function WebControlContent() {
                 <tbody>
                   {remoteContentEntries.map((item) => (
                     <tr key={`${item.kind}:${item.code}`}>
-                      <DataCell>{t(item.kind === 'paper-profile' ? 'control.content.kindProfile' : 'control.content.kindTemplate')}</DataCell>
-                      <DataCell><Mono size="label">{item.code}</Mono></DataCell>
-                      <DataCell>{item.name}</DataCell>
-                      <DataCell><Text size="label" tone="muted">{item.details}</Text></DataCell>
-                      <DataCell>
+                      <DataCell label={t('control.content.colType')}>{t(item.kind === 'paper-profile' ? 'control.content.kindProfile' : 'control.content.kindTemplate')}</DataCell>
+                      <DataCell label={t('control.content.colCode')}><Mono size="label">{item.code}</Mono></DataCell>
+                      <DataCell label={t('control.content.colName')}>{item.name}</DataCell>
+                      <DataCell label={t('control.content.colDetails')}><Text size="label" tone="muted">{item.details}</Text></DataCell>
+                      <DataCell label={t('control.content.colAction')}>
                         <Button size="sm" variant="secondary" disabled={isReadingClient || isImporting} onClick={() => void pullClientItem(item)}>
                           {t('control.content.pullForReview')}
                         </Button>
@@ -531,13 +535,16 @@ export default function WebControlContent() {
                 </Alert>
                 <Inline gap="md">
                   <Stack gap="xs" className="wc-field-wide">
-                    <Text size="label" weight="medium">{t('control.content.importCodeLabel')}</Text>
-                    <Input
-                      value={importCode}
-                      onChange={(event) => setImportCode(event.target.value)}
-                      maxLength={128}
-                      aria-label={t('control.content.importCodeAria')}
-                    />
+                    <FormField label={t('control.content.importCodeLabel')}>
+                      {(control) => (
+                      <Input {...control}
+                        value={importCode}
+                        onChange={(event) => setImportCode(event.target.value)}
+                        maxLength={128}
+                        aria-label={t('control.content.importCodeAria')}
+                      />
+                      )}
+                    </FormField>
                   </Stack>
                   <Button variant="primary" disabled={isImporting || !importCode.trim() || !pullCommandId} onClick={() => void importPulledBundle()}>
                     {isImporting ? t('control.content.importing') : t('control.content.importCopy')}
@@ -573,19 +580,25 @@ export default function WebControlContent() {
           <Stack gap="md">
             <Inline gap="md">
               <Stack gap="xs" className="wc-field-narrow">
-                <Text size="label" weight="medium">{t('control.content.typeLabel')}</Text>
-                <Select value={kind} onChange={(event) => { setKind(event.target.value as 'paper-profile' | 'template'); setItemId(''); }}>
-                  <option value="paper-profile">{t('control.content.kindProfile')}</option>
-                  <option value="template">{t('control.content.kindTemplate')}</option>
-                </Select>
+                <FormField label={t('control.content.typeLabel')}>
+                  {(control) => (
+                  <Select {...control} value={kind} onChange={(event) => { setKind(event.target.value as 'paper-profile' | 'template'); setItemId(''); }}>
+                    <option value="paper-profile">{t('control.content.kindProfile')}</option>
+                    <option value="template">{t('control.content.kindTemplate')}</option>
+                  </Select>
+                  )}
+                </FormField>
               </Stack>
               <Stack gap="xs" className="wc-field-grow">
-                <Text size="label" weight="medium">{t('control.content.masterItem')}</Text>
-                <Select value={itemId} onChange={(event) => setItemId(event.target.value)} disabled={contentItems.length === 0}>
-                  {contentItems.length === 0
-                    ? <option value="">{t(kind === 'paper-profile' ? 'control.content.noProfilesInCatalog' : 'control.content.noTemplatesInCatalog')}</option>
-                    : contentItems.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}
-                </Select>
+                <FormField label={t('control.content.masterItem')}>
+                  {(control) => (
+                  <Select {...control} value={itemId} onChange={(event) => setItemId(event.target.value)} disabled={contentItems.length === 0}>
+                    {contentItems.length === 0
+                      ? <option value="">{t(kind === 'paper-profile' ? 'control.content.noProfilesInCatalog' : 'control.content.noTemplatesInCatalog')}</option>
+                      : contentItems.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}
+                  </Select>
+                  )}
+                </FormField>
               </Stack>
               <Inline gap="sm">
                 <Button variant="secondary" onClick={() => navigate('/control/paper-profiles')}>{t('control.content.manageProfiles')}</Button>
@@ -637,7 +650,7 @@ export default function WebControlContent() {
                   const canSelect = supportsContentSync && device.connectionState === 'ONLINE';
                   return (
                     <tr key={device.deviceId}>
-                      <DataCell>
+                      <DataCell label={t('control.content.colSelect')}>
                         <Checkbox
                           hideLabel
                           label={device.displayName || device.hostname}
@@ -647,17 +660,17 @@ export default function WebControlContent() {
                           aria-label={t('control.content.colSelect')}
                         />
                       </DataCell>
-                      <DataCell>
+                      <DataCell label={t('control.content.colClient')}>
                         <Stack gap="xs">
                           <Text weight="medium">{device.displayName || device.hostname}</Text>
                           <Mono size="label" tone="muted">{device.deviceId}</Mono>
                         </Stack>
                       </DataCell>
-                      <DataCell>{device.siteId}</DataCell>
-                      <DataCell><Mono size="body">v{device.appVersion}</Mono></DataCell>
-                      <DataCell><Text size="label">{device.ipAddresses?.join(', ') || t('control.content.notReported')}</Text></DataCell>
-                      <DataCell><Text size="label" tone="muted">{device.lastSeenAt ? formatRelativeTime(t, device.lastSeenAt) : t('control.content.never')}</Text></DataCell>
-                      <DataCell>
+                      <DataCell label={t('control.content.colSite')}>{device.siteId}</DataCell>
+                      <DataCell label={t('control.content.colVersion')}><Mono size="body">v{device.appVersion}</Mono></DataCell>
+                      <DataCell label={t('control.content.colAddress')}><Text size="label">{device.ipAddresses?.join(', ') || t('control.content.notReported')}</Text></DataCell>
+                      <DataCell label={t('control.content.colLastSeen')}><Text size="label" tone="muted">{device.lastSeenAt ? formatRelativeTime(t, device.lastSeenAt) : t('control.content.never')}</Text></DataCell>
+                      <DataCell label={t('control.content.colContentSync')}>
                         <Badge tone={supportsContentSync ? 'success' : 'warning'}>
                           {supportsContentSync ? t('control.content.syncReady') : t('control.content.syncUpdateRequired')}
                         </Badge>
@@ -704,9 +717,9 @@ export default function WebControlContent() {
                     : undefined);
                   return (
                     <tr key={target.deviceId}>
-                      <DataCell>{device?.displayName || device?.hostname || target.deviceId}</DataCell>
-                      <DataCell><Badge tone={tone}>{target.terminalState || target.status}</Badge></DataCell>
-                      <DataCell>
+                      <DataCell label={t('control.content.colClient')}>{device?.displayName || device?.hostname || target.deviceId}</DataCell>
+                      <DataCell label={t('control.content.colStatus')}><Badge tone={tone}>{target.terminalState || target.status}</Badge></DataCell>
+                      <DataCell label={t('control.content.colProgress')}>
                         <RemoteCommandProgress
                           progress={progress}
                           commandType="CONTENT_SYNC"
@@ -714,7 +727,7 @@ export default function WebControlContent() {
                           compact
                         />
                       </DataCell>
-                      <DataCell><Text size="label" tone={target.errorMessage || target.failureReason ? 'danger' : 'muted'}>{target.errorMessage || target.failureReason || target.commandId || t('control.content.notSent')}</Text></DataCell>
+                      <DataCell label={t('control.content.colResult')}><Text size="label" tone={target.errorMessage || target.failureReason ? 'danger' : 'muted'}>{target.errorMessage || target.failureReason || target.commandId || t('control.content.notSent')}</Text></DataCell>
                     </tr>
                   );
                 })}

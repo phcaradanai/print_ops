@@ -33,7 +33,7 @@ function formatDate(value: string | undefined, locale: string): string {
 export function TemplateLibrary() {
   const { t, locale } = useLocale();
   const {
-    templates, templatesResource, load,
+    templates, templatesResource,
     search, setSearch, chip, setChip, sortDesc, setSortDesc,
     page, setPage, pageSize, setPageSize,
     selectedId, startEdit, newTemplate, duplicate, renderServerPreview, publish,
@@ -89,7 +89,19 @@ export function TemplateLibrary() {
 
   return (
     <div ref={libraryRef} className="ui-table-card tpl-library-container">
-      <ResourceToolbar ariaLabel={t('page.templates.listTitle')}>
+      <ResourceToolbar
+        ariaLabel={t('page.templates.listTitle')}
+        actions={(
+          <IconButton
+            label={t('page.templates.sortByUpdated')}
+            title={t('page.templates.updated')}
+            onClick={() => setSortDesc(!sortDesc)}
+            aria-pressed={sortDesc}
+          >
+            <TemplateIcon name={sortDesc ? 'sortDesc' : 'sortAsc'} />
+          </IconButton>
+        )}
+      >
         <SearchField
           label={t('page.templates.searchPlaceholder')}
           placeholder={t('page.templates.searchPlaceholder')}
@@ -111,21 +123,6 @@ export function TemplateLibrary() {
             </Chip>
           ))}
         </Inline>
-        <IconButton
-          label={t('common.refresh')}
-          onClick={() => void load()}
-          busy={templatesResource.refreshing}
-        >
-          <TemplateIcon name="refresh" spin={templatesResource.refreshing} />
-        </IconButton>
-        <IconButton
-          label={t('page.templates.sortByUpdated')}
-          title={t('page.templates.updated')}
-          onClick={() => setSortDesc(!sortDesc)}
-          aria-pressed={sortDesc}
-        >
-          <TemplateIcon name={sortDesc ? 'sortDesc' : 'sortAsc'} />
-        </IconButton>
       </ResourceToolbar>
 
       {templatesResource.loading && templatesResource.data === undefined ? (
@@ -218,7 +215,7 @@ export function TemplateLibrary() {
           </tbody>
         </DataTable>
 
-        <Inline style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--spacing-md)' }}>
+        <Inline className="tpl-pagination">
           <Text size="label" tone="muted">
             {t('page.templates.showing')
               .replace('{from}', String(from))

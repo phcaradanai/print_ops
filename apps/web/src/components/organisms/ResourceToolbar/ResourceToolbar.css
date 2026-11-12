@@ -35,6 +35,8 @@
   .ui-resource-toolbar__controls {
     align-items: stretch;
     flex-direction: column;
+    /* A wrapping column with a bounded height spills into a second column. */
+    flex-wrap: nowrap;
   }
 
   .ui-resource-toolbar__actions {

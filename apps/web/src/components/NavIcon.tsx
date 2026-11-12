@@ -163,7 +163,18 @@ const ICON_PATHS: Record<string, ReactNode> = {
       <path d="M8 7.5v6.25M2.5 5.5 8 8.75l5.5-3.25" />
     </>
   ),
+  // Distribute content — stacked layers sent out as one bundle.
+  '/control/content': (
+    <>
+      <path d="M8 2.25 13.75 5 8 7.75 2.25 5 8 2.25Z" />
+      <path d="m2.25 8 5.75 2.75L13.75 8" />
+      <path d="m2.25 11 5.75 2.75L13.75 11" />
+    </>
+  ),
 };
+// Web Control reuses the PrintOps library pages, so they share the same glyph.
+ICON_PATHS['/control/templates'] = ICON_PATHS['/templates'];
+ICON_PATHS['/control/paper-profiles'] = ICON_PATHS['/paper-profiles'];
 
 /** Decorative by contract: the adjacent label carries the meaning. */
 export function NavIcon({ route }: { route: string }) {

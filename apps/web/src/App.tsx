@@ -1047,9 +1047,6 @@ function AppNav({
             </span>
           </div>
         </div>
-        <div className="session-card__tools">
-          <LocaleToggle />
-        </div>
         <button
           type="button"
           className="session-signout-btn"

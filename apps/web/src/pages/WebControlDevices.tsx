@@ -17,6 +17,7 @@ import {
   Dialog,
   EmptyState,
   ErrorBanner,
+  FormField,
   ErrorState,
   Freshness,
   Inline,
@@ -359,14 +360,14 @@ export default function WebControlDevices() {
 
                 return (
                   <tr key={dev.deviceId}>
-                    <DataCell>
+                    <DataCell label={t('control.devices.colDevice')}>
                       <Stack gap="xs">
                         <Text weight="medium">{dev.displayName || dev.hostname}</Text>
                         <Mono size="label" tone="muted">{dev.deviceId}</Mono>
                       </Stack>
                     </DataCell>
-                    <DataCell>{dev.siteId}</DataCell>
-                    <DataCell>
+                    <DataCell label={t('control.devices.colSite')}>{dev.siteId}</DataCell>
+                    <DataCell label={t('control.devices.colConnection')}>
                       <Stack gap="xs">
                         <Badge tone={onlineTone}>{dev.connectionState}</Badge>
                         {dev.connectionState === 'ONLINE' && !['ROLLBACK_FAILED', 'RECOVERY_REQUIRED'].includes(dev.otaState) && (
@@ -386,10 +387,10 @@ export default function WebControlDevices() {
                         )}
                       </Stack>
                     </DataCell>
-                    <DataCell>
+                    <DataCell label={t('control.devices.colVersion')}>
                       <Mono size="body">v{dev.appVersion}</Mono>
                     </DataCell>
-                    <DataCell>
+                    <DataCell label={t('control.devices.colLatestCompatible')}>
                       {dev.latestCompatibleVersion ? (
                         <Inline gap="xs">
                           <Mono size="body" tone="warning">v{dev.latestCompatibleVersion}</Mono>
@@ -399,18 +400,18 @@ export default function WebControlDevices() {
                         <Text size="body" tone="muted">{t('control.devices.upToDate')}</Text>
                       )}
                     </DataCell>
-                    <DataCell>
+                    <DataCell label={t('control.devices.colPrint')}>
                       <Badge tone={printTone}>{dev.printState}</Badge>
                     </DataCell>
-                    <DataCell>
+                    <DataCell label={t('control.devices.colOta')}>
                       <Badge tone={otaTone}>{dev.otaState}</Badge>
                     </DataCell>
-                    <DataCell>
+                    <DataCell label={t('control.devices.colLastSeen')}>
                       <Text size="label" tone="muted">
                         {dev.lastSeenAt ? formatRelativeTime(t, dev.lastSeenAt) : t('control.devices.never')}
                       </Text>
                     </DataCell>
-                    <DataCell>
+                    <DataCell label={t('control.devices.colAction')}>
                       <Button
                         size="sm"
                         variant="secondary"
@@ -441,20 +442,26 @@ export default function WebControlDevices() {
           {!generatedToken ? (
             <Stack gap="md">
               <Stack gap="xs">
-                <Text size="label" weight="medium">{t('control.devices.siteIdentifier')}</Text>
-                <Input
-                  value={tokenSiteId}
-                  onChange={(e) => setTokenSiteId(e.target.value)}
-                  placeholder={t('control.devices.siteIdentifierPlaceholder')}
-                />
+                <FormField label={t('control.devices.siteIdentifier')}>
+                  {(control) => (
+                  <Input {...control}
+                    value={tokenSiteId}
+                    onChange={(e) => setTokenSiteId(e.target.value)}
+                    placeholder={t('control.devices.siteIdentifierPlaceholder')}
+                  />
+                  )}
+                </FormField>
               </Stack>
               <Stack gap="xs">
-                <Text size="label" weight="medium">{t('control.devices.expiresIn')}</Text>
-                <Input
-                  type="number"
-                  value={tokenTtl}
-                  onChange={(e) => setTokenTtl(Number(e.target.value))}
-                />
+                <FormField label={t('control.devices.expiresIn')}>
+                  {(control) => (
+                  <Input {...control}
+                    type="number"
+                    value={tokenTtl}
+                    onChange={(e) => setTokenTtl(Number(e.target.value))}
+                  />
+                  )}
+                </FormField>
               </Stack>
               <Inline gap="sm">
                 <Button variant="ghost" onClick={() => setTokenModalOpen(false)}>{t('common.cancel')}</Button>
