@@ -2,42 +2,45 @@
   accent-color: var(--primary);
   scrollbar-color: var(--neutral-border-strong) transparent;
   /* -- colors -- */
-  --primary: #1e66f5;
-  --neutral-deep: #1e1e2e;
-  --neutral-page: #f5f5f5;
+  /* Indigo action colour from the approved 2026-11-12 concept board. The board's
+     #6366f1 carries white text at only 4.47:1, so the action fill is the next
+     step down; #6366f1 survives as the light accent via color-mix tints. */
+  --primary: #4f46e5;
+  --neutral-deep: #101828;
+  --neutral-page: #f6f7fb;
   --neutral-surface: #ffffff;
-  --neutral-paper: #f8fafc;
-  --neutral-subtle: #f0f0f0;
-  --neutral-border: #e5e7eb;
-  --neutral-border-strong: #d1d5db;
-  --neutral-text: #374151;
-  /* #6b7280 measured 4.43:1 on page gray and 4.24:1 on subtle gray (axe, every
-     route). This is the lightest gray that clears 4.5:1 on every light surface. */
-  --neutral-text-muted: #5f6673;
-  --neutral-inverse: #111827;
+  --neutral-paper: #f9fafc;
+  --neutral-subtle: #f2f4f7;
+  --neutral-border: #e7e9f0;
+  --neutral-border-strong: #d0d5dd;
+  --neutral-text: #344054;
+  /* The lightest slate that clears 4.5:1 on every light surface (designTokens.test.ts). */
+  --neutral-text-muted: #5d6679;
+  --neutral-inverse: #101828;
   --semantic-success: #a6e3a1;
   --semantic-warning: #f9e2af;
   --semantic-error: #f38ba8;
   --semantic-info: #89b4fa;
   --semantic-neutral: #9399b2;
   --semantic-progress: #fab387;
-  --nav-bg: #1e1e2e;
-  --nav-text: #cdd6f4;
-  --nav-active: #89b4fa;
-  --nav-button: #313244;
+  /* Light rail: white, slate labels, indigo tint for the active route. */
+  --nav-bg: #ffffff;
+  --nav-text: #475467;
+  --nav-active: var(--primary);
+  --nav-button: var(--neutral-subtle);
 
   /* -- semantic component tokens -- */
-  --primary-strong: #2563eb;
-  --primary-hover: #1654d1;
-  --primary-pressed: #1d4ed8;
+  --primary-strong: #4338ca;
+  --primary-hover: #4338ca;
+  --primary-pressed: #3730a3;
   --state-danger-surface: #fee2e2;
   --state-danger-text: #991b1b;
   --state-warning-surface: #fef3c7;
   --state-warning-text: #92400e;
   --state-success-surface: #e6f7e6;
   --state-success-text: #2d6a2d;
-  --state-info-surface: #eff6ff;
-  --state-info-text: #1e40af;
+  --state-info-surface: #eef0ff;
+  --state-info-text: #3730a3;
   --control-height-compact: 34px;
   --control-height-standard: 38px;
 
@@ -73,8 +76,10 @@
   --status-cancelled: #374151;
   --status-duplicate: #4b5563;
 
-  --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.05);
-  --shadow-floating: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-subtle: 0 1px 3px rgba(16, 24, 40, 0.05);
+  /* Resting cards: a hairline lift so white surfaces separate from the page. */
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.04);
+  --shadow-floating: 0 12px 32px rgba(16, 24, 40, 0.10);
 
   /* Evidence Canvas. The one sanctioned dark surface, for content the operator
      authors or inspects literally — template bodies and callback payloads.
@@ -85,7 +90,7 @@
   --canvas-edge: #334155;
   --canvas-line: #94a3b8;
   --canvas-text: #e5e7eb;
-  --canvas-caret: #93c5fd;
+  --canvas-caret: #a5b4fc;
 
   /* -- typography -- */
   --font-body-family: system-ui, sans-serif;
@@ -124,9 +129,9 @@
   --font-label-text-transform: none;
 
   /* -- rounded -- */
-  --rounded-sm: 4px;
-  --rounded-md: 6px;
-  --rounded-lg: 8px;
+  --rounded-sm: 6px;
+  --rounded-md: 8px;
+  --rounded-lg: 12px;
   --rounded-pill: 9999px;
 
   /* -- spacing -- */
@@ -196,8 +201,9 @@ body {
   flex: 0 0 240px;
   min-height: 0;
   overflow-y: auto;
-  background: var(--neutral-deep);
-  color: var(--neutral-surface);
+  background: var(--nav-bg);
+  color: var(--nav-text);
+  border-inline-end: 1px solid var(--neutral-border);
   padding: 1rem;
   display: flex;
   flex-direction: column;
@@ -211,9 +217,9 @@ body {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   margin: 0;
-  color: var(--neutral-surface);
+  color: var(--neutral-deep);
   padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid color-mix(in srgb, var(--neutral-deep) 10%, transparent);
 }
 .app-nav-brand,
 .app-header-brand {
@@ -241,10 +247,10 @@ body {
   align-items: center;
   width: fit-content;
   padding: 0.18rem 0.42rem;
-  border: 1px solid rgba(137, 180, 250, 0.42);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
   border-radius: var(--rounded-sm, 4px);
-  background: rgba(137, 180, 250, 0.12);
-  color: var(--nav-text);
+  background: var(--state-info-surface);
+  color: var(--state-info-text);
   font-family: var(--font-mono-family);
   font-size: var(--font-label-size);
   font-weight: 600;
@@ -330,8 +336,8 @@ body {
 }
 
 .remote-command-progress--dark {
-  border-color: rgba(205, 214, 244, 0.2);
-  background: rgba(255, 255, 255, 0.06);
+  border-color: color-mix(in srgb, var(--nav-text) 20%, transparent);
+  background: color-mix(in srgb, var(--neutral-deep) 6%, transparent);
   color: var(--nav-text);
 }
 
@@ -428,7 +434,7 @@ body {
   flex: 1 1 auto;
   min-width: 0.75rem;
   height: 1px;
-  background: rgba(205, 214, 244, 0.2);
+  background: color-mix(in srgb, var(--nav-text) 20%, transparent);
 }
 
 .nav-group-list {
@@ -449,7 +455,7 @@ body {
   gap: 0.5rem;
   padding: 0.38rem 0.6rem 0.38rem 0.85rem;
   border-radius: 5px;
-  color: rgba(205, 214, 244, 0.8);
+  color: var(--nav-text);
   text-decoration: none;
   font-size: var(--font-body-size);
   font-weight: 400;
@@ -473,15 +479,13 @@ body {
 }
 
 .nav-link--active {
-  color: var(--neutral-surface);
-  background: rgba(30, 102, 245, 0.15);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--nav-bg));
   font-weight: 600;
 }
 
-.nav-link--active::before {
-  transform: translateY(-50%) scaleY(1);
-  opacity: 1;
-}
+/* The active route is the tinted pill alone (concept board); the old leading
+   bar is retired. */
 
 .nav-link-icon {
   flex: 0 0 16px;
@@ -514,7 +518,7 @@ body {
 }
 
 .nav-admin-toggle:focus-visible {
-  outline: 2px solid var(--semantic-info);
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -538,12 +542,12 @@ body {
 }
 
 .nav-link:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--neutral-surface);
+  background: color-mix(in srgb, var(--neutral-deep) 5%, transparent);
+  color: var(--neutral-deep);
 }
 
 .nav-link:focus-visible {
-  outline: 2px solid var(--semantic-info);
+  outline: 2px solid var(--primary);
   outline-offset: 0;
 }
 
@@ -556,9 +560,9 @@ body {
   margin-top: auto;
   margin-bottom: 1rem;
   padding: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-lg, 8px);
-  background: rgba(17, 17, 27, 0.4);
+  background: var(--neutral-paper);
   color: var(--nav-text);
   font-size: var(--font-action-size);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
@@ -575,8 +579,8 @@ body {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: linear-gradient(180deg, var(--primary-strong) 0%, var(--primary) 100%);
-  box-shadow: 0 1px 2px rgba(30, 102, 245, 0.25);
+  background: var(--primary);
+  box-shadow: none;
   color: var(--neutral-surface);
   font-size: var(--font-body-size);
   font-weight: 700;
@@ -598,7 +602,7 @@ body {
 
 .session-name {
   font-weight: 700;
-  color: var(--neutral-surface);
+  color: var(--neutral-deep);
   font-size: var(--font-body-size);
   white-space: nowrap;
   overflow: hidden;
@@ -607,7 +611,7 @@ body {
 
 .session-role {
   display: block;
-  color: rgba(205, 214, 244, 0.65);
+  color: var(--nav-text);
   font-size: var(--font-label-size);
   white-space: nowrap;
   overflow: hidden;
@@ -621,10 +625,10 @@ body {
   gap: 0.5rem;
   width: 100%;
   padding: 0.4rem 0.6rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--neutral-border-strong);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(205, 214, 244, 0.9);
+  background: var(--neutral-surface);
+  color: var(--nav-text);
   cursor: pointer;
   font-size: var(--font-label-size);
   font-weight: 600;
@@ -633,9 +637,9 @@ body {
 }
 
 .session-signout-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--neutral-surface);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--neutral-subtle);
+  color: var(--neutral-deep);
+  border-color: color-mix(in srgb, var(--neutral-deep) 20%, transparent);
   transform: translateY(-1px);
 }
 
@@ -659,7 +663,7 @@ body {
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--neutral-surface);
+  color: var(--neutral-deep);
 }
 
 .nav-toggle {
@@ -1024,15 +1028,15 @@ body {
 
 .settings-btn-secondary {
   background: var(--neutral-surface);
-  color: var(--neutral-deep, #1e1e2e);
-  border: 1px solid var(--neutral-border-strong, #9399b2) !important;
+  color: var(--neutral-deep);
+  border: 1px solid var(--neutral-border-strong) !important;
   transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .settings-btn-secondary:hover:not(:disabled) {
   border-color: var(--primary) !important;
   color: var(--primary);
-  background: rgba(30, 102, 245, 0.04);
+  background: color-mix(in srgb, var(--primary) 4%, transparent);
 }
 
 .settings-btn-danger {
@@ -1103,7 +1107,6 @@ body {
 
 .login-panel label {
   display: block;
-  margin-bottom: 0.85rem;
   color: var(--neutral-text);
   font-size: var(--font-action-size);
   font-weight: 600;
@@ -1113,7 +1116,6 @@ body {
   display: block;
   width: 100%;
   min-height: 44px;
-  margin-top: 0.35rem;
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--neutral-border-strong);
   border-radius: 6px;
@@ -1138,42 +1140,13 @@ body {
   margin-top: 0;
 }
 
-.login-panel button {
+/* Sign-in actions are the shared Button; the panel only stretches them to the
+   column and the touch floor. This used to restyle every <button> in the panel
+   with a gradient, which also painted the unselected locale option blue. */
+.login-panel .ui-button {
   width: 100%;
   min-height: 44px;
   margin-top: 0.25rem;
-  padding: 0.7rem 0.9rem;
-  border: 1px solid var(--primary-pressed);
-  border-radius: 6px;
-  background: linear-gradient(180deg, var(--primary-strong) 0%, var(--primary) 100%);
-  color: var(--neutral-surface);
-  cursor: pointer;
-  font-weight: 700;
-  box-shadow: 0 2px 4px rgba(30, 102, 245, 0.25), inset 0 1px 0.5px rgba(255, 255, 255, 0.2);
-  transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.login-panel button:hover:not(:disabled) {
-  background: linear-gradient(180deg, var(--primary-pressed) 0%, var(--primary-hover) 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(30, 102, 245, 0.35);
-}
-
-.login-panel button:active:not(:disabled) {
-  transform: translateY(0.5px) scale(0.99);
-}
-
-.login-panel button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-.login-panel button:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-  box-shadow: 0 0 0 4px rgba(30, 102, 245, 0.18);
 }
 
 .login-panel .login-password-toggle {
@@ -1200,14 +1173,6 @@ body {
 
 .login-panel .login-password-toggle:active {
   background: var(--neutral-border);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .login-panel button,
-  .login-panel .login-password-toggle {
-    transition: none;
-    transform: none !important;
-  }
 }
 
 .login-error {
@@ -1237,21 +1202,6 @@ body {
   color: var(--neutral-text);
   font-size: var(--font-action-size);
   line-height: 1.5;
-}
-
-.login-panel .login-secondary-action {
-  border: 1px solid var(--neutral-border-strong, #9399b2);
-  background: var(--neutral-surface);
-  color: var(--neutral-deep);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-
-.login-panel .login-secondary-action:hover:not(:disabled) {
-  border-color: var(--primary);
-  background: rgba(30, 102, 245, 0.04);
-  color: var(--primary);
-  transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(30, 102, 245, 0.12);
 }
 
 /* ---- error fallback ---- */
@@ -1575,7 +1525,7 @@ body {
 .paper-preview-modal__field-grid input:focus,
 .paper-preview-modal__field-grid select:focus {
   border-color: var(--primary);
-  outline: 2px solid rgba(30, 102, 245, 0.18);
+  outline: 2px solid color-mix(in srgb, var(--primary) 18%, transparent);
   outline-offset: 1px;
 }
 
@@ -1628,8 +1578,8 @@ body {
   flex-wrap: wrap;
   gap: 0.4rem;
   padding: 0.6rem 0.85rem;
-  border-bottom: 1px solid var(--neutral-border, #e5e7eb);
-  background: var(--neutral-surface, #fff);
+  border-bottom: 1px solid var(--neutral-border);
+  background: var(--neutral-surface);
 }
 
 .paper-preview-modal__alignment-label {
@@ -1647,9 +1597,9 @@ body {
   gap: 0.4rem;
   min-height: var(--pp-control-size, 36px);
   padding: 0.45rem 0.75rem;
-  border: 1px solid var(--primary, #1e66f5);
+  border: 1px solid var(--primary);
   border-radius: var(--rounded-md);
-  background: var(--primary, #1e66f5);
+  background: var(--primary);
   color: var(--neutral-surface);
   cursor: pointer;
   font: inherit;
@@ -1658,11 +1608,11 @@ body {
 }
 
 .paper-preview-modal__empty-action:hover {
-  background: var(--neutral-deep, #1e1e2e);
+  background: var(--neutral-deep);
 }
 
 .paper-preview-modal__empty-action:focus-visible {
-  outline: 2px solid var(--primary, #1e66f5);
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
@@ -1748,10 +1698,10 @@ body {
   width: 34px;
   height: 32px;
   padding: 0;
-  border: 1px solid var(--neutral-border-strong, #d1d5db);
+  border: 1px solid var(--neutral-border-strong);
   border-radius: var(--rounded-md, 6px);
-  background: var(--neutral-surface, #fff);
-  color: var(--neutral-text, #374151);
+  background: var(--neutral-surface);
+  color: var(--neutral-text);
   cursor: pointer;
   font-size: 1rem;
   line-height: 1;
@@ -1762,22 +1712,22 @@ body {
 .pp-tool-btn:hover:not(:disabled) {
   border-color: var(--primary);
   color: var(--primary);
-  background: rgba(30, 102, 245, 0.04);
+  background: color-mix(in srgb, var(--primary) 4%, transparent);
   transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(30, 102, 245, 0.12);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
 .pp-tool-btn:focus-visible {
-  outline: 2px solid var(--primary, #1e66f5);
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px rgba(30, 102, 245, 0.18);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 .pp-tool-btn--active {
   background: linear-gradient(180deg, var(--primary-strong) 0%, var(--primary) 100%);
   color: var(--neutral-surface);
   border-color: var(--primary-pressed);
-  box-shadow: 0 1px 2px rgba(30, 102, 245, 0.25);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--primary) 25%, transparent);
 }
 
 .pp-tool-btn--active:hover {
@@ -1790,8 +1740,8 @@ body {
   display: flex;
   gap: 0.15rem;
   padding: 0.4rem 0.75rem;
-  background: var(--neutral-subtle, #f0f0f0);
-  border-bottom: 1px solid var(--neutral-border, #e5e7eb);
+  background: var(--neutral-subtle);
+  border-bottom: 1px solid var(--neutral-border);
   overflow-x: auto;
   scrollbar-width: none;
   position: sticky;
@@ -1823,13 +1773,13 @@ body {
 }
 
 .pp-index-btn:hover {
-  background: var(--neutral-surface, #fff);
-  color: var(--neutral-text, #374151);
-  border-color: var(--neutral-border, #e5e7eb);
+  background: var(--neutral-surface);
+  color: var(--neutral-text);
+  border-color: var(--neutral-border);
 }
 
 .pp-index-btn:focus-visible {
-  outline: 2px solid var(--primary, #1e66f5);
+  outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
 
@@ -1870,9 +1820,9 @@ body {
   gap: 0.75rem;
   min-height: 64px;
   padding: 0.65rem 0.75rem;
-  border: 1px dashed var(--neutral-border-strong, #d1d5db);
+  border: 1px dashed var(--neutral-border-strong);
   border-radius: var(--rounded-md, 6px);
-  background: var(--neutral-subtle, #f0f0f0);
+  background: var(--neutral-subtle);
 }
 
 .pp-fields-empty__copy {
@@ -1890,13 +1840,13 @@ body {
   height: 30px;
   flex: 0 0 auto;
   border-radius: var(--rounded-md, 6px);
-  background: var(--neutral-surface, #fff);
-  color: var(--primary, #1e66f5);
+  background: var(--neutral-surface);
+  color: var(--primary);
 }
 
 .pp-fields-empty strong {
   display: block;
-  color: var(--neutral-text, #374151);
+  color: var(--neutral-text);
   font-size: var(--font-action-size);
 }
 
@@ -1920,7 +1870,7 @@ body {
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
-  background: var(--semantic-success, #65a765);
+  background: var(--semantic-success);
   flex-shrink: 0;
 }
 
@@ -1940,7 +1890,7 @@ body {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: var(--neutral-surface, #fff);
+  background: var(--neutral-surface);
   border-radius: var(--rounded-lg, 8px);
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   overflow: hidden;
@@ -1987,7 +1937,7 @@ body {
   gap: 0.45rem;
   overflow: auto;
   padding: 0.75rem;
-  background: var(--neutral-page, #f5f5f5);
+  background: var(--neutral-page);
 }
 
 .pp-preview-stage__meta {
@@ -2003,7 +1953,7 @@ body {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.25rem 0.5rem;
   padding: 0.5rem 0.75rem;
-  border-top: 1px solid var(--neutral-border, #e5e7eb);
+  border-top: 1px solid var(--neutral-border);
   color: var(--neutral-text-muted);
   font-size: var(--font-label-size);
   line-height: 1.4;
@@ -2153,7 +2103,7 @@ body {
   --pp-control-size: 36px;
   --pp-canvas-outline: rgba(30, 30, 46, 0.18);
   --pp-canvas-grid: rgba(30, 30, 46, 0.08);
-  --pp-canvas-guide: rgba(30, 102, 245, 0.5);
+  --pp-canvas-guide: color-mix(in srgb, var(--primary) 50%, transparent);
   --pp-canvas-scrim: rgba(17, 24, 39, 0.72);
 
   /* ── Scroll ownership (FE-02A Phase 2) ───────────────────────────────
@@ -2289,10 +2239,10 @@ body {
   width: 40px;
   height: 40px;
   flex: 0 0 auto;
-  border: 1px solid var(--neutral-border, #e5e7eb);
+  border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-md, 6px);
-  background: var(--neutral-surface, #fff);
-  color: var(--neutral-text, #374151);
+  background: var(--neutral-surface);
+  color: var(--neutral-text);
 }
 
 .pp-page-heading__icon .pp-icon {
@@ -2302,7 +2252,7 @@ body {
 
 .pp-page-heading h1 {
   margin: 0;
-  color: var(--neutral-deep, #1e1e2e);
+  color: var(--neutral-deep);
   font-size: var(--font-subheading-size);
   line-height: 1.25;
 }
@@ -2344,7 +2294,7 @@ body {
      D-2). Clipping belongs to `.pp-form-scroll`, which is the element that
      actually scrolls; the panel only draws the frame. */
   overflow: visible;
-  border: 1px solid var(--neutral-border, #e5e7eb);
+  border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-lg, 8px) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
 }
@@ -2358,8 +2308,8 @@ body {
   gap: var(--pp-space-2);
   min-height: 50px;
   padding: var(--pp-space-2) var(--pp-space-3);
-  border-bottom: 1px solid var(--neutral-border, #e5e7eb);
-  background: var(--neutral-surface, #fff);
+  border-bottom: 1px solid var(--neutral-border);
+  background: var(--neutral-surface);
 }
 
 .pp-command-bar .pp-index {
@@ -2381,10 +2331,10 @@ body {
   height: var(--pp-control-size);
   min-width: var(--pp-control-size);
   padding: 0;
-  border: 1px solid var(--neutral-border-strong, #d1d5db);
+  border: 1px solid var(--neutral-border-strong);
   border-radius: var(--rounded-md, 6px);
-  background: var(--neutral-surface, #fff);
-  color: var(--neutral-text, #374151);
+  background: var(--neutral-surface);
+  color: var(--neutral-text);
   cursor: pointer;
   font-size: 1rem;
   line-height: 1;
@@ -2393,15 +2343,15 @@ body {
 }
 
 .pp-command-bar .pp-index-btn:hover {
-  border-color: var(--primary, #1e66f5);
-  background: rgba(30, 102, 245, 0.04);
-  color: var(--primary, #1e66f5);
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 4%, transparent);
+  color: var(--primary);
   transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(30, 102, 245, 0.12);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
 .pp-command-bar .pp-index-btn:focus-visible {
-  outline: 2px solid var(--primary, #1e66f5);
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
@@ -2446,9 +2396,9 @@ body {
   gap: var(--pp-space-1);
   width: min(520px, calc(100vw - 2rem));
   padding: var(--pp-space-2);
-  border: 1px solid var(--neutral-border, #e5e7eb);
+  border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-md, 6px);
-  background: var(--neutral-surface, #fff);
+  background: var(--neutral-surface);
   box-shadow: 0 8px 24px rgba(17, 24, 39, 0.14);
 }
 
@@ -2461,7 +2411,7 @@ body {
   border: 1px solid transparent;
   border-radius: var(--rounded-md, 6px);
   background: transparent;
-  color: var(--neutral-text, #374151);
+  color: var(--neutral-text);
   cursor: pointer;
   font: inherit;
   font-size: var(--font-label-size);
@@ -2470,9 +2420,9 @@ body {
 
 .pp-preset-option:hover,
 .pp-preset-option:focus-visible {
-  border-color: var(--neutral-border, #e5e7eb);
-  background: var(--neutral-page, #f5f5f5);
-  color: var(--primary, #1e66f5);
+  border-color: var(--neutral-border);
+  background: var(--neutral-page);
+  color: var(--primary);
   outline: none;
 }
 
@@ -2553,7 +2503,7 @@ body {
   min-height: var(--pp-panel-min-h);
   width: auto !important;
   min-width: 0;
-  border: 1px solid var(--neutral-border, #e5e7eb);
+  border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-lg, 8px);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
@@ -2565,12 +2515,12 @@ body {
   gap: var(--pp-space-2);
   min-height: 50px;
   padding: var(--pp-space-2) var(--pp-space-3);
-  border-bottom: 1px solid var(--neutral-border, #e5e7eb);
-  background: var(--neutral-surface, #fff);
+  border-bottom: 1px solid var(--neutral-border);
+  background: var(--neutral-surface);
 }
 
 .pp-preview-header__title {
-  color: var(--neutral-deep, #1e1e2e);
+  color: var(--neutral-deep);
   font-size: var(--font-action-size);
   font-weight: 700;
 }
@@ -2588,18 +2538,18 @@ body {
   gap: var(--pp-space-2);
   min-height: 48px;
   padding: var(--pp-space-2) var(--pp-space-3);
-  border-bottom: 1px solid var(--neutral-border, #e5e7eb);
-  background: var(--neutral-page, #f5f5f5);
+  border-bottom: 1px solid var(--neutral-border);
+  background: var(--neutral-page);
 }
 
 .pp-canvas-fit {
   min-height: 36px;
   margin-left: auto;
   padding: 0 0.7rem;
-  border: 1px solid var(--neutral-border-strong, #d1d5db);
+  border: 1px solid var(--neutral-border-strong);
   border-radius: var(--rounded-md, 6px);
   background: var(--neutral-surface);
-  color: var(--neutral-text, #374151);
+  color: var(--neutral-text);
   cursor: pointer;
   font: inherit;
   font-size: var(--font-label-size);
@@ -2608,15 +2558,15 @@ body {
 
 .pp-canvas-fit:hover,
 .pp-canvas-fit:focus-visible {
-  border-color: var(--primary, #1e66f5);
-  color: var(--primary, #1e66f5);
+  border-color: var(--primary);
+  color: var(--primary);
   outline: none;
 }
 
 .pp-canvas-empty {
   margin: 0 0 0.75rem;
   padding: 0.55rem 0.75rem;
-  border: 1px dashed var(--neutral-border-strong, #d1d5db);
+  border: 1px dashed var(--neutral-border-strong);
   border-radius: var(--rounded-md, 6px);
   background: var(--neutral-surface);
   color: var(--neutral-text-muted);
@@ -2643,8 +2593,8 @@ body {
 .pp-field-row {
   position: relative;
   padding: 0.7rem;
-  border-color: var(--neutral-border, #e5e7eb) !important;
-  border: 1px solid var(--neutral-border, #e5e7eb);
+  border-color: var(--neutral-border) !important;
+  border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-md, 6px);
   background: var(--neutral-surface) !important;
   cursor: pointer;
@@ -2652,11 +2602,11 @@ body {
 }
 
 .pp-field-row:hover {
-  border-color: var(--neutral-border-strong, #d1d5db) !important;
+  border-color: var(--neutral-border-strong) !important;
 }
 
 .pp-field-row.is-selected {
-  border-color: var(--primary, #1e66f5) !important;
+  border-color: var(--primary) !important;
   background: var(--state-info-surface) !important;
 }
 
@@ -2666,7 +2616,7 @@ body {
   min-height: 28px;
   padding: 0 0.45rem;
   border-radius: var(--rounded-sm, 4px);
-  background: var(--neutral-deep, #1e1e2e);
+  background: var(--neutral-deep);
   color: var(--neutral-surface);
   font-size: var(--font-label-size);
   font-weight: 700;
@@ -2689,7 +2639,7 @@ body {
   margin-top: 0.65rem;
   padding: 0.55rem;
   overflow: auto;
-  border-top: 1px solid var(--neutral-border, #e5e7eb);
+  border-top: 1px solid var(--neutral-border);
   background: var(--neutral-surface);
 }
 
@@ -2700,7 +2650,7 @@ body {
   z-index: 8;
   padding: 0.2rem 0.35rem;
   border-radius: var(--rounded-sm, 4px);
-  background: var(--neutral-inverse, #111827);
+  background: var(--neutral-inverse);
   color: var(--neutral-surface);
   font-family: var(--font-mono-family, ui-monospace, monospace);
   font-size: var(--font-label-size);
@@ -2716,13 +2666,13 @@ body {
   gap: 0.75rem;
   min-height: 46px;
   padding: 0.55rem 0.75rem;
-  border-top: 1px solid var(--neutral-border, #e5e7eb);
+  border-top: 1px solid var(--neutral-border);
   background: var(--neutral-surface);
   font-size: var(--font-label-size);
 }
 
 .pp-selection-status strong {
-  color: var(--neutral-deep, #1e1e2e);
+  color: var(--neutral-deep);
 }
 
 .pp-selection-status span {
@@ -2955,10 +2905,6 @@ body {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-}
-
-.pp-edit-profile {
-  white-space: nowrap;
 }
 
 .pp-profile-cards {
@@ -3329,25 +3275,25 @@ body {
   flex: 1 1 0;
   justify-content: center;
   width: auto;
-  border-color: var(--neutral-border-strong, #9399b2);
-  background: var(--neutral-surface, #ffffff);
-  color: var(--neutral-text, #1e1e2e);
+  border-color: var(--neutral-border-strong);
+  background: var(--neutral-surface);
+  color: var(--neutral-text);
   white-space: nowrap;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .tpl-vars__barcode-actions button:hover {
-  border-color: var(--primary, #1e66f5);
-  background: rgba(30, 102, 245, 0.04);
-  color: var(--primary, #1e66f5);
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 4%, transparent);
+  color: var(--primary);
   transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(30, 102, 245, 0.12);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
 .tpl-vars button:focus-visible {
-  outline: 2px solid var(--primary, #1e66f5);
+  outline: 2px solid var(--primary);
   outline-offset: 1px;
-  box-shadow: 0 0 0 3px rgba(30, 102, 245, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .tpl-vars code {
@@ -3652,10 +3598,12 @@ body {
   border-collapse: collapse;
   background: var(--neutral-surface);
   border-radius: var(--rounded-lg);
-  overflow: hidden;
+  /* Not hidden: that made the table its own scroll box and broke the pinned
+     actions column. The surrounding frame already clips the corners. */
+  overflow: visible;
   /* Subtle outer card edge so the table reads as a panel, not a naked grid */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  border: 1px solid var(--neutral-border, #e5e7eb);
+  border: 1px solid var(--neutral-border);
 }
 
 .data-table thead {
@@ -3694,7 +3642,7 @@ body {
 
 /* Row hover — barely-there Action Blue tint; orients the eye without competing */
 .data-table tbody tr:hover td {
-  background: rgba(30, 102, 245, 0.035);
+  background: color-mix(in srgb, var(--primary) 4%, transparent);
   transition: background 0.1s ease;
 }
 
@@ -3704,7 +3652,7 @@ body {
 }
 
 .data-table tbody tr.is-selected td {
-  background: rgba(30, 102, 245, 0.08);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
 }
 
 /* Batch Action Bar for Queue Triage */
@@ -3717,8 +3665,8 @@ body {
   justify-content: space-between;
   gap: 1rem;
   padding: 0.85rem 1.25rem;
-  background: var(--neutral-deep, #1e1e2e);
-  color: var(--neutral-surface, #ffffff);
+  background: var(--neutral-deep);
+  color: var(--neutral-surface);
   border-radius: var(--rounded-lg, 8px);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.22);
   margin-top: 1rem;
@@ -3739,7 +3687,7 @@ body {
 }
 
 .batch-action-badge {
-  background: var(--primary, #1e66f5);
+  background: var(--primary);
   color: var(--neutral-surface);
   padding: 0.15rem 0.6rem;
   border-radius: 12px;
@@ -3775,7 +3723,7 @@ body {
   min-height: 2.5rem;
   border: 1px solid var(--neutral-border);
   border-radius: 0.5rem;
-  background: var(--neutral-surface, #fff);
+  background: var(--neutral-surface);
   padding: 0.5rem 0.65rem;
   color: var(--neutral-deep);
 }
@@ -3817,7 +3765,7 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--neutral-border-strong, #9399b2);
+  background: var(--neutral-border-strong);
 }
 
 /* Map job status → dot color */
@@ -3877,8 +3825,8 @@ body {
   border-radius: 9999px;          /* match the new outlined-pill language */
   font-size: var(--font-label-size);
   font-weight: 700;
-  border: 1.5px solid var(--neutral-border, #e5e7eb);
-  color: var(--neutral-text-muted, #6c7086);
+  border: 1.5px solid var(--neutral-border);
+  color: var(--neutral-text-muted);
   background: transparent;
   white-space: nowrap;
 }
@@ -3955,10 +3903,10 @@ body {
 }
 
 .sandbox-proof-workbench {
-  background-color: var(--neutral-page, #f5f5f5);
+  background-color: var(--neutral-page);
   border-radius: var(--rounded-lg, 8px);
   padding: 1rem;
-  border: 1px solid var(--neutral-border, #e5e7eb);
+  border: 1px solid var(--neutral-border);
   min-height: 280px;
   display: flex;
   flex-direction: column;
@@ -3975,7 +3923,7 @@ body {
   padding: 0.4rem 0.75rem;
   background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(4px);
-  border: 1px solid var(--neutral-border, #e5e7eb);
+  border: 1px solid var(--neutral-border);
   border-radius: 6px;
   margin-bottom: 1rem;
   font-size: var(--font-label-size);
@@ -3984,7 +3932,7 @@ body {
 }
 
 .sandbox-proof-dim {
-  color: var(--neutral-deep, #1e1e2e);
+  color: var(--neutral-deep);
   font-family: var(--font-mono, monospace);
   font-size: var(--font-label-size);
 }
@@ -4035,10 +3983,17 @@ body {
   text-align: left;
 }
 
+/* Quiet by design: an empty list is information, not an alert. Inside a
+   table the row frame already bounds it, so the dashed edge drops too. */
 .state-panel--empty {
-  background: var(--neutral-subtle);
+  padding: var(--spacing-2xl) var(--spacing-lg);
+  background: transparent;
   border: 1px dashed var(--neutral-border-strong);
   color: var(--neutral-text-muted);
+}
+
+td > .state-panel--empty {
+  border: 0;
 }
 
 .state-panel--error {
@@ -4074,10 +4029,6 @@ body {
 
 .state-panel--error .state-panel-actions,
 .state-panel--empty .state-panel-actions {
-  justify-content: flex-start;
-}
-
-.state-panel--empty .state-panel-actions {
   justify-content: center;
 }
 
@@ -4106,12 +4057,12 @@ body {
   display: block;
   margin-top: 0.35rem;
   padding: 0.5rem 0.75rem;
-  background: var(--surface-subtle, #f9fafb);
-  border: 1px solid var(--border-subtle, #e5e7eb);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--rounded-md, 6px);
   font-family: var(--font-mono-family);
   font-size: var(--font-mono-size);
-  color: var(--text-secondary, #374151);
+  color: var(--text-secondary);
   overflow-x: auto;
   max-height: 240px;
   word-break: break-word;
@@ -4160,7 +4111,7 @@ body {
 .ui-button:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px rgba(30, 102, 245, 0.18);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 .ui-button__spinner {
@@ -4211,39 +4162,39 @@ body {
   background: linear-gradient(180deg, var(--primary-strong) 0%, var(--primary) 100%);
   color: var(--neutral-surface);
   border-color: var(--primary-pressed);
-  box-shadow: 0 1px 2px rgba(30, 102, 245, 0.25), inset 0 1px 0.5px rgba(255, 255, 255, 0.2);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--primary) 25%, transparent), inset 0 1px 0.5px rgba(255, 255, 255, 0.2);
 }
 
 .ui-button--primary:hover:not(:disabled) {
   background: linear-gradient(180deg, var(--primary-pressed) 0%, var(--primary-hover) 100%);
   border-color: var(--state-info-text);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(30, 102, 245, 0.32), 0 1px 2px rgba(30, 102, 245, 0.18), inset 0 1px 0.5px rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 32%, transparent), 0 1px 2px color-mix(in srgb, var(--primary) 18%, transparent), inset 0 1px 0.5px rgba(255, 255, 255, 0.25);
 }
 
 .ui-button--primary:active:not(:disabled) {
   transform: translateY(0.5px) scale(0.99);
-  box-shadow: 0 1px 2px rgba(30, 102, 245, 0.2);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 
 .ui-button--secondary {
   background: var(--neutral-surface);
-  color: var(--neutral-deep, #1e1e2e);
-  border-color: var(--neutral-border-strong, #9399b2);
+  color: var(--neutral-deep);
+  border-color: var(--neutral-border-strong);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .ui-button--secondary:hover:not(:disabled) {
   border-color: var(--primary);
   color: var(--primary);
-  background: rgba(30, 102, 245, 0.04);
+  background: color-mix(in srgb, var(--primary) 4%, transparent);
   transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(30, 102, 245, 0.12), 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--primary) 12%, transparent), 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .ui-button--secondary:active:not(:disabled) {
   transform: translateY(0.5px) scale(0.99);
-  background: rgba(30, 102, 245, 0.08);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
@@ -4269,20 +4220,20 @@ body {
 
 .ui-button--ghost {
   background: transparent;
-  color: var(--neutral-text-muted, #6c7086);
+  color: var(--neutral-text-muted);
   border-color: transparent;
   text-decoration: none;
 }
 
 .ui-button--ghost:hover:not(:disabled) {
-  background: rgba(30, 102, 245, 0.08);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
   color: var(--primary);
   transform: translateY(-0.5px);
 }
 
 .ui-button--ghost:active:not(:disabled) {
   transform: translateY(0.5px);
-  background: rgba(30, 102, 245, 0.14);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
 }
 
 .ui-alert {
@@ -4491,7 +4442,7 @@ body {
   /* Match stat-card-label and data-table th exactly: uppercase, tracked 700 */
   font-size: var(--font-label-size);
   font-weight: 700;
-  color: var(--neutral-text-muted, #6c7086);
+  color: var(--neutral-text-muted);
 }
 
 .ui-field-required {
@@ -4502,7 +4453,7 @@ body {
   margin: 0;
   font-size: var(--font-label-size);
   line-height: var(--font-label-line-height);
-  color: var(--neutral-text-muted, #6c7086);
+  color: var(--neutral-text-muted);
 }
 
 .ui-field-error {
@@ -4518,11 +4469,11 @@ body {
 .ui-field select {
   box-sizing: border-box;
   width: 100%;
-  border: 1.5px solid var(--neutral-border, #e5e7eb);
+  border: 1.5px solid var(--neutral-border);
   border-radius: 6px;
   padding: 0.45rem 0.7rem;
   font-size: var(--font-body-size);
-  color: var(--neutral-deep, #1e1e2e);
+  color: var(--neutral-deep);
   background: var(--neutral-surface);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -4532,7 +4483,7 @@ body {
 .ui-field select:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(30, 102, 245, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .ui-field--invalid input,
@@ -4665,8 +4616,11 @@ body {
 .pp-field-row__header {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
+  /* Key gets its own full row: squeezed between badge and delete it fell to
+     ~150px, under the 160px floor where a short Thai key stops being readable. */
   grid-template-areas:
-    'badge key delete'
+    'badge . delete'
+    'key key key'
     'label label label';
   align-items: center;
   gap: 0.35rem;
@@ -4753,7 +4707,7 @@ body {
   width: var(--pp-control-size);
   height: var(--pp-control-size);
   padding: 0;
-  border: 1px solid var(--semantic-error, #f38ba8);
+  border: 1px solid var(--semantic-error);
   border-radius: var(--rounded-sm, 4px);
   background: var(--neutral-surface);
   color: var(--danger-action);
@@ -5048,7 +5002,7 @@ body {
   top: 14px;
   bottom: 14px;
   width: 2px;
-  background: var(--neutral-border, #e5e7eb);
+  background: var(--neutral-border);
   z-index: 0;
 }
 
@@ -5066,9 +5020,9 @@ body {
   height: 16px;
   margin-top: 6px;
   border-radius: 50%;
-  background: var(--semantic-neutral, #9399b2);
-  border: 2px solid var(--neutral-surface, #ffffff);
-  box-shadow: 0 0 0 1px var(--neutral-border, #e5e7eb);
+  background: var(--semantic-neutral);
+  border: 2px solid var(--neutral-surface);
+  box-shadow: 0 0 0 1px var(--neutral-border);
   transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -5084,7 +5038,7 @@ body {
 
 .job-trace__step--running .job-trace__marker {
   background: var(--primary);
-  box-shadow: 0 0 0 3px rgba(30, 102, 245, 0.3);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent);
   animation: trace-pulse-ring 1.6s infinite;
 }
 
@@ -5094,18 +5048,18 @@ body {
 }
 
 .job-trace__step--unknown .job-trace__marker {
-  background: var(--neutral-border-strong, #9399b2);
+  background: var(--neutral-border-strong);
 }
 
 @keyframes trace-pulse-ring {
   0% {
-    box-shadow: 0 0 0 0px rgba(30, 102, 245, 0.5);
+    box-shadow: 0 0 0 0px color-mix(in srgb, var(--primary) 50%, transparent);
   }
   70% {
-    box-shadow: 0 0 0 6px rgba(30, 102, 245, 0);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 0%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 0px rgba(30, 102, 245, 0);
+    box-shadow: 0 0 0 0px color-mix(in srgb, var(--primary) 0%, transparent);
   }
 }
 
@@ -5114,7 +5068,7 @@ body {
   min-width: 0;
   padding: var(--spacing-md) var(--spacing-lg);
   background: var(--neutral-surface);
-  border: 1px solid var(--neutral-border, #e5e7eb);
+  border: 1px solid var(--neutral-border);
   border-radius: var(--rounded-md);
   box-shadow: 0 1px 3px rgba(0,0,0,0.03);
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
@@ -5146,7 +5100,7 @@ body {
   margin-top: 6px;
   font-size: var(--font-label-size);
   padding: 4px 8px;
-  background: var(--neutral-page, #f5f5f5);
+  background: var(--neutral-page);
   border-radius: 4px;
   color: var(--neutral-text);
   font-family: var(--font-mono, monospace);
@@ -5222,19 +5176,18 @@ body {
 
 /* Print-flow integration values stay readable while their copy action remains
    available beside them, including on narrow screens and with long subjects. */
-.print-flow-copy-row {
+/* Value and Copy share one grid row so every Copy button lands on the same
+   right edge and centre line, whatever the value length. */
+.ui-inline.print-flow-copy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   width: 100%;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .print-flow-copy-row__value {
   min-width: 0;
-  flex: 1 1 16rem;
   overflow-wrap: anywhere;
-}
-
-.print-flow-copy-row > .ui-button {
-  flex: 0 0 auto;
 }
 
 .print-flow-endpoint > .print-flow-endpoint__value {
@@ -5244,4 +5197,30 @@ body {
 ::selection {
   background: color-mix(in srgb, var(--primary) 22%, var(--neutral-surface));
   color: var(--neutral-inverse);
+}
+
+.ui-panel__footer > .settings-reset-action {
+  margin-inline-end: auto;
+}
+
+/* Settings readiness: one ruled list instead of thirteen separate cards. */
+.ui-record-list.settings-readiness {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg);
+}
+
+.settings-readiness > .ui-record-card {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border: 0;
+  border-radius: 0;
+}
+
+.settings-readiness > .ui-record-card + .ui-record-card {
+  border-top: 1px solid var(--neutral-border);
+}
+
+.settings-readiness .ui-record-header {
+  margin-bottom: 0;
 }

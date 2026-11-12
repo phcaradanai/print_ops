@@ -249,7 +249,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       await openEditor(page);
       await editMixedProfile(page);
 
-      const buttons = page.locator('.pp-toolbar .pp-icon-btn');
+      const buttons = page.locator('.pp-toolbar .ui-icon-button');
       const target = buttons.first();
       const neighbour = buttons.nth(1);
 
@@ -259,7 +259,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       const offset = async () =>
         page.evaluate(() => {
           const toolbar = document.querySelector('.pp-toolbar');
-          const second = document.querySelectorAll('.pp-toolbar .pp-icon-btn')[1];
+          const second = document.querySelectorAll('.pp-toolbar .ui-icon-button')[1];
           if (!toolbar || !second) return null;
           const t = toolbar.getBoundingClientRect();
           const s = second.getBoundingClientRect();
@@ -280,18 +280,18 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       expect(Math.abs(after!.height - before!.height), 'hover resized the next control').toBeLessThanOrEqual(1);
     });
 
-    test(`toolbar tooltip stays inside the viewport ${tag}`, async ({ page }) => {
+    // The toolbar now uses the shared IconButton, whose tooltip is the native
+    // `title`: the OS positions it on screen, so the check is that each action
+    // names itself for both pointer and assistive tech.
+    test(`toolbar actions expose a tooltip and accessible name ${tag}`, async ({ page }) => {
       await openEditor(page);
-      const trigger = page.locator('.pp-toolbar .pp-icon-btn').first();
-      await trigger.hover();
-      await page.waitForTimeout(300);
-      const tooltip = page.locator('.pp-toolbar .pp-icon-btn-tooltip').first();
-      const tipBox = await tooltip.boundingBox();
-      expect(tipBox, 'tooltip has no box').not.toBeNull();
-      expect(
-        contains({ x: 0, y: 0, width: viewport.width, height: viewport.height }, tipBox!),
-        `tooltip leaves the viewport: ${JSON.stringify(tipBox)}`,
-      ).toBe(true);
+      await editMixedProfile(page);
+      const buttons = page.locator('.pp-toolbar .ui-icon-button');
+      expect(await buttons.count()).toBeGreaterThan(0);
+      for (const button of await buttons.all()) {
+        await expect(button).toHaveAttribute('title', /\S/);
+        await expect(button).toHaveAttribute('aria-label', /\S/);
+      }
     });
 
     test(`field row controls do not overlap ${tag}`, async ({ page }) => {
@@ -407,8 +407,14 @@ test.describe('paper profile controls', () => {
 
   test('focus-visible is not colour-only on toolbar actions', async ({ page }) => {
     await openEditor(page);
-    const button = page.locator('.pp-toolbar .pp-icon-btn').first();
+    await editMixedProfile(page);
+    const button = page.locator('.pp-toolbar .ui-icon-button').first();
+    // Reach it by keyboard: :focus-visible (correctly) stays off for
+    // programmatic focus that follows a mouse click.
     await button.focus();
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
+    await expect(button).toBeFocused();
     const ring = await button.evaluate((el) => {
       const style = getComputedStyle(el);
       return {
@@ -439,13 +445,16 @@ test.describe('paper profile controls', () => {
     await expect(bold).toBeDisabled();
     await expect(alignment).toBeEnabled();
 
-    const preview = qrRow.locator('[aria-label^="qrcode preview"]');
-    const before = await preview.boundingBox();
+    // Measure the symbol, not its box: the preview pads the quiet zone outside
+    // the QR exactly as print does, so the box is wider than the symbol size.
+    const preview = qrRow.locator('[aria-label^="qrcode preview"] svg');
+    // Poll: the preview lays out after load and again after input, so a single
+    // immediate read can catch an intermediate size under a busy test run.
+    const px = (mm: number) => Math.round(mm * 96 / 25.4);
+    await expect.poll(async () => Math.round((await preview.boundingBox())?.width ?? 0)).toBe(px(20));
     await qrSize.fill('30');
-    const after = await preview.boundingBox();
-    expect(before?.width).toBeCloseTo(20 * 96 / 25.4, 0);
-    expect(after?.width).toBeCloseTo(30 * 96 / 25.4, 0);
-    expect(after?.height).toBeCloseTo(30 * 96 / 25.4, 0);
+    await expect.poll(async () => Math.round((await preview.boundingBox())?.width ?? 0)).toBe(px(30));
+    await expect.poll(async () => Math.round((await preview.boundingBox())?.height ?? 0)).toBe(px(30));
   });
 });
 
@@ -456,6 +465,7 @@ test.describe('paper profile popup layers', () => {
 
   test('preset menu closes on Escape, outside click and selection', async ({ page }) => {
     await openEditor(page);
+    await editMixedProfile(page);
     const trigger = page.getByRole('button', { name: /preset/i }).first();
     const menu = page.locator('.pp-presets-menu');
 
@@ -481,7 +491,7 @@ test.describe('paper profile popup layers', () => {
 
     for (const name of [/fields/i, /style|appearance/i, /import/i]) {
       await page.locator('.pp-toolbar').getByRole('button', { name }).first().click();
-      const drawer = page.locator('.pp-drawer');
+      const drawer = page.locator('.ui-drawer');
       await expect(drawer).toBeVisible();
       const drawerBox = await drawer.boundingBox();
       expect(drawerBox!.width).toBeLessThanOrEqual(1100);
@@ -529,7 +539,9 @@ test.describe('paper profile data failures', () => {
       saveStatus: 409,
       saveBody: { error: 'CONFLICT', message: 'paper profile code already exists' },
     });
-    await editMixedProfile(page);
+    // A valid profile: the mixed fixture's overflowing fields are (rightly)
+    // blocked by client validation before the request is ever sent.
+    await page.locator('table tbody tr', { hasText: 'Empty 50 × 25' }).first().locator('button').first().click();
     await page.locator('.pp-command-actions').getByRole('button', { name: /save|update/i }).first().click();
     await expect(page.getByText(/paper profile code already exists/i)).toBeVisible({ timeout: 5000 });
   });

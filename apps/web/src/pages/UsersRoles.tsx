@@ -145,10 +145,38 @@ export default function UsersRoles() {
     changePassword.reset();
   };
 
+  // Status lives in its own column (a switch when editable), so the actions
+  // cell holds only the row's commands, on one line like every other table.
+  const renderUserStatus = (user: UserItem) => (
+    canEditStatus(user) ? (
+      <Stack gap="xs">
+        <Switch
+          label={t('page.usersRoles.status')}
+          onLabel={t('page.usersRoles.active')}
+          offLabel={t('page.usersRoles.inactive')}
+          checked={user.isActive}
+          busy={changeStatus.pending && statusUserId === user.id}
+          disabled={changeStatus.pending && statusUserId !== user.id}
+          aria-label={user.isActive ? t('page.usersRoles.deactivateUser') : t('page.usersRoles.activateUser')}
+          onChange={() => void handleStatusChange(user)}
+        />
+        {changeStatus.error != null && statusUserId === user.id && (
+          <Text tone="danger" size="label" role="alert">{errorMessage(changeStatus.error, t('page.usersRoles.statusError'))}</Text>
+        )}
+      </Stack>
+    ) : (
+      <StateBadge
+        value={user.isActive}
+        onLabel={t('page.usersRoles.active')}
+        offLabel={t('page.usersRoles.inactive')}
+      />
+    )
+  );
+
   const renderUserActions = (user: UserItem) => (
-    <Stack gap="sm">
+    <Stack gap="xs">
+      <Inline gap="xs">
       {canEditAccess(user) && (
-        <div>
           <Button
             size="sm"
             variant="secondary"
@@ -161,7 +189,6 @@ export default function UsersRoles() {
           >
             {t('page.usersRoles.pageAccess')}
           </Button>
-        </div>
       )}
 
       {editingUserId === user.id ? (
@@ -187,7 +214,6 @@ export default function UsersRoles() {
           </Button>
         </Inline>
       ) : canEditPassword(user) ? (
-        <div>
           <Button
             size="sm"
             variant="secondary"
@@ -200,30 +226,12 @@ export default function UsersRoles() {
           >
             {t('page.usersRoles.changePassword')}
           </Button>
-        </div>
       ) : (
         <Text tone="muted" size="label">{t('page.usersRoles.readOnly')}</Text>
       )}
 
+      </Inline>
       {editError && editingUserId === user.id && <Text tone="danger" size="label" role="alert">{editError}</Text>}
-
-      {canEditStatus(user) && (
-        <div>
-          <Switch
-            label={t('page.usersRoles.status')}
-            onLabel={t('page.usersRoles.active')}
-            offLabel={t('page.usersRoles.inactive')}
-            checked={user.isActive}
-            busy={changeStatus.pending && statusUserId === user.id}
-            disabled={changeStatus.pending && statusUserId !== user.id}
-            aria-label={user.isActive ? t('page.usersRoles.deactivateUser') : t('page.usersRoles.activateUser')}
-            onChange={() => void handleStatusChange(user)}
-          />
-        </div>
-      )}
-      {changeStatus.error != null && statusUserId === user.id && (
-        <Text tone="danger" size="label" role="alert">{errorMessage(changeStatus.error, t('page.usersRoles.statusError'))}</Text>
-      )}
     </Stack>
   );
 
@@ -276,13 +284,7 @@ export default function UsersRoles() {
                 </DataCell>
                 <DataCell label={t('page.usersRoles.email')}>{user.email}</DataCell>
                 <DataCell label={t('page.usersRoles.role')}><Badge>{t(`session.role.${user.role}`)}</Badge></DataCell>
-                <DataCell label={t('page.usersRoles.status')}>
-                  <StateBadge
-                    value={user.isActive}
-                    onLabel={t('page.usersRoles.active')}
-                    offLabel={t('page.usersRoles.inactive')}
-                  />
-                </DataCell>
+                <DataCell label={t('page.usersRoles.status')}>{renderUserStatus(user)}</DataCell>
                 <DataCell label={t('page.usersRoles.actions')} actions>{renderUserActions(user)}</DataCell>
               </tr>
             ))}

@@ -216,6 +216,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: var(--spacing-xs);
+  flex-wrap: nowrap;
 }
 
 .webhook-row-actions .ui-button {
@@ -293,7 +294,14 @@
   justify-content: flex-end;
 }
 
-.webhook-pagination-controls .ui-select {
+/* A page-size picker is compact: opt out of the generic `.ui-inline > .ui-select`
+   growth so it sits beside the pager instead of wrapping under it. */
+.webhook-pagination-row .webhook-pagination-controls {
+  flex-wrap: nowrap;
+}
+
+.webhook-pagination-row .webhook-pagination-controls > .ui-select {
+  flex: 0 0 auto;
   width: auto;
   min-width: 8rem;
 }

@@ -12,6 +12,7 @@ import {
   DataCell,
   DataHead,
   DataTable,
+  Dialog,
   EmptyState,
   ErrorState,
   FormField,
@@ -19,11 +20,11 @@ import {
   Grid,
   IconButton,
   Inline,
-  Input,
   LoadingState,
   Mono,
   PageLayout,
   Panel,
+  Select,
   Stack,
   Switch,
   TableEmpty,
@@ -37,19 +38,39 @@ interface Binding { id: string; printerCode: string; templateCode: string; paper
 
 type BindingForm = { printerCode: string; templateCode: string; paperProfileId: string; isDefault: boolean };
 
+interface Option { value: string; label: string }
+
+const EMPTY_FORM: BindingForm = { printerCode: '', templateCode: '', paperProfileId: '', isDefault: true };
+
 export default function PrinterBindings() {
   const { t } = useLocale();
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<BindingForm>({
-    printerCode: 'LAB_LABEL_01',
-    templateCode: 'LAB_LABEL_DEFAULT',
-    paperProfileId: '',
-    isDefault: true,
-  });
+  // Deleting a binding changes where real jobs print, so it is confirmed first.
+  const [pendingDelete, setPendingDelete] = useState<Binding | null>(null);
+  const [form, setForm] = useState<BindingForm>(EMPTY_FORM);
 
   const fetchBindings = useCallback(() => apiFetch<Binding[]>('/v1/printer-template-bindings'), []);
   const bindingsResource = useApiResource(fetchBindings);
   const bindings = bindingsResource.data ?? [];
+
+  // Pick from what exists instead of typing codes and a profile UUID by hand.
+  const fetchOptions = useCallback(async () => {
+    const [printers, templates, papers] = await Promise.all([
+      apiFetch<{ code: string; name: string }[]>('/printers'),
+      apiFetch<{ templateCode: string; name: string }[]>('/v1/templates'),
+      apiFetch<{ id: string; code: string; name: string }[]>('/v1/paper-profiles'),
+    ]);
+    const toOptions = <T,>(rows: T[], value: (row: T) => string, name: (row: T) => string): Option[] =>
+      rows.map((row) => ({ value: value(row), label: `${value(row)} — ${name(row)}` }));
+    return {
+      printerCode: toOptions(printers, (r) => r.code, (r) => r.name),
+      templateCode: toOptions(templates, (r) => r.templateCode, (r) => r.name),
+      paperProfileId: papers.map((r) => ({ value: r.id, label: `${r.code} — ${r.name}` })),
+      paperCode: new Map(papers.map((r) => [r.id, r.code])),
+    };
+  }, []);
+  const optionsResource = useApiResource(fetchOptions);
+  const options = optionsResource.data;
 
   // A binding decides which paper profile a printer uses — a failed create that
   // reported nothing left the operator believing the binding existed.
@@ -145,12 +166,7 @@ export default function PrinterBindings() {
               {editingId && (
                 <Button variant="ghost" onClick={() => {
                   setEditingId(null);
-                  setForm({
-                    printerCode: 'LAB_LABEL_01',
-                    templateCode: 'LAB_LABEL_DEFAULT',
-                    paperProfileId: '',
-                    isDefault: true,
-                  });
+                  setForm(EMPTY_FORM);
                 }}>
                   {t('common.cancel')}
                 </Button>
@@ -163,11 +179,18 @@ export default function PrinterBindings() {
               {(['printerCode', 'templateCode', 'paperProfileId'] as const).map((key) => (
                 <FormField key={key} label={t(`page.bindings.${key}`)}>
                   {(control) => (
-                    <Input
+                    <Select
                       {...control}
                       value={form[key]}
                       onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                    />
+                    >
+                      <option value="">{t('page.printFlow.select')}</option>
+                      {/* Keep an edited binding's value visible even if its record is gone. */}
+                      {form[key] && !options?.[key].some((o) => o.value === form[key]) && (
+                        <option value={form[key]}>{form[key]}</option>
+                      )}
+                      {options?.[key].map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </Select>
                   )}
                 </FormField>
               ))}
@@ -208,7 +231,7 @@ export default function PrinterBindings() {
                     <Mono>{b.templateCode}</Mono>
                   </DataCell>
                   <DataCell label={columns.paper}>
-                    <Mono tone="muted" title={b.paperProfileId}>{b.paperProfileId ? b.paperProfileId.slice(0, 8) : ''}</Mono>
+                    <Mono title={b.paperProfileId}>{b.paperProfileId ? (options?.paperCode.get(b.paperProfileId) ?? b.paperProfileId) : '—'}</Mono>
                   </DataCell>
                   <DataCell label={columns.default}>
                     {b.isDefault
@@ -225,11 +248,10 @@ export default function PrinterBindings() {
                       busy={toggleEnabled.pending}
                     />
                   </DataCell>
-                  <DataCell label={columns.actions} align="right">
+                  <DataCell label={columns.actions} actions>
                     <Inline gap="xs">
                       <IconButton
                         label={t('common.edit')}
-                        variant="ghost"
                         size="sm"
                         onClick={() => {
                           setEditingId(b.id);
@@ -239,17 +261,18 @@ export default function PrinterBindings() {
                             paperProfileId: b.paperProfileId,
                             isDefault: b.isDefault,
                           });
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                          // The shell scrolls <main>, not the window.
+                          document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
                       >
                         <EditIcon />
                       </IconButton>
                       <IconButton
                         label={t('common.delete')}
-                        variant="ghost"
+                        variant="danger"
                         size="sm"
-                        onClick={() => void deleteBinding.run(b.id)}
-                        busy={deleteBinding.pending}
+                        onClick={() => setPendingDelete(b)}
+                        busy={deleteBinding.pending && pendingDelete?.id === b.id}
                       >
                         <TrashIcon />
                       </IconButton>
@@ -266,6 +289,33 @@ export default function PrinterBindings() {
           </DataTable>
         )}
       </Stack>
+      <Dialog
+        open={pendingDelete != null}
+        onClose={() => !deleteBinding.pending && setPendingDelete(null)}
+        title={t('page.bindings.deleteTitle')}
+        footer={<>
+          <Button variant="secondary" disabled={deleteBinding.pending} onClick={() => setPendingDelete(null)}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="danger"
+            busy={deleteBinding.pending}
+            onClick={() => {
+              if (!pendingDelete) return;
+              void deleteBinding.run(pendingDelete.id).finally(() => setPendingDelete(null));
+            }}
+          >
+            {t('common.delete')}
+          </Button>
+        </>}
+      >
+        <Text>
+          {t('page.bindings.deleteBody')
+            .replace('{printer}', pendingDelete?.printerCode ?? '')
+            .replace('{template}', pendingDelete?.templateCode ?? '')
+            .replace('{paper}', pendingDelete ? (options?.paperCode.get(pendingDelete.paperProfileId) ?? pendingDelete.paperProfileId) : '')}
+        </Text>
+      </Dialog>
     </PageLayout>
   );
 }

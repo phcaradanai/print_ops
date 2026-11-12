@@ -111,12 +111,12 @@
 }
 
 .app-nav .locale-toggle {
-  border-color: rgba(205, 214, 244, 0.28);
-  background: rgba(255, 255, 255, 0.05);
+  border-color: color-mix(in srgb, var(--nav-text) 28%, transparent);
+  background: color-mix(in srgb, var(--neutral-deep) 5%, transparent);
 }
 
 .app-nav .locale-toggle__option {
-  color: rgba(205, 214, 244, 0.72);
+  color: var(--nav-text);
 }
 
 .app-nav .locale-toggle__option:hover {
@@ -125,7 +125,7 @@
 
 .app-nav .locale-toggle__option.is-selected {
   border: 1px solid transparent;
-  background: rgba(30, 102, 245, 0.28);
+  background: color-mix(in srgb, var(--primary) 28%, transparent);
   color: var(--neutral-surface);
 }
 
@@ -211,7 +211,7 @@
 .client-control-status-symbol[data-tone='stale'] {
   border-color: rgba(245, 158, 11, 0.42);
   background: rgba(245, 158, 11, 0.14);
-  color: #f59e0b;
+  color: var(--state-warning-text);
 }
 
 .client-control-status-symbol__label {
@@ -222,7 +222,7 @@
 
 .client-control-status-symbol[data-tone='blocked'] .client-control-status-symbol__label,
 .client-control-status-symbol[data-tone='stale'] .client-control-status-symbol__label {
-  color: #fbbf24;
+  color: var(--state-warning-text);
 }
 
 .app-nav__head {
@@ -245,17 +245,17 @@
   width: 44px;
   height: 44px;
   place-items: center;
-  border: 1px solid rgba(205, 214, 244, 0.24);
+  border: 1px solid color-mix(in srgb, var(--nav-text) 24%, transparent);
   border-radius: var(--rounded-md);
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--neutral-deep) 6%, transparent);
   color: var(--nav-text);
   cursor: pointer;
 }
 
 .nav-drawer-close:hover {
-  border-color: rgba(205, 214, 244, 0.45);
-  background: rgba(255, 255, 255, 0.12);
-  color: var(--neutral-surface);
+  border-color: color-mix(in srgb, var(--nav-text) 45%, transparent);
+  background: color-mix(in srgb, var(--neutral-deep) 6%, transparent);
+  color: var(--neutral-deep);
 }
 
 .nav-drawer-close:focus-visible {
@@ -346,9 +346,11 @@
     min-height: 56px;
   }
 
+  /* Status belongs with the other right-hand chrome, not floating mid-bar. */
   .app-topbar__gateway {
     display: flex;
     align-items: center;
+    margin-inline-start: auto;
   }
 
   .app-topbar__gateway .client-control-status-symbol {
@@ -483,11 +485,19 @@ body {
   flex: 0 0 auto;
 }
 
-/* Flat-by-default surfaces */
+/* Top-level surfaces carry one hairline lift (concept board); anything nested
+   inside a surface stays flat so depth never stacks. */
 .ui-panel,
 .ui-card,
-.ui-record-card,
+.ui-table-card,
 .ops-surface {
+  box-shadow: var(--shadow-card);
+}
+
+.ui-record-card,
+.ui-panel .ui-panel,
+.ui-panel .ui-card,
+.ui-panel .ui-table-card {
   box-shadow: none;
 }
 
@@ -501,8 +511,7 @@ body {
 }
 
 /* Buttons: a single action-blue family, rose only for consequence. */
-.ui-button,
-.ui-icon-button {
+.ui-button {
   font-family: var(--font-body-family);
   font-weight: 600;
   transition:
@@ -513,8 +522,7 @@ body {
     transform 120ms ease;
 }
 
-.ui-button--primary,
-.ui-icon-button--primary {
+.ui-button--primary {
   border-color: var(--primary);
   background: var(--primary);
   box-shadow: none;
@@ -522,22 +530,19 @@ body {
   min-width: 44px;
 }
 
-.ui-button--primary:hover:not(:disabled),
-.ui-icon-button--primary:hover:not(:disabled) {
+.ui-button--primary:hover:not(:disabled) {
   border-color: var(--primary-hover);
   background: var(--primary-hover);
   box-shadow: none;
 }
 
-.ui-button--danger,
-.ui-icon-button--danger {
+.ui-button--danger {
   border-color: var(--danger-action);
   background: var(--danger-action);
   box-shadow: none;
 }
 
-.ui-button--danger:hover:not(:disabled),
-.ui-icon-button--danger:hover:not(:disabled) {
+.ui-button--danger:hover:not(:disabled) {
   border-color: var(--danger-action-hover);
   background: var(--danger-action-hover);
   box-shadow: none;
@@ -547,13 +552,11 @@ body {
   background: var(--neutral-subtle);
 }
 
-.ui-button--ghost:hover:not(:disabled),
-.ui-icon-button--ghost:hover:not(:disabled) {
+.ui-button--ghost:hover:not(:disabled) {
   background: var(--state-info-surface);
 }
 
-.ui-button:disabled,
-.ui-icon-button:disabled {
+.ui-button:disabled {
   opacity: 1;
   border-color: var(--neutral-border);
   background: var(--neutral-subtle);

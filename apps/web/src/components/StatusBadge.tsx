@@ -44,9 +44,10 @@ export function StatusBadge({
     <span
       className={`status-badge status-badge--${size}`}
       style={{
-        background: 'transparent',
+        // Soft pill: a 10% tint of the status colour keeps the text >=4.5:1.
+        background: `color-mix(in srgb, ${colors.text} 10%, var(--neutral-surface))`,
         color: colors.text,
-        border: `1.5px solid ${colors.border}`,
+        border: `1px solid color-mix(in srgb, ${colors.border} 35%, transparent)`,
       }}
       title={title}
     >

@@ -116,13 +116,13 @@ test.describe('successful deletion with an empty API response', () => {
     let deleteCalls = 0;
     await openTemplates(page, () => { deleteCalls += 1; });
 
-    const row = page.locator('.tpl-table tbody tr', { hasText: 'DELETE_ME_TEMPLATE' });
-    await row.locator('.tpl-menu-wrap > button').click();
-    await row.locator('.tpl-menu__danger').click();
+    const row = page.locator('table tbody tr', { hasText: 'DELETE_ME_TEMPLATE' });
+    await row.getByRole('button', { name: /more actions for/i }).click();
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
 
-    const dialog = page.locator('.ds-modal', { hasText: 'DELETE_ME_TEMPLATE' });
+    const dialog = page.getByRole('dialog').filter({ hasText: 'DELETE_ME_TEMPLATE' });
     await expect(dialog).toBeVisible();
-    await dialog.locator('.ds-modal__actions .ds-btn--danger').click();
+    await dialog.getByRole('button', { name: 'Delete' }).click();
 
     await expect(page.getByText('DELETE_ME_TEMPLATE')).toHaveCount(0);
     await expect(dialog).toHaveCount(0);
@@ -135,11 +135,11 @@ test.describe('successful deletion with an empty API response', () => {
     await openPaperProfiles(page, () => { deleteCalls += 1; });
 
     const row = page.locator('table tbody tr', { hasText: 'DELETE_ME_PROFILE' });
-    await row.locator('.ds-btn--danger').click();
+    await row.getByRole('button', { name: 'Delete Profile' }).click();
 
-    const dialog = page.locator('.ds-modal', { hasText: 'DELETE_ME_PROFILE' });
+    const dialog = page.getByRole('dialog').filter({ hasText: 'DELETE_ME_PROFILE' });
     await expect(dialog).toBeVisible();
-    await dialog.locator('.ds-modal__actions .ds-btn--danger').click();
+    await dialog.getByRole('button', { name: 'Delete Profile' }).click();
 
     await expect(page.getByText('DELETE_ME_PROFILE')).toHaveCount(0);
     await expect(dialog).toHaveCount(0);

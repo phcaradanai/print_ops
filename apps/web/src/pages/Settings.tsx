@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocale, type Locale } from '../i18n/index.js';
+import { localizeReadinessText } from '../i18n/readinessMessages.js';
 import { errorMessage } from '../api/errors.js';
 import {
   apiDownload,
@@ -29,6 +30,7 @@ import {
   Alert,
   Badge,
   Button,
+  Dialog,
   StateBadge,
   Switch,
   ErrorBanner,
@@ -72,6 +74,9 @@ const READINESS_TONE: Record<ReadinessState, StatusTone> = {
   NOT_CONFIGURED: 'unknown',
   UNAVAILABLE: 'down',
 };
+
+// Attention first: broken, then degraded, then unconfigured, then healthy.
+const READINESS_ORDER: Record<ReadinessState, number> = { UNAVAILABLE: 0, DEGRADED: 1, NOT_CONFIGURED: 2, READY: 3 };
 
 const READINESS_BADGE: Record<ReadinessState, BadgeTone> = {
   READY: 'success',
@@ -137,6 +142,8 @@ export default function Settings() {
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
+  // Reset clears the stored X-Api-Key, so it restates the consequence first.
+  const [confirmReset, setConfirmReset] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
   const [downloadingSupport, setDownloadingSupport] = useState(false);
 
@@ -492,8 +499,10 @@ export default function Settings() {
                   <ErrorBanner error={readinessResource.error} onRetry={readinessResource.refresh} />
                 )}
                 {readinessResource.data && (
-                  <RecordList aria-label={t('settings.readiness.title')}>
-                    {Object.entries(readinessResource.data.components).map(([key, item]) => (
+                  <RecordList className="settings-readiness" aria-label={t('settings.readiness.title')}>
+                    {Object.entries(readinessResource.data.components)
+                      .sort(([, a], [, b]) => (READINESS_ORDER[a.state] ?? 9) - (READINESS_ORDER[b.state] ?? 9))
+                      .map(([key, item]) => (
                       <RecordCard key={key}>
                         <Stack gap="xs">
                           <RecordHeader>
@@ -502,10 +511,10 @@ export default function Settings() {
                             </StatusIndicator>
                             <Badge tone={READINESS_BADGE[item.state]}>{readinessStateLabel(item.state)}</Badge>
                           </RecordHeader>
-                          <Text tone="muted">{item.message}</Text>
+                          <Text tone="muted">{localizeReadinessText(item.message, locale)}</Text>
                           {item.action && (
                             <Text size="label" tone="info">
-                              {t('settings.readiness.action')} {item.action}
+                              {t('settings.readiness.action')} {localizeReadinessText(item.action, locale)}
                             </Text>
                           )}
                         </Stack>
@@ -555,12 +564,15 @@ export default function Settings() {
           title={t('settings.workspace')}
           footer={
             <>
+              {/* Reset clears the stored profile; it sits apart from the
+                  Cancel/Save pair so it is never the button the eye lands on. */}
               <Button
-                variant="danger"
+                variant="secondary"
+                className="settings-reset-action"
                 disabled={saving}
                 busy={resetting}
                 busyLabel={t('common.loading')}
-                onClick={handleReset}
+                onClick={() => setConfirmReset(true)}
               >
                 {t('common.reset')}
               </Button>
@@ -817,6 +829,17 @@ export default function Settings() {
 
         <ServiceAccountSettings />
       </Stack>
+      <Dialog
+        open={confirmReset}
+        onClose={() => setConfirmReset(false)}
+        title={t('settings.resetConfirm')}
+        footer={<>
+          <Button variant="secondary" onClick={() => setConfirmReset(false)}>{t('common.cancel')}</Button>
+          <Button variant="danger" onClick={() => { setConfirmReset(false); handleReset(); }}>{t('common.reset')}</Button>
+        </>}
+      >
+        <Text>{t('settings.resetConfirmBody')}</Text>
+      </Dialog>
     </PageLayout>
   );
 }

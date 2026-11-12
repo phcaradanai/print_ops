@@ -1,27 +1,27 @@
 ---
 name: PrintOps
-description: Hospital print operations — clinical, calm, and precise.
+description: Hospital print operations — clinical, calm, and precise. Light indigo theme (2026-11-12 concept board).
 colors:
-  primary: "#1e66f5"
-  primary-strong: "#2563eb"
-  primary-hover: "#1654d1"
-  primary-pressed: "#1d4ed8"
-  neutral-deep: "#1e1e2e"
-  neutral-page: "#f5f5f5"
+  primary: "#4f46e5"
+  primary-strong: "#4338ca"
+  primary-hover: "#4338ca"
+  primary-pressed: "#3730a3"
+  neutral-deep: "#101828"
+  neutral-page: "#f6f7fb"
   neutral-surface: "#ffffff"
-  neutral-paper: "#f8fafc"
-  neutral-subtle: "#f0f0f0"
-  neutral-border: "#e5e7eb"
-  neutral-border-strong: "#d1d5db"
-  neutral-text: "#374151"
-  neutral-text-muted: "#5f6673"
-  neutral-inverse: "#111827"
+  neutral-paper: "#f9fafc"
+  neutral-subtle: "#f2f4f7"
+  neutral-border: "#e7e9f0"
+  neutral-border-strong: "#d0d5dd"
+  neutral-text: "#344054"
+  neutral-text-muted: "#5d6679"
+  neutral-inverse: "#101828"
   canvas-ink: "#111827"
   canvas-gutter: "#0f172a"
   canvas-edge: "#334155"
   canvas-line: "#94a3b8"
   canvas-text: "#e5e7eb"
-  canvas-caret: "#93c5fd"
+  canvas-caret: "#a5b4fc"
   semantic-success: "#a6e3a1"
   semantic-warning: "#f9e2af"
   semantic-error: "#f38ba8"
@@ -34,18 +34,18 @@ colors:
   state-warning-text: "#92400e"
   state-success-surface: "#e6f7e6"
   state-success-text: "#2d6a2d"
-  state-info-surface: "#eff6ff"
-  state-info-text: "#1e40af"
+  state-info-surface: "#eef0ff"
+  state-info-text: "#3730a3"
   danger-action: "#9f1239"
   danger-action-hover: "#830e2e"
   device-ok: "#2d6a2d"
   device-busy: "#c2410c"
   device-down: "#9f1239"
   device-unknown: "#6b7280"
-  nav-bg: "#1e1e2e"
-  nav-text: "#cdd6f4"
-  nav-active: "#89b4fa"
-  nav-button: "#313244"
+  nav-bg: "#ffffff"
+  nav-text: "#475467"
+  nav-active: "#4f46e5"
+  nav-button: "#f2f4f7"
   status-accepted: "#0e7490"
   status-validated: "#0891b2"
   status-queued: "#1d4ed8"
@@ -96,9 +96,9 @@ typography:
     lineHeight: 1.4
     letterSpacing: "0.012em"
 rounded:
-  sm: "4px"
-  md: "6px"
-  lg: "8px"
+  sm: "6px"
+  md: "8px"
+  lg: "12px"
   xl: "12px"
   pill: "9999px"
 spacing:
@@ -256,6 +256,22 @@ components:
 ---
 
 # Design System: PrintOps
+
+## 2026-11-12 retheme (supersedes conflicting rules below)
+
+The owner supplied a concept board (light sidebar, indigo primary, soft cards) and it outranks the earlier "Lab Notebook" look under the authority order in `docs/design/visual-direction.md`. The tokens above already carry the new values; where the prose below still describes the old world, this section wins:
+
+- **Primary is indigo** `#4f46e5` (hover `#4338ca`, pressed `#3730a3`). The board's `#6366f1` gives white text only 4.47:1, so it is used only as a tint, never as a text-bearing fill.
+- **The navigation rail is light**: white surface, slate `#475467` labels, a 1px right rule, and the active route shown as a 10% indigo pill with indigo text. The 3px leading bar is retired. Focus on the rail uses the ordinary `--primary` outline.
+- **Page canvas is cool gray** `#f6f7fb`; text is `#101828` / `#344054` / muted `#5d6679` (≥5:1 on every light surface, enforced by `designTokens.test.ts`).
+- **Corners**: 6px compact, 8px controls, 12px cards, panels, tables and metric cards. Dialogs stay at 12px.
+- **Depth**: top-level surfaces (panel, card, table card, metric card) carry `--shadow-card`, a hairline two-layer lift. Anything nested inside a surface stays flat; depth never stacks. Overlays keep the floating shadows.
+- **Metrics** are separate cards in a gapped grid, label above value, values sharing a bottom line. The joined strip is retired.
+- **Tabs** are underline tabs: a ruled strip, the selected tab marked by a 2px indigo underline and indigo text.
+- **Job status badges** are soft pills: a 10% tint of the status color, a 35% border, the verdict icon and the literal label. Color is still never the only signal.
+- **Row actions** are one line of 32px bordered icon buttons, overflow in a ⋯ menu. A row-level danger trigger is outlined rose; filled rose is only for the final confirmation.
+- **Page header actions** are 44px tall; the freshness stamp leads and the primary command ends the row.
+- **Fonts** stay system-native: Inter (shown on the board) has no Thai glyphs and the product must install offline.
 
 ## Overview
 

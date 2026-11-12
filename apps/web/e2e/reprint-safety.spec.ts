@@ -64,7 +64,7 @@ for (const viewport of [
     await expect(dialog).toContainText('synthetic-request-0001');
     await expect(dialog).toContainText('SAFE_FAKE_PRINTER');
     await expect(dialog).toContainText('synthetic-runner-0001');
-    await expect(dialog).toContainText('not a callback retry');
+    await expect(dialog).toContainText('callback delivery is not retried by this action');
     const confirm = dialog.getByRole('button', { name: 'Confirm reprint' });
     await expect(confirm).toBeDisabled();
     if (viewport.width === 390) {

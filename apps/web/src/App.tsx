@@ -645,9 +645,9 @@ function LoginView({
           <Button type="submit" disabled={submitting} busy={submitting} style={{ marginTop: '0.5rem' }}>
             {submitting ? t('recovery.submitting') : t('recovery.submit')}
           </Button>
-          <button type="button" className="login-secondary-action" onClick={() => { setError(null); setView('login'); }}>
+          <Button variant="secondary" type="button" className="login-secondary-action" onClick={() => { setError(null); setView('login'); }}>
             {t('recovery.backToLogin')}
-          </button>
+          </Button>
           <p className="login-hint">{t('recovery.noCodeHelp')}</p>
         </form>
       </div>
@@ -713,15 +713,15 @@ function LoginView({
           {submitting ? t('common.signingIn') : t('common.signIn')}
         </Button>
 
-        <button type="button" className="login-secondary-action" onClick={() => { setError(null); setView('forgot'); }}>
+        <Button variant="secondary" type="button" className="login-secondary-action" onClick={() => { setError(null); setView('forgot'); }}>
           {t('recovery.forgotLink')}
-        </button>
+        </Button>
 
         <div className="login-optional-setup">
           <p>{bootstrap.state === 'READY' ? t('setup.readyNotice') : t('setup.optionalNotice')}</p>
-          <button type="button" className="login-secondary-action" onClick={() => onOwnerSetup({ email, password })}>
+          <Button variant="secondary" type="button" className="login-secondary-action" onClick={() => onOwnerSetup({ email, password })}>
             {t('setup.openOptional')}
-          </button>
+          </Button>
         </div>
 
         {import.meta.env.DEV && <div className="login-hint">{t('login.hint')}</div>}

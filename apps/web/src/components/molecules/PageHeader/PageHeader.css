@@ -41,6 +41,22 @@
   flex-wrap: wrap;
 }
 
+/* One header action row on every page: the freshness stamp leads, commands
+   follow, and the primary command ends the row. Pages pass these in
+   different orders; the header owns the order and a shared 44px height so
+   secondary and primary buttons never sit at mismatched heights. */
+.ui-page-header__actions .freshness {
+  order: -1;
+}
+
+.ui-page-header__actions .ui-button {
+  min-height: 44px;
+}
+
+.ui-page-header__actions .freshness .ui-button {
+  min-height: 0;
+}
+
 @media (max-width: 768px) {
   .ui-page-header {
     align-items: stretch;

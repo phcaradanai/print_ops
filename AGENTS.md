@@ -219,7 +219,7 @@ Before changing anything visual in `apps/web`:
 2. Reuse `components/ui/index.ts` exports; check `docs/design/component-inventory.md` for which stylesheet owns a component and put its rules **only there**. Never add another global override or `*Hotfix*` stylesheet.
 3. Use tokens only: no literal hex, no literal sub-1rem `font-size` (seven-rung scale), colours derived with `color-mix()`. Text uses `--neutral-text`, `--neutral-text-muted` or `--state-*-text`, never a `--semantic-*` pastel.
 4. Check the Thai string as well as the English one, at 1440px, 1024px and 390px, in the rendered app — not just the source.
-5. Run `npm run test -w apps/web` (includes `designTokens.test.ts` and `layoutContract.test.ts` guards) and the Playwright suite. 25 e2e tests already fail on `main` (see `docs/design/ux-audit.md`); compare against that baseline rather than assuming a clean run.
+5. Run `npm run test -w apps/web` (includes `designTokens.test.ts` and `layoutContract.test.ts` guards), build the web app, then run the Playwright suite (`npx playwright test`). Both are fully green as of 2026-11-12 (677 unit, 80 e2e): any failure is yours. Prefer role/name selectors in e2e over class names, which change with restyles.
 6. Record notable design changes and remaining debt in `docs/design/refinement-progress.md`.
 
 ---

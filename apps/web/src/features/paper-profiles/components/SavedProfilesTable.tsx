@@ -238,9 +238,14 @@ export function SavedProfilesTable({ onEdit, onCreate, persistence, t }: {
                     </DataCell>
                     <DataCell label={columns.actions} actions>
                       <Inline gap="xs" className="pp-saved-profiles__row-actions">
-                        <Button variant="secondary" size="sm" className="pp-edit-profile" onClick={() => onEdit(profile)}>
-                          <PaperProfileIcon name="edit" /> {t('page.paperProfiles.editProfile')}
-                        </Button>
+                        <IconButton
+                          size="sm"
+                          label={`${t('page.paperProfiles.editProfile')}: ${profile.name}`}
+                          title={t('page.paperProfiles.editProfile')}
+                          onClick={() => onEdit(profile)}
+                        >
+                          <PaperProfileIcon name="edit" />
+                        </IconButton>
                         <IconButton
                           size="sm"
                           label={t('page.paperProfiles.exportProfile')}

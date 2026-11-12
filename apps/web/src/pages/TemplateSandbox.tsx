@@ -624,7 +624,8 @@ export default function TemplateSandbox() {
                       <Button
                         variant="secondary"
                         size="sm"
-                        aria-label={t('page.sandbox.copies')}
+                        aria-label={t('page.sandbox.copiesDecrease')}
+                        disabled={copies <= 1}
                         onClick={() => setCopies(Math.max(1, copies - 1))}
                       >
                         −
@@ -641,7 +642,7 @@ export default function TemplateSandbox() {
                       <Button
                         variant="secondary"
                         size="sm"
-                        aria-label={t('page.sandbox.copies')}
+                        aria-label={t('page.sandbox.copiesIncrease')}
                         onClick={() => setCopies(copies + 1)}
                       >
                         +

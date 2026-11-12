@@ -57,6 +57,8 @@
 }
 .ui-panel--subtle { background: var(--neutral-subtle); }
 .ui-panel--pad-none { padding: 0; }
+/* Edge-to-edge content (a table) still needs an inset title row. */
+.ui-panel--pad-none > .ui-panel__header { margin: 0; padding: var(--spacing-lg) var(--spacing-xl); }
 .ui-panel--pad-md { padding: var(--spacing-md); }
 .ui-panel--pad-lg { padding: var(--spacing-lg); }
 .ui-panel--pad-xl { padding: var(--spacing-xl); }
@@ -67,6 +69,11 @@
 .ui-panel__actions,
 .ui-panel__footer { display: flex; align-items: center; justify-content: flex-end; gap: var(--spacing-sm); flex-wrap: wrap; }
 .ui-panel__footer { margin-top: var(--spacing-xl); padding-top: var(--spacing-lg); border-top: 1px solid var(--neutral-border); }
+/* In a grid row the panels stretch to equal height; pin each footer to the
+   bottom so sibling cards line their actions up instead of floating them. */
+.ui-grid > .ui-panel { display: flex; flex-direction: column; }
+.ui-grid > .ui-panel > .ui-panel__footer { margin-top: auto; }
+.ui-grid > .ui-panel > :nth-last-child(2):not(.ui-panel__header) { margin-bottom: var(--spacing-xl); }
 
 .ui-fieldset { min-width: 0; margin: 0; padding: var(--spacing-lg); border: 1px solid var(--neutral-border); border-radius: var(--rounded-lg); }
 .ui-fieldset__legend { padding-inline: var(--spacing-xs); color: var(--neutral-deep); font-size: var(--font-subheading-size); font-weight: 600; }
@@ -78,27 +85,29 @@
 .ui-toolbar .ui-input-group { flex: 1 1 12rem; }
 .ui-toolbar .ui-select { width: auto; min-width: 9rem; }
 
-.ui-tabs { display: flex; min-width: 0; align-items: center; gap: var(--spacing-xs); overflow-x: auto; scrollbar-width: thin; }
-.ui-tab { display: inline-flex; min-height: var(--control-height-standard); align-items: center; gap: var(--spacing-xs); padding: 0.42rem 0.68rem; border: 1px solid transparent; border-radius: var(--rounded-md); background: transparent; color: var(--neutral-text-muted); font: inherit; font-size: var(--font-label-size); font-weight: 600; white-space: nowrap; cursor: pointer; }
-.ui-tab:hover { background: var(--neutral-subtle); color: var(--neutral-text); }
-.ui-tab.is-selected { border-color: color-mix(in srgb, var(--primary) 28%, var(--neutral-border)); background: var(--state-info-surface); color: var(--primary-hover); }
+.ui-tabs { display: flex; min-width: 0; align-items: flex-end; gap: var(--spacing-lg); overflow-x: auto; scrollbar-width: thin; border-bottom: 1px solid var(--neutral-border); }
+.ui-tab { display: inline-flex; min-height: var(--control-height-standard); align-items: center; gap: var(--spacing-xs); padding: 0.42rem 0.15rem; border: 0; border-bottom: 2px solid transparent; border-radius: 0; margin-bottom: -1px; background: transparent; color: var(--neutral-text-muted); font: inherit; font-size: var(--font-label-size); font-weight: 600; white-space: nowrap; cursor: pointer; }
+.ui-tab:hover { color: var(--neutral-deep); border-bottom-color: var(--neutral-border-strong); }
+/* Underline tabs (concept board): the indicator sits on the strip rule. */
+.ui-tab.is-selected { border-bottom-color: var(--primary); color: var(--primary); font-weight: 600; }
 .ui-tab:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.ui-tab__count { min-width: 1.4rem; padding: 0.12rem 0.38rem; border-radius: var(--rounded-pill, 9999px); background: var(--neutral-surface); text-align: center; }
+.ui-tab__count { min-width: 1.4rem; padding: 0.12rem 0.38rem; border-radius: var(--rounded-pill); background: var(--neutral-subtle); text-align: center; }
 
-.ui-icon-button { display: inline-grid; flex: 0 0 auto; place-items: center; padding: 0; border: 1px solid var(--neutral-border-strong, #9399b2); border-radius: var(--rounded-md, 6px); background: var(--neutral-surface, #ffffff); color: var(--neutral-text, #1e1e2e); cursor: pointer; transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); user-select: none; }
+.ui-icon-button { display: inline-grid; flex: 0 0 auto; place-items: center; padding: 0; border: 1px solid var(--neutral-border-strong); border-radius: var(--rounded-md); background: var(--neutral-surface); color: var(--neutral-text); cursor: pointer; font-family: var(--font-body-family); font-weight: 600; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease; user-select: none; }
 .ui-icon-button--sm { width: 32px; height: 32px; font-size: 0.85rem; }
 .ui-icon-button--md { width: 38px; height: 38px; font-size: 0.95rem; }
 .ui-icon-button--lg { width: 44px; height: 44px; font-size: 1.1rem; }
-.ui-icon-button--primary { border-color: var(--primary-pressed); background: linear-gradient(180deg, var(--primary-strong) 0%, var(--primary) 100%); color: var(--neutral-surface); box-shadow: 0 1px 2px rgba(30, 102, 245, 0.25); }
-.ui-icon-button--danger { border-color: var(--danger-action); background: linear-gradient(180deg, #be123c 0%, var(--danger-action) 100%); color: var(--neutral-surface); box-shadow: 0 1px 2px rgba(159, 18, 57, 0.25); }
+.ui-icon-button--primary { min-width: 44px; min-height: 44px; border-color: var(--primary); background: var(--primary); color: var(--neutral-surface); }
+/* A row-level danger trigger only opens a confirmation, so it is outlined;
+   the filled rose is reserved for the final consequential button. */
+.ui-icon-button--danger { color: var(--status-failed); }
 .ui-icon-button--ghost { border-color: transparent; background: transparent; color: var(--neutral-text-muted); box-shadow: none; }
-.ui-icon-button:hover:not(:disabled) { border-color: var(--primary, #1e66f5); color: var(--primary, #1e66f5); transform: translateY(-1px); box-shadow: 0 3px 8px rgba(30, 102, 245, 0.15); }
-.ui-icon-button--primary:hover:not(:disabled) { color: var(--neutral-surface); background: linear-gradient(180deg, var(--primary-pressed) 0%, var(--primary-hover) 100%); box-shadow: 0 4px 12px rgba(30, 102, 245, 0.32); }
-.ui-icon-button--danger:hover:not(:disabled) { color: var(--neutral-surface); background: linear-gradient(180deg, var(--danger-action) 0%, var(--danger-action-hover) 100%); box-shadow: 0 4px 12px rgba(159, 18, 57, 0.32); }
-.ui-icon-button--ghost:hover:not(:disabled) { background: rgba(30, 102, 245, 0.08); color: var(--primary, #1e66f5); }
-.ui-icon-button:active:not(:disabled) { transform: translateY(0.5px) scale(0.97); }
-.ui-icon-button:focus-visible { outline: 2px solid var(--primary, #1e66f5); outline-offset: 2px; box-shadow: 0 0 0 4px rgba(30, 102, 245, 0.18); }
-.ui-icon-button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+.ui-icon-button:hover:not(:disabled) { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 6%, var(--neutral-surface)); color: var(--primary); }
+.ui-icon-button--primary:hover:not(:disabled) { border-color: var(--primary-hover); background: var(--primary-hover); color: var(--neutral-surface); }
+.ui-icon-button--danger:hover:not(:disabled) { border-color: var(--status-failed); background: var(--state-danger-surface); color: var(--status-failed); }
+.ui-icon-button--ghost:hover:not(:disabled) { border-color: transparent; background: var(--state-info-surface); color: var(--primary); }
+.ui-icon-button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.ui-icon-button:disabled { border-color: var(--neutral-border); background: var(--neutral-subtle); color: var(--neutral-text-muted); cursor: not-allowed; }
 /* Toggled on. Border and weight carry the state alongside the tint, so it does
    not rest on colour, and `aria-pressed` carries it to assistive technology. */
 .ui-icon-button[aria-pressed='true'] { border-color: var(--primary); background: var(--state-info-surface); color: var(--primary-hover); }
@@ -106,19 +115,25 @@
 /* Unavailable but still focusable, so its reason can be read. Matches the
    disabled treatment without leaving the tab order. */
 .ui-icon-button[aria-disabled='true'] { border-color: var(--neutral-border); background: var(--neutral-subtle); color: var(--neutral-text-muted); cursor: not-allowed; }
-.ui-icon-button[aria-disabled='true']:hover { transform: none; box-shadow: none; }
 
 
 .ui-data-table-frame { min-width: 0; overflow: auto; border: 1px solid var(--neutral-border); border-radius: var(--rounded-lg); background: var(--neutral-surface); box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
 .ui-data-table-frame:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .ui-data-table { width: 100%; table-layout: auto; border-collapse: collapse; background: var(--neutral-surface); }
-.ui-data-table thead { position: sticky; top: 0; z-index: 10; background: var(--neutral-paper, #f8fafc); }
-.ui-data-head { height: 42px; padding: 0.625rem 1rem; background: var(--neutral-paper, #f8fafc); color: var(--neutral-text); font-size: var(--font-label-size); font-weight: 600; line-height: 1.2; text-align: start; white-space: nowrap; vertical-align: middle; border-bottom: 1px solid var(--neutral-border); }
+.ui-data-table thead { position: sticky; top: 0; z-index: 10; background: var(--neutral-subtle); }
+.ui-data-head { height: 42px; padding: 0.625rem 1rem; background: var(--neutral-subtle); color: var(--neutral-text); font-size: var(--font-label-size); font-weight: 600; line-height: 1.2; text-align: start; white-space: nowrap; vertical-align: middle; border-bottom: 1px solid var(--neutral-border); }
 .ui-data-head[align="right"], .ui-data-cell[align="right"] { text-align: right; }
 .ui-data-head[align="center"], .ui-data-cell[align="center"] { text-align: center; }
 .ui-data-head:first-child, .ui-data-cell:first-child { padding-left: 1rem; }
 .ui-data-head:last-child, .ui-data-cell:last-child { padding-right: 1rem; }
-.ui-data-cell { height: 48px; padding: 0.625rem 1rem; border-top: 1px solid var(--neutral-subtle, #f0f0f0); color: var(--neutral-text); font-size: var(--font-body-size); vertical-align: middle; transition: background-color 120ms ease; }
+.ui-data-cell { height: 48px; padding: 0.625rem 1rem; border-top: 1px solid var(--neutral-subtle); color: var(--neutral-text); font-size: var(--font-body-size); vertical-align: middle; transition: background-color 120ms ease; }
+/* Row commands stay on one line and stay in view: when a table is wider than
+   its frame (e.g. the 1024px desktop window), the actions column is pinned to
+   the frame's right edge while the other columns scroll beneath it. */
+.ui-data-cell[data-actions] .ui-inline { flex-wrap: nowrap; }
+.ui-data-table tr > .ui-data-cell[data-actions]:last-child,
+.ui-data-table:has(tbody td[data-actions]:last-child) thead th:last-child { position: sticky; right: 0; z-index: 1; }
+.ui-data-table tr > .ui-data-cell[data-actions]:last-child { background: var(--neutral-surface); box-shadow: -1px 0 0 var(--neutral-border); }
 .ui-data-table tbody tr:hover .ui-data-cell { background: color-mix(in srgb, var(--primary) 3%, var(--neutral-surface)); }
 
 .ui-record-list { display: grid; gap: var(--spacing-md); margin: 0; padding: 0; list-style: none; }
@@ -253,7 +268,8 @@
 
 /* ---- metrics ---- */
 
-.ui-metric-grid { display: grid; min-width: 0; gap: 1px; overflow: hidden; border: 1px solid var(--neutral-border); border-radius: var(--rounded-lg); background: var(--neutral-border); }
+/* Separate soft cards (concept board), label above value. */
+.ui-metric-grid { display: grid; min-width: 0; gap: var(--spacing-md); }
 .ui-metric-grid--primary { grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr)); }
 .ui-metric-grid--secondary { grid-template-columns: repeat(auto-fit, minmax(min(8rem, 100%), 1fr)); }
 
@@ -261,13 +277,16 @@
   display: grid;
   min-width: 0;
   gap: var(--spacing-xs);
+  /* values share a baseline across a row even when one label wraps */
+  align-content: space-between;
   padding: var(--spacing-lg);
-  border: 0;
-  border-radius: 0;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-lg);
   background: var(--neutral-surface);
+  box-shadow: var(--shadow-card);
 }
 .ui-metric__value { color: var(--neutral-deep); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.ui-metric__label { display: flex; align-items: center; gap: var(--spacing-xs); min-width: 0; }
+.ui-metric__label { order: -1; display: flex; align-items: center; gap: var(--spacing-xs); min-width: 0; }
 .ui-metric__dot { flex: 0 0 auto; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: currentcolor; }
 
 .ui-metric-grid--secondary .ui-metric { padding: var(--spacing-md) var(--spacing-lg); }
@@ -343,7 +362,7 @@
   .ui-data-table[data-responsive] .ui-data-cell { display: grid; height: auto; justify-items: start; grid-template-columns: minmax(6.5rem, 35%) minmax(0, 1fr); gap: var(--spacing-md); padding: var(--spacing-md) var(--spacing-lg); border-top: 1px solid var(--neutral-border); overflow-wrap: anywhere; }
   .ui-data-table[data-responsive] .ui-data-cell:first-child { border-top: 0; }
   .ui-data-table[data-responsive] .ui-data-cell::before { content: attr(data-label); color: color-mix(in srgb, var(--primary) 70%, var(--neutral-inverse)); font-size: var(--font-label-size); font-weight: 600; line-height: 1; display: flex; align-items: center; }
-  .ui-data-table[data-responsive] .ui-data-cell[data-actions] { display: block; }
+  .ui-data-table[data-responsive] .ui-data-cell[data-actions] { display: block; position: static; box-shadow: none; }
   .ui-data-table[data-responsive] .ui-data-cell[data-actions]::before { display: block; margin-bottom: var(--spacing-sm); }
   .ui-data-table[data-responsive] .ui-data-cell[colspan] { display: block; justify-items: stretch; text-align: center; }
   .ui-data-table[data-responsive] .ui-data-cell[colspan]::before { display: none; }

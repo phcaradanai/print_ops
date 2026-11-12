@@ -1,5 +1,39 @@
 # Refinement progress
 
+## 2026-11-12 (later) — real-data review and concept retheme
+
+The first pass used a mocked API and missed problems that only appear with records. This pass rendered all 18 routes against the running dev API (real data, Thai and English, 1440 and 390px) and applied the owner's concept board.
+
+**Visual system:** indigo primary, light rail, cool page canvas, 8/12px corners, soft card lift on top-level surfaces only, separate metric cards, underline tabs, soft status pills (all through tokens; ~110 hard-coded blue/navy literals converted to tokens first).
+
+**Consistency fixes:** one row-action pattern (bordered icon buttons, outlined danger) on Templates, Paper Profiles, Webhooks and Printer Bindings; Users moved the active switch into the Status column and put actions on one line; header actions share 44px with the freshness stamp first; table empty states are quiet; one table-head colour (feature overrides removed); the Web Control indicator joined the right-hand topbar tools; panel footers in a grid pin to the bottom (Export Center).
+
+**Page fixes:** Route Policies subtitle (EN/TH, checked against the API's actual matching), Evidence Canvas editor, list first; Printer Bindings dropdowns instead of typing a profile UUID, no demo pre-fill, profile codes instead of ID hashes, Edit now scrolls `<main>`; Print Flow aligned copy rows, duplicate URL removed, 3-column bind form, a Default badge instead of "Enabled"; Sandbox literal `<strong>` tags; Webhooks pager and phone page-size select; Settings Reset demoted.
+
+**Verification:** typecheck clean; 674/674 unit tests; production build OK; axe 0 violations and no overflow on 36 real-data renders; Playwright 55 pass / 25 fail, the same 25 as unmodified `main`.
+
+**Follow-up in the same session:**
+- Confirmations added: deleting a printer binding restates printer/template/paper first; Settings Reset (which clears this device's stored X-Api-Key) restates that consequence first, using the previously unused `settings.resetConfirm` string.
+- Printer Bindings English form labels were raw keys (`printerCode`, …) — now "Printer / Template / Paper profile".
+- Settings readiness: problems sorted first (unavailable → degraded → not configured → ready) and rendered as one ruled list instead of 13 cards.
+- 1024px (the desktop window width): row actions no longer wrap into 218px-tall rows; when a table is wider than its frame, the actions column is pinned to the right edge (the legacy `.data-table { overflow: hidden }` that defeated this is now `visible`).
+- Final check: 108/108 real-data renders (18 routes × 1440/1024/390 × TH/EN) with 0 axe violations, 0 overflow, 0 raw keys; typecheck clean; 674/674 unit; build OK; Playwright fails the same 25 tests as `main`.
+
+**Second follow-up:**
+- Settings readiness messages now render in Thai: `i18n/readinessMessages.ts` maps every sentence the API emits (a test reads `readiness.routes.ts` and fails if a new literal sentence is added without a translation); unknown text still shows verbatim.
+- Sandbox copies stepper: the − and + buttons both announced as "Copies"; now "Decrease/Increase copies", and − is disabled at 1.
+- Paper-profile field cards: the Key input gets its own row (was ~150px, under the 160px readability floor).
+- E2E suite repaired: the 25 long-standing failures were stale selectors from earlier refactors (removed `.pp-icon-btn`, `.ds-modal`, `.job-queue-cards`, mobile nav now a dialog), outdated copy, a fixture that client validation correctly blocks, and a QR test that measured the quiet-zone box instead of the symbol. Selectors moved to roles/names. Result: 80/80, twice in a row; 677/677 unit.
+- Two renders that failed during the 108-render sweep were 30s timeouts under 4-worker load; both passed on re-run with no findings.
+
+**Owner decision (2026-11-12): Printer Bindings owns binding management.** Print Flow no longer has its own create form or default/enabled toggles; it shows the bindings read-only beside the API they drive, with a "Manage bindings" link. Users granted only Print Flow access can still see bindings but must be given Printer Bindings access to change them.
+
+Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-edge panels now inset their title row.
+
+**Still needs the owner (not changed):**
+- Native-speaker review of the Thai copy (including the new readiness translations); a Windows build to see the desktop shell.
+
+
 ## 2026-11-12 — cross-page audit and token pass
 
 **Done** (details and evidence in `ux-audit.md`):

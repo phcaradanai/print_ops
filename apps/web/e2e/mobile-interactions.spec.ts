@@ -50,21 +50,24 @@ test.describe('mobile interactions outside reprint confirmation', () => {
     await page.goto('/jobs');
 
     await page.getByRole('button', { name: 'Open navigation menu' }).click();
-    const nav = page.getByRole('navigation', { name: 'Main navigation' });
+    // The open mobile drawer is a modal dialog (focus-trapped), named like the nav.
+    const nav = page.getByRole('dialog', { name: 'Main navigation' });
     await expect(nav).toHaveClass(/app-nav--open/);
     await nav.getByRole('link', { name: 'Job Queue' }).click();
     await expect(page.getByRole('button', { name: 'Open navigation menu' })).toHaveAttribute('aria-expanded', 'false');
 
-    await expect(page.locator('.job-queue-cards')).toBeVisible();
-    await expect(page.locator('.job-queue-table')).toBeHidden();
+    // One responsive table: on a phone each row is a labelled card and the
+    // column header collapses to a screen-reader-only strip.
+    const cards = page.getByRole('region', { name: 'Job Queue' });
+    await expect(cards).toBeVisible();
+    expect((await cards.locator('thead').boundingBox())?.height ?? 0).toBeLessThanOrEqual(1);
     await page.getByRole('combobox', { name: 'Filter by status' }).selectOption('FAILED');
-    const cards = page.locator('.job-queue-cards');
     await expect(cards.getByRole('link', { name: 'MOBILE_LABEL' })).toBeVisible();
     await expect(cards.getByRole('link', { name: 'OTHER_LABEL' })).toHaveCount(0);
 
-    await page.getByLabel('Search jobs').fill('no matching job');
+    await page.getByRole('searchbox', { name: 'Search jobs' }).fill('no matching job');
     await expect(page.getByText('No jobs match the selected status or search.')).toBeVisible();
-    await page.getByLabel('Search jobs').fill('MOBILE_LABEL');
+    await page.getByRole('searchbox', { name: 'Search jobs' }).fill('MOBILE_LABEL');
     await cards.getByRole('checkbox', { name: 'Select job mobile-f' }).check();
     await expect(page.getByRole('region', { name: 'Batch queue actions' })).toBeVisible();
     await page.getByRole('button', { name: 'Clear selection' }).click();
@@ -81,15 +84,15 @@ test.describe('mobile interactions outside reprint confirmation', () => {
     await expect(page.getByRole('button', { name: /double-sided/i })).toBeDisabled();
     await expect(page.getByRole('button', { name: /color/i })).toBeDisabled();
 
-    const decrement = page.getByRole('button', { name: '−' });
-    const increment = page.getByRole('button', { name: '+' });
+    const decrement = page.getByRole('button', { name: 'Decrease copies' });
+    const increment = page.getByRole('button', { name: 'Increase copies' });
     for (const control of [decrement, increment]) {
       const box = await control.boundingBox();
       expect(box?.width).toBeGreaterThanOrEqual(44);
       expect(box?.height).toBeGreaterThanOrEqual(44);
     }
     await increment.click();
-    await expect(page.getByLabel('Copies')).toHaveValue('2');
+    await expect(page.getByLabel('Copies', { exact: true })).toHaveValue('2');
     await page.getByRole('button', { name: 'Urgent' }).click();
   });
 });

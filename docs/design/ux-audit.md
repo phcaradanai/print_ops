@@ -36,7 +36,7 @@ Measured on every route: one `ops-page` frame (232px left edge on full-width pag
 | 11 | P2 | **Override layering.** 42 component classes have base rules in more than one stylesheet (`.ops-page` in 3, `.app-main` in 2, `.ui-data-table` in 2, …); `paperProfiles{LayoutHotfix,Closure,Completion,LibraryGeometryHotfix}.css` exist only to override earlier sheets with ~100 `!important`. This is why fixes regress: the winning rule depends on chunk load order. | `styles.css` (5.3k lines), `experienceSystem.css`, paper-profile sheets | **Open** — ratcheted by `designTokens.test.ts`; plan in `refinement-progress.md` |
 | 12 | P2 | Settings crashes the whole route if `/v1/print-flow/runtime-architecture` returns without `executor` (`runtimeResource.data.executor.owner`). The real API always sends it, so this only bites on version skew. | `pages/Settings.tsx:444` | Open |
 | 13 | P3 | The route error boundary replaces the shell (no navigation visible), so recovery is only Retry/Reload. | `App.tsx` boundary placement | Open |
-| 14 | P3 | 25 Playwright e2e tests fail identically on unmodified `main` (paper-profile-ux, reprint-safety, delete-flows, mobile-interactions, paper-profile-layout-regression). Verified by stash/rebuild/rerun diff. | `apps/web/e2e` | Open, pre-existing |
+| 14 | P3 | 25 Playwright e2e tests failed identically on unmodified `main` (stale selectors and copy from earlier refactors). | `apps/web/e2e` | Fixed: 80/80 green |
 
 ## UI UX Pro Max cross-check
 

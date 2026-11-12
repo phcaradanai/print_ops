@@ -7,11 +7,11 @@ import { useApiAction } from '../hooks/useApiAction.js';
 import {
   Alert,
   Button,
+  EditorCanvas,
   EmptyState,
   ErrorState,
   FormField,
   Freshness,
-  Grid,
   Inline,
   LoadingState,
   Mono,
@@ -21,7 +21,6 @@ import {
   RecordList,
   StateBadge,
   Text,
-  Textarea,
 } from '../components/ui/index.js';
 
 interface Policy { id: string; policyCode: string; name: string; enabled: boolean }
@@ -95,19 +94,31 @@ export default function RoutePolicies() {
         </Alert>
       )}
 
-      <Grid columns={2}>
-        <Panel title={t('page.routePolicies.createPolicy')}>
-          <FormField label={t('page.routePolicies.policyJson')} error={jsonError ?? undefined}>
-            {(control) => (
-              <Textarea
-                {...control}
-                value={raw}
-                onChange={(e) => setRaw(e.target.value)}
-                rows={16}
-                mono
-              />
-            )}
-          </FormField>
+      <Panel title={t('page.routePolicies.policies')}>
+        {policiesResource.loading && !policiesResource.data ? (
+          <LoadingState />
+        ) : policiesResource.error != null && !policiesResource.data ? (
+          <ErrorState error={policiesResource.error} onRetry={policiesResource.refresh} />
+        ) : policies.length === 0 ? (
+          <EmptyState title={t('page.routePolicies.noPolicies')} />
+        ) : (
+          <RecordList>
+            {policies.map((policy) => (
+              <RecordCard key={policy.id}>
+                <Inline gap="md">
+                  <Mono>{policy.policyCode}</Mono>
+                  <Text weight="semibold" tone="strong">{policy.name}</Text>
+                  <StateBadge value={policy.enabled} onLabel={t('status.enabled')} offLabel={t('status.disabled')} />
+                </Inline>
+              </RecordCard>
+            ))}
+          </RecordList>
+        )}
+      </Panel>
+
+      <Panel
+        title={t('page.routePolicies.createPolicy')}
+        footer={(
           <Button
             onClick={() => void createPolicy.run(raw)}
             busy={createPolicy.pending}
@@ -116,30 +127,21 @@ export default function RoutePolicies() {
           >
             {t('page.routePolicies.createPolicy')}
           </Button>
-        </Panel>
-
-        <Panel title={t('page.routePolicies.policies')}>
-          {policiesResource.loading && !policiesResource.data ? (
-            <LoadingState />
-          ) : policiesResource.error != null && !policiesResource.data ? (
-            <ErrorState error={policiesResource.error} onRetry={policiesResource.refresh} />
-          ) : policies.length === 0 ? (
-            <EmptyState title={t('page.routePolicies.noPolicies')} />
-          ) : (
-            <RecordList>
-              {policies.map((policy) => (
-                <RecordCard key={policy.id}>
-                  <Inline gap="md">
-                    <Mono>{policy.policyCode}</Mono>
-                    <Text weight="semibold" tone="strong">{policy.name}</Text>
-                    <StateBadge value={policy.enabled} onLabel={t('status.enabled')} offLabel={t('status.disabled')} />
-                  </Inline>
-                </RecordCard>
-              ))}
-            </RecordList>
+        )}
+      >
+        <FormField label={t('page.routePolicies.policyJson')} error={jsonError ?? undefined}>
+          {(control) => (
+            <EditorCanvas
+              {...control}
+              value={raw}
+              onChange={(e) => setRaw(e.target.value)}
+              invalid={jsonError !== null}
+              spellCheck={false}
+              minHeight="20rem"
+            />
           )}
-        </Panel>
-      </Grid>
+        </FormField>
+      </Panel>
     </PageLayout>
   );
 }

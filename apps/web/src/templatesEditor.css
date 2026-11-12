@@ -62,13 +62,13 @@
   border-color: color-mix(in srgb, var(--primary) 48%, #ffffff);
   background: var(--state-info-surface);
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(30, 102, 245, 0.09);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 9%, transparent);
 }
 
 .templates-page .tpl-engine-card.is-selected {
   border-color: var(--primary);
   background: var(--state-info-surface);
-  box-shadow: inset 0 0 0 1px var(--primary), 0 6px 18px rgba(30, 102, 245, 0.12);
+  box-shadow: inset 0 0 0 1px var(--primary), 0 6px 18px color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
 .templates-page .tpl-engine-card__text small {
@@ -119,7 +119,7 @@
 
 .templates-page .tpl-editor-actions__right .ui-button--primary {
   min-width: 9rem;
-  box-shadow: 0 5px 14px rgba(30, 102, 245, 0.2);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 
 .templates-page .tpl-preview {

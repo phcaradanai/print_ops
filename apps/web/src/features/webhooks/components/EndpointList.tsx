@@ -12,6 +12,7 @@ import {
   Switch,
   Inline,
   Mono,
+  IconButton,
   Pagination,
   RecordCard,
   RecordHeader,
@@ -82,14 +83,14 @@ export function EndpointList({
 
   const rowActions = (endpoint: Endpoint, menuLabel?: string) => (
     <Inline gap="xs" className="webhook-row-actions">
-      <Button
+      <IconButton
         size="sm"
-        variant="secondary"
-        aria-label={distinctLabel('page.webhooks.edit', endpoint)}
+        label={distinctLabel('page.webhooks.edit', endpoint)}
+        title={t('page.webhooks.edit')}
         onClick={() => openEdit(endpoint)}
       >
-        <ActionIcon name="edit" /> {t('page.webhooks.edit')}
-      </Button>
+        <ActionIcon name="edit" />
+      </IconButton>
       <RowActionMenu
         label={menuLabel ?? t('page.webhooks.actionsFor').replace('{code}', endpoint.endpointCode)}
         items={[

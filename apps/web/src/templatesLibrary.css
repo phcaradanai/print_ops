@@ -6,9 +6,9 @@
  */
 
 .templates-page {
-  --tpl-library-accent: var(--primary-strong, #2563eb);
-  --tpl-library-border: var(--neutral-border, #e5e7eb);
-  --tpl-library-surface: var(--neutral-surface, #ffffff);
+  --tpl-library-accent: var(--primary-strong);
+  --tpl-library-border: var(--neutral-border);
+  --tpl-library-surface: var(--neutral-surface);
   --tpl-library-subtle: #f8fafc;
 }
 
@@ -42,14 +42,6 @@
 .templates-page .tpl-list .data-table thead,
 .templates-page .tpl-list .ui-data-table thead {
   border-bottom-color: var(--tpl-library-accent);
-}
-
-.templates-page .tpl-list .data-table th,
-.templates-page .tpl-list .ui-data-table th {
-  background: var(--neutral-paper);
-  color: #475569;
-  font-size: var(--font-label-size);
-  letter-spacing: 0.025em;
 }
 
 .templates-page .tpl-list .data-table td,

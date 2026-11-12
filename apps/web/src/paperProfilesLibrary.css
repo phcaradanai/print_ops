@@ -137,14 +137,6 @@
   table-layout: auto;
 }
 
-.paper-profiles-page .pp-profile-library-table thead th {
-  padding-block: 0.75rem;
-  background: var(--neutral-paper);
-  color: var(--neutral-text);
-  font-size: var(--font-label-size);
-  letter-spacing: 0.025em;
-}
-
 .paper-profiles-page .pp-profile-library-table tbody tr {
   min-height: 74px;
   transition: background-color 0.14s ease, box-shadow 0.14s ease;
@@ -258,10 +250,6 @@
 .paper-profiles-page .pp-profile-row:hover .pp-saved-profiles__row-actions {
   border-color: var(--neutral-border);
   background: rgba(255, 255, 255, 0.86);
-}
-
-.paper-profiles-page .pp-edit-profile {
-  min-width: 6.5rem;
 }
 
 .paper-profiles-page .pp-saved-profiles__state {
@@ -409,15 +397,6 @@
     padding: var(--spacing-md);
   }
 
-  .paper-profiles-page .pp-saved-profiles__row-actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    width: 100%;
-  }
-
-  .paper-profiles-page .pp-edit-profile {
-    width: 100%;
-  }
 }
 
 @media (max-width: 430px) {

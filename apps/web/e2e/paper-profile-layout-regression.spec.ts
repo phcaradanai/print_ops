@@ -18,6 +18,10 @@ async function openPaperProfiles(page: import('@playwright/test').Page) {
 
   await page.goto('/paper-profiles');
   await expect(page.locator('.paper-profiles-page')).toBeVisible();
+  // An empty library now shows its empty state; open the editor the way an
+  // operator does, through the New profile command.
+  await page.getByRole('button', { name: /โปรไฟล์ใหม่|new profile/i }).first().click();
+  await expect(page.locator('.pp-form-panel')).toBeVisible();
 }
 
 function boxesOverlap(
