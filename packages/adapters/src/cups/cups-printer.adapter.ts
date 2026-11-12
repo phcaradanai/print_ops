@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readRenderTransformOverrides } from '@printerops/shared';
-import { applyHtmlRenderTransform, applyHtmlCalibration, resolveHtmlPageSettings } from '../windows/windows-spooler.adapter.js';
+import { applyHtmlRenderTransform, applyHtmlMarginCompensation, applyHtmlCalibration, resolveHtmlPageSettings } from '../windows/windows-spooler.adapter.js';
 
 const exec = promisify(execFile);
 export interface CupsPrinterDeps {
@@ -100,9 +100,11 @@ export class CupsPrinterAdapter implements PrinterAdapterPort {
           ...(command.flipVertical !== undefined ? { flipVertical: command.flipVertical } : {}) };
         const source = bytes.toString('utf8');
         const page = resolveHtmlPageSettings(source, command.metadata, overrides);
-        const html = applyHtmlCalibration(applyHtmlRenderTransform(source, page, command, overrides), page, command);
-        // PDF and driver share the exact label face size; the feed gap is not a page.
-        const css = `<style>@page{size:${page.widthMm}mm ${page.heightMm}mm;margin:0}html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}</style>`;
+        const html = applyHtmlCalibration(applyHtmlMarginCompensation(applyHtmlRenderTransform(source, page, command, overrides), page, command, overrides), page, command);
+        // Preserve the Windows driver margin origin without shrinking the page flow area.
+        // CSS page margins split full-height label boxes into extra blank pages.
+        // PDF and driver share the label face size; the feed gap is not a page.
+        const css = `<style>@page{size:${page.widthMm}mm ${page.heightMm}mm;margin:0}html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{position:relative;left:${page.marginLeftMm}mm;top:${page.marginTopMm}mm}</style>`;
         const input = join(dir, 'label.html');
         await writeFile(input, html + css);
         await this.run('chromium', ['--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',

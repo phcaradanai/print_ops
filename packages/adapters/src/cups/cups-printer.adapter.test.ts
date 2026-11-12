@@ -60,6 +60,15 @@ describe('CUPS Linux printing', () => {
     expect(h.calls.find(c => c.file === 'lp')?.args).toContain('media=Custom.30x60mm');
   });
 
+  it('preserves the Windows profile origin without reducing the PDF page area', async () => {
+    const h = harness();
+    await h.adapter.executeCommand(command({ metadata: { paperProfile: {
+      widthMm: 60, heightMm: 30, marginLeftMm: 4, marginTopMm: 3, marginRightMm: 2, marginBottomMm: 1,
+    } } }));
+    expect(h.html()).toContain('left:4mm;top:3mm');
+    expect(h.html()).toContain('margin:0');
+  });
+
   it('never submits HTML when PDF rendering fails', async () => {
     const h = harness({ renderError: true });
     expect(await h.adapter.executeCommand(command())).toMatchObject({ success: false, errorCode: 'CUPS_PREPARATION_FAILED' });

@@ -70,6 +70,6 @@ export function runtimeArchitectureFromEnv(
       code: 'SINGLE_EXECUTOR',
     },
     supportedProductionProtocols: packaged ? ['windows-spooler'] : [],
-    deferredProtocols: ['ipp', 'cups', 'raw-tcp-9100'],
+    deferredProtocols: linux ? ['ipp', 'raw-tcp-9100'] : ['ipp', 'cups', 'raw-tcp-9100'],
   };
 }

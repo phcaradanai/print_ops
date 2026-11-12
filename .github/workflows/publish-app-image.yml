@@ -2,7 +2,14 @@ name: Publish PrintOps App image
 on:
   push:
     branches: ['codex/printops-app-linux-*']
-    paths: ['.github/workflows/publish-app-image.yml']
+    paths:
+      - '.github/workflows/publish-app-image.yml'
+      - 'infra/docker/Dockerfile.app'
+      - 'infra/docker/docker-compose.app.yml'
+      - 'packages/**'
+      - 'apps/**'
+      - 'scripts/smoke-app-image.mjs'
+      - 'scripts/smoke-cups-render.mjs'
   workflow_dispatch:
 permissions:
   contents: read
