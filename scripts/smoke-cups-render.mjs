@@ -19,8 +19,11 @@ const adapter = new CupsPrinterAdapter({ run: async (file, args) => {
     assert.equal(Number(stdout.match(/Pages:\s+(\d+)/)?.[1]), expectedPages, stdout);
     const size = stdout.match(/Page size:\s+([\d.]+) x ([\d.]+) pts/);
     assert.ok(size, stdout);
-    assert.ok(Math.abs(Number(size[1]) - 60 * 72 / 25.4) < 0.1, stdout);
-    assert.ok(Math.abs(Number(size[2]) - 30 * 72 / 25.4) < 0.1, stdout);
+    // Chromium quantizes PDF media boxes (observed 169.92 pt for 60 mm).
+    // Require accuracy within one physical dot on the 203 dpi acceptance printer.
+    const oneDotPt = 72 / 203;
+    assert.ok(Math.abs(Number(size[1]) - 60 * 72 / 25.4) < oneDotPt, stdout);
+    assert.ok(Math.abs(Number(size[2]) - 30 * 72 / 25.4) < oneDotPt, stdout);
     const { stdout: text } = await exec('pdftotext', [pdf, '-']);
     assert.match(text, /PrintOps/);
     assert.match(text, /ภาษาไทย/);
