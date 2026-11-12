@@ -76,7 +76,8 @@ export function useWebhookWorkspace() {
 
   const endpointsResource = useApiResource(fetchEndpoints);
   const policiesResource = useApiResource(fetchPolicies);
-  const callbackLogResource = useApiResource(fetchCallbackLog);
+  // Result callbacks land seconds after the page opens; poll so they appear.
+  const callbackLogResource = useApiResource(fetchCallbackLog, { intervalMs: 5000 });
 
   useEffect(() => {
     if (!endpointsResource.data) return;

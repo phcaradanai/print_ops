@@ -30,6 +30,8 @@ const (
 	DefaultPort = 161
 	// DefaultTimeout bounds a single request/response exchange.
 	DefaultTimeout = 2 * time.Second
+	// DefaultRetries is how many times a GET is re-sent after no reply.
+	DefaultRetries = 2
 )
 
 // BER tags used by SNMPv1.
@@ -87,6 +89,8 @@ type Options struct {
 	Timeout time.Duration
 	// Port is the agent UDP port (default 161).
 	Port int
+	// Retries is how many extra attempts follow a lost reply (default 2, <0 = none).
+	Retries int
 }
 
 func (o Options) community() string {
@@ -131,7 +135,23 @@ func Get(host string, oids []string, opts Options) ([]Varbind, error) {
 
 	addr := dialAddress(host, opts.port())
 	timeout := opts.timeout()
+	retries := opts.Retries
+	if retries == 0 {
+		retries = DefaultRetries
+	}
 
+	// SNMP is one UDP datagram each way: a single dropped packet must not read
+	// as "device did not answer" (that turned printed LAN jobs into UNVERIFIED).
+	var vbs []Varbind
+	for attempt := 0; attempt <= max(retries, 0); attempt++ {
+		if vbs, err = getOnce(addr, request, timeout); err == nil {
+			return vbs, nil
+		}
+	}
+	return nil, err
+}
+
+func getOnce(addr string, request []byte, timeout time.Duration) ([]Varbind, error) {
 	conn, err := net.DialTimeout("udp", addr, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("snmp: dial %s: %w", addr, err)

@@ -1,6 +1,7 @@
 import { describe, expect, it, afterEach } from 'vitest';
 import { InMemoryJobRepository } from '../infra/repos/in-memory-job.repo.js';
 import { InMemoryCallbackDeliveryRepository } from '../infra/repos/in-memory-callback-delivery.repo.js';
+import { InMemoryWebhookCallbackAttemptRepository } from '../infra/repos/in-memory-webhook-callback-attempt.repo.js';
 import {
   ResultCallbackDispatcher,
   callbackNatsModeFromEnv,
@@ -103,6 +104,20 @@ describe('NATS result callbacks over JetStream (N-1)', () => {
     expect(calls).toEqual([{ msgId: 'evt-dedupe-1', mode: 'JETSTREAM' }]);
     expect(result?.deliveryStatus).toBe('DELIVERED');
     expect(result?.guarantee).toBe('ACKNOWLEDGED');
+  });
+
+  it('records a delivered NATS result callback in the callback log', async () => {
+    const jobs = new InMemoryJobRepository();
+    const deliveries = new InMemoryCallbackDeliveryRepository();
+    const attemptLog = new InMemoryWebhookCallbackAttemptRepository();
+    const nats: CallbackNatsSender = async () => ({ acknowledged: true, stream: 'RESULTS', sequence: 1 });
+
+    const dispatcher = new ResultCallbackDispatcher({ jobs, deliveries, nats, attemptLog, logger: silentLogger });
+    await dispatcher.attempt(await seedDelivery(deliveries, jobs));
+
+    const logged = await attemptLog.findAll({ transport: 'NATS' });
+    expect(logged).toHaveLength(1);
+    expect(logged[0]?.outcome).toBe('success');
   });
 
   it('retries a missing stream rather than silently downgrading to a Core publish', async () => {

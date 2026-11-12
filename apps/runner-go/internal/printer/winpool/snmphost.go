@@ -24,9 +24,15 @@ import (
 // process lives, so it is cached per printer name. Failure is never fatal: an
 // unresolvable printer simply means device verification is skipped.
 type snmpHostResolver struct {
-	mu    sync.Mutex
-	cache map[string]string
+	mu       sync.Mutex
+	cache    map[string]string
+	// missedAt expires negative answers (like the TS resolver) so one slow
+	// PowerShell cold start does not disable verification until restart.
+	missedAt map[string]time.Time
 }
+
+// negativeCacheTTL mirrors NEGATIVE_CACHE_MS in snmp-host-resolver.ts.
+const negativeCacheTTL = 15 * time.Second
 
 // resolveScriptTemplate is the PowerShell used to locate the address. The
 // printer name is substituted for the placeholder rather than formatted in, so
@@ -66,19 +72,20 @@ const snmpHostResolveTimeout = 10 * time.Second
 
 // newSNMPHostResolver returns an empty, ready-to-use resolver.
 func newSNMPHostResolver() *snmpHostResolver {
-	return &snmpHostResolver{cache: map[string]string{}}
+	return &snmpHostResolver{cache: map[string]string{}, missedAt: map[string]time.Time{}}
 }
 
 // Resolve returns an SNMP-reachable address for printerName, or "" when none
 // can be determined. It never returns an error and never panics; a negative
-// result is cached so a printer without an address is probed only once.
+// result is cached for negativeCacheTTL so a printer without an address is not
+// probed on every job.
 func (r *snmpHostResolver) Resolve(ctx context.Context, printerName string) string {
 	if runtime.GOOS != "windows" || strings.TrimSpace(printerName) == "" {
 		return ""
 	}
 
 	r.mu.Lock()
-	if host, ok := r.cache[printerName]; ok {
+	if host, ok := r.cache[printerName]; ok && (host != "" || time.Since(r.missedAt[printerName]) < negativeCacheTTL) {
 		r.mu.Unlock()
 		return host
 	}
@@ -88,6 +95,9 @@ func (r *snmpHostResolver) Resolve(ctx context.Context, printerName string) stri
 
 	r.mu.Lock()
 	r.cache[printerName] = host
+	if host == "" {
+		r.missedAt[printerName] = time.Now()
+	}
 	r.mu.Unlock()
 	return host
 }

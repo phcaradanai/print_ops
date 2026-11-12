@@ -22,6 +22,8 @@ export interface SnmpOptions {
   community?: string;
   timeoutMs?: number;
   port?: number;
+  /** Extra attempts after a lost reply (default 2). */
+  retries?: number;
 }
 
 // ── BER encoding ──────────────────────────────────────────────────────
@@ -184,10 +186,25 @@ function parseResponse(buf: Buffer): Varbind[] {
  * `host` may be an IPv4 address, a hostname, or an IPv6 link-local address
  * with a scope id (`fe80::1%6`), which is what WSD-attached printers expose.
  */
-export function snmpGet(
+export async function snmpGet(
   host: string,
   oids: string[],
   options: SnmpOptions = {},
+): Promise<Varbind[] | null> {
+  // One UDP datagram each way: a single dropped packet must not read as "device
+  // did not answer" (that turned printed LAN jobs into UNVERIFIED).
+  const attempts = 1 + Math.max(0, options.retries ?? 2);
+  for (let i = 0; i < attempts; i++) {
+    const result = await snmpGetOnce(host, oids, options);
+    if (result) return result;
+  }
+  return null;
+}
+
+function snmpGetOnce(
+  host: string,
+  oids: string[],
+  options: SnmpOptions,
 ): Promise<Varbind[] | null> {
   const { community = 'public', timeoutMs = 2000, port = 161 } = options;
 
