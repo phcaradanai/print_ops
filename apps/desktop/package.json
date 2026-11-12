@@ -1,6 +1,6 @@
 {
   "name": "@printerops/desktop",
-  "version": "0.1.43",
+  "version": "0.1.44",
   "private": true,
   "scripts": {
     "tauri:dev": "node ../../scripts/desktop-tauri.mjs dev",
