@@ -71,3 +71,14 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
 3. Fix the 25 pre-existing e2e failures (mostly paper-profile editor selectors and 30s timeouts).
 4. Guard `Settings.tsx` against a missing `executor` in the runtime-architecture response.
 5. Consider placing `RouteErrorBoundary` inside the shell so navigation survives a route crash.
+
+## 2026-11-12 — Linux CUPS runtime diagnostics
+
+- Settings now names the Linux CUPS executor in both English and Thai. Existing
+  CardDetail primitives, typography and styles are reused; no CSS changed.
+- Rendered and checked at 1440px, 1024px and 390px in both locales; no page
+  overflow. Captures: `artifacts/browser/settings-linux-{en,th}-{1440,1024,390}.png`.
+- Web unit tests: 677 passed. Production web build passed. Full Playwright: 136
+  passed, including the six Linux diagnostics viewport/locale cases.
+- Remaining operational work: validate the installed Linux driver and physical
+  G2000 output against the existing template/profile. No new styling debt.

@@ -455,7 +455,9 @@ export default function Settings() {
                   <CardDetailItem label={t('settings.system.executorMode')}>
                     {runtimeResource.data.executor.mode === 'typescript-windows-spooler'
                       ? t('settings.system.executor.windowsSpooler')
-                      : t('settings.system.executor.external')}
+                      : runtimeResource.data.executor.mode === 'typescript-cups'
+                        ? t('settings.system.executor.cups')
+                        : t('settings.system.executor.external')}
                   </CardDetailItem>
                   <CardDetailItem label={t('settings.system.discoveryOwner')}>
                     {t('settings.system.discovery.goRunner')}

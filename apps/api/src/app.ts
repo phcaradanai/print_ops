@@ -58,7 +58,7 @@ import { RbacPermissionPolicy } from './infra/permission/rbac-permission.policy.
 import { buildApiKeyAuth, hashApiKey, apiKeyPrefix } from './infra/middleware/api-key.js';
 import { SimpleTemplateRenderer } from './infra/template/simple-template-renderer.js';
 
-import { AdapterRegistry, FakePrinterAdapter, WindowsSpoolerAdapter } from '@printerops/adapters';
+import { AdapterRegistry, FakePrinterAdapter, WindowsSpoolerAdapter, CupsPrinterAdapter } from '@printerops/adapters';
 import type { ControlCommandEnvelope, ControlOtaTransitionEvent, DeviceHeartbeatPayload } from '@printerops/domain';
 import { generateId } from '@printerops/shared';
 
@@ -553,6 +553,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const registry = new AdapterRegistry();
   registry.registerAdapter(new FakePrinterAdapter());
   registry.registerAdapter(new WindowsSpoolerAdapter());
+  if (process.env['PRINTOPS_RUNTIME_MODE'] === 'linux-server') {
+    registry.registerAdapter(new CupsPrinterAdapter());
+  }
 
   // Services
   const createPrinter = new CreatePrinterService(printerRepo, eventBus, auditRepo);

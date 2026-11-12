@@ -126,10 +126,10 @@ export function getNatsRuntimeStatus(): Promise<NatsRuntimeStatus> { return apiF
 export function testNatsConnection(): Promise<{ ok: boolean; stage: string; code?: string; message: string; durationMs: number }> { return apiFetch('/v1/print-flow/nats-test', { method: 'POST' }); }
 
 export interface RuntimeArchitecture {
-  runtimeMode: 'packaged-windows-desktop' | 'server';
+  runtimeMode: 'packaged-windows-desktop' | 'linux-server' | 'server';
   executor: {
     owner: 'api-local-worker' | 'external-runner';
-    mode: 'typescript-windows-spooler' | 'external-runner';
+    mode: 'typescript-windows-spooler' | 'typescript-cups' | 'external-runner';
     enabled: boolean;
   };
   discovery: {

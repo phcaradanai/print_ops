@@ -3,6 +3,20 @@ import { buildApp } from '../app.js';
 import { runtimeArchitectureFromEnv } from '../infra/runtime-architecture.js';
 
 describe('runtime executor architecture', () => {
+  it('reports Linux CUPS as the API-owned executor and rejects a competing runner', () => {
+    const env = {
+      PRINTOPS_RUNTIME_MODE: 'linux-server',
+      PRINTOPS_LOCAL_WORKER: 'true',
+      PRINTOPS_DISCOVERY_RUNNER_JOBS_ENABLED: 'false',
+    };
+    expect(runtimeArchitectureFromEnv(env)).toMatchObject({
+      runtimeMode: 'linux-server',
+      executor: { owner: 'api-local-worker', mode: 'typescript-cups', enabled: true },
+      discovery: { jobsEnabled: false },
+    });
+    expect(() => runtimeArchitectureFromEnv({ ...env, PRINTOPS_DISCOVERY_RUNNER_JOBS_ENABLED: 'true' })).toThrow(/LINUX_EXECUTOR_INVARIANT/);
+    expect(() => runtimeArchitectureFromEnv({ ...env, PRINTOPS_LOCAL_WORKER: 'false' })).toThrow(/LINUX_EXECUTOR_INVARIANT/);
+  });
   afterEach(() => {
     vi.unstubAllEnvs();
   });

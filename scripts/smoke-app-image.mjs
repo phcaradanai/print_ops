@@ -75,9 +75,9 @@ try {
   const login = await json(base, '/api/auth/login', { email: owner.email, password });
   assert.ok(login.token, 'Persisted owner must be able to log in after recreation');
   const config = JSON.parse(docker('inspect', name))[0].Config;
-  assert.ok(config.Env.includes('PRINTOPS_LOCAL_WORKER=false'));
+  assert.ok(config.Env.includes('PRINTOPS_LOCAL_WORKER=true'));
   assert.ok(config.Env.includes('PRINTOPS_JOBS_ENABLED=false'));
-  console.log(`PASS ${image}: health/version, SPA/assets/deep links, owner/login, SQLite persistence, runner binary, workers disabled`);
+  console.log(`PASS ${image}: health/version, SPA/assets/deep links, owner/login, SQLite persistence, runner binary, single API worker`);
 } catch (error) {
   const logs = spawnSync('docker', ['logs', name], { encoding: 'utf8' });
   process.stderr.write(logs.stdout || '');

@@ -20,14 +20,16 @@ RUN npm ci --no-audit --no-fund
 RUN npm run build:packages && npm run build -w apps/api
 RUN VITE_CONTROL_APP=false npm run build -w apps/web
 
-FROM node:22-alpine
+FROM node:22-bookworm-slim
 ARG APP_VERSION
 ARG SOURCE_REVISION
 LABEL org.opencontainers.image.title="PrintOps App" \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${SOURCE_REVISION}"
-RUN apk add --no-cache ca-certificates tzdata \
-    && addgroup -S printops && adduser -S printops -G printops \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates tzdata cups-client chromium fonts-noto-core poppler-utils \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system printops && useradd --system --create-home --gid printops printops \
     && mkdir -p /data/releases && chown -R printops:printops /data
 WORKDIR /app/apps/api
 COPY --from=build /app/node_modules /app/node_modules
@@ -47,7 +49,9 @@ ENV PRINTOPS_APP_VERSION=${APP_VERSION} \
     DB_MODE=sqlite STORAGE_PROVIDER=local PRINTOPS_DATA_DIR=/data PRINTOPS_DB_PATH=/data/printops.db \
     PRINTOPS_RELEASES_DIR=/data/releases PRINTOPS_DEVICE_IDENTITY_PATH=/data/device-identity.json \
     SQL_WASM_PATH=/app/node_modules/sql.js/dist/sql-wasm.wasm \
-    PRINTOPS_DEV_SEED=false PRINTOPS_RUNTIME_MODE=server PRINTOPS_LOCAL_WORKER=false \
+    CUPS_SERVER=/run/cups/cups.sock \
+    PRINTOPS_DEV_SEED=false PRINTOPS_RUNTIME_MODE=linux-server PRINTOPS_LOCAL_WORKER=true \
+    PRINTOPS_DISCOVERY_RUNNER_JOBS_ENABLED=false \
     PRINTOPS_JOBS_ENABLED=false
 USER printops
 EXPOSE 3001

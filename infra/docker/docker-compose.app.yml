@@ -10,6 +10,11 @@ services:
       - "${PRINTOPS_APP_BIND_ADDRESS:-127.0.0.1}:${PRINTOPS_APP_PORT:-8081}:3001"
     volumes:
       - app_data:/data
+      - type: bind
+        source: /run/cups/cups.sock
+        target: /run/cups/cups.sock
+        bind:
+          create_host_path: false
     restart: unless-stopped
 volumes:
   app_data:

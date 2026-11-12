@@ -30,26 +30,55 @@ This image packages the normal PrintOps operator application (not Web Control),
 the API, and an optional Linux Go runner. App versions are synchronized at
 `0.1.44`; Web Control remains `1.0.5`.
 
-## Scope and printing acceptance
+## Linux printing flow
 
-- The default container runs the API and serves the built operator SPA on port
-  `3001`; no client `.exe` is needed to open the UI.
-- SQLite, releases, and device identity persist under `/data`.
-- Demo seeding and the Windows API local worker are disabled.
-- The Go runner binary is included as `/usr/local/bin/printops-runner`, but is
-  **not started** by the supplied Compose deployment. Job execution defaults to
-  disabled. This release packages the Linux application; it does not certify a
-  new Linux printing backend.
-- Physical Linux printing acceptance is pending the printer model and document
-  format. CUPS/IPP adapters remain unimplemented; Windows spooler/WebView2 jobs
-  cannot be printed by this Linux image. The existing Go raw TCP backend is a
-  candidate for compatible native label commands, not general HTML/PDF printing.
-- The existing runner has fake fallback/discovery behavior and reports TCP write
-  completion as success without physical confirmation. Do not enable it for a
-  production print queue before those behaviors and real-printer acceptance are
-  addressed. There is no claim of physical printing verification in this release.
+The normal operator UI and API run on Linux. The API is the sole print worker:
+`template + paper profile -> existing HTML renderer -> Chromium PDF -> CUPS queue
++ Linux printer driver -> network printer`. Native ZPL/TSPL/EPL/DPL/PCL payloads
+can be submitted explicitly as raw jobs through a configured CUPS queue.
+
+- Template/profile geometry, rotation, flips and calibration use the existing
+  rendering helpers. The HTML PDF uses the label face size, excluding feed gap.
+- Chromium, Thai-capable Noto fonts, and CUPS client tools are included.
+- Configure printer drivers and queues once on the Linux server; clients use the
+  browser and need no PrintOps executable or printer driver.
+- `PRINTOPS_LOCAL_WORKER=true`; the Go runner is included but is not started and
+  its job loop defaults to disabled. Do not start a second worker for this queue.
+- A CUPS job receipt is **UNVERIFIED**, not physical delivery proof. Submission
+  errors after an attempt are also UNVERIFIED; no automatic submission retry.
+- This is a general driver-based integration, **not a guarantee that every
+  printer supports driverless PDF**. Each queue needs a compatible Linux driver
+  or a compatible native command language. A Windows driver cannot run here.
+- First physical acceptance target: POSTEK G2000 with the existing sticker
+  template/profile. The vendor manual documents PPLE/PPLZ; do not assume TSPL.
+  A compatible Linux CUPS driver/configuration and a physical output check are
+  still required. No G2000 hardware was available in the build environment.
 
 ## Deploy the application UI/API
+
+Install and start CUPS on the Linux host, then install the compatible printer
+driver and create its network queue (for example `POSTEK_G2000`). Verify that
+`lpstat -p POSTEK_G2000` sees it and `/run/cups/cups.sock` exists. The Compose file
+mounts that socket into the app and refuses to create a directory in its place.
+CUPS drivers/filters are installed on the host, not in the application image.
+Do not create a raw queue for HTML/PDF and expect the printer to interpret PDF.
+
+Register the configured queue via authenticated `POST /api/printers`, for example:
+
+```json
+{
+  "code": "POSTEK_G2000",
+  "name": "Postek G2000",
+  "protocol": "cups",
+  "connectionUri": "cups://POSTEK_G2000",
+  "metadata": {},
+  "isActive": true
+}
+```
+
+Import/reuse the existing templates and profiles, then bind them to this printer.
+Existing Windows `spooler://...` bindings must be changed to the new CUPS printer;
+copying a Windows database alone does not migrate its driver or bindings.
 
 Copy `infra/docker/docker-compose.app.yml` to the Linux server. Generate a unique
 JWT secret with `openssl rand -hex 32`, save it in a protected env file:
@@ -75,7 +104,8 @@ retain and back it up across upgrades. It is separate from Web Control storage.
 The `Publish PrintOps App image` GitHub Actions workflow tests the Go runner,
 builds the Linux image, smoke-tests health/version, SPA assets and deep links,
 owner setup/login and SQLite persistence across container recreation, validates
-Compose, then pushes the verified version tag. No physical printer is contacted.
+Compose and real Chromium rendering of a 60×30 mm Thai label, then pushes the
+verified version tag. No physical printer is contacted.
 
 Manual equivalent on a Docker build host, from the repository root:
 

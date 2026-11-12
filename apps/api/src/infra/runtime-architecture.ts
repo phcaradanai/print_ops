@@ -1,10 +1,10 @@
-export type RuntimeMode = 'packaged-windows-desktop' | 'server';
+export type RuntimeMode = 'packaged-windows-desktop' | 'linux-server' | 'server';
 
 export interface RuntimeArchitecture {
   runtimeMode: RuntimeMode;
   executor: {
     owner: 'api-local-worker' | 'external-runner';
-    mode: 'typescript-windows-spooler' | 'external-runner';
+    mode: 'typescript-windows-spooler' | 'typescript-cups' | 'external-runner';
     enabled: boolean;
   };
   discovery: {
@@ -35,6 +35,7 @@ export function runtimeArchitectureFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): RuntimeArchitecture {
   const packaged = env['PRINTOPS_RUNTIME_MODE'] === 'packaged-windows-desktop';
+  const linux = env['PRINTOPS_RUNTIME_MODE'] === 'linux-server';
   const localWorkerEnabled = enabled(env['PRINTOPS_LOCAL_WORKER']);
   const discoveryRunnerJobsEnabled = enabled(
     env['PRINTOPS_DISCOVERY_RUNNER_JOBS_ENABLED'],
@@ -48,11 +49,15 @@ export function runtimeArchitectureFromEnv(
     );
   }
 
+  if (linux && (!localWorkerEnabled || discoveryRunnerJobsEnabled)) {
+    throw new Error('LINUX_EXECUTOR_INVARIANT: Linux CUPS mode requires PRINTOPS_LOCAL_WORKER=true and PRINTOPS_DISCOVERY_RUNNER_JOBS_ENABLED=false');
+  }
+
   return {
-    runtimeMode: packaged ? 'packaged-windows-desktop' : 'server',
+    runtimeMode: packaged ? 'packaged-windows-desktop' : linux ? 'linux-server' : 'server',
     executor: {
       owner: localWorkerEnabled ? 'api-local-worker' : 'external-runner',
-      mode: localWorkerEnabled ? 'typescript-windows-spooler' : 'external-runner',
+      mode: localWorkerEnabled ? linux ? 'typescript-cups' : 'typescript-windows-spooler' : 'external-runner',
       enabled: localWorkerEnabled || !packaged,
     },
     discovery: {

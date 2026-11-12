@@ -30,6 +30,14 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "IMAGE=registry.pg.xenex.io/printops-app:$VERSION" >> "$GITHUB_ENV"
+      - name: Test application
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build:packages
+          npm run test -w packages/adapters
+          npm run test -w apps/api -- --pool=forks --maxWorkers=2 --minWorkers=1
       - name: Build Linux application
         run: |
           docker buildx build --platform linux/amd64 --load \
@@ -39,6 +47,8 @@ jobs:
             --tag "$IMAGE" .
       - name: Verify application and persistence before publishing
         run: node scripts/smoke-app-image.mjs "$IMAGE"
+      - name: Verify real Linux label rendering
+        run: docker run --rm -i --entrypoint node "$IMAGE" --input-type=module < scripts/smoke-cups-render.mjs
       - name: Validate deployment configuration
         env:
           PRINTOPS_APP_JWT_SECRET: compose-validation-only
