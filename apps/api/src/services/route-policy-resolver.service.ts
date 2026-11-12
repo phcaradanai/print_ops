@@ -38,7 +38,8 @@ function priorityFrom(value: unknown): JobPriority {
 }
 
 export class RoutePolicyResolverService {
-  resolve(policy: WebhookRoutePolicy, payload: Record<string, unknown>): ResolvedRoute {
+  /** @param printerCodeOverride already-resolved printer (e.g. from `location_code`); skips the policy's printer mapping. */
+  resolve(policy: WebhookRoutePolicy, payload: Record<string, unknown>, printerCodeOverride?: string): ResolvedRoute {
     if (!policy.enabled) throw new ValidationError('Route policy disabled');
     this.assertNoRawJs(policy);
     this.assertMatches(policy, payload);
@@ -55,7 +56,7 @@ export class RoutePolicyResolverService {
         : priorityFrom(priorityMapping['priority']);
 
     return {
-      printerCode: resolveMapping(policy.printerMapping, payload, 'printer_code'),
+      printerCode: printerCodeOverride ?? resolveMapping(policy.printerMapping, payload, 'printer_code'),
       templateCode: resolveMapping(policy.templateMapping, payload, 'template_code'),
       mappedPayload,
       priority,

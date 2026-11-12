@@ -63,6 +63,8 @@ export const SAMPLE_SYSTEM_RESULT: Record<string, unknown> = {
   queued_at: '2026-08-05T09:00:00.100Z',
   resolved_printer_code: 'OFFICE_LASER_01',
   resolved_template_code: 'TEST_LABEL',
+  location_code: 'wardA',
+  printer_ip: '192.168.10.11',
   status: 'QUEUED',
   duplicate: false,
 };

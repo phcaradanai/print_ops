@@ -523,6 +523,8 @@ export function buildResultCallbackPayload(
     renderWarnings: quality.warnings,
 
     printerCode: event.printerCode ?? job.printerCode ?? null,
+    locationCode: (job.metadata?.['location_code'] as string | undefined) ?? null,
+    printerIp: (job.metadata?.['printer_ip'] as string | undefined) ?? null,
     runnerId: event.runnerId ?? job.runnerId ?? null,
 
     error: event.errorCode

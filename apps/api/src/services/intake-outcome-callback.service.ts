@@ -14,6 +14,9 @@ export interface IntakeRejectedOutcome {
   errorCode: string;
   errorMessage: string;
   intakePayload: Record<string, unknown>;
+  /** What the caller asked to route by, echoed so a rejection names it. */
+  locationCode?: string;
+  printerIp?: string;
 }
 
 /**
@@ -46,6 +49,8 @@ export class IntakeOutcomeCallbackService {
       jobId: null,
       sourceSystem: outcome.sourceSystem,
       status: 'REJECTED',
+      locationCode: outcome.locationCode ?? null,
+      printerIp: outcome.printerIp ?? null,
       error: {
         code: outcome.errorCode,
         message: outcome.errorMessage,

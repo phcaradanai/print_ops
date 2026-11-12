@@ -1,4 +1,4 @@
-import type { Printer, CreatePrinterInput } from '../models/printer.js';
+import type { Printer, CreatePrinterInput, LocationPrinterBinding, CreateLocationPrinterBindingInput } from '../models/printer.js';
 import type { Job, JobTrace, CreateJobInput, JobStatus } from '../models/job.js';
 import type { Runner, RegisterRunnerInput } from '../models/runner.js';
 import type { AuditLog, CreateAuditLogInput } from '../models/audit.js';
@@ -167,6 +167,14 @@ export interface PrinterTemplateBindingRepositoryPort {
   findAll(opts?: ListOptions & { printerCode?: string; templateCode?: string }): Promise<PrinterTemplateBinding[]>;
   create(input: CreatePrinterTemplateBindingInput): Promise<PrinterTemplateBinding>;
   update(id: string, patch: Partial<PrinterTemplateBinding>): Promise<PrinterTemplateBinding>;
+  delete(id: string): Promise<void>;
+}
+
+export interface LocationPrinterBindingRepositoryPort {
+  findById(id: string): Promise<LocationPrinterBinding | undefined>;
+  findAll(opts?: { locationCode?: string }): Promise<LocationPrinterBinding[]>;
+  create(input: CreateLocationPrinterBindingInput): Promise<LocationPrinterBinding>;
+  update(id: string, patch: Partial<CreateLocationPrinterBindingInput>): Promise<LocationPrinterBinding>;
   delete(id: string): Promise<void>;
 }
 

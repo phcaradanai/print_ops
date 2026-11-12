@@ -48,6 +48,7 @@ const TemplateSandbox = lazy(() => import('./pages/TemplateSandbox.js'));
 const Webhooks = lazy(() => import('./pages/Webhooks.js'));
 const RoutePolicies = lazy(() => import('./pages/RoutePolicies.js'));
 const PrinterBindings = lazy(() => import('./pages/PrinterBindings.js'));
+const LocationBindings = lazy(() => import('./pages/LocationBindings.js'));
 const PrintFlowBindings = lazy(() => import('./pages/PrintFlowBindings.js'));
 const WebControlDevices = lazy(() => import('./pages/WebControlDevices.js'));
 const WebControlDeviceDetail = lazy(() => import('./pages/WebControlDeviceDetail.js'));
@@ -469,6 +470,12 @@ const NAV_ITEMS: NavItem[] = [
   {
     to: '/printer-bindings',
     key: 'nav.bindings',
+    roles: ['OWNER', 'ADMIN'],
+    group: 'admin',
+  },
+  {
+    to: '/location-bindings',
+    key: 'nav.locations',
     roles: ['OWNER', 'ADMIN'],
     group: 'admin',
   },
@@ -1264,6 +1271,7 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
           <Route path="/webhooks" element={<Webhooks />} />
           <Route path="/route-policies" element={<RoutePolicies />} />
           <Route path="/printer-bindings" element={<PrinterBindings />} />
+          <Route path="/location-bindings" element={<LocationBindings />} />
           <Route
             path="/print-flow"
             element={

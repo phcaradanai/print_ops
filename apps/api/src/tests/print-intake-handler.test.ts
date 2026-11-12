@@ -89,6 +89,34 @@ function makeDynamicPrint(throws?: (req: Record<string, unknown>) => never) {
 }
 
 describe('NATS print-intake message handler', () => {
+  it('accepts an envelope routed only by printer_ip and forwards it', async () => {
+    const dynamicPrint = makeDynamicPrint();
+    const msg = makeMsg({
+      target_client_id: CLIENT_ID, request_id: 'REQ-NATS-IP', source_system: 'medisync',
+      printer_ip: '192.168.10.11', payload: {},
+    });
+    await handlePrintIntakeMessage(msg, { dynamicPrint, logger }, makeNc(), cfg);
+    expect(dynamicPrint.submitted[0]!['printer_ip']).toBe('192.168.10.11');
+    expect(msg.ack).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts an envelope routed only by location_code and forwards it', async () => {
+    const dynamicPrint = makeDynamicPrint();
+    const msg = makeMsg({
+      target_client_id: CLIENT_ID,
+      request_id: 'REQ-NATS-LOC',
+      source_system: 'medisync',
+      location_code: 'wardA',
+      payload: { hn: 'HN-0003' },
+    });
+
+    await handlePrintIntakeMessage(msg, { dynamicPrint, logger }, makeNc(), cfg);
+
+    expect(dynamicPrint.submitted[0]!['location_code']).toBe('wardA');
+    expect(msg.ack).toHaveBeenCalledTimes(1);
+    expect(msg.term).not.toHaveBeenCalled();
+  });
+
   it('accepts a valid envelope, submits the job, and acks', async () => {
     const dynamicPrint = makeDynamicPrint();
     const nc = makeNc();
@@ -348,6 +376,8 @@ describe('NATS print-intake message handler', () => {
       source_system: 'medisync',
       code_template: 'missing',
       code_profile: 'profile',
+      location_code: 'wardZ',
+      printer_ip: '10.9.9.9',
       endpoint_code: 'result-hook',
       payload: { label: 'x' },
     });
@@ -360,6 +390,8 @@ describe('NATS print-intake message handler', () => {
       intakeTransport: 'NATS',
       stage: 'INTAKE',
       errorCode: 'TEMPLATE_NOT_FOUND',
+      locationCode: 'wardZ',
+      printerIp: '10.9.9.9',
     }));
     expect(msg.term).toHaveBeenCalledTimes(1);
   });

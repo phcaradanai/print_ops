@@ -41,6 +41,10 @@ export interface CallbackEnvelopeInput {
   missingFields?: string[];
   renderWarnings?: string[];
   printerCode?: string | null;
+  /** `location_code` the caller routed by, when any. */
+  locationCode?: string | null;
+  /** IP of the printer chosen via `printer_ip` / `location_code`, when any. */
+  printerIp?: string | null;
   runnerId?: string | null;
   traceId?: string | null;
   duplicate?: boolean;
@@ -80,6 +84,8 @@ export function buildCallbackEnvelope(input: CallbackEnvelopeInput): Record<stri
     render_warnings: input.renderWarnings ?? [],
 
     printer_code: input.printerCode ?? null,
+    location_code: input.locationCode ?? null,
+    printer_ip: input.printerIp ?? null,
     runner_id: input.runnerId ?? null,
     trace_id: input.traceId ?? null,
     duplicate: input.duplicate ?? false,

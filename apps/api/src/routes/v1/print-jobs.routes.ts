@@ -31,7 +31,11 @@ export async function v1PrintJobRoutes(
       request_id: string;
       source_system?: string;
       source_reference?: string;
-      printer_code: string;
+      printer_code?: string;
+      /** Alternative to printer_code: print on the printer bound to this location. */
+      location_code?: string;
+      /** Alternative to printer_code: print on the registered printer at this IP (wins over location_code). */
+      printer_ip?: string;
       template_code?: string;
       payload: Record<string, unknown>;
       copies?: number;
@@ -66,6 +70,8 @@ export async function v1PrintJobRoutes(
         errorCode,
         errorMessage: reason,
         intakePayload: body.payload ?? {},
+        locationCode: body.location_code,
+        printerIp: body.printer_ip,
       }).catch(() => false);
     };
 
@@ -73,9 +79,9 @@ export async function v1PrintJobRoutes(
       await rejectEarly('request_id is required');
       return reply.status(400).send({ error: 'request_id is required' });
     }
-    if (!body.printer_code) {
-      await rejectEarly('printer_code is required');
-      return reply.status(400).send({ error: 'printer_code is required' });
+    if (!body.printer_code && !body.location_code && !body.printer_ip) {
+      await rejectEarly('printer_code, printer_ip or location_code is required');
+      return reply.status(400).send({ error: 'printer_code, printer_ip or location_code is required' });
     }
 
     // Service account printer allowlist check happens inside dynamicPrint.submit
@@ -92,6 +98,8 @@ export async function v1PrintJobRoutes(
             ? body.metadata['code_profile']
             : '',
           printer_code: body.printer_code,
+          location_code: body.location_code,
+          printer_ip: body.printer_ip,
           payload: body.payload ?? {},
           copies: body.copies,
           priority: body.priority,
@@ -118,6 +126,8 @@ export async function v1PrintJobRoutes(
         errorCode: err instanceof AppError ? err.code : 'INTERNAL_ERROR',
         errorMessage: err instanceof Error ? err.message : String(err),
         intakePayload: body.payload ?? {},
+        locationCode: body.location_code,
+        printerIp: body.printer_ip,
       }).catch(() => false);
       // Structured client errors (an unknown template_code, an endpoint_code the
       // caller may not use, a callback URL the SSRF guard refused) must come

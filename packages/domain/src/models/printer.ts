@@ -90,3 +90,18 @@ export type CreatePrinterInput = Omit<Printer, 'id' | 'createdAt' | 'updatedAt' 
   code?: string;
   isActive?: boolean;
 };
+
+/** Binds a location (e.g. `wardA`) to a printer IP so callers can print by
+ *  `location_code` without knowing printer codes. One default per location. */
+export interface LocationPrinterBinding {
+  id: string;
+  locationCode: string;
+  printerIp: string;
+  printerName?: string;
+  printerModel?: string;
+  isDefault: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type CreateLocationPrinterBindingInput = Omit<LocationPrinterBinding, 'id' | 'createdAt' | 'updatedAt'>;

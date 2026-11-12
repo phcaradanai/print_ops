@@ -102,6 +102,14 @@ const ICON_PATHS: Record<string, ReactNode> = {
     </>
   ),
 
+  // Location Printers — a map pin: jobs routed by where they are printed.
+  '/location-bindings': (
+    <>
+      <path d="M8 14.25s-4.75-4.1-4.75-7.6a4.75 4.75 0 0 1 9.5 0c0 3.5-4.75 7.6-4.75 7.6Z" />
+      <circle cx="8" cy="6.5" r="1.75" />
+    </>
+  ),
+
   // Print Flow — the intake loop.
   '/print-flow': (
     <>

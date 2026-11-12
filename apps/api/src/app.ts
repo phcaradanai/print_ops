@@ -31,6 +31,10 @@ import { SqliteDiscoveredPrinterRepository } from './infra/repos/sqlite/sqlite-d
 import { SqlitePrintTemplateRepository } from './infra/repos/sqlite/sqlite-template.repo.js';
 import { SqlitePaperProfileRepository } from './infra/repos/sqlite/sqlite-paper-profile.repo.js';
 import { SqlitePrinterTemplateBindingRepository } from './infra/repos/sqlite/sqlite-printer-template-binding.repo.js';
+import { SqliteLocationPrinterBindingRepository } from './infra/repos/sqlite/sqlite-location-printer-binding.repo.js';
+import { InMemoryLocationPrinterBindingRepository } from './infra/repos/in-memory-location-printer-binding.repo.js';
+import { LocationPrinterService } from './services/location-printer.service.js';
+import { v1LocationBindingRoutes } from './routes/v1/location-bindings.routes.js';
 import { SqliteWebhookEndpointRepository } from './infra/repos/sqlite/sqlite-webhook-endpoint.repo.js';
 import { SqliteWebhookRoutePolicyRepository } from './infra/repos/sqlite/sqlite-webhook-route-policy.repo.js';
 import { SqliteImportedDesignRepository } from './infra/repos/sqlite/sqlite-imported-design.repo.js';
@@ -374,6 +378,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const controlContentSyncService = new ControlContentSyncService(paperRepo, templateRepo);
   const calibrationRepo = useSqlite ? new SqlitePrinterPaperCalibrationRepository() : new InMemoryPrinterPaperCalibrationRepository();
   const bindingRepo = useSqlite ? new SqlitePrinterTemplateBindingRepository() : new InMemoryPrinterTemplateBindingRepository();
+  const locationBindingRepo = useSqlite ? new SqliteLocationPrinterBindingRepository() : new InMemoryLocationPrinterBindingRepository();
+  const locationPrinters = new LocationPrinterService(locationBindingRepo, printerRepo, discoveredPrinterRepo);
   const webhookEndpointRepo = useSqlite ? new SqliteWebhookEndpointRepository() : new InMemoryWebhookEndpointRepository();
   const webhookPolicyRepo = useSqlite ? new SqliteWebhookRoutePolicyRepository() : new InMemoryWebhookRoutePolicyRepository();
   const importedDesignRepo = useSqlite ? new SqliteImportedDesignRepository() : new InMemoryImportedDesignRepository();
@@ -630,6 +636,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     app.log,
     calibrationRepo,
     printAdmissionGate,
+    locationPrinters,
   );
 
   const resolvePrinterBinding = new ResolvePrinterBindingService(paperRepo, bindingRepo, templateRepo);
@@ -648,6 +655,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     // NATS-capable instance below when it does.
     new WebhookCallbackService(app.log, httpCallbackSender, undefined, webhookCallbackAttemptRepo),
     app.log,
+    locationPrinters,
   );
 
   // --- Terminal result callbacks -----------------------------------------
@@ -1263,6 +1271,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1ExportRoutes(v1, { exportJobs, audit: auditRepo, exporter, apiKeyHook });
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
     await v1NetworkPrinterSearchRoutes(v1, { searches: networkSearches });
+    await v1LocationBindingRoutes(v1, { bindings: locationBindingRepo, locations: locationPrinters });
     await v1RunnerJobRoutes(v1, { jobs: jobRepo, printers: printerRepo, traces: traceRepo, audit: auditRepo, events: eventBus });
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
     await printerCalibrationRoutes(v1, { calibrations: calibrationRepo, printers: printerRepo, papers: paperRepo, audit: auditRepo, createJob, executeJob });

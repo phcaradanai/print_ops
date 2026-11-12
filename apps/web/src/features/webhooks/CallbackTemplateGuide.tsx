@@ -37,6 +37,10 @@ export const UNIFIED_PAYLOAD_KEYS = `{
   "render_warnings": [],
 
   "printer_code": "OFFICE_LASER_01",
+
+  "location_code": "wardA | null",
+
+  "printer_ip": "192.168.10.11 | null",
   "runner_id": "desktop-local-worker | null",
   "trace_id": "trace_1c3bb5c3-...",
   "duplicate": false,

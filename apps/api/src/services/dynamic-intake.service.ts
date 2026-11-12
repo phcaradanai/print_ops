@@ -22,6 +22,7 @@ import { CreatePrintJobService } from './create-print-job.service.js';
 import { RoutePolicyResolverService } from './route-policy-resolver.service.js';
 import type { WebhookCallbackService, WebhookCallbackLogger } from './webhook-callback.service.js';
 import type { PrintAdmissionGatePort } from './print-admission-gate.js';
+import type { LocationPrinterService } from './location-printer.service.js';
 
 export interface IntakeRequest {
   endpointCode: string;
@@ -42,6 +43,10 @@ export interface IntakeResponse {
   queued_at?: string;
   resolved_printer_code: string;
   resolved_template_code: string;
+  /** Location the caller sent (`location_code`), or null when routed another way. */
+  location_code: string | null;
+  /** IP of the printer chosen by `printer_ip` / `location_code`, else null. */
+  printer_ip: string | null;
   status: string;
   duplicate?: boolean;
 }
@@ -111,6 +116,7 @@ export class DynamicIntakeService {
     callbackLogger?: WebhookCallbackLogger,
     calibrations?: PrinterPaperCalibrationRepositoryPort,
     private admission?: PrintAdmissionGatePort,
+    private locations?: LocationPrinterService,
   ) {
     this.createJob = new CreatePrintJobService(
       jobs,
@@ -151,7 +157,14 @@ export class DynamicIntakeService {
     if (!policy) throw new NotFoundError('WebhookRoutePolicy', endpoint.routePolicyId);
 
     const routeStart = Date.now();
-    const route = this.resolver.resolve(policy, req.body);
+    // `printer_ip` (wins) or `location_code` in the body override the policy's printer.
+    const locationCode = typeof req.body['location_code'] === 'string' ? req.body['location_code'].trim() : '';
+    const wantsTarget = Boolean(locationCode || (typeof req.body['printer_ip'] === 'string' && req.body['printer_ip'].trim()));
+    if (wantsTarget && !this.locations) throw new ValidationError('printer_ip / location_code are not supported here');
+    const target = wantsTarget
+      ? await this.locations!.resolveTarget({ printerIp: req.body['printer_ip'], locationCode })
+      : undefined;
+    const route = this.resolver.resolve(policy, req.body, target?.printerCode);
     const routeResolvedAt = new Date();
     const template = await this.templates.findByCode(route.templateCode);
     if (!template || template.status !== 'PUBLISHED') throw new NotFoundError('PrintTemplate', route.templateCode);
@@ -203,6 +216,8 @@ export class DynamicIntakeService {
         metadata: {
           [CALLBACK_INTENT_METADATA_KEY]: buildCallbackIntentSafe(endpoint, req.body),
           routePolicyCode: policy.policyCode,
+          ...(locationCode ? { location_code: locationCode } : {}),
+          ...(target ? { printer_ip: target.printerIp } : {}),
           warnings: rendered.warnings,
           mappedPayload: route.mappedPayload,
           // The original intake payload, kept so the TERMINAL callback can
@@ -251,6 +266,8 @@ export class DynamicIntakeService {
       queued_at: job.queuedAt?.toISOString(),
       resolved_printer_code: route.printerCode,
       resolved_template_code: route.templateCode,
+      location_code: locationCode || null,
+      printer_ip: target?.printerIp ?? null,
       status: job.status,
     };
 

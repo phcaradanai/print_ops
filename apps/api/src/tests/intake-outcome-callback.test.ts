@@ -36,6 +36,8 @@ describe('IntakeOutcomeCallbackService', () => {
       errorCode: 'TEMPLATE_NOT_FOUND',
       errorMessage: 'missing template',
       intakePayload: { label: 'patient label' },
+      locationCode: 'wardA',
+      printerIp: '192.168.10.11',
     })).toBe(true);
 
     const expected = expect.objectContaining({
@@ -43,6 +45,8 @@ describe('IntakeOutcomeCallbackService', () => {
       request_id: 'REQ-1',
       status: 'REJECTED',
       failure_stage: 'VALIDATION',
+      location_code: 'wardA',
+      printer_ip: '192.168.10.11',
       error: { code: 'TEMPLATE_NOT_FOUND', message: 'missing template' },
     });
     expect(http).toHaveBeenCalledWith('https://receiver.example/results', expected);

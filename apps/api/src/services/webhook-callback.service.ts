@@ -309,6 +309,8 @@ export class WebhookCallbackService {
             sourceSystem: (result['source_system'] as string | undefined) ?? null,
             status: (result['status'] as string | undefined) ?? 'QUEUED',
             printerCode: (result['resolved_printer_code'] as string | undefined) ?? null,
+            locationCode: (result['location_code'] as string | undefined) ?? null,
+            printerIp: (result['printer_ip'] as string | undefined) ?? null,
             traceId: (result['trace_id'] as string | undefined) ?? null,
             duplicate: result['duplicate'] === true,
             timeline: {

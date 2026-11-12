@@ -1,6 +1,6 @@
 import type { Database } from 'sql.js';
 
-export const CURRENT_SCHEMA_VERSION = 10;
+export const CURRENT_SCHEMA_VERSION = 11;
 
 export function schemaVersion(db: Database): number {
   const result = db.exec('PRAGMA user_version');
@@ -65,6 +65,7 @@ export function runSchemaMigration(db: Database): void {
     if (fromVersion < 8) migrateVersionSevenToEight(db);
     if (fromVersion < 9) migrateVersionEightToNine(db);
     if (fromVersion < 10) migrateVersionNineToTen(db);
+    if (fromVersion < 11) migrateVersionTenToEleven(db);
     ensureOptionalControlExtensions(db);
     db.run(`PRAGMA user_version=${CURRENT_SCHEMA_VERSION}`);
     db.run('COMMIT');
@@ -72,6 +73,20 @@ export function runSchemaMigration(db: Database): void {
     try { db.run('ROLLBACK'); } catch { /* retain the original migration error */ }
     throw error;
   }
+}
+
+function migrateVersionTenToEleven(db: Database): void {
+  db.run(`CREATE TABLE IF NOT EXISTS location_printer_bindings (
+    id TEXT PRIMARY KEY NOT NULL,
+    location_code TEXT NOT NULL,
+    printer_ip TEXT NOT NULL,
+    printer_name TEXT,
+    printer_model TEXT,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (location_code, printer_ip)
+  )`);
 }
 
 function migrateVersionNineToTen(db: Database): void {

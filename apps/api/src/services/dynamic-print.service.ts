@@ -10,6 +10,7 @@ import { AppError, ValidationError } from '@printerops/shared';
 import type { WebhookEndpoint } from '@printerops/domain';
 import type { AcceptExternalJobService, ExternalPrintJobResponse } from './accept-external-job.service.js';
 import type { ResolvePrinterBindingService } from './resolve-printer-binding.service.js';
+import type { LocationPrinterService } from './location-printer.service.js';
 import {
   resolveCallbackEndpoint,
   wantsAcceptanceCallback,
@@ -29,6 +30,11 @@ export interface DynamicPrintRequest {
   code_template: string;
   code_profile: string;
   printer_code?: string;
+  /** Location key (e.g. `wardA`); when set, the job goes to the printer bound
+   *  to that location and wins over printer_code / template binding. */
+  location_code?: string;
+  /** Print on the registered printer at this IP; wins over location_code. */
+  printer_ip?: string;
   payload?: Record<string, unknown>;
   copies?: number;
   priority?: JobPriority;
@@ -71,6 +77,7 @@ export class DynamicPrintService {
     private readonly templates?: PrintTemplateRepositoryPort,
     callbacks?: WebhookCallbackService,
     callbackLogger?: WebhookCallbackLogger,
+    private readonly locations?: LocationPrinterService,
   ) {
     this.callbacks = callbacks;
     if (callbackLogger) this.callbackLogger = callbackLogger;
@@ -119,10 +126,21 @@ export class DynamicPrintService {
     }
 
     let printerCode = req.printer_code?.trim();
-    if (!printerCode) {
+    const locationCode = req.location_code?.trim();
+    const wantsTarget = Boolean(locationCode || req.printer_ip?.trim());
+    if (wantsTarget && !this.locations) {
+      reject('printer_ip / location_code are not supported here', new ValidationError('printer_ip / location_code are not supported here'));
+    }
+    // Precedence: printer_ip > location_code > printer_code > template binding.
+    let target: { printerCode: string; printerIp: string } | undefined;
+    if (wantsTarget || !printerCode) {
       try {
-        const resolved = await this.resolver.resolve(req.code_template, req.code_profile);
-        printerCode = resolved.printerCode;
+        target = wantsTarget
+          ? await this.locations!.resolveTarget({ printerIp: req.printer_ip, locationCode })
+          : undefined;
+        printerCode = target
+          ? target.printerCode
+          : (await this.resolver.resolve(req.code_template, req.code_profile)).printerCode;
       } catch (err) {
         void this.intakeLog?.record({
           source,
@@ -182,6 +200,8 @@ export class DynamicPrintService {
         metadata: {
           ...(req.metadata ?? {}),
           code_profile: req.code_profile,
+          ...(locationCode ? { location_code: locationCode } : {}),
+          ...(target ? { printer_ip: target.printerIp } : {}),
           ...(resolvedEndpoint ? { [CALLBACK_INTENT_METADATA_KEY]: resolvedEndpoint.intent } : {}),
         },
       },
@@ -194,7 +214,7 @@ export class DynamicPrintService {
     // never receive an acceptance notification at all, whatever the endpoint
     // was configured for.
     if (resolvedEndpoint) {
-      this.fireAcceptanceCallback(resolvedEndpoint.endpoint, req, printerCode, response);
+      this.fireAcceptanceCallback(resolvedEndpoint.endpoint, req, printerCode, response, target?.printerIp);
     }
 
     return response;
@@ -211,6 +231,7 @@ export class DynamicPrintService {
     req: DynamicPrintRequest,
     printerCode: string,
     response: ExternalPrintJobResponse,
+    printerIp?: string,
   ): void {
     if (!this.callbacks) return;
     if (!wantsAcceptanceCallback(endpoint, response.duplicate)) return;
@@ -234,6 +255,8 @@ export class DynamicPrintService {
       queued_at: response.queued_at?.toISOString() ?? null,
       resolved_printer_code: printerCode,
       resolved_template_code: req.code_template,
+      location_code: req.location_code?.trim() || null,
+      printer_ip: printerIp ?? null,
       status: response.status,
       duplicate: response.duplicate,
     };

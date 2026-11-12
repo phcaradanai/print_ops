@@ -170,6 +170,8 @@ export const ACCEPTANCE_CALLBACK_SYSTEM_FIELDS = [
   'queued_at',
   'resolved_printer_code',
   'resolved_template_code',
+  'location_code',
+  'printer_ip',
   'status',
   'duplicate',
 ] as const;
@@ -199,6 +201,8 @@ export const CALLBACK_ENVELOPE_SYSTEM_FIELDS = [
   'missing_fields',
   'render_warnings',
   'printer_code',
+  'location_code',
+  'printer_ip',
   'runner_id',
   'trace_id',
   'duplicate',

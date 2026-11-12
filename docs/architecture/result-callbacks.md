@@ -163,6 +163,8 @@ job repositories — no migration, and no way for the two DB modes to diverge.
   "code_template": "TEST_LABEL",
   "code_profile": "LABEL_100X50",
   "printer_code": "OFFICE_LASER_01",
+  "location_code": "wardA | null",
+  "printer_ip": "192.168.10.11 | null",
   "payload": { "label": "…", "reply_to": "medisync.results.client-a" },
   "endpoint_code": "MEDISYNC_RESULT_CALLBACK"
 }
@@ -216,6 +218,10 @@ Terminal result (`print.job.completed`):
   "render_warnings": [],
 
   "printer_code": "OFFICE_LASER_01",
+
+  "location_code": "wardA | null",
+
+  "printer_ip": "192.168.10.11 | null",
   "runner_id": "desktop-local-worker",
 
   "trace_id": "trace_1c3bb5c3-…",
@@ -254,6 +260,10 @@ are already filled because this is when the print was ordered:
   "render_warnings": [],
 
   "printer_code": "OFFICE_LASER_01",
+
+  "location_code": "wardA | null",
+
+  "printer_ip": "192.168.10.11 | null",
   "runner_id": null,
   "trace_id": "trace_1c3bb5c3-…",
   "duplicate": false,

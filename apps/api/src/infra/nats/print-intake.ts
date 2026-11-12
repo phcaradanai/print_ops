@@ -94,6 +94,10 @@ interface PrintIntakeEnvelope {
   code_template?: string;
   code_profile?: string;
   printer_code?: string;
+  /** Print on the printer bound to this location (overrides printer_code). */
+  location_code?: string;
+  /** Print on the registered printer at this IP (wins over location_code). */
+  printer_ip?: string;
   payload?: Record<string, unknown>;
   copies?: number;
   priority?: DynamicPrintRequest['priority'];
@@ -253,6 +257,8 @@ export async function handlePrintIntakeMessage(
       errorCode,
       errorMessage,
       intakePayload: env.payload ?? {},
+      locationCode: env.location_code,
+      printerIp: env.printer_ip,
     }).catch(() => false);
   };
 
@@ -287,8 +293,8 @@ export async function handlePrintIntakeMessage(
     await deadLetter(msg, nc, cfg, deps.logger, reason);
     return;
   }
-  if (!env.printer_code && (!env.code_template || !env.code_profile)) {
-    const reason = 'code_template + code_profile (or printer_code) are required';
+  if (!env.printer_code && !env.location_code && !env.printer_ip && (!env.code_template || !env.code_profile)) {
+    const reason = 'code_template + code_profile (or printer_code / printer_ip / location_code) are required';
     recordRejected(reason, env);
     await notifyRejected(env, 'VALIDATION', 'VALIDATION_ERROR', reason);
     await deadLetter(msg, nc, cfg, deps.logger, reason);
@@ -304,6 +310,8 @@ export async function handlePrintIntakeMessage(
         code_template: env.code_template ?? '',
         code_profile: env.code_profile ?? '',
         printer_code: env.printer_code,
+        location_code: env.location_code,
+        printer_ip: env.printer_ip,
         payload: env.payload ?? {},
         copies: env.copies,
         priority: env.priority,

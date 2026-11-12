@@ -38,6 +38,8 @@ export async function v1PrinterPrintRoutes(
         source_system?: string;
         source_reference?: string;
         printer_code?: string;
+        location_code?: string;
+        printer_ip?: string;
         payload?: Record<string, unknown>;
         copies?: number;
         priority?: JobPriority;
@@ -71,6 +73,8 @@ export async function v1PrinterPrintRoutes(
           errorCode: 'VALIDATION_ERROR',
           errorMessage: 'request_id is required',
           intakePayload: body.payload ?? {},
+          locationCode: body.location_code,
+          printerIp: body.printer_ip,
         }).catch(() => false);
         return reply.status(400).send({ error: 'request_id is required' });
       }
@@ -87,6 +91,8 @@ export async function v1PrinterPrintRoutes(
             code_template,
             code_profile,
             printer_code: body.printer_code,
+            location_code: body.location_code,
+            printer_ip: body.printer_ip,
             payload: body.payload ?? {},
             copies: body.copies,
             priority: body.priority,
@@ -114,6 +120,8 @@ export async function v1PrinterPrintRoutes(
           errorCode,
           errorMessage,
           intakePayload: body.payload ?? {},
+          locationCode: body.location_code,
+          printerIp: body.printer_ip,
         }).catch(() => false);
         if (err instanceof AppError) {
           return reply.status(err.statusCode).send({ error: err.code, message: err.message });
