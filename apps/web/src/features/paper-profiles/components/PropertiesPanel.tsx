@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { DEFAULT_STATIC_BOX_MM } from '@printerops/shared';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import { DEFAULT_BARCODE_HEIGHT_MM, DEFAULT_BARCODE_WIDTH_MM, DEFAULT_QR_SIZE_MM } from '../model/defaults.js';
 import { alignBoxes, distributeBoxes, type AlignMode, type DistributeAxis, type FieldBox, type FieldMove } from '../model/align.js';
@@ -97,12 +98,20 @@ function Glyph({ path }: { path: string }) {
 
 function FieldProperties({ field, editor, t }: { field: DynamicField; editor: PaperProfileEditor; t: Translate }) {
   const update = (patch: Partial<DynamicField>) => editor.updateField(field.id, patch);
-  const isText = field.type !== 'barcode' && field.type !== 'qrcode';
+  const isStatic = field.type === 'shape' || field.type === 'image';
+  const isText = field.type !== 'barcode' && field.type !== 'qrcode' && !isStatic;
   return (
     <>
       <header className="pp-props__header">
         <span className="pp-field-type-badge">{field.type === 'qrcode' ? 'QR' : field.type}</span>
         <strong>{field.label || field.key || t('page.paperProfiles.untitledField')}</strong>
+        <IconButton icon={<span aria-hidden="true">{field.locked ? '🔒' : '🔓'}</span>}
+          label={t(field.locked ? 'page.paperProfiles.unlockField' : 'page.paperProfiles.lockField')}
+          active={Boolean(field.locked)} onClick={() => editor.toggleLock(field.id)} />
+        <IconButton icon={<span aria-hidden="true">⤒</span>} label={t('page.paperProfiles.bringToFront')}
+          onClick={() => editor.reorderFields(field.id, 'front')} />
+        <IconButton icon={<span aria-hidden="true">⤓</span>} label={t('page.paperProfiles.sendToBack')}
+          onClick={() => editor.reorderFields(field.id, 'back')} />
         <IconButton icon={<PaperProfileIcon name="copy" />} label={t('page.paperProfiles.duplicateField')}
           onClick={() => editor.duplicateField(field.id)} />
         <IconButton icon={<PaperProfileIcon name="trash" />} label={t('page.paperProfiles.remove')}
@@ -130,6 +139,30 @@ function FieldProperties({ field, editor, t }: { field: DynamicField; editor: Pa
             normalize={(v) => Math.max(4, Math.min(100, v))} onChange={(qrSizeMm) => update({ qrSizeMm })} />
         </PropRow>
       )}
+      {isStatic && (
+        <PropRow>
+          <Num prefix="W" label={t('page.paperProfiles.boxWidthMm')} value={field.boxWidthMm ?? DEFAULT_STATIC_BOX_MM.widthMm}
+            normalize={(v) => Math.max(0.2, Math.min(500, v))} onChange={(boxWidthMm) => update({ boxWidthMm })} />
+          <Num prefix="H" label={t('page.paperProfiles.boxHeightMm')} value={field.boxHeightMm ?? DEFAULT_STATIC_BOX_MM.heightMm}
+            normalize={(v) => Math.max(0.2, Math.min(500, v))} onChange={(boxHeightMm) => update({ boxHeightMm })} />
+          {field.type === 'shape' && (
+            <>
+              <Num prefix="▢" label={t('page.paperProfiles.borderMm')} value={field.borderMm ?? DEFAULT_STATIC_BOX_MM.borderMm}
+                normalize={(v) => Math.max(0, Math.min(10, v))} onChange={(borderMm) => update({ borderMm })} />
+              <input type="color" className="ui-color-field__swatch" value={field.color}
+                aria-label={t('page.paperProfiles.fieldColor')} title={t('page.paperProfiles.fieldColor')}
+                onChange={(event) => update({ color: event.target.value })} />
+              <input type="color" className="ui-color-field__swatch" value={field.bgColor ?? '#ffffff'}
+                aria-label={t('page.paperProfiles.fieldBgColor')} title={t('page.paperProfiles.fieldBgColor')}
+                onChange={(event) => update({ bgColor: event.target.value })} />
+              {field.bgColor && (
+                <IconButton icon={<span aria-hidden="true">×</span>} label={t('page.paperProfiles.clearBgColor')}
+                  onClick={() => update({ bgColor: undefined })} />
+              )}
+            </>
+          )}
+        </PropRow>
+      )}
       {isText && (
         <PropRow>
           <Num prefix="pt" label={t('page.paperProfiles.fieldFontSizePt')} value={field.fontSize}
@@ -154,9 +187,12 @@ function FieldProperties({ field, editor, t }: { field: DynamicField; editor: Pa
           <Num prefix="W" label={t('page.paperProfiles.fieldDisplayWidthMm')} value={field.displayWidthMm ?? 0}
             normalize={(v) => Math.max(0, Math.min(500, v))}
             onChange={(v) => update({ displayWidthMm: v > 0 ? v : undefined })} />
+          <Num prefix="≡" label={t('page.paperProfiles.fieldMaxLines')} value={field.maxLines ?? 1}
+            normalize={(v) => Math.max(1, Math.min(20, Math.round(v)))}
+            onChange={(v) => update({ maxLines: v > 1 ? v : undefined })} />
           {/* Shrink-to-fit needs a box to fit into; without W the text keeps its size. */}
           <button type="button" className="pp-props__toggle" aria-pressed={Boolean(field.shrinkToFit)}
-            disabled={!field.displayWidthMm}
+            disabled={!field.displayWidthMm || (field.maxLines ?? 1) > 1}
             aria-label={t('page.paperProfiles.shrinkToFit')} title={t('page.paperProfiles.shrinkToFit')}
             onClick={() => update({ shrinkToFit: !field.shrinkToFit })}>
             <svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">

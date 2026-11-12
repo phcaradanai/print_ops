@@ -6,3 +6,4 @@ export * from './rendering.js';
 export * from './field-limits.js';
 export * from './print-font.generated.js';
 export * from './text-fit.js';
+export * from './field-format.js';

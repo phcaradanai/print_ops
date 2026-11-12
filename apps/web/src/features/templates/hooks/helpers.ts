@@ -137,13 +137,15 @@ export function localPreview(
   // fetch a server preview for. No paper profile selected yet means no real
   // size to frame against, so fall back to the unframed body as before.
   if (profile?.widthMm && profile?.heightMm) {
+    // A multi-column profile prints one cell per job (paperProfileForCell on the server).
+    const cell = profile.layout && profile.layout.columns > 1 ? profile.layout : null;
     const geometry = getOrientedPaperGeometry({
-      widthMm: profile.widthMm,
-      heightMm: profile.heightMm,
-      marginTopMm: profile.marginTopMm ?? 0,
-      marginRightMm: profile.marginRightMm ?? 0,
-      marginBottomMm: profile.marginBottomMm ?? 0,
-      marginLeftMm: profile.marginLeftMm ?? 0,
+      widthMm: cell ? cell.cellWidthMm : profile.widthMm,
+      heightMm: cell ? cell.cellHeightMm : profile.heightMm,
+      marginTopMm: cell ? 0 : profile.marginTopMm ?? 0,
+      marginRightMm: cell ? 0 : profile.marginRightMm ?? 0,
+      marginBottomMm: cell ? 0 : profile.marginBottomMm ?? 0,
+      marginLeftMm: cell ? 0 : profile.marginLeftMm ?? 0,
       orientation: profile.orientation ?? (profile.widthMm > profile.heightMm ? 'landscape' : 'portrait'),
     });
     const transform = resolveRenderTransform(profile);

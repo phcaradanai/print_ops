@@ -109,12 +109,16 @@ export default function PaperProfileWorkspace() {
       if (key === 'z' && !event.shiftKey) editor.undo();
       else if ((key === 'z' && event.shiftKey) || key === 'y') editor.redo();
       else if (key === 'd' && editor.state.selectedFieldId) editor.duplicateField(editor.state.selectedFieldId);
+      else if (key === 'c' && editor.state.selectedFieldId) editor.copySelection();
+      else if (key === 'v') editor.pasteFields();
+      else if (key === 'l' && event.shiftKey && editor.state.selectedFieldId) editor.toggleLock(editor.state.selectedFieldId);
+      else if ((key === ']' || key === '[') && editor.state.selectedFieldId) editor.reorderFields(editor.state.selectedFieldId, key === ']' ? 'front' : 'back');
       else return;
       event.preventDefault();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [stage, editor.undo, editor.redo, editor.duplicateField, editor.state.selectedFieldId]);
+  }, [stage, editor.undo, editor.redo, editor.duplicateField, editor.copySelection, editor.pasteFields, editor.toggleLock, editor.reorderFields, editor.state.selectedFieldId]);
 
   const openCreate = useCallback(() => {
     editor.resetEditor();

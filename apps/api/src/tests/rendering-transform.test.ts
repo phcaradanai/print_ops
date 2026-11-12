@@ -73,4 +73,25 @@ describe('HTML rendering transforms', () => {
     expect(result.renderedPrintPayload).toContain('width:50mm;height:100mm;overflow:hidden');
     expect(result.renderedPreview).toContain('width:50mm;height:100mm;overflow:hidden');
   });
+
+  it('previews one cell of a multi-column profile, the size each job prints', async () => {
+    const paper = makePaper({ widthMm: 104, heightMm: 30, orientation: 'landscape', rotation: 0, flipHorizontal: false, flipVertical: false,
+      layout: { columns: 2, cellWidthMm: 46, cellHeightMm: 20, columnGapMm: 4, rowPitchMm: 28 } });
+    const result = await new SimpleTemplateRenderer().renderPreview(makeTemplate(), { label: 'Cell', code: 'C1' }, paper);
+    expect(result.renderedPreview).toContain('width:46mm;height:20mm;');
+  });
+
+  it('prints each field with its profile format, leaving barcode data alone', async () => {
+    const base = { label: '', defaultValue: '', xMm: 0, yMm: 0, fontSize: 10, bold: false, color: '#000000', align: 'left' as const };
+    const paper = makePaper({ rotation: 0, fields: [
+      { ...base, id: 'd', key: 'visit.date', type: 'date', dateFormat: 'DD/MM/BBBB' },
+      { ...base, id: 'n', key: 'total', type: 'number', decimals: 2, thousands: true, suffix: ' ฿' },
+      { ...base, id: 'b', key: 'code', type: 'barcode', prefix: 'X' },
+    ] });
+    const template = { ...makeTemplate(), content: '<p>{{visit.date}}|{{total}}|{{code}}</p>' };
+    const payload = { visit: { date: '2026-11-12' }, total: 1234.5, code: 'ABC' };
+    const { renderedPrintPayload } = await new SimpleTemplateRenderer().renderPrintPayload(template, payload, paper);
+    expect(renderedPrintPayload).toContain('12/11/2569|1,234.50 ฿|');
+    expect(payload.visit.date).toBe('2026-11-12');
+  });
 });

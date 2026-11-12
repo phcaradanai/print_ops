@@ -38,7 +38,8 @@ export type CreatePrintTemplateInput = Omit<
   updatedBy?: string;
 };
 
-export type PaperProfileFieldType = 'text' | 'barcode' | 'qrcode' | 'date' | 'number';
+/** shape (box/line) and image (logo) are static: they print the same on every label. */
+export type PaperProfileFieldType = 'text' | 'barcode' | 'qrcode' | 'date' | 'number' | 'shape' | 'image';
 
 /** 1D symbologies supported for a 'barcode' field. Ignored for 'qrcode' fields
  * (QR is always its own symbology). Defaults to 'code128' when unset. */
@@ -74,6 +75,25 @@ export interface PaperProfileField {
   bgColor?: string;
   /** Text-like fields with displayWidthMm only: shrink the font so the printed value fits the box instead of clipping. */
   shrinkToFit?: boolean;
+  /** Text-like fields with displayWidthMm: wrap onto up to this many lines (unset/1 = one line). */
+  maxLines?: number;
+  /** Editor-only: a locked field can't be moved or resized in the editor. Not used when printing. */
+  locked?: boolean;
+  /** shape/image fields: fixed box size in mm. */
+  boxWidthMm?: number;
+  boxHeightMm?: number;
+  /** shape fields: outline thickness in mm (0 = fill only), drawn in `color`; fill is bgColor. */
+  borderMm?: number;
+  /** image fields: a PNG or JPEG data URI (logo), drawn contained in the box. */
+  imageDataUri?: string;
+  /** Text-like fields: printed before/after the value. */
+  prefix?: string;
+  suffix?: string;
+  /** number fields: fixed decimal places; thousands groups with ",". */
+  decimals?: number;
+  thousands?: boolean;
+  /** date fields: e.g. DD/MM/BBBB (BBBB = Buddhist year). Value must be ISO yyyy-mm-dd[Thh:mm]. */
+  dateFormat?: string;
   align: 'left' | 'center' | 'right';
 }
 

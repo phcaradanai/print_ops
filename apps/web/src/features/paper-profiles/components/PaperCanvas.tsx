@@ -1,6 +1,6 @@
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import { useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { qrQuietZoneMm, renderBarcodeSvg } from '../../../lib/barcode.js';
-import { fitFontSizePt, PRINT_FONT_FAMILY, PRINT_LINE_HEIGHT } from '@printerops/shared';
+import { DEFAULT_STATIC_BOX_MM, fitFontSizePt, formatFieldValue, IMAGE_DATA_URI_PATTERN, isStaticFieldType, MAX_IMAGE_DATA_URI_CHARS, PRINT_FONT_FAMILY, PRINT_LINE_HEIGHT, staticBoxMm } from '@printerops/shared';
 import { useLocale } from '../../../i18n/index.js';
 import { anchorTransform, anchorTransformOrigin } from '../model/fieldGeometry.js';
 import { fontPointSizeToPreviewPixels, getDesignPaperGeometry, mapPrintablePointToVisual } from '../model/geometry.js';
@@ -170,6 +170,30 @@ export function RulerSheet({
  * Type (+ symbology, when type === 'barcode') selector shared by all three
  * field-editing panels (desktop compact row, mobile modal, drawer).
  */
+/** Reads a PNG/JPEG logo into the data URI the profile stores; the API enforces the same limits. */
+function ImageFileInput({ onUpdate }: { onUpdate: (patch: Partial<DynamicField>) => void }) {
+  const { t } = useLocale();
+  const [error, setError] = useState(false);
+  return (
+    <span>
+      <input type="file" accept="image/png,image/jpeg" aria-label={t('page.paperProfiles.imageFile')}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            const uri = String(reader.result);
+            const ok = IMAGE_DATA_URI_PATTERN.test(uri) && uri.length <= MAX_IMAGE_DATA_URI_CHARS;
+            setError(!ok);
+            if (ok) onUpdate({ imageDataUri: uri });
+          };
+          reader.readAsDataURL(file);
+        }} />
+      {error && <small role="alert" style={{ color: 'var(--state-danger-text)' }}>{t('page.paperProfiles.imageTooLarge')}</small>}
+    </span>
+  );
+}
+
 export function FieldTypeControls({
   field,
   onUpdate,
@@ -199,6 +223,7 @@ export function FieldTypeControls({
           if (nextType === 'barcode' && field.barcodeHeightMm == null) patch.barcodeHeightMm = DEFAULT_BARCODE_HEIGHT_MM;
           if (nextType === 'barcode' && field.barcodeWidthMm == null) patch.barcodeWidthMm = DEFAULT_BARCODE_WIDTH_MM;
           if (nextType === 'qrcode' && field.qrSizeMm == null) patch.qrSizeMm = DEFAULT_QR_SIZE_MM;
+          if (isStaticFieldType(nextType) && field.boxWidthMm == null) Object.assign(patch, { boxWidthMm: DEFAULT_STATIC_BOX_MM.widthMm, boxHeightMm: DEFAULT_STATIC_BOX_MM.heightMm });
           onUpdate(patch);
         }}
         className={selectClassName}
@@ -208,7 +233,35 @@ export function FieldTypeControls({
         <option value="qrcode">{t('page.paperProfiles.fieldTypeQrcode')}</option>
         <option value="date">{t('page.paperProfiles.fieldTypeDate')}</option>
         <option value="number">{t('page.paperProfiles.fieldTypeNumber')}</option>
+        <option value="shape">{t('page.paperProfiles.fieldTypeShape')}</option>
+        <option value="image">{t('page.paperProfiles.fieldTypeImage')}</option>
       </select>
+      {isStaticFieldType(field.type) && (
+        <>
+          {(['boxWidthMm', 'boxHeightMm'] as const).map((key) => (
+            <DraftNumberInput key={key}
+              aria-label={t(key === 'boxWidthMm' ? 'page.paperProfiles.boxWidthMm' : 'page.paperProfiles.boxHeightMm')}
+              title={t(key === 'boxWidthMm' ? 'page.paperProfiles.boxWidthMm' : 'page.paperProfiles.boxHeightMm')}
+              min={0.2} max={500} step={0.1}
+              value={staticBoxMm(field)[key === 'boxWidthMm' ? 'widthMm' : 'heightMm']}
+              normalize={(value) => Math.max(0.2, Math.min(500, value))}
+              onValueChange={(value) => onUpdate({ [key]: value })}
+              className={numberClassName}
+            />
+          ))}
+          {field.type === 'shape' && (
+            <DraftNumberInput
+              aria-label={t('page.paperProfiles.borderMm')} title={t('page.paperProfiles.borderMm')}
+              min={0} max={10} step={0.1}
+              value={field.borderMm ?? DEFAULT_STATIC_BOX_MM.borderMm}
+              normalize={(value) => Math.max(0, Math.min(10, value))}
+              onValueChange={(value) => onUpdate({ borderMm: value })}
+              className={numberClassName}
+            />
+          )}
+          {field.type === 'image' && <ImageFileInput onUpdate={onUpdate} />}
+        </>
+      )}
       {field.type === 'barcode' && (
         <>
           <select
@@ -313,6 +366,18 @@ export function FieldBarcodePreview({ field }: { field: DynamicField }) {
  * the only data available at design time), plain text otherwise.
  */
 function FieldPreviewContent({ field, scale }: { field: DynamicField; scale: number }) {
+  if (isStaticFieldType(field.type)) {
+    // Mirrors the static markup in buildFieldsTemplateHtml (template.routes.ts).
+    const box = staticBoxMm(field);
+    const size = { display: 'block', width: box.widthMm * scale, height: box.heightMm * scale, boxSizing: 'border-box' } as const;
+    if (field.type === 'image') {
+      return field.imageDataUri
+        ? <img alt="" src={field.imageDataUri} style={{ ...size, objectFit: 'contain' }} />
+        : <span style={{ ...size, outline: '1px dashed var(--neutral-border)' }} />;
+    }
+    const borderMm = field.borderMm ?? DEFAULT_STATIC_BOX_MM.borderMm;
+    return <span style={{ ...size, border: borderMm > 0 ? `${borderMm * scale}px solid ${field.color}` : undefined, background: field.bgColor }} />;
+  }
   if (field.type === 'barcode' || field.type === 'qrcode') {
     const sample = field.defaultValue || field.label || field.key || (field.type === 'qrcode' ? 'QR-SAMPLE' : '123456');
     const svg = renderBarcodeSvg(sample, field.type, field.barcodeSymbology);
@@ -364,16 +429,27 @@ function FieldPreviewContent({ field, scale }: { field: DynamicField; scale: num
     // Unencodable sample: nothing prints, but keep the field findable (the button's font-size is 0).
     return <span style={{ fontSize: 10, lineHeight: 1.2, color: 'var(--state-danger-text, #b91c1c)' }}>[{field.type}: {sample || '?'}]</span>;
   }
-  return <>{textSample(field)}</>;
+  const lines = maxLines(field);
+  // The button is the one-line box; wrapping happens in this inner block, so
+  // an overflowing value clips at the bottom like the printed span.
+  return lines > 1
+    ? <span style={{ display: 'block', whiteSpace: 'normal', overflowWrap: 'anywhere', maxHeight: `${lines * PRINT_LINE_HEIGHT}em`, overflow: 'hidden' }}>{textSample(field)}</span>
+    : <>{textSample(field)}</>;
+}
+
+/** Wrapped lines a text field prints with; mirrors buildFieldsTemplateHtml. */
+function maxLines(field: DynamicField): number {
+  return !isSymbol(field) && field.displayWidthMm && field.maxLines && field.maxLines > 1 ? field.maxLines : 1;
 }
 
 function textSample(field: DynamicField): string {
-  return field.defaultValue || field.label || field.key || 'field';
+  // Same format the server applies to the payload, so the canvas shows the printed text.
+  return formatFieldValue(field, field.defaultValue || field.label || field.key || 'field');
 }
 
 /** The size the printer will use for the sample: shrink-to-fit runs the same shared fit as the server. */
 function previewFontSizePt(field: DynamicField): number {
-  return field.shrinkToFit && field.displayWidthMm
+  return field.shrinkToFit && field.displayWidthMm && maxLines(field) === 1
     ? fitFontSizePt(textSample(field), field.fontSize, field.bold, field.displayWidthMm)
     : field.fontSize;
 }
@@ -579,7 +655,7 @@ export function PaperCanvas({
           >
             <FieldPreviewContent field={f} scale={scale} />
             {/* Pointer-only resize grip; keyboard users resize from the Properties panel. */}
-            {onFieldResizePointerDown && selectedFieldId === f.id && selectedIds.size === 1 && (
+            {onFieldResizePointerDown && selectedFieldId === f.id && selectedIds.size === 1 && !f.locked && (
               <span aria-hidden="true" className={`pp-resize-handle pp-resize-handle--${resizeHandleSide(f)}`}
                 onPointerDown={(event) => onFieldResizePointerDown(event, f.id)}
                 onClick={(event) => event.stopPropagation()} />
@@ -668,12 +744,13 @@ export function measureFieldBoxes(sheet: HTMLElement | null, scale: number, geom
   });
 }
 
+/** Fixed-size boxes that print with font-size:0 (no text strut). */
 function isSymbol(field: DynamicField): boolean {
-  return field.type === 'barcode' || field.type === 'qrcode';
+  return field.type === 'barcode' || field.type === 'qrcode' || isStaticFieldType(field.type);
 }
 
 function resizeHandleSide(field: DynamicField): 'left' | 'right' {
-  const isText = field.type !== 'barcode' && field.type !== 'qrcode';
+  const isText = !isSymbol(field);
   if (isText) return field.align === 'right' ? 'right' : 'left';
   return field.align === 'right' ? 'left' : 'right';
 }

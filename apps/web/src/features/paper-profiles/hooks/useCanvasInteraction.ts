@@ -118,6 +118,11 @@ export function useCanvasInteraction(editor: PaperProfileEditor) {
     const { form, ux, selectedFieldIds } = stateRef.current;
     const groupIds = selectedFieldIds.length > 1 && selectedFieldIds.includes(id) ? selectedFieldIds : [id];
     groupStartRef.current = ux.dynamicFields.filter((candidate) => groupIds.includes(candidate.id));
+    if (groupStartRef.current.some((candidate) => candidate.locked)) {
+      // Locked: clicking still selects, it never moves.
+      if (groupIds.length === 1) selectFieldRef.current(id);
+      return;
+    }
     const field = ux.dynamicFields.find((candidate) => candidate.id === id);
     if (sheet && field) {
       const geometry = getDesignPaperGeometry(form);

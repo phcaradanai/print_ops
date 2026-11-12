@@ -7,7 +7,7 @@ import type {
   RenderTransformOverrides,
 } from '@printerops/domain';
 import { paperProfileForCell } from '@printerops/domain';
-import { applyShrinkToFit, getOrientedPaperGeometry, resolveRenderTransform, resolveRenderTransformFrame, withPrintFontFace, wrapHtmlWithRenderTransform } from '@printerops/shared';
+import { applyShrinkToFit, formatFieldValue, hasFieldFormat, getOrientedPaperGeometry, resolveRenderTransform, resolveRenderTransformFrame, withPrintFontFace, wrapHtmlWithRenderTransform } from '@printerops/shared';
 import { qrGeometry, renderBarcodeDataUri, renderZplQrGraphic } from './barcode-renderer.js';
 import { renderDatamaxDpl } from './datamax-dpl-renderer.js';
 
@@ -70,7 +70,28 @@ function withFieldDefaults(payload: Record<string, unknown>, paperProfile?: Pape
     const v = valueAt(merged, key);
     if (v == null || v === '') merged[key] = f.defaultValue;
   }
-  return merged;
+  return withFieldFormats(merged, paperProfile);
+}
+
+/** Applies each profile field's print format (prefix, date, number) to its payload value. */
+function withFieldFormats(payload: Record<string, unknown>, paperProfile?: PaperProfile): Record<string, unknown> {
+  let out = payload;
+  for (const f of paperProfile?.fields ?? []) {
+    const key = f.key?.trim();
+    if (!key || !hasFieldFormat(f)) continue;
+    const v = valueAt(out, key);
+    if (v == null || v === '' || typeof v === 'object') continue;
+    out = setAt(out, key, formatFieldValue(f, String(v)));
+  }
+  return out;
+}
+
+/** Copy-on-write set at a dotted path, so the caller's payload is never mutated. */
+function setAt(payload: Record<string, unknown>, path: string, value: unknown): Record<string, unknown> {
+  if (path in payload || !path.includes('.')) return { ...payload, [path]: value };
+  const [head, ...rest] = path.split('.');
+  const child = payload[head!];
+  return { ...payload, [head!]: setAt(child && typeof child === 'object' ? child as Record<string, unknown> : {}, rest.join('.'), value) };
 }
 
 function renderContent(content: string, payload: Record<string, unknown>): { rendered: string; warnings: string[] } {
@@ -255,8 +276,10 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
   ): Promise<TemplatePreview> {
     const t0 = Date.now();
     await this.compileTemplate(template);
-    const print = await this.renderPrintPayload(template, payload, paperProfile, renderOptions);
-    const renderedPreview = await this.previewMarkup(template, withFieldDefaults(payload, paperProfile), paperProfile, renderOptions);
+    // Each job prints one cell of a multi-column layout, so preview that cell.
+    const cell = paperProfileForCell(paperProfile);
+    const print = await this.renderPrintPayload(template, payload, cell, renderOptions);
+    const renderedPreview = await this.previewMarkup(template, withFieldDefaults(payload, cell), cell, renderOptions);
     return {
       templateCode: template.templateCode,
       paperProfile,

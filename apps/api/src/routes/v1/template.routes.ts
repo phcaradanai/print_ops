@@ -9,7 +9,7 @@ import type {
   TemplateRendererPort,
   PrinterRepositoryPort,
 } from '@printerops/domain';
-import { PRINT_FONT_FAMILY, PRINT_LINE_HEIGHT, getOrientedPaperGeometry, mapPrintablePointToVisual } from '@printerops/shared';
+import { DEFAULT_STATIC_BOX_MM, PRINT_FONT_FAMILY, PRINT_LINE_HEIGHT, getOrientedPaperGeometry, isStaticFieldType, mapPrintablePointToVisual, staticBoxMm } from '@printerops/shared';
 import { actor, requirePermission } from './permission-guard.js';
 import {
   coerceImportNumber,
@@ -53,7 +53,21 @@ function buildFieldsTemplateHtml(profile: PaperProfile): string {
       const point = mapPrintablePointToVisual(f.xMm, f.yMm, geometry);
       const xMm = geometry.marginLeftMm + point.xMm;
       const yMm = geometry.marginTopMm + point.yMm;
+      if (isStaticFieldType(f.type)) {
+        // Static art: no {{token}}, the same box on every label.
+        const { widthMm, heightMm } = staticBoxMm(f);
+        const box = `position:absolute;left:${xMm}mm;top:${yMm}mm;width:${widthMm}mm;height:${heightMm}mm;box-sizing:border-box;${fieldAnchorTransform(f.align)}`;
+        if (f.type === 'image') {
+          return f.imageDataUri ? `  <img alt="" src="${escapeHtmlAttr(f.imageDataUri)}" style="${box}object-fit:contain;display:block;" />` : '';
+        }
+        const borderMm = f.borderMm ?? DEFAULT_STATIC_BOX_MM.borderMm;
+        return `  <span style="${box}display:block;`
+          + (borderMm > 0 ? `border:${borderMm}mm solid ${escapeHtmlAttr(f.color)};` : '')
+          + (f.bgColor ? `background-color:${escapeHtmlAttr(f.bgColor)};` : '') + '"></span>';
+      }
       const isMachineReadable = f.type === 'barcode' || f.type === 'qrcode';
+      // Wrapping needs a box width; max-height in em keeps whole lines only.
+      const lines = !isMachineReadable && f.displayWidthMm && f.maxLines && f.maxLines > 1 ? f.maxLines : 1;
       const barcodeBoxStyle = f.type === 'barcode'
         ? `display:inline-block;width:${f.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM}mm;height:${f.barcodeHeightMm ?? 12}mm;overflow:hidden;`
         : '';
@@ -64,13 +78,14 @@ function buildFieldsTemplateHtml(profile: PaperProfile): string {
           : `font-size:${f.fontSize}pt;font-weight:${f.bold ? 700 : 400};color:${escapeHtmlAttr(f.color)};`
             + (f.displayWidthMm ? `display:inline-block;width:${f.displayWidthMm}mm;overflow:hidden;text-align:${f.align};` : '')
             + (f.bgColor ? `background-color:${escapeHtmlAttr(f.bgColor)};` : '')) +
-        `white-space:nowrap;` +
+        (lines > 1 ? `white-space:normal;overflow-wrap:anywhere;max-height:${lines * PRINT_LINE_HEIGHT}em;` : `white-space:nowrap;`) +
         fieldAnchorTransform(f.align);
-      const fit = !isMachineReadable && f.displayWidthMm && f.shrinkToFit
+      const fit = !isMachineReadable && f.displayWidthMm && f.shrinkToFit && lines === 1
         ? `data-printops-fit="${f.displayWidthMm}" data-printops-pt="${f.fontSize}" data-printops-bold="${f.bold ? 1 : 0}" `
         : '';
       return `  <span ${fit}style="${style}">{{${placeholderKey}}}</span>`;
     })
+    .filter(Boolean)
     .join('\n');
   return `<div style="position:relative;width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;font-family:${escapeHtmlAttr(PRINT_FONT_FAMILY)};line-height:${PRINT_LINE_HEIGHT};">\n${spans}\n</div>`;
 }
@@ -441,6 +456,40 @@ export async function templateRoutes(
     }
     const profile = await deps.papers.update(id, req.body as Record<string, unknown>);
     await deps.audit.create({ traceId: 'paper', action: 'paper_profile.updated', actorId: actor(req), resourceType: 'paper_profile', resourceId: id, after: profile as unknown as Record<string, unknown>, metadata: {} });
+    await ensureFieldsTemplate(profile, actor(req));
+    return profile;
+  });
+
+  /**
+   * Version history: every create/update/restore already audits the full saved
+   * profile, so those snapshots are the versions. Audit retention bounds how far back it goes.
+   */
+  const profileVersions = async (id: string) => (await deps.audit.findAll({ resourceType: 'paper_profile', resourceId: id }))
+    .filter((log) => log.after && ['paper_profile.created', 'paper_profile.updated', 'paper_profile.restored'].includes(log.action))
+    .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
+
+  app.get('/paper-profiles/:id/versions', { onRequest: [requirePermission('paper-profile:read')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!(await deps.papers.findById(id))) return reply.status(404).send({ error: 'Paper profile not found' });
+    return (await profileVersions(id)).slice(0, 50).map((log) => ({
+      versionId: log.id, action: log.action, actorId: log.actorId, occurredAt: log.occurredAt, profile: log.after,
+    }));
+  });
+
+  app.post('/paper-profiles/:id/versions/:versionId/restore', { onRequest: [requirePermission('paper-profile:update')] }, async (req, reply) => {
+    const { id, versionId } = req.params as { id: string; versionId: string };
+    const existing = await deps.papers.findById(id);
+    if (!existing) return reply.status(404).send({ error: 'Paper profile not found' });
+    const version = (await profileVersions(id)).find((log) => log.id === versionId);
+    if (!version) return reply.status(404).send({ error: 'Version not found' });
+    // Identity and timestamps stay current; everything the operator edits comes back.
+    const { id: _id, createdAt: _c, updatedAt: _u, ...snapshot } = version.after as Record<string, unknown>;
+    const issues = validatePaperProfileUpdate(existing, snapshot);
+    if (issues.length > 0) {
+      return reply.status(400).send({ error: 'VALIDATION_ERROR', message: issues[0]!.message, issues });
+    }
+    const profile = await deps.papers.update(id, snapshot);
+    await deps.audit.create({ traceId: 'paper', action: 'paper_profile.restored', actorId: actor(req), resourceType: 'paper_profile', resourceId: id, before: existing as unknown as Record<string, unknown>, after: profile as unknown as Record<string, unknown>, metadata: { versionId } });
     await ensureFieldsTemplate(profile, actor(req));
     return profile;
   });

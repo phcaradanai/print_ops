@@ -1,3 +1,4 @@
+import { staticBoxMm } from '@printerops/shared';
 import type { PaperGeometry } from '@printerops/shared';
 import { DEFAULT_BARCODE_HEIGHT_MM, DEFAULT_BARCODE_WIDTH_MM, DEFAULT_QR_SIZE_MM } from './defaults.js';
 import { clampFontSize, mapPrintablePointToVisual, mapVisualPointToPrintable } from './geometry.js';
@@ -69,6 +70,12 @@ export function resizeFieldPatch(
       barcodeWidthMm: clampMm((start.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM) + dwMm, 100),
       barcodeHeightMm: clampMm((start.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM) + dyMm, 60),
     };
+  }
+  if (start.type === 'shape' || start.type === 'image') {
+    // Thin lines are shapes too, so the floor is 0.2 mm, not the 4 mm symbol minimum.
+    const box = staticBoxMm(start);
+    const clampBox = (value: number) => Math.round(Math.max(0.2, Math.min(500, value)) * 10) / 10;
+    return { boxWidthMm: clampBox(box.widthMm + dwMm), boxHeightMm: clampBox(box.heightMm + dyMm) };
   }
   if (start.type === 'qrcode') {
     return { qrSizeMm: clampMm((start.qrSizeMm ?? DEFAULT_QR_SIZE_MM) + Math.max(dwMm, dyMm), 100) };

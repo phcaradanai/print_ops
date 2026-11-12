@@ -39,6 +39,7 @@ export type AuditAction =
   | 'template.test_print.requested'
   | 'paper_profile.created'
   | 'paper_profile.updated'
+  | 'paper_profile.restored'
   | 'paper_profile.deleted'
   | 'paper_profile.exported'
   | 'paper_profile.imported'

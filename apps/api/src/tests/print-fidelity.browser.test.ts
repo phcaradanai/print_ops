@@ -26,6 +26,7 @@ const FIELDS = [
   { id: 'c', key: 'center_text', type: 'text', xMm: 28, yMm: 8, fontSize: 12, bold: true, align: 'center' },
   { id: 'r', key: 'right_text', type: 'text', xMm: 50, yMm: 14, fontSize: 9, bold: false, align: 'right' },
   { id: 's', key: 'shrink_text', type: 'text', xMm: 3, yMm: 20, fontSize: 12, bold: false, align: 'left', displayWidthMm: 25, shrinkToFit: true },
+  { id: 'w', key: 'wrap_text', type: 'text', xMm: 3, yMm: 8, fontSize: 8, bold: false, align: 'left', displayWidthMm: 14, maxLines: 2 },
 ].map((f) => ({ label: f.key, defaultValue: '', color: '#000000', ...f }));
 
 const PAYLOAD = {
@@ -33,6 +34,7 @@ const PAYLOAD = {
   center_text: 'นายทดสอบ ระบบ',
   right_text: 'Ward 7A',
   shrink_text: 'นางสาวชื่อยาว นามสกุลยาวมาก',
+  wrap_text: 'อาคาร 3 ชั้น 5 ห้อง 512 เตียง 4 ฝั่งหน้าต่าง',
 };
 
 describe.skipIf(!browser)('print HTML fidelity in Chromium', () => {
@@ -66,7 +68,7 @@ describe.skipIf(!browser)('print HTML fidelity in Chromium', () => {
       const origin = spans[0]!.offsetParent!.getBoundingClientRect();
       return spans.map((span: HTMLElement) => {
         const r = span.getBoundingClientRect();
-        return { text: span.textContent ?? '', left: r.left - origin.left, top: r.top - origin.top, width: r.width, fontSize: getComputedStyle(span).fontSize };
+        return { text: span.textContent ?? '', left: r.left - origin.left, top: r.top - origin.top, width: r.width, height: r.height, fontSize: getComputedStyle(span).fontSize };
       });
     });
     await page.close();
@@ -85,6 +87,10 @@ describe.skipIf(!browser)('print HTML fidelity in Chromium', () => {
       expect(Math.abs(box.top / PX_PER_MM - (2 + field.yMm)), `${field.key} top`).toBeLessThan(0.1);
       // The real glyphs match the shared width table the canvas uses: within 1.5%.
       if (!field.displayWidthMm) expect(Math.abs(widthMm - modelWidthMm) / modelWidthMm, `${field.key} width`).toBeLessThan(0.015);
+      if (field.maxLines) {
+        // Wraps, then clips at exactly maxLines lines of the print line height.
+        expect(box.height / PX_PER_MM, 'wrapped height').toBeCloseTo(field.maxLines * 1.2 * field.fontSize * 25.4 / 72, 1);
+      }
       if (field.shrinkToFit) {
         expect(parseFloat(box.fontSize) * 0.75, 'shrunk size in pt').toBeCloseTo(sizePt, 1);
         expect(sizePt).toBeLessThan(field.fontSize);

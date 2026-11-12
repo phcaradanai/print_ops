@@ -8,6 +8,9 @@ import {
   resolveRenderTransformFrame,
   type FieldContentBounds,
   type FieldContentBox,
+  formatFieldValue,
+  isStaticFieldType,
+  staticBoxMm,
 } from '@printerops/shared';
 import type { DynamicField, PaperForm, ValidationIssue } from './types.js';
 import { DEFAULT_BARCODE_HEIGHT_MM, DEFAULT_BARCODE_WIDTH_MM, DEFAULT_QR_SIZE_MM } from './defaults.js';
@@ -111,13 +114,14 @@ export function textFieldMaxCharacters(availableWidthMm: number, fontSizePt: num
   return Math.floor((availableWidthMm - 1e-9) / glyphWidthMm);
 }
 
+/** Fixed-size boxes (barcodes, QR, shapes, images): their size, not text, decides the fit. */
 function isMachineReadableField(field: DynamicField): boolean {
-  return field.type === 'barcode' || field.type === 'qrcode';
+  return field.type === 'barcode' || field.type === 'qrcode' || isStaticFieldType(field.type);
 }
 
 /** Text a field is measured with while nothing has been printed yet. */
 function sampleTextForField(field: DynamicField): string {
-  return field.defaultValue || field.label || field.key || 'field';
+  return formatFieldValue(field, field.defaultValue || field.label || field.key || 'field');
 }
 
 export function getDynamicFieldSize(field: DynamicField): { widthMm: number; heightMm: number } {
@@ -126,6 +130,7 @@ export function getDynamicFieldSize(field: DynamicField): { widthMm: number; hei
     const quietZoneMm = qrQuietZoneUpperBoundMm(sizeMm);
     return { widthMm: sizeMm + quietZoneMm * 2, heightMm: sizeMm + quietZoneMm * 2 };
   }
+  if (isStaticFieldType(field.type)) return staticBoxMm(field);
   if (field.type === 'barcode') {
     return {
       widthMm: field.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM,
@@ -133,7 +138,9 @@ export function getDynamicFieldSize(field: DynamicField): { widthMm: number; hei
     };
   }
   const size = estimateTextFieldSizeMm(sampleTextForField(field), field.fontSize);
-  return field.displayWidthMm ? { ...size, widthMm: field.displayWidthMm } : size;
+  if (!field.displayWidthMm) return size;
+  const lines = field.maxLines && field.maxLines > 1 ? field.maxLines : 1;
+  return { widthMm: field.displayWidthMm, heightMm: size.heightMm * lines };
 }
 
 export function getDynamicFieldContentBox(field: DynamicField): FieldContentBox {

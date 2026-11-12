@@ -63,6 +63,22 @@ export function createPaperProfileFromArtwork(payload: ImportRequestBody): Promi
   });
 }
 
+export interface PaperProfileVersion {
+  versionId: string;
+  action: string;
+  actorId?: string;
+  occurredAt: string;
+  profile: PaperProfile;
+}
+
+export function listPaperProfileVersions(id: string): Promise<PaperProfileVersion[]> {
+  return apiFetch<PaperProfileVersion[]>(`/v1/paper-profiles/${encodeURIComponent(id)}/versions`);
+}
+
+export function restorePaperProfileVersion(id: string, versionId: string): Promise<PaperProfile> {
+  return apiFetch<PaperProfile>(`/v1/paper-profiles/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/restore`, { method: 'POST' });
+}
+
 export function getPaperProfileArtwork(id: string): Promise<ArtworkData> {
   return apiFetch<ArtworkData>(`/v1/paper-profiles/${encodeURIComponent(id)}/artwork`);
 }

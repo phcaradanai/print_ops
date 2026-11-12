@@ -62,12 +62,12 @@ const UX: PaperProfileUx = {
  * matters: the padding this suite is about is applied only when the field is
  * draggable, so a read-only render would quietly pass and prove nothing.
  */
-function renderCanvas(scale: number, form: PaperForm = FORM): string {
+function renderCanvas(scale: number, form: PaperForm = FORM, ux: PaperProfileUx = UX): string {
   return renderToStaticMarkup(
     <LocaleProvider>
       <PaperCanvas
         form={form}
-        ux={UX}
+        ux={ux}
         scale={scale}
         sheetRef={{ current: null }}
         selectedFieldId="f1"
@@ -142,6 +142,19 @@ describe('field preview fidelity against the printed output', () => {
       fontPointSizeToPreviewPixels(FIELD.fontSize, CSS_PX_PER_MM),
       3,
     );
+  });
+
+  it('wraps a multi-line field and clips at whole lines, like the printed span', () => {
+    const wrapped = { ...FIELD, displayWidthMm: 20, maxLines: 3, defaultValue: 'long value', prefix: 'HN ' };
+    const markup = renderCanvas(CSS_PX_PER_MM, FORM, { ...UX, dynamicFields: [wrapped] });
+    expect(markup).toContain('white-space:normal;overflow-wrap:anywhere;max-height:3.5999999999999996em;overflow:hidden');
+    expect(markup).toContain('HN long value');
+  });
+
+  it('draws a static box at its printed size, outline in mm', () => {
+    const shape = { ...FIELD, type: 'shape' as const, boxWidthMm: 30, boxHeightMm: 0.5, borderMm: 0.2, bgColor: '#000000' };
+    const markup = renderCanvas(10, FORM, { ...UX, dynamicFields: [shape] });
+    expect(markup).toContain('display:block;width:300px;height:5px;box-sizing:border-box;border:2px solid #111827;background:#000000');
   });
 
   it.each([90, 180, 270])('keeps the design upright when the paper is rotated %d° for print', (rotation) => {

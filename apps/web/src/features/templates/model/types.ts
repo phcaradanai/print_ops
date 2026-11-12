@@ -43,6 +43,7 @@ export interface PaperProfileOption {
   rotation?: number;
   flipHorizontal?: boolean;
   flipVertical?: boolean;
+  layout?: { columns: number; cellWidthMm: number; cellHeightMm: number };
   fields: PaperProfileField[];
 }
 

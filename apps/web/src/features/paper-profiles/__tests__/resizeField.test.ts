@@ -18,6 +18,10 @@ describe('canvas resize handle', () => {
     expect(resizeFieldPatch(field({ type: 'barcode', align: 'right', barcodeWidthMm: 30, barcodeHeightMm: 10 }), -5, 0, 10).barcodeWidthMm).toBe(35);
   });
 
+  it('resizes a shape box down to a thin line', () => {
+    expect(resizeFieldPatch(field({ type: 'shape', boxWidthMm: 20, boxHeightMm: 10 }), 5, -20, 10)).toEqual({ boxWidthMm: 25, boxHeightMm: 0.2 });
+  });
+
   it('keeps a QR code square, following the larger drag', () => {
     expect(resizeFieldPatch(field({ type: 'qrcode', qrSizeMm: 20 }), 2, 6, 20)).toEqual({ qrSizeMm: 26 });
   });

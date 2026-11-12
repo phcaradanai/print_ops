@@ -149,6 +149,58 @@ describe('Template management, sandbox, and dynamic intake', () => {
     expect(companion.content).toContain('background-color:#ffee00;');
   });
 
+  it('prints static shapes and logos into the companion template, and rejects SVG logos', async () => {
+    const { app } = await buildApp();
+    const admin = await login(app, 'admin@printerops.local');
+    const base = { label: '', defaultValue: '', fontSize: 10, bold: false, color: '#000000', align: 'left' };
+    const payload = (logo: string) => ({
+      code: `STATIC_${logo.length}`, name: 'Static', widthMm: 70, heightMm: 30,
+      marginTopMm: 2, marginRightMm: 2, marginBottomMm: 2, marginLeftMm: 2, dpi: 203, orientation: 'landscape', unit: 'mm',
+      fields: [
+        { ...base, id: 'b', key: 'frame', type: 'shape', xMm: 1, yMm: 1, boxWidthMm: 30, boxHeightMm: 0.5, borderMm: 0, bgColor: '#000000' },
+        { ...base, id: 'i', key: 'logo', type: 'image', xMm: 40, yMm: 2, boxWidthMm: 15, boxHeightMm: 10, imageDataUri: logo },
+      ],
+    });
+    const bad = await app.inject({ method: 'POST', url: '/api/v1/paper-profiles', headers: auth(admin),
+      payload: payload('data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=') });
+    expect(bad.statusCode).toBe(400);
+    const created = await app.inject({ method: 'POST', url: '/api/v1/paper-profiles', headers: auth(admin), payload: payload('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==') });
+    expect(created.statusCode).toBe(201);
+    const { id } = created.json() as { id: string };
+    const templates = await app.inject({ method: 'GET', url: '/api/v1/templates', headers: auth(admin) });
+    const companion = (templates.json() as { paperProfileId?: string; content: string }[]).find((t) => t.paperProfileId === id)!;
+    expect(companion.content).toContain('left:3mm;top:3mm;width:30mm;height:0.5mm;box-sizing:border-box;display:block;background-color:#000000;"></span>');
+    expect(companion.content).toContain('<img alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="');
+    expect(companion.content).not.toContain('{{frame}}');
+  });
+
+  it('lists saved versions and restores one, re-syncing the companion template', async () => {
+    const { app } = await buildApp();
+    const admin = await login(app, 'admin@printerops.local');
+    const field = { id: 'f1', key: 'hn', label: 'HN', defaultValue: '', type: 'text', xMm: 5, yMm: 5, fontSize: 10, bold: false, color: '#000000', align: 'left' };
+    const created = await app.inject({ method: 'POST', url: '/api/v1/paper-profiles', headers: auth(admin), payload: {
+      code: 'VERSIONED', name: 'v1', widthMm: 70, heightMm: 30, marginTopMm: 2, marginRightMm: 2, marginBottomMm: 2, marginLeftMm: 2,
+      dpi: 203, orientation: 'landscape', unit: 'mm', fields: [field] } });
+    const { id } = created.json() as { id: string };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 5)); // versions sort by audit time (ms)
+    await tick();
+    await app.inject({ method: 'PUT', url: `/api/v1/paper-profiles/${id}`, headers: auth(admin), payload: { name: 'v2', fields: [{ ...field, xMm: 30 }] } });
+
+    const versions = (await app.inject({ method: 'GET', url: `/api/v1/paper-profiles/${id}/versions`, headers: auth(admin) })).json() as { versionId: string; profile: { name: string } }[];
+    expect(versions.map((v) => v.profile.name)).toEqual(['v2', 'v1']);
+
+    await tick();
+    const restored = await app.inject({ method: 'POST', url: `/api/v1/paper-profiles/${id}/versions/${versions[1]!.versionId}/restore`, headers: auth(admin) });
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json()).toMatchObject({ id, name: 'v1', fields: [{ xMm: 5 }] });
+    const templates = await app.inject({ method: 'GET', url: '/api/v1/templates', headers: auth(admin) });
+    const companion = (templates.json() as { paperProfileId?: string; content: string }[]).find((t) => t.paperProfileId === id)!;
+    expect(companion.content).toContain('left:7mm;top:7mm');
+    const after = (await app.inject({ method: 'GET', url: `/api/v1/paper-profiles/${id}/versions`, headers: auth(admin) })).json() as { action: string }[];
+    expect(after[0]!.action).toBe('paper_profile.restored');
+    expect((await app.inject({ method: 'POST', url: `/api/v1/paper-profiles/${id}/versions/nope/restore`, headers: auth(admin) })).statusCode).toBe(404);
+  });
+
   it('persists paper profile fields and keeps a companion HTML template in sync', async () => {
     const { app } = await buildApp();
     const admin = await login(app, 'admin@printerops.local');

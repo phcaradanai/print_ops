@@ -7,7 +7,7 @@ export type ImportFitModeLabel =
   | 'page.paperProfiles.importFitContain'
   | 'page.paperProfiles.importFitCover'
   | 'page.paperProfiles.importFitStretch';
-export type DynamicFieldType = 'text' | 'barcode' | 'qrcode' | 'date' | 'number';
+export type DynamicFieldType = 'text' | 'barcode' | 'qrcode' | 'date' | 'number' | 'shape' | 'image';
 export type DynamicFieldBarcodeSymbology = 'code128' | 'code39' | 'ean13' | 'datamatrix';
 
 export interface DynamicField {
@@ -28,6 +28,25 @@ export interface DynamicField {
   displayWidthMm?: number;
   bgColor?: string;
   shrinkToFit?: boolean;
+  /** Text-like fields with displayWidthMm: wrap onto up to this many lines (unset/1 = one line). */
+  maxLines?: number;
+  /** Editor-only: a locked field can't be dragged, nudged, aligned or resized. */
+  locked?: boolean;
+  /** shape/image fields: fixed box size in mm. */
+  boxWidthMm?: number;
+  boxHeightMm?: number;
+  /** shape fields: outline thickness in mm (0 = fill only), drawn in `color`; fill is bgColor. */
+  borderMm?: number;
+  /** image fields: a PNG or JPEG data URI (logo), drawn contained in the box. */
+  imageDataUri?: string;
+  /** Text-like fields: printed before/after the value. */
+  prefix?: string;
+  suffix?: string;
+  /** number fields: fixed decimal places; thousands groups with ",". */
+  decimals?: number;
+  thousands?: boolean;
+  /** date fields: e.g. DD/MM/BBBB (BBBB = Buddhist year). Value must be ISO yyyy-mm-dd[Thh:mm]. */
+  dateFormat?: string;
   align: 'left' | 'center' | 'right';
 }
 

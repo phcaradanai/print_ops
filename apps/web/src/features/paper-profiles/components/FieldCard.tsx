@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { clampFontSize } from '../model/geometry.js';
 import type { DynamicField, PaperForm } from '../model/types.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
@@ -14,7 +15,9 @@ export function FieldCard({ field, editor, t }: {
   t: Translate;
 }) {
   const update = (patch: Partial<DynamicField>) => editor.updateField(field.id, patch);
-  const isMachineReadable = field.type === 'barcode' || field.type === 'qrcode';
+  const modifierPressRef = useRef(false);
+  // Fixed-size boxes: no font, no text format. A shape still uses `color` for its outline.
+  const isMachineReadable = field.type === 'barcode' || field.type === 'qrcode' || field.type === 'shape' || field.type === 'image';
   const isSelected = editor.state.selectedFieldId === field.id;
   const selectFieldFromKeyboard = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
@@ -28,8 +31,14 @@ export function FieldCard({ field, editor, t }: {
       tabIndex={0}
       aria-label={`${field.label || field.key || t('page.paperProfiles.untitledField')}. ${t('page.paperProfiles.selectFieldHint')}`}
       aria-current={isSelected ? 'true' : undefined}
-      onClick={() => editor.selectField(field.id)}
-      onFocusCapture={() => editor.selectField(field.id)}
+      onClick={(event) => {
+        // Shift/Cmd/Ctrl-click builds a selection here too, like on the canvas.
+        if (event.shiftKey || event.metaKey || event.ctrlKey) editor.toggleFieldSelection(field.id);
+        else editor.selectField(field.id);
+      }}
+      // Focus lands before click: a modifier press must not collapse the selection first.
+      onPointerDownCapture={(event) => { modifierPressRef.current = event.shiftKey || event.metaKey || event.ctrlKey; }}
+      onFocusCapture={() => { if (!modifierPressRef.current && !editor.state.selectedFieldIds.includes(field.id)) editor.selectField(field.id); }}
       onKeyDown={selectFieldFromKeyboard}>
       <div className="pp-field-row__header">
         <span className="pp-field-type-badge">{field.type === 'qrcode' ? 'QR' : field.type}</span>
@@ -74,6 +83,33 @@ export function FieldCard({ field, editor, t }: {
             selectClassName="ui-select ui-select--sm" numberClassName="ui-input ui-input--sm" />
         </div>
       </div>
+      {!isMachineReadable && (
+        <>
+          <div className="pp-field-row__group-label">{t('page.paperProfiles.groupFormat')}</div>
+          {/* One per row: text boxes need room to be readable. */}
+          <div className="pp-field-row__content">
+            <FieldText id={`pp-prefix-${field.id}`} label={t('page.paperProfiles.fieldPrefix')} value={field.prefix}
+              onChange={(prefix) => update({ prefix })} />
+            <FieldText id={`pp-suffix-${field.id}`} label={t('page.paperProfiles.fieldSuffix')} value={field.suffix}
+              onChange={(suffix) => update({ suffix })} />
+            {field.type === 'date' && (
+              <FieldText id={`pp-datefmt-${field.id}`} label={t('page.paperProfiles.fieldDateFormat')} value={field.dateFormat}
+                placeholder="DD/MM/BBBB" onChange={(dateFormat) => update({ dateFormat })} />
+            )}
+            {field.type === 'number' && (
+              <>
+                <FieldNumber id={`pp-decimals-${field.id}`} label={t('page.paperProfiles.fieldDecimals')} value={field.decimals ?? 0}
+                  normalize={(v) => Math.max(0, Math.min(6, Math.round(v)))}
+                  onChange={(decimals) => update({ decimals })} />
+                <div className="pp-field-row__cell pp-field-row__cell--tight">
+                  <Checkbox label={t('page.paperProfiles.fieldThousands')} checked={Boolean(field.thousands)}
+                    onChange={(event) => update({ thousands: event.target.checked || undefined })} />
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      )}
       <div className="pp-field-row__group-label">{t('page.paperProfiles.groupPositionStyle')}</div>
       <div className="pp-field-row__position">
         <FieldNumber id={`pp-x-${field.id}`} label={t('page.paperProfiles.fieldXmm')} value={field.xMm}
@@ -101,7 +137,7 @@ export function FieldCard({ field, editor, t }: {
         <div className="pp-field-row__cell">
           <label htmlFor={`pp-color-${field.id}`}>{t('page.paperProfiles.fieldColor')}</label>
           <input id={`pp-color-${field.id}`} className="ui-color-field__swatch" type="color" value={field.color}
-            disabled={isMachineReadable} aria-label={t('page.paperProfiles.fieldColor')}
+            disabled={isMachineReadable && field.type !== 'shape'} aria-label={t('page.paperProfiles.fieldColor')}
             onChange={(event) => update({ color: event.target.value })} />
         </div>
         <div className="pp-field-row__cell pp-field-row__cell--tight">
@@ -116,6 +152,23 @@ export function FieldCard({ field, editor, t }: {
       </div>
       <FieldLimits form={editor.form} field={field} t={t} />
       <FieldBarcodePreview field={field} />
+    </div>
+  );
+}
+
+function FieldText({ id, label, value, placeholder, onChange }: {
+  id: string;
+  label: string;
+  value: string | undefined;
+  placeholder?: string;
+  onChange: (value: string | undefined) => void;
+}) {
+  return (
+    <div className="pp-field-row__cell">
+      <label htmlFor={id}>{label}</label>
+      {/* Empty clears the setting so it isn't stored. */}
+      <Input id={id} controlSize="sm" maxLength={40} aria-label={label} value={value ?? ''} placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value || undefined)} />
     </div>
   );
 }

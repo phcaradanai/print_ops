@@ -1,3 +1,4 @@
+import { copyFieldsToClipboard, readFieldsFromClipboard } from '../model/clipboard.js';
 import { useCallback, useMemo, useReducer } from 'react';
 import { DEFAULT_FORM, DEFAULT_UX } from '../model/defaults.js';
 import {
@@ -91,13 +92,37 @@ export function usePaperProfileEditor() {
     const geometry = getDesignPaperGeometry(state.form);
     const patches = moves.flatMap((move) => {
       const field = state.ux.dynamicFields.find((candidate) => candidate.id === move.id);
-      if (!field || (Math.abs(move.dxMm) < 0.05 && Math.abs(move.dyMm) < 0.05)) return [];
+      if (!field || field.locked || (Math.abs(move.dxMm) < 0.05 && Math.abs(move.dyMm) < 0.05)) return [];
       return [{ id: move.id, patch: nudgePrintablePoint(field.xMm, field.yMm, move.dxMm, move.dyMm, geometry) }];
     });
     if (patches.length === 0) return;
     dispatch({ type: 'UPDATE_FIELDS', patches });
     dispatch({ type: 'BREAK_HISTORY' });
   }, [state.form, state.ux.dynamicFields]);
+  /** Locks or unlocks the field (or its selection): locked fields can't be moved or resized. */
+  const toggleLock = useCallback((id: string) => {
+    const ids = groupOf(id);
+    const lock = !state.ux.dynamicFields.find((field) => field.id === id)?.locked;
+    dispatch({ type: 'UPDATE_FIELDS', patches: ids.map((fid) => ({ id: fid, patch: { locked: lock || undefined } })) });
+    dispatch({ type: 'BREAK_HISTORY' });
+  }, [groupOf, state.ux.dynamicFields]);
+  /** Brings the field (or its selection) to the front or sends it to the back. */
+  const reorderFields = useCallback((id: string, to: 'front' | 'back') => {
+    dispatch({ type: 'REORDER_FIELDS', ids: groupOf(id), to });
+  }, [groupOf]);
+  const copySelection = useCallback(() => {
+    copyFieldsToClipboard(state.ux.dynamicFields.filter((field) => state.selectedFieldIds.includes(field.id)));
+  }, [state.selectedFieldIds, state.ux.dynamicFields]);
+  /** Pastes fields copied from any profile, 2 mm down-right with fresh ids; keys kept so they bind to the same data. */
+  const pasteFields = useCallback(() => {
+    const fields = readFieldsFromClipboard();
+    const geometry = getDesignPaperGeometry(state.form);
+    dispatch({ type: 'ADD_FIELDS', fields: fields.map((field) => ({
+      ...field,
+      id: fieldId(),
+      ...nudgePrintablePoint(field.xMm, field.yMm, 2, 2, geometry),
+    })) });
+  }, [state.form]);
   const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
   const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
   const breakHistory = useCallback(() => dispatch({ type: 'BREAK_HISTORY' }), []);
@@ -117,7 +142,7 @@ export function usePaperProfileEditor() {
 
   const centerField = useCallback((id: string, axis: 'horizontal' | 'vertical') => {
     const field = state.ux.dynamicFields.find((candidate) => candidate.id === id);
-    if (!field) return;
+    if (!field || field.locked) return;
     const geometry = getDesignPaperGeometry(state.form);
     const patch = axis === 'horizontal'
       ? centerFieldAnchorHorizontal(field, geometry)
@@ -127,7 +152,7 @@ export function usePaperProfileEditor() {
   /** Arrow-key nudge of the field, or of its whole selection as one piece. */
   const nudgeField = useCallback((id: string, deltaXmm: number, deltaYmm: number) => {
     const ids = groupOf(id);
-    const fields = state.ux.dynamicFields.filter((candidate) => ids.includes(candidate.id));
+    const fields = state.ux.dynamicFields.filter((candidate) => ids.includes(candidate.id) && !candidate.locked);
     if (fields.length === 0) return;
     const geometry = getDesignPaperGeometry(state.form);
     const { dxMm, dyMm } = clampGroupDelta(fields, deltaXmm, deltaYmm, geometry);
@@ -151,6 +176,10 @@ export function usePaperProfileEditor() {
     updateField,
     deleteField,
     duplicateField,
+    copySelection,
+    pasteFields,
+    reorderFields,
+    toggleLock,
     deleteFields,
     toggleFieldSelection,
     setSelection,
@@ -175,7 +204,7 @@ export function usePaperProfileEditor() {
     saveFailed: (error: string) => dispatch({ type: 'SAVE_FAILED', error }),
     dismissSaveError: () => dispatch({ type: 'DISMISS_SAVE_ERROR' }),
   }), [
-    addField, applyPreset, breakHistory, centerField, deleteField, deleteFields, duplicateField, moveFields, nudgeField, redo, setSelection, toggleFieldSelection, undo, updateFields, patchForm, patchUx,
+    addField, applyPreset, breakHistory, centerField, copySelection, deleteField, deleteFields, duplicateField, moveFields, pasteFields, reorderFields, toggleLock, nudgeField, redo, setSelection, toggleFieldSelection, undo, updateFields, patchForm, patchUx,
     resetEditor, selectField, setAllSections, setSection, startEditing, state, updateField,
   ]);
 }

@@ -1,6 +1,7 @@
 import { IconButton as SharedIconButton } from '../../../components/ui/index.js';
 import { IconButton } from './editorPrimitives.js';
 import { PresetMenu } from './PresetMenu.js';
+import { VersionHistoryMenu } from './VersionHistoryMenu.js';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { PaperProfilePersistence } from '../hooks/usePaperProfilePersistence.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
@@ -54,6 +55,7 @@ export function PaperProfileCommandBar({ editor, persistence, popups, t, scrollT
         </div>
         <IconButton icon={<PaperProfileIcon name="undo" />} label={t('page.paperProfiles.undo')} disabled={!editor.canUndo} onClick={editor.undo} />
         <IconButton icon={<PaperProfileIcon name="redo" />} label={t('page.paperProfiles.redo')} disabled={!editor.canRedo} onClick={editor.redo} />
+        <VersionHistoryMenu editor={editor} t={t} onRestored={persistence.refresh} />
         <PresetMenu editor={editor} popups={popups} t={t} />
         <IconButton icon={<PaperProfileIcon name="chevron" className={allExpanded ? 'pp-icon--expanded' : undefined} />}
           label={allExpanded ? t('page.paperProfiles.collapseAll') : t('page.paperProfiles.expandAll')}

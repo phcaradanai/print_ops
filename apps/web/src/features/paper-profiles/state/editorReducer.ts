@@ -32,6 +32,8 @@ export type EditorAction =
   | { type: 'UPDATE_FIELDS'; patches: { id: string; patch: Partial<DynamicField> }[] }
   | { type: 'DELETE_FIELD'; id: string }
   | { type: 'DELETE_FIELDS'; ids: string[] }
+  /** Z-order: later fields print on top. */
+  | { type: 'REORDER_FIELDS'; ids: string[]; to: 'front' | 'back' }
   | { type: 'SELECT_FIELD'; id: string | null }
   /** Shift/Cmd/Ctrl-click: add the field to the selection, or take it out. */
   | { type: 'TOGGLE_FIELD_SELECTION'; id: string }
@@ -57,7 +59,7 @@ function historyKeyFor(action: EditorAction): string | null | undefined {
   switch (action.type) {
     case 'UPDATE_FIELD': return `field:${action.id}:${Object.keys(action.patch).sort().join(',')}`;
     case 'UPDATE_FIELDS': return `fields:${action.patches.map((p) => `${p.id}=${Object.keys(p.patch).sort().join(',')}`).join(';')}`;
-    case 'ADD_FIELDS': case 'DELETE_FIELDS': return null;
+    case 'ADD_FIELDS': case 'DELETE_FIELDS': case 'REORDER_FIELDS': return null;
     case 'PATCH_FORM': return `form:${Object.keys(action.patch).sort().join(',')}`;
     case 'ADD_FIELD': case 'DELETE_FIELD': case 'APPLY_PRESET': return null;
     default: return undefined;
@@ -186,6 +188,14 @@ function baseReducer(state: EditorState, action: EditorAction): EditorState {
         },
         saveStatus: nextSaveStatus(state.saveStatus, 'dirty'),
       };
+    }
+    case 'REORDER_FIELDS': {
+      const moving = new Set(action.ids);
+      const picked = state.ux.dynamicFields.filter((field) => moving.has(field.id));
+      const rest = state.ux.dynamicFields.filter((field) => !moving.has(field.id));
+      const dynamicFields = action.to === 'front' ? [...rest, ...picked] : [...picked, ...rest];
+      if (dynamicFields.every((field, i) => field === state.ux.dynamicFields[i])) return state;
+      return { ...state, ux: { ...state.ux, dynamicFields }, saveStatus: nextSaveStatus(state.saveStatus, 'dirty') };
     }
     case 'DELETE_FIELDS': {
       const doomed = new Set(action.ids);

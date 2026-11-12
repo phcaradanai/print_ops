@@ -7,7 +7,8 @@ import { displayValue } from '../model/units.js';
 import { getFieldInspectorState } from '../state/selectors.js';
 import { type CanvasOptions } from './CanvasToolbar.js';
 import { FieldBarcodePreview, FieldTypeControls, PaperCanvas, RulerSheet } from './PaperCanvas.js';
-import { Button, IconButton as SharedIconButton, Input } from '../../../components/ui/index.js';
+import { Button, IconButton as SharedIconButton, Input, Textarea } from '../../../components/ui/index.js';
+import { applySampleData } from '../model/sampleData.js';
 import { IconButton } from './editorPrimitives.js';
 import { PaperProfileIcon } from './PaperProfileIcon.js';
 import type { Translate } from './types.js';
@@ -28,6 +29,9 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
   const stageRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const paper = getDesignPaperGeometry(editor.form);
+  // Preview-only: a pasted job payload replaces the sample values; nothing is saved.
+  const [sampleJson, setSampleJson] = useState('');
+  const sample = useMemo(() => applySampleData(editor.ux.dynamicFields, sampleJson), [editor.ux.dynamicFields, sampleJson]);
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
@@ -97,7 +101,7 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
               }}>
               <div className="paper-preview-modal__sheet-stage-inner">
                 <RulerSheet form={editor.form} scale={scale} showRulers={options.rulers} unit={editor.ux.displayUnit}>
-                  <PaperCanvas form={editor.form} ux={editor.ux} scale={scale} sheetRef={sheetRef}
+                  <PaperCanvas form={editor.form} ux={{ ...editor.ux, dynamicFields: sample.fields }} scale={scale} sheetRef={sheetRef}
                     selectedFieldId={editor.state.selectedFieldId}
                     onFieldPointerDown={(event, id) => interaction.startDrag(event, id, sheetRef.current, scale)}
               onFieldResizePointerDown={(event, id) => interaction.startResize(event, id, scale)}
@@ -128,6 +132,15 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
                   disabled={!editor.selectedField} disabledReason={t('page.paperProfiles.centerDisabledNoField')} />
               </div>
             )}
+            <label style={{ display: 'grid', gap: '0.25rem' }}>
+              {t('page.paperProfiles.sampleData')}
+              <Textarea controlSize="sm" mono rows={3} value={sampleJson} placeholder='{"hn": "12345"}'
+                invalid={sample.error}
+                onChange={(event) => setSampleJson(event.target.value)} />
+              <small style={{ color: sample.error ? 'var(--state-danger-text)' : 'var(--neutral-text-muted)' }}>
+                {t(sample.error ? 'page.paperProfiles.sampleDataInvalid' : 'page.paperProfiles.sampleDataHint')}
+              </small>
+            </label>
             {inspector === 'empty' && <div className="paper-preview-modal__empty"><p>{t('page.paperProfiles.noCustomFields')}</p></div>}
             <div className="paper-preview-modal__field-list">
               {editor.ux.dynamicFields.map((field) => (

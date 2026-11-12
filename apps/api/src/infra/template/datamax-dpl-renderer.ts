@@ -349,6 +349,10 @@ export function renderDatamaxDpl(
       warnings.push(`Missing paper-profile field: ${key}`);
       continue;
     }
+    if (field.type === 'shape' || field.type === 'image') {
+      warnings.push(`Datamax DPL does not print ${field.type} field '${key}'; use an HTML template to print it`);
+      continue;
+    }
     const raw = valueAt(payload, key);
     if (raw == null || raw === '') {
       warnings.push(`Missing field: ${key}`);
@@ -359,6 +363,13 @@ export function renderDatamaxDpl(
       records.push(barcodeRecord(field, value, profile, renderOptions).record);
     } else if (field.type === 'text' || field.type === 'number' || field.type === 'date') {
       records.push(renderTextField(field, value, profile).record);
+      // DPL prints text in a fixed resident font; HTML-only box styling is dropped.
+      const ignored = [
+        field.displayWidthMm != null && 'display width',
+        field.bgColor && 'background color',
+        field.shrinkToFit && 'shrink-to-fit',
+      ].filter(Boolean);
+      if (ignored.length) warnings.push(`Datamax DPL ignores ${ignored.join(', ')} on text field '${key}'; use an HTML template to print them`);
     } else {
       throw new Error(`Datamax native renderer does not support ${field.type} field '${key}'`);
     }

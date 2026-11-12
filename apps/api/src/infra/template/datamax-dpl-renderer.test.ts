@@ -45,6 +45,21 @@ function barcodeRecord(dpl: string): string {
 }
 
 describe('Datamax native DPL renderer', () => {
+  it('skips static shapes and images with a warning instead of failing the job', () => {
+    const base = profile();
+    const shape = { ...base.fields[0]!, id: 'box', key: 'box', type: 'shape' as const };
+    const out = renderDatamaxDpl('', { barcode: '123' }, profile({ fields: [base.fields[0]!, shape] }));
+    expect(out.warnings).toContain("Datamax DPL does not print shape field 'box'; use an HTML template to print it");
+    expect(out.dpl).toMatch(/1E/);
+  });
+
+  it('warns that HTML-only text box styling is dropped', () => {
+    const base = profile();
+    const text = { ...base.fields[0]!, id: 'name', key: 'name', type: 'text' as const, displayWidthMm: 20, bgColor: '#ffff00', shrinkToFit: true };
+    const out = renderDatamaxDpl('{{name}}', { name: 'ACME' }, profile({ fields: [text] }));
+    expect(out.warnings).toContain("Datamax DPL ignores display width, background color, shrink-to-fit on text field 'name'; use an HTML template to print them");
+  });
+
   it('uses native Code 128 with integer module width and a cell safe area', () => {
     const result = renderDatamaxDpl('{{barcode:barcode}}', { barcode: '12345678' }, profile());
     const record = barcodeRecord(result.dpl);

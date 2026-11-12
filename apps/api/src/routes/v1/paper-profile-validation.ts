@@ -2,6 +2,10 @@ import type { PaperProfile } from '@printerops/domain';
 import {
   fieldContentFitsPaper,
   getOrientedPaperGeometry,
+  IMAGE_DATA_URI_PATTERN,
+  isStaticFieldType,
+  MAX_IMAGE_DATA_URI_CHARS,
+  maxFieldContentMm,
   maxFieldSymbolSizeMm,
   qrQuietZoneUpperBoundMm,
   resolveRenderTransform,
@@ -224,6 +228,35 @@ function checkFields(body: Record<string, unknown>): PaperProfileIssue[] {
       issues.push({ field: `fields.${fieldId}.shrinkToFit`, message: 'shrinkToFit must be a boolean' });
       return;
     }
+    for (const key of ['prefix', 'suffix', 'dateFormat'] as const) {
+      const v = field[key];
+      if (v !== undefined && !(typeof v === 'string' && v.length <= 40)) {
+        issues.push({ field: `fields.${fieldId}.${key}`, message: `${key} must be a string of at most 40 characters` });
+      }
+    }
+    const decimals = field['decimals'];
+    if (decimals !== undefined && !(Number.isInteger(decimals) && (decimals as number) >= 0 && (decimals as number) <= 6)) {
+      issues.push({ field: `fields.${fieldId}.decimals`, message: 'decimals must be an integer from 0 to 6' });
+    }
+    if (type === 'image') {
+      const uri = field['imageDataUri'];
+      // Lands in an <img src>: raster data URIs only, and bounded so a profile stays small.
+      if (uri !== undefined && !(typeof uri === 'string' && uri.length <= MAX_IMAGE_DATA_URI_CHARS && IMAGE_DATA_URI_PATTERN.test(uri))) {
+        issues.push({ field: `fields.${fieldId}.imageDataUri`, message: `imageDataUri must be a PNG or JPEG base64 data URI under ${MAX_IMAGE_DATA_URI_CHARS} characters` });
+        return;
+      }
+    }
+    const borderMm = field['borderMm'];
+    if (borderMm !== undefined && !(isFiniteNumber(borderMm) && borderMm >= 0 && borderMm <= 10)) {
+      issues.push({ field: `fields.${fieldId}.borderMm`, message: 'borderMm must be a number from 0 to 10' });
+    }
+    const maxLines = field['maxLines'];
+    if (maxLines !== undefined && !(Number.isInteger(maxLines) && (maxLines as number) >= 1 && (maxLines as number) <= 20)) {
+      issues.push({ field: `fields.${fieldId}.maxLines`, message: 'maxLines must be an integer from 1 to 20' });
+    }
+    if (field['thousands'] !== undefined && typeof field['thousands'] !== 'boolean') {
+      issues.push({ field: `fields.${fieldId}.thousands`, message: 'thousands must be a boolean' });
+    }
     const displayWidthMm = field['displayWidthMm'];
     if (displayWidthMm !== undefined && !(isFiniteNumber(displayWidthMm) && displayWidthMm > 0)) {
       issues.push({ field: `fields.${fieldId}.displayWidthMm`, message: 'displayWidthMm must be a finite number greater than zero' });
@@ -251,9 +284,19 @@ function checkFields(body: Record<string, unknown>): PaperProfileIssue[] {
     }
     // A text-like field prints one line of whatever the job payload carries, so
     // its stored size says nothing about the paper: only barcode and QR symbols
-    // carry a physical size the paper must accept.
-    if (type !== 'barcode' && type !== 'qrcode') return;
+    // carry a physical size the paper must accept — plus a text box given a
+    // fixed display width, which prints that wide whatever the value.
+    const isTextLike = type !== 'barcode' && type !== 'qrcode' && !isStaticFieldType(type);
+    if (isTextLike && box.widthMm === 0) return;
     if (fieldContentFitsPaper(geometry, transform, box)) return;
+    if (isTextLike) {
+      const { maxWidthMm } = maxFieldContentMm(geometry, transform, box);
+      issues.push({
+        field: `fields.${fieldId}.displayWidthMm`,
+        message: `text box of ${box.widthMm.toFixed(1)} mm extends beyond the transformed paper boundary; at most ${maxWidthMm} mm fits at this anchor`,
+      });
+      return;
+    }
     const limits = maxFieldSymbolSizeMm(geometry, transform, box);
     issues.push({
       field: `fields.${fieldId}`,
@@ -268,6 +311,7 @@ function checkFields(body: Record<string, unknown>): PaperProfileIssue[] {
 function fieldSizeRule(type: string): string {
   if (type === 'qrcode') return 'qrSizeMm must be a finite number greater than zero';
   if (type === 'barcode') return 'barcodeWidthMm and barcodeHeightMm must be finite numbers greater than zero';
+  if (isStaticFieldType(type)) return 'boxWidthMm and boxHeightMm must be finite numbers greater than zero';
   return 'fontSize must be a finite number greater than zero';
 }
 
@@ -280,6 +324,13 @@ function fieldSizeMm(field: Record<string, unknown>, type: string): { widthMm: n
     const quietZoneMm = qrQuietZoneUpperBoundMm(sizeMm);
     return { widthMm: sizeMm + quietZoneMm * 2, heightMm: sizeMm + quietZoneMm * 2 };
   }
+  if (isStaticFieldType(type)) {
+    const widthMm = field['boxWidthMm'] ?? 20;
+    const heightMm = field['boxHeightMm'] ?? 10;
+    return isFiniteNumber(widthMm) && widthMm > 0 && isFiniteNumber(heightMm) && heightMm > 0
+      ? { widthMm, heightMm }
+      : undefined;
+  }
   if (type === 'barcode') {
     const widthMm = field['barcodeWidthMm'] ?? 28;
     const heightMm = field['barcodeHeightMm'] ?? 12;
@@ -288,7 +339,8 @@ function fieldSizeMm(field: Record<string, unknown>, type: string): { widthMm: n
       : undefined;
   }
   const fontSize = field['fontSize'];
-  return isFiniteNumber(fontSize) && fontSize > 0 ? { widthMm: 0, heightMm: 0 } : undefined;
+  const displayWidthMm = isFiniteNumber(field['displayWidthMm']) ? field['displayWidthMm'] : 0;
+  return isFiniteNumber(fontSize) && fontSize > 0 ? { widthMm: displayWidthMm, heightMm: 0 } : undefined;
 }
 
 /** Validates a complete profile body for creation. */

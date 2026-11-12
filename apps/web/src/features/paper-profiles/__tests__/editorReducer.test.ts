@@ -59,6 +59,17 @@ describe('editorReducer', () => {
     expect(state.ux.dynamicFields.map((f) => f.id)).toEqual(['a', 'b', 'c']);
   });
 
+  it('brings fields to the front or back (later prints on top), as one undo step', () => {
+    let state = createEditorState();
+    for (const id of ['a', 'b', 'c']) state = editorReducer(state, { type: 'ADD_FIELD', field: field(id) });
+    state = editorReducer(state, { type: 'REORDER_FIELDS', ids: ['a'], to: 'front' });
+    expect(state.ux.dynamicFields.map((f) => f.id)).toEqual(['b', 'c', 'a']);
+    state = editorReducer(state, { type: 'REORDER_FIELDS', ids: ['c', 'a'], to: 'back' });
+    expect(state.ux.dynamicFields.map((f) => f.id)).toEqual(['c', 'a', 'b']);
+    state = editorReducer(state, { type: 'UNDO' });
+    expect(state.ux.dynamicFields.map((f) => f.id)).toEqual(['b', 'c', 'a']);
+  });
+
   it('starts a loaded profile with empty history', () => {
     let state = editorReducer(createEditorState(), { type: 'ADD_FIELD', field: field('a') });
     state = editorReducer(state, { type: 'RESET_EDITOR' });

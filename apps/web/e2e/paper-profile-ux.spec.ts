@@ -493,6 +493,25 @@ test.describe('paper profile controls', () => {
     await expect.poll(async () => [(await fieldA.boundingBox())!.x, (await fieldB.boundingBox())!.x]).toEqual(before);
   });
 
+  test('a locked field ignores arrow keys and alignment until unlocked', async ({ page }) => {
+    await openEditor(page);
+    await editMixedProfile(page);
+    const props = page.locator('.pp-props');
+    const field = page.locator('.pp-preview-panel [data-field-id="f-1"]');
+    await field.dispatchEvent('pointerdown', { button: 0 });
+    await page.evaluate(() => document.dispatchEvent(new PointerEvent('pointerup')));
+    await props.getByRole('button', { name: /^Lock position/ }).click();
+    const before = await field.boundingBox();
+    await field.focus();
+    await page.keyboard.press('Shift+ArrowRight');
+    await expect(field.locator('.pp-resize-handle')).toHaveCount(0);
+    expect((await field.boundingBox())!.x).toBeCloseTo(before!.x, 1);
+    await props.getByRole('button', { name: /^Unlock position/ }).click();
+    await field.focus();
+    await page.keyboard.press('Shift+ArrowRight');
+    await expect.poll(async () => (await field.boundingBox())!.x).not.toBeCloseTo(before!.x, 1);
+  });
+
   test('dragging on empty canvas selects every field the marquee touches', async ({ page }) => {
     await openEditor(page);
     await editMixedProfile(page);

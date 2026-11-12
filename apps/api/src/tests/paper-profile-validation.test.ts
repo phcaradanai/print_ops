@@ -32,9 +32,13 @@ const validProfile = {
 describe('paper profile server-side validation', () => {
   it('accepts a text field display width and #rrggbb bgColor, rejects CSS injection', () => {
     const field = { id: 'f1', key: 'name', label: 'Name', defaultValue: '', type: 'text', xMm: 5, yMm: 5, fontSize: 10, bold: false, color: '#000000', align: 'left' };
-    expect(validatePaperProfileCreate({ ...validProfile, fields: [{ ...field, displayWidthMm: 30, bgColor: '#FFEE00' }] })).toEqual([]);
+    expect(validatePaperProfileCreate({ ...validProfile, fields: [{ ...field, yMm: 40, displayWidthMm: 30, bgColor: '#FFEE00' }] })).toEqual([]);
     expect(validatePaperProfileCreate({ ...validProfile, fields: [{ ...field, bgColor: 'red;background-image:url(x)' }] })[0]?.field).toBe('fields.f1.bgColor');
     expect(validatePaperProfileCreate({ ...validProfile, fields: [{ ...field, displayWidthMm: 0 }] })[0]?.field).toBe('fields.f1.displayWidthMm');
+    expect(validatePaperProfileCreate({ ...validProfile, fields: [{ ...field, yMm: 40, prefix: 'HN ', decimals: 2, thousands: true, dateFormat: 'DD/MM/BBBB' }] })).toEqual([]);
+    expect(validatePaperProfileCreate({ ...validProfile, fields: [{ ...field, yMm: 40, decimals: 1.5 }] })[0]?.field).toBe('fields.f1.decimals');
+    // The paper is rotated: printable X 5 sits 7 mm from the right edge on screen.
+    expect(validatePaperProfileCreate({ ...validProfile, fields: [{ ...field, displayWidthMm: 30 }] })[0]?.message).toMatch(/text box of 30.0 mm .* at most 7 mm/);
   });
 
   it('rejects zero and negative dimensions on create', async () => {
