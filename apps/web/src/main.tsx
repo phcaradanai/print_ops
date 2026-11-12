@@ -21,6 +21,13 @@ import './paperProfilesLibrary.css';
 import './paperProfilesLibraryGeometryHotfix.css';
 import './paperProfilesEditor.css';
 import './paperProfilesCompletion.css';
+import { PRINT_FONT_FACE_CSS } from '@printerops/shared';
+
+// The label print font: the canvas must measure the same glyphs the printer draws.
+const printFontStyle = document.createElement('style');
+printFontStyle.dataset.printopsFont = '';
+printFontStyle.textContent = PRINT_FONT_FACE_CSS;
+document.head.appendChild(printFontStyle);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

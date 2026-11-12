@@ -154,6 +154,15 @@ function FieldProperties({ field, editor, t }: { field: DynamicField; editor: Pa
           <Num prefix="W" label={t('page.paperProfiles.fieldDisplayWidthMm')} value={field.displayWidthMm ?? 0}
             normalize={(v) => Math.max(0, Math.min(500, v))}
             onChange={(v) => update({ displayWidthMm: v > 0 ? v : undefined })} />
+          {/* Shrink-to-fit needs a box to fit into; without W the text keeps its size. */}
+          <button type="button" className="pp-props__toggle" aria-pressed={Boolean(field.shrinkToFit)}
+            disabled={!field.displayWidthMm}
+            aria-label={t('page.paperProfiles.shrinkToFit')} title={t('page.paperProfiles.shrinkToFit')}
+            onClick={() => update({ shrinkToFit: !field.shrinkToFit })}>
+            <svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M2 8h4M10 8h4M4 6l2 2-2 2M12 6l-2 2 2 2" />
+            </svg>
+          </button>
           <input type="color" className="ui-color-field__swatch" value={field.bgColor ?? '#ffffff'}
             aria-label={t('page.paperProfiles.fieldBgColor')} title={t('page.paperProfiles.fieldBgColor')}
             onChange={(event) => update({ bgColor: event.target.value })} />

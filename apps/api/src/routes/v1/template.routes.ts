@@ -66,7 +66,10 @@ function buildFieldsTemplateHtml(profile: PaperProfile): string {
             + (f.bgColor ? `background-color:${escapeHtmlAttr(f.bgColor)};` : '')) +
         `white-space:nowrap;` +
         fieldAnchorTransform(f.align);
-      return `  <span style="${style}">{{${placeholderKey}}}</span>`;
+      const fit = !isMachineReadable && f.displayWidthMm && f.shrinkToFit
+        ? `data-printops-fit="${f.displayWidthMm}" data-printops-pt="${f.fontSize}" data-printops-bold="${f.bold ? 1 : 0}" `
+        : '';
+      return `  <span ${fit}style="${style}">{{${placeholderKey}}}</span>`;
     })
     .join('\n');
   return `<div style="position:relative;width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;font-family:${escapeHtmlAttr(PRINT_FONT_FAMILY)};line-height:${PRINT_LINE_HEIGHT};">\n${spans}\n</div>`;

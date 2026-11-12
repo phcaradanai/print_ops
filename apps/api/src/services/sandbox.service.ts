@@ -10,7 +10,7 @@ import type {
   JobStatus,
 } from '@printerops/domain';
 import { paperProfileForCell, resolvePaperProfileGeometry, snapshotPaperProfileGeometry } from '@printerops/domain';
-import { generateId, NotFoundError, ValidationError } from '@printerops/shared';
+import { generateId, hoistPrintFontFace, NotFoundError, ValidationError } from '@printerops/shared';
 import { composeDatamaxDplRows } from '../infra/template/datamax-dpl-renderer.js';
 import { CreatePrintJobService } from './create-print-job.service.js';
 import type { ExecuteJobService } from './execute-job.service.js';
@@ -323,9 +323,9 @@ export class SandboxService {
         const nativeDpl = template.engine === 'DPL';
         const renderedPrintPayload = nativeDpl
           ? composeDatamaxDplRows(runs.map((run) => run.renderedPayload), paper)
-          : geometry.layout.columns > 1
+          : hoistPrintFontFace(geometry.layout.columns > 1
             ? composeGridHtml(runs.map((run) => run.renderedPayload), paper)
-            : composeMultipageHtml(runs.map((run) => run.renderedPayload), paper);
+            : composeMultipageHtml(runs.map((run) => run.renderedPayload), paper));
         const job = await this.createJob.execute(
           {
             printerId: '',

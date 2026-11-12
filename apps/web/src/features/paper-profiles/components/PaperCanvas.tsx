@@ -1,6 +1,6 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { qrQuietZoneMm, renderBarcodeSvg } from '../../../lib/barcode.js';
-import { PRINT_FONT_FAMILY, PRINT_LINE_HEIGHT } from '@printerops/shared';
+import { fitFontSizePt, PRINT_FONT_FAMILY, PRINT_LINE_HEIGHT } from '@printerops/shared';
 import { useLocale } from '../../../i18n/index.js';
 import { anchorTransform, anchorTransformOrigin } from '../model/fieldGeometry.js';
 import { fontPointSizeToPreviewPixels, getDesignPaperGeometry, mapPrintablePointToVisual } from '../model/geometry.js';
@@ -364,7 +364,18 @@ function FieldPreviewContent({ field, scale }: { field: DynamicField; scale: num
     // Unencodable sample: nothing prints, but keep the field findable (the button's font-size is 0).
     return <span style={{ fontSize: 10, lineHeight: 1.2, color: 'var(--state-danger-text, #b91c1c)' }}>[{field.type}: {sample || '?'}]</span>;
   }
-  return <>{field.defaultValue || field.label || field.key || 'field'}</>;
+  return <>{textSample(field)}</>;
+}
+
+function textSample(field: DynamicField): string {
+  return field.defaultValue || field.label || field.key || 'field';
+}
+
+/** The size the printer will use for the sample: shrink-to-fit runs the same shared fit as the server. */
+function previewFontSizePt(field: DynamicField): number {
+  return field.shrinkToFit && field.displayWidthMm
+    ? fitFontSizePt(textSample(field), field.fontSize, field.bold, field.displayWidthMm)
+    : field.fontSize;
 }
 
 export function PaperCanvas({
@@ -539,9 +550,13 @@ export function PaperCanvas({
               position: 'absolute', left: point.xMm * scale, top: point.yMm * scale,
               // Barcode/QR spans print with font-size:0;line-height:0, so no text
               // strut can push the symbol down; text uses the print line height.
-              fontSize: isSymbol(f) ? 0 : fontPointSizeToPreviewPixels(f.fontSize, scale), fontWeight: f.bold ? 700 : 400,
+              fontSize: isSymbol(f) ? 0 : fontPointSizeToPreviewPixels(previewFontSizePt(f), scale), fontWeight: f.bold ? 700 : 400,
               lineHeight: isSymbol(f) ? 0 : PRINT_LINE_HEIGHT,
               color: f.color, whiteSpace: 'nowrap',
+              // The app's global button max-width:100% would cap long text at the
+              // printable width; the printed span has no cap, and a capped box
+              // shifts centre/right anchors and misleads align/distribute.
+              maxWidth: 'none',
               ...(f.displayWidthMm ? { width: f.displayWidthMm * scale, overflow: 'hidden', textAlign: f.align } : {}),
               fontFamily: PRINT_FONT_FAMILY, pointerEvents: interactive ? 'auto' : 'none',
               cursor: interactive ? 'grab' : 'default',

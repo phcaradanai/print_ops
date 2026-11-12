@@ -27,6 +27,7 @@ export interface DynamicField {
   color: string;
   displayWidthMm?: number;
   bgColor?: string;
+  shrinkToFit?: boolean;
   align: 'left' | 'center' | 'right';
 }
 

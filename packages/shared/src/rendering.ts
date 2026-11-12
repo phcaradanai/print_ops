@@ -1,3 +1,4 @@
+import { PRINT_FONT_FACE_CSS } from './print-font.generated.js';
 export type PaperOrientation = 'portrait' | 'landscape';
 
 export interface PaperGeometryInput {
@@ -120,12 +121,31 @@ export function isValidRotation(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value < 360;
 }
 
+/** Name of the font embedded in every print and in the canvas (see print-font.generated.ts). */
+export const PRINT_FONT_NAME = 'PrintOps Label Sans';
+
 /**
  * The one font stack used by both the design canvas and the printed HTML, so
- * text width matches. Without it WebView2 prints in its default serif font.
- * Tahoma ships with Thai glyphs on Windows and macOS.
+ * text width matches. The first entry is Noto Sans Thai embedded as data, so
+ * the canvas and the printing machine measure identical glyphs whatever fonts
+ * that machine has installed. The rest only covers characters outside the
+ * embedded Thai + Latin subsets.
  */
-export const PRINT_FONT_FAMILY = 'Tahoma, "Leelawadee UI", "Noto Sans Thai", sans-serif';
+export const PRINT_FONT_FAMILY = `"${PRINT_FONT_NAME}", Tahoma, "Leelawadee UI", "Noto Sans Thai", sans-serif`;
+
+const PRINT_FONT_STYLE_PATTERN = /<style data-printops-font>[\s\S]*?<\/style>/g;
+
+/** Keeps one print-font block at the front when several rendered labels are stitched into one document. */
+export function hoistPrintFontFace(html: string): string {
+  const stripped = html.replace(PRINT_FONT_STYLE_PATTERN, '');
+  return stripped === html ? html : withPrintFontFace(stripped);
+}
+
+/** Prefixes `html` with the embedded print font when it uses it (once). */
+export function withPrintFontFace(html: string): string {
+  if (!html.includes(PRINT_FONT_NAME) || html.includes('data-printops-font')) return html;
+  return `<style data-printops-font>${PRINT_FONT_FACE_CSS}</style>${html}`;
+}
 export const PRINT_LINE_HEIGHT = 1.2;
 
 export function resolveRenderTransform(

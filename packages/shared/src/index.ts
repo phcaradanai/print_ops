@@ -4,3 +4,5 @@ export * from './logger.js';
 export * from './physical-units.js';
 export * from './rendering.js';
 export * from './field-limits.js';
+export * from './print-font.generated.js';
+export * from './text-fit.js';

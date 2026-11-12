@@ -12,6 +12,7 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 import { DESKTOP_VIEWPORTS, hasHorizontalPageScroll, installHarness, overflowReport } from './support.js';
+import { fitFontSizePt, getOrientedPaperGeometry, mapPrintablePointToVisual, printTextWidthMm } from '@printerops/shared';
 
 const LONG_EN = 'Extremely long English field label that a hospital operator might realistically paste in';
 const LONG_TH = 'ป้ายกำกับภาษาไทยที่ยาวมากซึ่งผู้ปฏิบัติงานในโรงพยาบาลอาจวางลงไปในช่องนี้จริง ๆ โดยไม่ได้ตั้งใจ';
@@ -525,6 +526,57 @@ test.describe('paper profile controls', () => {
     // A plain click on empty space clears it again.
     await page.mouse.click(from.x, from.y);
     await expect(canvas.locator('.pp-canvas-field[aria-pressed="true"]')).toHaveCount(0);
+  });
+
+  test('canvas text matches the print model: anchor, glyph width and shrink-to-fit', async ({ page }) => {
+    // apps/api print-fidelity.browser.test.ts holds the printed HTML to the same
+    // model and the same shared width function, so canvas == print.
+    await openEditor(page);
+    await editMixedProfile(page);
+    const mixed = profile();
+    const geometry = getOrientedPaperGeometry(mixed as Parameters<typeof getOrientedPaperGeometry>[0]);
+    const canvas = page.locator('.pp-preview-panel');
+    await page.evaluate(() => document.fonts.ready);
+    const measure = (id: string) => canvas.locator(`[data-field-id="${id}"]`).evaluate((el) => {
+      const sheet = el.parentElement!.parentElement!.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      return { left: r.left - sheet.left, top: r.top - sheet.top, width: r.width, sheetWidth: sheet.width, fontSizePx: parseFloat(getComputedStyle(el).fontSize) };
+    });
+
+    for (const field of MIXED_FIELDS.filter((f) => f.type === 'text' || f.type === 'date' || f.type === 'number')) {
+      const box = await measure(field.id);
+      const scale = box.sheetWidth / geometry.widthMm;
+      const point = mapPrintablePointToVisual(field.xMm, field.yMm, geometry);
+      const leftMm = box.left / scale - geometry.marginLeftMm;
+      const widthMm = box.width / scale;
+      const anchorMm = field.align === 'center' ? leftMm + widthMm / 2 : field.align === 'right' ? leftMm + widthMm : leftMm;
+      expect(Math.abs(anchorMm - point.xMm), `${field.id} anchor x`).toBeLessThan(0.1);
+      expect(Math.abs(box.top / scale - geometry.marginTopMm - point.yMm), `${field.id} anchor y`).toBeLessThan(0.1);
+      const sample = field.defaultValue || field.label || field.key;
+      const model = printTextWidthMm(sample, field.fontSize, field.bold);
+      expect(Math.abs(widthMm - model) / model, `${field.id} glyph width`).toBeLessThan(0.015);
+    }
+
+    // Turn on shrink-to-fit for the Thai name and check the canvas uses the shared fit.
+    const target = MIXED_FIELDS.find((f) => f.id === 'f-10')!;
+    await canvas.locator('[data-field-id="f-10"]').dispatchEvent('pointerdown', { button: 0 });
+    await page.evaluate(() => document.dispatchEvent(new PointerEvent('pointerup')));
+    const props = page.locator('.pp-props');
+    const shrink = props.getByRole('button', { name: /Shrink text to fit/ });
+    await expect(shrink).toBeDisabled();
+    const widthInput = props.getByLabel('Display width (mm, 0 = auto)');
+    await widthInput.fill('20');
+    await widthInput.press('Enter');
+    await expect(shrink).toBeEnabled();
+    await shrink.click();
+    await expect(shrink).toHaveAttribute('aria-pressed', 'true');
+    const expectedPt = fitFontSizePt(target.defaultValue, target.fontSize, target.bold, 20);
+    expect(expectedPt).toBeLessThan(target.fontSize);
+    await expect.poll(async () => {
+      const box = await measure('f-10');
+      const scale = box.sheetWidth / geometry.widthMm;
+      return Math.round((box.fontSizePx / scale) * (72 / 25.4) * 10) / 10;
+    }).toBeCloseTo(expectedPt, 1);
   });
 
   test('QR uses its millimetre size and disables text-only styling', async ({ page }) => {

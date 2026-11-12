@@ -72,6 +72,8 @@ export interface PaperProfileField {
   displayWidthMm?: number;
   /** Text-like fields only: box background as #rrggbb. Unset = transparent. */
   bgColor?: string;
+  /** Text-like fields with displayWidthMm only: shrink the font so the printed value fits the box instead of clipping. */
+  shrinkToFit?: boolean;
   align: 'left' | 'center' | 'right';
 }
 

@@ -7,7 +7,7 @@ import type {
   RenderTransformOverrides,
 } from '@printerops/domain';
 import { paperProfileForCell } from '@printerops/domain';
-import { getOrientedPaperGeometry, resolveRenderTransform, resolveRenderTransformFrame, wrapHtmlWithRenderTransform } from '@printerops/shared';
+import { applyShrinkToFit, getOrientedPaperGeometry, resolveRenderTransform, resolveRenderTransformFrame, withPrintFontFace, wrapHtmlWithRenderTransform } from '@printerops/shared';
 import { qrGeometry, renderBarcodeDataUri, renderZplQrGraphic } from './barcode-renderer.js';
 import { renderDatamaxDpl } from './datamax-dpl-renderer.js';
 
@@ -334,12 +334,13 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
 
     if (template.engine === 'HTML') {
       const geometry = getOrientedPaperGeometry(paperProfile);
-      rendered = wrapHtmlWithRenderTransform(
-        rendered,
+      // Embed the print font so the printing machine draws the glyphs the canvas measured.
+      rendered = withPrintFontFace(wrapHtmlWithRenderTransform(
+        applyShrinkToFit(rendered),
         geometry.widthMm,
         geometry.heightMm,
         resolveRenderTransform(paperProfile, renderOptions),
-      );
+      ));
     }
 
     return { renderedPrintPayload: rendered, warnings, renderTimeMs: Date.now() - t0 };
@@ -430,7 +431,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     );
     if (isHtml) {
       body = wrapHtmlWithRenderTransform(
-        body,
+        applyShrinkToFit(body),
         geometry.widthMm,
         geometry.heightMm,
         resolveRenderTransform(paperProfile, renderOptions),
@@ -453,6 +454,6 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     const frameStyle = isHtml
       ? `width:${transformFrame.width}mm;height:${transformFrame.height}mm;background:#fff;overflow:hidden;box-sizing:border-box`
       : `width:${geometry.widthMm}mm;height:${geometry.heightMm}mm;border:1px solid #111;background:#fff;padding:4mm;font-family:monospace;white-space:pre-wrap;overflow:hidden;box-sizing:border-box`;
-    return `<div style="${frameStyle}">${body}</div>`;
+    return withPrintFontFace(`<div style="${frameStyle}">${body}</div>`);
   }
 }

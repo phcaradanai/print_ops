@@ -220,6 +220,10 @@ function checkFields(body: Record<string, unknown>): PaperProfileIssue[] {
       issues.push({ field: `fields.${fieldId}.bgColor`, message: 'bgColor must be a #rrggbb hex color' });
       return;
     }
+    if (field['shrinkToFit'] !== undefined && typeof field['shrinkToFit'] !== 'boolean') {
+      issues.push({ field: `fields.${fieldId}.shrinkToFit`, message: 'shrinkToFit must be a boolean' });
+      return;
+    }
     const displayWidthMm = field['displayWidthMm'];
     if (displayWidthMm !== undefined && !(isFiniteNumber(displayWidthMm) && displayWidthMm > 0)) {
       issues.push({ field: `fields.${fieldId}.displayWidthMm`, message: 'displayWidthMm must be a finite number greater than zero' });
