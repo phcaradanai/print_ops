@@ -19,6 +19,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { logError } from '../lib/logError.js';
 import { useLocale } from '../i18n/index.js';
+import { Button } from './Button.js';
 
 function RouteErrorFallback({ error, onRetry }: { error: Error; onRetry: () => void }) {
   const { t } = useLocale();
@@ -27,12 +28,12 @@ function RouteErrorFallback({ error, onRetry }: { error: Error; onRetry: () => v
       <h2>{t('error.title')}</h2>
       <p>{error.message}</p>
       <div className="state-panel-actions">
-        <button type="button" className="btn-secondary" onClick={onRetry}>
+        <Button variant="secondary" onClick={onRetry}>
           {t('error.retry')}
-        </button>
-        <button type="button" onClick={() => window.location.reload()} className="error-reload-btn">
+        </Button>
+        <Button onClick={() => window.location.reload()}>
           {t('error.reload')}
-        </button>
+        </Button>
       </div>
     </div>
   );

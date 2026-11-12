@@ -109,7 +109,7 @@
 
 .paper-profiles-page .pp-library-filter .ui-label {
   color: var(--neutral-text);
-  font-size: 0.75rem;
+  font-size: var(--font-label-size);
   font-weight: 700;
   letter-spacing: 0;
   text-transform: none;
@@ -141,7 +141,7 @@
   padding-block: 0.75rem;
   background: var(--neutral-paper);
   color: var(--neutral-text);
-  font-size: 0.72rem;
+  font-size: var(--font-label-size);
   letter-spacing: 0.025em;
 }
 
@@ -187,7 +187,7 @@
 .paper-profiles-page .pp-profile-identity__copy .ui-mono {
   overflow: hidden;
   color: var(--neutral-deep);
-  font-size: 0.79rem;
+  font-size: var(--font-label-size);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -236,13 +236,13 @@
 .paper-profiles-page .pp-profile-cell--size .ui-mono,
 .paper-profiles-page .pp-profile-library-table td:nth-child(4) .ui-mono {
   color: var(--neutral-text);
-  font-size: 0.76rem;
+  font-size: var(--font-label-size);
 }
 
 .paper-profiles-page .pp-profile-library-table .ui-badge {
   min-height: 24px;
   padding: 3px 9px;
-  font-size: 0.75rem;
+  font-size: var(--font-label-size);
 }
 
 .paper-profiles-page .pp-saved-profiles__row-actions {

@@ -115,7 +115,7 @@ function ErrorDetails({ error }: { error: unknown }) {
             style={{
               background: 'none',
               border: 'none',
-              color: '#1e66f5',
+              color: 'var(--primary)',
               cursor: 'pointer',
               fontSize: '0.75rem',
               padding: '0 0.25rem',

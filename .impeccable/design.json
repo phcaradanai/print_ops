@@ -187,12 +187,12 @@
       "neutral-text-muted": {
         "role": "neutral",
         "displayName": "Muted Gray",
-        "canonical": "#6b7280",
+        "canonical": "#5f6673",
         "tonalRamp": [
           "#0d121a",
           "#292e38",
           "#474d59",
-          "#6b7280",
+          "#5f6673",
           "#8b92a0",
           "#b1b8c5",
           "#d1d8e5",

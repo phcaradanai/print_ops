@@ -97,7 +97,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#1e1e2e', marginTop: 0, marginBottom: '0.5rem' }}>
               {te('error.standalone.title')}
             </h1>
-            <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: '1.25rem', lineHeight: 1.5 }}>
+            <p style={{ color: 'var(--neutral-text-muted)', fontSize: '0.9rem', marginBottom: '1.25rem', lineHeight: 1.5 }}>
               {te('error.standalone.message')}
             </p>
 

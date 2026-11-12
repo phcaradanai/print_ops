@@ -14,7 +14,7 @@ colors:
   neutral-border: "#e5e7eb"
   neutral-border-strong: "#d1d5db"
   neutral-text: "#374151"
-  neutral-text-muted: "#6b7280"
+  neutral-text-muted: "#5f6673"
   neutral-inverse: "#111827"
   canvas-ink: "#111827"
   canvas-gutter: "#0f172a"
@@ -323,7 +323,7 @@ The dark authoring surface, used only inside a code or payload editor.
 - **Paper White** (#f8fafc): Recessed working surfaces inside a white panel — sticky variable palettes, editor sidebars, inset reference regions. Use it where a region belongs to a panel but should not read as another card.
 - **Warm Subtle Gray** (#f0f0f0): Table heads, gutters, secondary regions, disabled controls, and selected neutral bands.
 - **Border Gray / Strong Border Gray** (#e5e7eb / #d1d5db): Structural separation and editable-control boundaries.
-- **Body Gray / Muted Gray** (#374151 / #6b7280): Default and secondary text. Muted text must remain readable; never use placeholder contrast for operational information.
+- **Body Gray / Muted Gray** (#374151 / #5f6673): Default and secondary text. Muted Gray is the lightest gray that clears 4.5:1 on every light surface, including Page Gray and Warm Subtle Gray (the earlier #6b7280 failed both; `designTokens.test.ts` now enforces this). Muted text must remain readable; never use placeholder contrast for operational information.
 - **Almost Black** (#111827): Tooltips and other maximum-contrast floating surfaces.
 - **Lavender Navigation Text / Dark Slate Navigation Button** (#cdd6f4 / #313244): Secondary content and controls on the dark navigation rail.
 
@@ -353,11 +353,13 @@ The dark authoring surface, used only inside a code or payload editor.
 - **Title** (600, 1rem, 1.4): Card, panel, dialog, and focused-workspace headings.
 - **Stat** (700, 2rem, 1.2, tabular numerals): At-a-glance dashboard values only. A secondary metric row steps down to Headline size rather than inventing a rung between the two.
 - **Body** (400, 0.875rem, 1.5): Forms, tables, descriptions, and operational copy. Prose measures cap at 72ch.
-- **Action** (600, 0.825rem, 1.4, 0.012em): Button and control labels. The tracking is barely-there optical correction, not a style.
+- **Action** (600, 0.825rem, 1.4, 0.012em, token `--font-action-size`): Button and control labels, and secondary meta text that needs one step above Label. The tracking is barely-there optical correction, not a style.
 - **Label** (600, 0.75rem, 1.4): Compact metadata, table headers, field labels, and column names.
 - **Mono** (400, 0.8rem, 1.35): Job IDs, template identifiers, URIs, payloads, printer addresses, and trace values. Inside the Evidence Canvas, line-height opens to 1.65 so line numbers stay legible against long wrapped rows.
 
 ### Named Rules
+
+**The Seven Rung Rule.** Text sizes come only from the scale tokens — `--font-label-size` 0.75rem, `--font-mono-size` 0.8rem (monospace only), `--font-action-size` 0.825rem, `--font-body-size` 0.875rem, `--font-subheading-size` 1rem, `--font-heading-size` 1.5rem, `--font-stat-size` 2rem. The one sanctioned exception is the job verdict headline, a fluid `clamp(1.5rem, …, 1.875rem)`, because it is the single statement the Job Detail page exists to make. A literal sub-1rem `font-size` in a stylesheet fails `designTokens.test.ts`.
 
 **The Single Family Rule.** Use system fonts only. Do not load display fonts or create a decorative headline layer.
 
@@ -381,7 +383,7 @@ The shell is a fixed 200px navigation rail beside a scrolling main canvas at 102
 
 **1024px is the primary transition.** At and below it: multi-column grids collapse to one column, page headers and section headings stack their copy above their actions, resource toolbars go vertical, panels stack their header rows, drawers go full width, main padding drops to 1rem, and responsive tables become labelled record cards. Coarse pointers get the same treatment through `(pointer: coarse)`, independent of width.
 
-At 1024px and below navigation becomes an off-canvas drawer at `min(20rem, 88vw)` with a persistent 44px trigger. The closed drawer is inert; opening traps keyboard focus, dismissal restores the trigger, and choosing a route focuses main content. Other breakpoints retain the editor/preview and responsive-table adaptations: 1100px reduces dense forms, 860px stacks editing workspaces, 760px tightens padding, and 520px stacks record-card cells. Webhooks also adapts to its container width.
+At 1024px and below navigation becomes an off-canvas drawer at `min(20rem, 88vw)` with a persistent 44px trigger. The closed drawer is inert; opening traps keyboard focus, dismissal restores the trigger, and choosing a route focuses main content. Other breakpoints retain the editor/preview and responsive-table adaptations: 1100px reduces dense forms, 860px stacks editing workspaces, 760px tightens main padding to 0.75rem, and 520px stacks record-card cells while keeping that 0.75rem inline gutter (never tighter — text against the screen edge reads as a bug). Webhooks also adapts to its container width.
 
 ### Overflow discipline
 
@@ -460,7 +462,7 @@ Never remove focus without replacing it. The skip link is the first focusable el
 ### Chips and Badges
 
 - **Filter chips:** White outlined pills with muted text, 34px tall. Selected chips take the pale info surface, deeper blue text, a mixed blue border, and `aria-pressed`.
-- **Status badges:** Transparent outlined pills pair a verdict-shaped SVG with the literal server status at three sizes (24 / 26 / 30px). Border and text retain the audited status color. `UNVERIFIED` stays amber and distinct from `SUCCESS` and `FAILED`.
+- **Status badges:** Owned solely by `components/StatusBadge.css` (two older `.status-badge` blocks in `styles.css` were deleted because their `inline-block` glued the icon to the label). Transparent outlined pills pair a verdict-shaped SVG with the literal server status at three sizes (24 / 26 / 30px). Border and text retain the audited status color. `UNVERIFIED` stays amber and distinct from `SUCCESS` and `FAILED`.
 - **Metadata badges:** 6px rectangles on Warm Subtle Gray with tone variants tied to the state pairs. Use these when the item is metadata rather than an interactive filter or job status.
 
 ### Cards, Panels, and Sections

@@ -21,7 +21,7 @@
 .templates-page .tpl-editor > h2 {
   margin: 0;
   color: var(--neutral-deep);
-  font-size: 1.05rem;
+  font-size: var(--font-subheading-size);
   letter-spacing: -0.01em;
 }
 
@@ -38,7 +38,7 @@
 .templates-page .tpl-field-label {
   padding: 0 0.25rem;
   color: var(--neutral-text);
-  font-size: 0.75rem;
+  font-size: var(--font-label-size);
   font-weight: 700;
   letter-spacing: 0.01em;
   text-transform: none;
@@ -99,7 +99,7 @@
 .templates-page .tpl-vars h3 {
   margin-bottom: var(--spacing-sm);
   color: var(--neutral-deep);
-  font-size: 0.8rem;
+  font-size: var(--font-action-size);
   font-weight: 700;
 }
 

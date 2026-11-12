@@ -48,7 +48,7 @@
 .templates-page .tpl-list .ui-data-table th {
   background: var(--neutral-paper);
   color: #475569;
-  font-size: 0.72rem;
+  font-size: var(--font-label-size);
   letter-spacing: 0.025em;
 }
 

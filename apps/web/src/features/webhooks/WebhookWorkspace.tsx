@@ -76,6 +76,8 @@ export default function WebhookWorkspace() {
         type="file"
         accept="application/json,.json"
         className="ui-visually-hidden"
+        aria-label={t('page.webhooks.import')}
+        tabIndex={-1}
         onChange={(event) => {
           const file = event.target.files?.[0];
           event.target.value = '';

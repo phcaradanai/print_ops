@@ -53,7 +53,7 @@
 
 .service-connection-title {
   margin: 0 0 0.25rem;
-  font-size: 1.5rem;
+  font-size: var(--font-heading-size);
   font-weight: 600;
   line-height: 1.3;
   color: var(--neutral-deep);
@@ -128,7 +128,7 @@
 
 .service-connection-details-title {
   margin: 0 0 0.75rem;
-  font-size: 0.75rem;
+  font-size: var(--font-label-size);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;

@@ -5,7 +5,7 @@
 
 .ui-row-action-menu__dots {
   display: inline-block;
-  font-size: 0.8rem;
+  font-size: var(--font-action-size);
   font-weight: 700;
   letter-spacing: 0.08em;
   line-height: 1;

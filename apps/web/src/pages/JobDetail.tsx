@@ -1208,120 +1208,118 @@ export default function JobDetail() {
             below the verdict is the tiering this page is built on, and a
             side rail would put forensics back in permanent competition with
             it. See docs/frontend/LAYOUT_COMPONENT_STANDARD.md. */}
-        <details className="job-technical" open={debugMode ? true : undefined}>
-          <summary className="job-technical__summary">
-            <span>{t('page.jobDetail.technicalDetail')}</span>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleCopyDebugJson();
-              }}
-            >
+        {/* The copy action sits beside the summary, not inside it: a button
+            nested in <summary> is a control inside a control (axe nested-interactive). */}
+        <div className="job-technical-frame">
+          <div className="job-technical__copy">
+            <Button variant="secondary" size="sm" onClick={handleCopyDebugJson}>
               {copiedDebug ? t('page.jobDetail.debugCopied') : t('page.jobDetail.copyDebugJson')}
             </Button>
-          </summary>
+          </div>
+          <details className="job-technical" open={debugMode ? true : undefined}>
+            <summary className="job-technical__summary">
+              <span>{t('page.jobDetail.technicalDetail')}</span>
+            </summary>
 
-          <Stack gap="xl" className="job-technical__body">
-            <Panel title={t('page.jobDetail.timing')} tone="subtle">
-              <Stack gap="lg">
-                <CardDetail>
-                  <CardDetailItem label={t('page.jobDetail.totalLatency')}>{job.latency?.totalLatencyMs != null ? `${job.latency.totalLatencyMs}ms` : '—'}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.queueWait')}>{job.latency?.queueWaitMs != null ? `${job.latency.queueWaitMs}ms` : '—'}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.dispatch')}>{job.latency?.dispatchMs != null ? `${job.latency.dispatchMs}ms` : '—'}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.runnerExec')}>{job.latency?.runnerExecMs != null ? `${job.latency.runnerExecMs}ms` : '—'}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.spoolerMs')}>{job.latency?.spoolerMs != null ? `${job.latency.spoolerMs}ms` : '—'}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.printerAckMs')}>{job.latency?.printerAckMs != null ? `${job.latency.printerAckMs}ms` : '—'}</CardDetailItem>
-                </CardDetail>
-                <CardDetail>
-                  <CardDetailItem label={t('page.jobDetail.received')}>{fmtTime(job.receivedAt)}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.validated')}>{fmtTime(job.validatedAt)}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.queued')}>{fmtTime(job.queuedAt)}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.dispatched')}>{fmtTime(job.dispatchedAt)}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.runnerReceived')}>{fmtTime(job.runnerReceivedAt)}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.started')}>{fmtTime(job.startedAt)}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.spooled')}>{fmtTime(job.spoolerSentAt)}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.printerAck')}>{fmtTime(job.printerAckAt)}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.finished')}>{fmtTime(job.finishedAt)}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.created')}>{fmtTime(job.createdAt)}</CardDetailItem>
-                  <CardDetailItem label={t('page.jobDetail.updated')}>{fmtTime(job.updatedAt)}</CardDetailItem>
-                </CardDetail>
-              </Stack>
-            </Panel>
-
-            <Panel title={t('page.jobDetail.provenance')} tone="subtle">
-              <Stack gap="lg">
-                <CardDetail>
-                  {job.requestId && (
-                    <CardDetailItem label={t('page.jobDetail.requestId')}><Mono wrap>{job.requestId}</Mono></CardDetailItem>
-                  )}
-                  {job.metadata?.reprintOfRequestId && (
-                    <CardDetailItem label={t('page.jobDetail.originalRequestId')}>
-                      <Mono wrap>{job.metadata.reprintOfRequestId}</Mono>
-                    </CardDetailItem>
-                  )}
-                  <CardDetailItem label={t('page.jobDetail.mimeType')}>{job.mimeType ?? '—'}</CardDetailItem>
-                </CardDetail>
-                {job.payloadSnapshot && (
-                  <Stack gap="xs">
-                    <Text size="label" tone="muted">{t('page.jobDetail.payloadFields')}</Text>
-                    <Mono wrap>{job.payloadSnapshot}</Mono>
-                  </Stack>
-                )}
-                {natsInfo && (
+            <Stack gap="xl" className="job-technical__body">
+              <Panel title={t('page.jobDetail.timing')} tone="subtle">
+                <Stack gap="lg">
                   <CardDetail>
-                    <CardDetailItem label="NATS client"><Mono>{natsInfo.clientId ?? '—'}</Mono></CardDetailItem>
-                    <CardDetailItem label="NATS subject"><Mono>{natsInfo.subject ?? '—'}</Mono></CardDetailItem>
-                    <CardDetailItem label="NATS seq"><Mono>{natsInfo.streamSequence ?? '—'}</Mono></CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.totalLatency')}>{job.latency?.totalLatencyMs != null ? `${job.latency.totalLatencyMs}ms` : '—'}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.queueWait')}>{job.latency?.queueWaitMs != null ? `${job.latency.queueWaitMs}ms` : '—'}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.dispatch')}>{job.latency?.dispatchMs != null ? `${job.latency.dispatchMs}ms` : '—'}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.runnerExec')}>{job.latency?.runnerExecMs != null ? `${job.latency.runnerExecMs}ms` : '—'}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.spoolerMs')}>{job.latency?.spoolerMs != null ? `${job.latency.spoolerMs}ms` : '—'}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.printerAckMs')}>{job.latency?.printerAckMs != null ? `${job.latency.printerAckMs}ms` : '—'}</CardDetailItem>
                   </CardDetail>
-                )}
-              </Stack>
-            </Panel>
+                  <CardDetail>
+                    <CardDetailItem label={t('page.jobDetail.received')}>{fmtTime(job.receivedAt)}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.validated')}>{fmtTime(job.validatedAt)}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.queued')}>{fmtTime(job.queuedAt)}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.dispatched')}>{fmtTime(job.dispatchedAt)}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.runnerReceived')}>{fmtTime(job.runnerReceivedAt)}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.started')}>{fmtTime(job.startedAt)}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.spooled')}>{fmtTime(job.spoolerSentAt)}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.printerAck')}>{fmtTime(job.printerAckAt)}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.finished')}>{fmtTime(job.finishedAt)}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.created')}>{fmtTime(job.createdAt)}</CardDetailItem>
+                    <CardDetailItem label={t('page.jobDetail.updated')}>{fmtTime(job.updatedAt)}</CardDetailItem>
+                  </CardDetail>
+                </Stack>
+              </Panel>
 
-            {/* ── Trace timeline ──
-                Deliberately not rebuilt from shared primitives: a vertical
-                timeline with connected step markers is genuine bespoke geometry,
-                not a list wearing a costume, and it appears nowhere else. */}
-            {trace && (
-              <section aria-labelledby="job-trace-heading">
-                <h3 className="ui-heading ui-heading--section" id="job-trace-heading">
-                  {t('page.jobDetail.traceTimeline')}
-                </h3>
-                <ol className="job-trace">
-                  {trace.steps.map((step, i) => (
-                    <li className={`job-trace__step job-trace__step--${STEP_TONE[step.status] ?? 'unknown'}`} key={i}>
-                      <div className="job-trace__marker" aria-hidden="true" />
-                      <Card className="job-trace__card" tone="subtle">
-                        <div className="job-trace__name">{step.stepName}</div>
-                        <div className="job-trace__meta">
-                          {step.durationMs != null ? `${step.durationMs}ms` : '—'} · {step.status}
-                        </div>
-                        {step.outputSummary && <div className="job-trace__summary">{step.outputSummary}</div>}
-                        {step.error && <div className="job-trace__error">{step.error}</div>}
-                      </Card>
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            )}
+              <Panel title={t('page.jobDetail.provenance')} tone="subtle">
+                <Stack gap="lg">
+                  <CardDetail>
+                    {job.requestId && (
+                      <CardDetailItem label={t('page.jobDetail.requestId')}><Mono wrap>{job.requestId}</Mono></CardDetailItem>
+                    )}
+                    {job.metadata?.reprintOfRequestId && (
+                      <CardDetailItem label={t('page.jobDetail.originalRequestId')}>
+                        <Mono wrap>{job.metadata.reprintOfRequestId}</Mono>
+                      </CardDetailItem>
+                    )}
+                    <CardDetailItem label={t('page.jobDetail.mimeType')}>{job.mimeType ?? '—'}</CardDetailItem>
+                  </CardDetail>
+                  {job.payloadSnapshot && (
+                    <Stack gap="xs">
+                      <Text size="label" tone="muted">{t('page.jobDetail.payloadFields')}</Text>
+                      <Mono wrap>{job.payloadSnapshot}</Mono>
+                    </Stack>
+                  )}
+                  {natsInfo && (
+                    <CardDetail>
+                      <CardDetailItem label="NATS client"><Mono>{natsInfo.clientId ?? '—'}</Mono></CardDetailItem>
+                      <CardDetailItem label="NATS subject"><Mono>{natsInfo.subject ?? '—'}</Mono></CardDetailItem>
+                      <CardDetailItem label="NATS seq"><Mono>{natsInfo.streamSequence ?? '—'}</Mono></CardDetailItem>
+                    </CardDetail>
+                  )}
+                </Stack>
+              </Panel>
 
-            {/* "No trace recorded" and "the trace could not be loaded" are different
-                facts — the first is evidence about the job, the second is evidence
-                about the network. They used to render identically. */}
-            {!trace && traceResource.error == null && (
-              <Text as="p" tone="muted">{t('page.jobDetail.noTrace')}</Text>
-            )}
-            {!trace && traceResource.error != null && (
-              <ErrorBanner
-                error={traceResource.error}
-                title={t('page.jobDetail.traceLoadFailed')}
-                onRetry={traceResource.refresh}
-              />
-            )}
-          </Stack>
-        </details>
+              {/* ── Trace timeline ──
+                  Deliberately not rebuilt from shared primitives: a vertical
+                  timeline with connected step markers is genuine bespoke geometry,
+                  not a list wearing a costume, and it appears nowhere else. */}
+              {trace && (
+                <section aria-labelledby="job-trace-heading">
+                  <h3 className="ui-heading ui-heading--section" id="job-trace-heading">
+                    {t('page.jobDetail.traceTimeline')}
+                  </h3>
+                  <ol className="job-trace">
+                    {trace.steps.map((step, i) => (
+                      <li className={`job-trace__step job-trace__step--${STEP_TONE[step.status] ?? 'unknown'}`} key={i}>
+                        <div className="job-trace__marker" aria-hidden="true" />
+                        <Card className="job-trace__card" tone="subtle">
+                          <div className="job-trace__name">{step.stepName}</div>
+                          <div className="job-trace__meta">
+                            {step.durationMs != null ? `${step.durationMs}ms` : '—'} · {step.status}
+                          </div>
+                          {step.outputSummary && <div className="job-trace__summary">{step.outputSummary}</div>}
+                          {step.error && <div className="job-trace__error">{step.error}</div>}
+                        </Card>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              )}
+
+              {/* "No trace recorded" and "the trace could not be loaded" are different
+                  facts — the first is evidence about the job, the second is evidence
+                  about the network. They used to render identically. */}
+              {!trace && traceResource.error == null && (
+                <Text as="p" tone="muted">{t('page.jobDetail.noTrace')}</Text>
+              )}
+              {!trace && traceResource.error != null && (
+                <ErrorBanner
+                  error={traceResource.error}
+                  title={t('page.jobDetail.traceLoadFailed')}
+                  onRetry={traceResource.refresh}
+                />
+              )}
+            </Stack>
+          </details>
+        </div>
       </Stack>
 
       <ReprintDialog

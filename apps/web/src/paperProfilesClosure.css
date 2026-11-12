@@ -161,7 +161,7 @@
 .paper-profiles-page textarea:disabled {
   opacity: 1;
   background-color: var(--neutral-subtle, #f0f0f0) !important;
-  color: var(--neutral-text-muted, #6b7280) !important;
+  color: var(--neutral-text-muted) !important;
 }
 
 /* --------------------------------------------------------------------------

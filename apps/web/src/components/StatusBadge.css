@@ -1,5 +1,11 @@
+/* Sole owner of the job status badge. styles.css used to carry two more
+   .status-badge blocks whose inline-block display beat this flex row and
+   glued the verdict icon to the label. */
 .status-badge {
   display: inline-flex;
+  border-radius: var(--rounded-pill);
+  font-weight: 700;
+  white-space: nowrap;
   align-items: center;
   justify-content: center;
   gap: var(--spacing-xs);
@@ -13,17 +19,17 @@
 .status-badge.status-badge--sm {
   min-height: 24px;
   padding: 3px 9px;
-  font-size: 0.75rem;
+  font-size: var(--font-label-size);
 }
 
 .status-badge.status-badge--md {
   min-height: 26px;
   padding: 4px 11px;
-  font-size: 0.78rem;
+  font-size: var(--font-label-size);
 }
 
 .status-badge.status-badge--lg {
   min-height: 30px;
   padding: 5px 14px;
-  font-size: 0.85rem;
+  font-size: var(--font-body-size);
 }

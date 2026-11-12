@@ -213,6 +213,15 @@ npm run test:packaged-desktop
 - **Complex UI State**: Handled via React `useReducer` (e.g., `editorReducer.ts` for SVG canvas paper profile layout designer).
 - **Internationalization**: Bilingual Thai (`th`) and English (`en`) dictionaries in `apps/web/src/i18n/`. Default runtime locale is `th`.
 
+### Frontend Change Rules (UI/UX governance)
+Before changing anything visual in `apps/web`:
+1. Read `DESIGN.md` (spec), `docs/design/design-system.md` (working reference) and `docs/design/visual-direction.md` (authority order — generic skill suggestions rank last; there is no Figma source).
+2. Reuse `components/ui/index.ts` exports; check `docs/design/component-inventory.md` for which stylesheet owns a component and put its rules **only there**. Never add another global override or `*Hotfix*` stylesheet.
+3. Use tokens only: no literal hex, no literal sub-1rem `font-size` (seven-rung scale), colours derived with `color-mix()`. Text uses `--neutral-text`, `--neutral-text-muted` or `--state-*-text`, never a `--semantic-*` pastel.
+4. Check the Thai string as well as the English one, at 1440px, 1024px and 390px, in the rendered app — not just the source.
+5. Run `npm run test -w apps/web` (includes `designTokens.test.ts` and `layoutContract.test.ts` guards) and the Playwright suite. 25 e2e tests already fail on `main` (see `docs/design/ux-audit.md`); compare against that baseline rather than assuming a clean run.
+6. Record notable design changes and remaining debt in `docs/design/refinement-progress.md`.
+
 ---
 
 ## Important Files

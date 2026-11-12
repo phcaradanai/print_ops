@@ -671,7 +671,7 @@ body {
 .ui-state-badge,
 .ui-badge {
   min-height: 1.65rem;
-  font-size: 0.75rem;
+  font-size: var(--font-label-size);
   line-height: 1.25;
 }
 
@@ -849,7 +849,7 @@ body {
 
 @media (max-width: 520px) {
   .app-main {
-    padding-inline: max(var(--spacing-sm), env(safe-area-inset-left)) max(var(--spacing-sm), env(safe-area-inset-right));
+    padding-inline: max(var(--spacing-md), env(safe-area-inset-left)) max(var(--spacing-md), env(safe-area-inset-right));
     padding-bottom: max(var(--spacing-lg), env(safe-area-inset-bottom));
   }
 
