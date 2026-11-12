@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # Export the same application source that passed the publish checks.
-          ref: 327b208
+          ref: 327b20810318c7ab9e6ca41fc52662aa9e5d83f4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
