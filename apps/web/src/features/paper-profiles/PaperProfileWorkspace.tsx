@@ -98,6 +98,24 @@ export default function PaperProfileWorkspace() {
     return () => window.removeEventListener('beforeunload', warnBeforeUnload);
   }, [hasUnsavedChanges]);
 
+  // Figma shortcuts. Text inputs keep their own native undo.
+  useEffect(() => {
+    if (stage !== 'editor') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      const key = event.key.toLowerCase();
+      if (key === 'z' && !event.shiftKey) editor.undo();
+      else if ((key === 'z' && event.shiftKey) || key === 'y') editor.redo();
+      else if (key === 'd' && editor.state.selectedFieldId) editor.duplicateField(editor.state.selectedFieldId);
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [stage, editor.undo, editor.redo, editor.duplicateField, editor.state.selectedFieldId]);
+
   const openCreate = useCallback(() => {
     editor.resetEditor();
     setStage('editor');

@@ -68,6 +68,10 @@ export interface PaperProfileField {
   fontSize: number;
   bold: boolean;
   color: string;
+  /** Text-like fields only: fixed box width in mm; longer text is clipped. Unset = natural width. */
+  displayWidthMm?: number;
+  /** Text-like fields only: box background as #rrggbb. Unset = transparent. */
+  bgColor?: string;
   align: 'left' | 'center' | 'right';
 }
 

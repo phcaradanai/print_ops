@@ -2,10 +2,11 @@ import type { RefObject } from 'react';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { useCanvasInteraction } from '../hooks/useCanvasInteraction.js';
-import { actualSizePercent, CSS_PX_PER_MM, getVisualPaperGeometry } from '../model/geometry.js';
+import { actualSizePercent, CSS_PX_PER_MM, getDesignPaperGeometry } from '../model/geometry.js';
 import { displayValue, toPixels } from '../model/units.js';
+import { useMarqueeSelection } from '../hooks/useMarqueeSelection.js';
 import { CanvasToolbar, type CanvasOptions } from './CanvasToolbar.js';
-import { PaperCanvas, RulerSheet } from './PaperCanvas.js';
+import { measureFieldBoxes, PaperCanvas, RulerSheet } from './PaperCanvas.js';
 import { PropertiesPanel } from './PropertiesPanel.js';
 import type { Translate } from './types.js';
 
@@ -20,7 +21,8 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
   t: Translate;
 }) {
   const { form, ux } = editor;
-  const geometry = getVisualPaperGeometry(form);
+  const geometry = getDesignPaperGeometry(form);
+  const marquee = useMarqueeSelection(sheetRef, editor.selectedFieldIds, editor.setSelection);
   // Fit within the panel's ~560px box, but never scale past true physical
   // size — see CSS_PX_PER_MM for why an uncapped auto-fit isn't safe to use
   // as a print-size reference.
@@ -45,13 +47,14 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
           // Figma/Canva canvas habits: click empty space to deselect, Esc to
           // deselect, Delete/Backspace removes the focused field.
           onPointerDown={(event) => {
-            if (!(event.target as HTMLElement).closest('.pp-canvas-field')) editor.selectField(null);
+            // Empty space: start a marquee (a plain click just clears the selection).
+            if (!(event.target as HTMLElement).closest('.pp-canvas-field')) marquee.start(event);
           }}
           onKeyDown={(event) => {
             const id = editor.state.selectedFieldId;
             if (!id || !(event.target as HTMLElement).closest('.pp-canvas-field')) return;
             if (event.key === 'Escape') { editor.selectField(null); (event.target as HTMLElement).blur(); }
-            if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); editor.deleteField(id); }
+            if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); editor.deleteFields(editor.selectedFieldIds); }
           }}>
           <div className="pp-preview-stage__meta">
             <span>{t('page.paperProfiles.previewCanvas')}</span>
@@ -61,9 +64,14 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
           <RulerSheet form={form} scale={scale} showRulers={options.rulers} unit={ux.displayUnit}>
             <PaperCanvas form={form} ux={ux} scale={scale} sheetRef={sheetRef}
               selectedFieldId={editor.state.selectedFieldId}
+              selectedFieldIds={editor.selectedFieldIds}
               onFieldPointerDown={(event, id) => interaction.startDrag(event, id, sheetRef.current, scale)}
               onFieldResizePointerDown={(event, id) => interaction.startResize(event, id, scale)}
-              onFieldSelect={(id) => {
+              onFieldSelect={(id, event) => {
+                // Modifier clicks already toggled the selection on pointerdown; a
+                // plain click on a member of a group keeps the group, as in Figma.
+                if (event && (event.shiftKey || event.metaKey || event.ctrlKey)) return;
+                if (editor.selectedFieldIds.length > 1 && editor.selectedFieldIds.includes(id)) return;
                 editor.selectField(id);
                 document.getElementById(`paper-field-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
               }}
@@ -73,6 +81,12 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
               showDimensions={options.dimensions} gridIntervalMm={options.gridSpacingMm}
               artworkUrl={artwork?.objectUrl} artworkFitMode={artwork?.fitMode} />
           </RulerSheet>
+          {marquee.rect && (
+            <div className="pp-marquee" aria-hidden="true" style={{
+              position: 'fixed', left: marquee.rect.left, top: marquee.rect.top,
+              width: marquee.rect.width, height: marquee.rect.height,
+            }} />
+          )}
         </div>
         <div className="pp-preview-quick-info">
           <span>{t('page.paperProfiles.quickSize')}: {geometry.widthMm} × {geometry.heightMm} mm</span>
@@ -82,7 +96,8 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
           <span>{t('page.paperProfiles.quickScale')}: {scale.toFixed(2)}x ({actualSizePercent(scale)}% {t('page.paperProfiles.actualSize')})</span>
           <span>{t('page.paperProfiles.quickFields')}: {ux.dynamicFields.length}</span>
         </div>
-        <PropertiesPanel editor={editor} t={t} />
+        <PropertiesPanel editor={editor} t={t}
+          measureSelection={() => measureFieldBoxes(sheetRef.current, scale, geometry, editor.selectedFieldIds)} />
       </div>
     </div>
   );

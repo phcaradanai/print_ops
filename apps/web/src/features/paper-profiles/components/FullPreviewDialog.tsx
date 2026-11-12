@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { useCanvasInteraction } from '../hooks/useCanvasInteraction.js';
-import { actualSizePercent, clampGridSpacing, CSS_PX_PER_MM, getVisualPaperGeometry, stepPreviewZoom } from '../model/geometry.js';
+import { actualSizePercent, clampGridSpacing, CSS_PX_PER_MM, getDesignPaperGeometry, stepPreviewZoom } from '../model/geometry.js';
 import { displayValue } from '../model/units.js';
 import { getFieldInspectorState } from '../state/selectors.js';
 import { type CanvasOptions } from './CanvasToolbar.js';
@@ -27,7 +27,7 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const stageRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
-  const paper = getVisualPaperGeometry(editor.form);
+  const paper = getDesignPaperGeometry(editor.form);
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;

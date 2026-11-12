@@ -123,6 +123,32 @@ describe('Template management, sandbox, and dynamic intake', () => {
     expect(JSON.stringify(audit.json())).toContain('template.created');
   });
 
+  it('places multi-column companion fields in the printed cell, without media margins', async () => {
+    const { app } = await buildApp();
+    const admin = await login(app, 'admin@printerops.local');
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/paper-profiles',
+      headers: auth(admin),
+      payload: {
+        code: 'GRID_FIELD_TEST', name: 'Grid Field Test',
+        widthMm: 104, heightMm: 30,
+        marginTopMm: 2, marginRightMm: 2, marginBottomMm: 2, marginLeftMm: 2,
+        dpi: 203, orientation: 'landscape', unit: 'mm',
+        layout: { columns: 2, cellWidthMm: 48, cellHeightMm: 25, columnGapMm: 4, rowPitchMm: 28 },
+        fields: [{ id: 'f1', key: 'name', label: 'Name', defaultValue: '', type: 'text', xMm: 5, yMm: 4, fontSize: 10, bold: false, color: '#000000', align: 'left', displayWidthMm: 30, bgColor: '#ffee00' }],
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const { id } = created.json() as { id: string };
+    const templates = await app.inject({ method: 'GET', url: '/api/v1/templates', headers: auth(admin) });
+    const companion = (templates.json() as { paperProfileId?: string; content: string }[]).find((t) => t.paperProfileId === id)!;
+    expect(companion.content).toContain('width:48mm;height:25mm');
+    expect(companion.content).toContain('left:5mm;top:4mm');
+    expect(companion.content).toContain('width:30mm;overflow:hidden;text-align:left;');
+    expect(companion.content).toContain('background-color:#ffee00;');
+  });
+
   it('persists paper profile fields and keeps a companion HTML template in sync', async () => {
     const { app } = await buildApp();
     const admin = await login(app, 'admin@printerops.local');

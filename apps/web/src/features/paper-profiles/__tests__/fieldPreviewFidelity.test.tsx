@@ -112,6 +112,18 @@ describe('field preview fidelity against the printed output', () => {
     expect(style).not.toMatch(/(^|;)\s*border:\s*1px/);
   });
 
+  it('frames the printable area without a layout border that would shift fields', () => {
+    // Fields are children of the printable-area box; a border there moves them all.
+    expect(renderCanvas(CSS_PX_PER_MM)).not.toMatch(/border:1px dashed var\(--pp-canvas-outline\)/);
+  });
+
+  it('designs one cell of a multi-column layout, as each job prints one cell', () => {
+    const grid = { ...FORM, widthMm: 104, heightMm: 30, orientation: 'landscape' as const,
+      layout: { columns: 2, cellWidthMm: 48, cellHeightMm: 25, columnGapMm: 4, rowPitchMm: 28 } };
+    const markup = renderCanvas(CSS_PX_PER_MM, grid);
+    expect(markup).toContain(`width:${48 * CSS_PX_PER_MM}px;height:${25 * CSS_PX_PER_MM}px`);
+  });
+
   it('keeps every part of the field proportional to the paper', () => {
     // Same field, half the scale. Everything that describes the field's
     // physical footprint must halve with it; anything that stays constant is

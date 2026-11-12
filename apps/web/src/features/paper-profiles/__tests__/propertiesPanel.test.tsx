@@ -6,8 +6,8 @@ import type { DynamicField } from '../model/types.js';
 
 const FIELD = { id: 'f1', key: 'hn', label: 'HN', type: 'text', xMm: 4, yMm: 6, fontSize: 12, bold: true, color: '#000000', align: 'center', defaultValue: '' } as DynamicField;
 
-function render(selectedField: DynamicField | null) {
-  const editor = { form: DEFAULT_FORM, ux: { ...DEFAULT_UX, displayUnit: 'mm' }, selectedField } as unknown as PaperProfileEditor;
+function render(selectedField: DynamicField | null, selectedFieldIds: string[] = selectedField ? [selectedField.id] : []) {
+  const editor = { form: DEFAULT_FORM, ux: { ...DEFAULT_UX, displayUnit: 'mm' }, selectedField, selectedFieldIds, state: { selectedFieldId: selectedField?.id ?? null } } as unknown as PaperProfileEditor;
   return renderToStaticMarkup(<PropertiesPanel editor={editor} t={(key) => key} />);
 }
 
@@ -17,6 +17,14 @@ describe('properties panel', () => {
     expect(html).toContain('page.paperProfiles.paperProperties');
     expect(html).toContain(`value="${DEFAULT_FORM.widthMm}"`);
     expect(html).toContain('page.paperProfiles.margins');
+  });
+
+  it('shows align and distribute for a multi-selection', () => {
+    const html = render(FIELD, ['f1', 'f2']);
+    expect(html).toContain('page.paperProfiles.selectedCount');
+    expect(html).toContain('page.paperProfiles.alignSelectionLeft');
+    // Distribute needs three fields.
+    expect(html).toMatch(/aria-label="page.paperProfiles.distributeHorizontal"[^>]*disabled=""|disabled=""[^>]*aria-label="page.paperProfiles.distributeHorizontal"/);
   });
 
   it('shows the selected field position and text style instead', () => {

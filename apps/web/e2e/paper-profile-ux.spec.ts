@@ -463,6 +463,70 @@ test.describe('paper profile controls', () => {
     expect(hasRing, `no focus ring: ${JSON.stringify(ring)}`).toBe(true);
   });
 
+  test('shift-click builds a selection that aligns on the rendered boxes', async ({ page }) => {
+    await openEditor(page);
+    await editMixedProfile(page);
+    const props = page.locator('.pp-props');
+    const canvas = page.locator('.pp-preview-panel');
+    const fieldA = canvas.locator('[data-field-id="f-1"]');
+    const fieldB = canvas.locator('[data-field-id="f-6"]');
+    // Fixture fields overlap, so drive the pointer events directly instead of hit-testing.
+    await fieldA.dispatchEvent('pointerdown', { button: 0 });
+    await page.evaluate(() => document.dispatchEvent(new PointerEvent('pointerup')));
+    await fieldB.dispatchEvent('pointerdown', { button: 0, shiftKey: true });
+    await expect(props).toContainText('2 fields selected');
+    await expect(fieldA).toHaveAttribute('aria-pressed', 'true');
+    await expect(fieldB).toHaveAttribute('aria-pressed', 'true');
+
+    const before = [(await fieldA.boundingBox())!.x, (await fieldB.boundingBox())!.x];
+    await props.getByRole('button', { name: 'Align left edges' }).click();
+    await expect.poll(async () => {
+      const [a, b] = [await fieldA.boundingBox(), await fieldB.boundingBox()];
+      return Math.abs(a!.x - b!.x);
+    }).toBeLessThan(1);
+    // Both now sit on the leftmost original edge.
+    expect((await fieldA.boundingBox())!.x).toBeCloseTo(Math.min(...before), 0);
+
+    // One undo step restores both positions.
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect.poll(async () => [(await fieldA.boundingBox())!.x, (await fieldB.boundingBox())!.x]).toEqual(before);
+  });
+
+  test('dragging on empty canvas selects every field the marquee touches', async ({ page }) => {
+    await openEditor(page);
+    await editMixedProfile(page);
+    const canvas = page.locator('.pp-preview-panel');
+    const sheet = (await canvas.locator('.pp-canvas-field').first().evaluate((el) => {
+      const r = el.parentElement!.parentElement!.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    }));
+    // From the stage just outside the paper's top-left corner to the paper's middle.
+    const from = { x: sheet.x - 8, y: sheet.y - 8 };
+    const to = { x: sheet.x + sheet.width / 2, y: sheet.y + sheet.height / 2 };
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 6 });
+    await expect(canvas.locator('.pp-marquee')).toBeVisible();
+    await page.mouse.up();
+    await expect(canvas.locator('.pp-marquee')).toHaveCount(0);
+
+    const expected = await canvas.locator('.pp-canvas-field').evaluateAll((els, m) => els
+      .filter((el) => {
+        const b = el.getBoundingClientRect();
+        return m.left <= b.right && b.left <= m.right && m.top <= b.bottom && b.top <= m.bottom;
+      })
+      .map((el) => el.getAttribute('data-field-id')).sort(), { left: from.x, top: from.y, right: to.x, bottom: to.y });
+    expect(expected.length).toBeGreaterThan(1);
+    const selected = await canvas.locator('.pp-canvas-field[aria-pressed="true"]')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('data-field-id')).sort());
+    expect(selected).toEqual(expected);
+    await expect(page.locator('.pp-props')).toContainText(`${expected.length} fields selected`);
+
+    // A plain click on empty space clears it again.
+    await page.mouse.click(from.x, from.y);
+    await expect(canvas.locator('.pp-canvas-field[aria-pressed="true"]')).toHaveCount(0);
+  });
+
   test('QR uses its millimetre size and disables text-only styling', async ({ page }) => {
     await openEditor(page);
     await editMixedProfile(page);

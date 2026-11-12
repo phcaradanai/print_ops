@@ -21,6 +21,28 @@ export function getVisualPaperGeometry(
   return getOrientedPaperGeometry(form);
 }
 
+/**
+ * The surface fields are designed on — exactly what one print job renders.
+ * A multi-column layout prints each label into one cell with no margins of its
+ * own (paperProfileForCell in @printerops/domain), so the canvas shows that
+ * cell, not the whole media. Single-cell profiles use the media as before.
+ */
+export function getDesignPaperGeometry(
+  form: Parameters<typeof getVisualPaperGeometry>[0] & Pick<PaperForm, 'layout'>,
+): PaperGeometry {
+  const layout = form.layout;
+  if (!layout || layout.columns <= 1) return getOrientedPaperGeometry(form);
+  return getOrientedPaperGeometry({
+    widthMm: layout.cellWidthMm,
+    heightMm: layout.cellHeightMm,
+    marginTopMm: 0,
+    marginRightMm: 0,
+    marginBottomMm: 0,
+    marginLeftMm: 0,
+    orientation: form.orientation,
+  });
+}
+
 export function mapPrintablePointToVisual(
   xMm: number,
   yMm: number,
@@ -52,6 +74,26 @@ export function nudgePrintablePoint(
     xMm: Number(printablePoint.xMm.toFixed(1)),
     yMm: Number(printablePoint.yMm.toFixed(1)),
   };
+}
+
+/**
+ * Shrinks a visual move so every anchor in a group stays on the printable
+ * area: the group stops at the edge as one piece instead of bunching up.
+ */
+export function clampGroupDelta(
+  fields: { xMm: number; yMm: number }[],
+  deltaVisualXmm: number,
+  deltaVisualYmm: number,
+  geometry: PaperGeometry,
+): { dxMm: number; dyMm: number } {
+  let dxMm = deltaVisualXmm;
+  let dyMm = deltaVisualYmm;
+  for (const field of fields) {
+    const point = mapPrintablePointToVisual(field.xMm, field.yMm, geometry);
+    dxMm = Math.max(-point.xMm, Math.min(geometry.printableWidthMm - point.xMm, dxMm));
+    dyMm = Math.max(-point.yMm, Math.min(geometry.printableHeightMm - point.yMm, dyMm));
+  }
+  return { dxMm, dyMm };
 }
 
 export function clampGridSpacing(value: number): number {

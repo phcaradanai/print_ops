@@ -3,7 +3,7 @@ import { qrQuietZoneMm, renderBarcodeSvg } from '../../../lib/barcode.js';
 import { PRINT_FONT_FAMILY, PRINT_LINE_HEIGHT } from '@printerops/shared';
 import { useLocale } from '../../../i18n/index.js';
 import { anchorTransform, anchorTransformOrigin } from '../model/fieldGeometry.js';
-import { fontPointSizeToPreviewPixels, getVisualPaperGeometry, mapPrintablePointToVisual } from '../model/geometry.js';
+import { fontPointSizeToPreviewPixels, getDesignPaperGeometry, mapPrintablePointToVisual } from '../model/geometry.js';
 import { DEFAULT_BARCODE_HEIGHT_MM, DEFAULT_BARCODE_WIDTH_MM, DEFAULT_QR_SIZE_MM } from '../model/defaults.js';
 import type {
   DynamicField,
@@ -13,6 +13,7 @@ import type {
   PaperForm,
   PaperProfileUx as UxOptions,
 } from '../model/types.js';
+import type { FieldBox } from '../model/align.js';
 import { IconButton } from './editorPrimitives.js';
 import { DraftNumberInput } from './DraftNumberInput.js';
 
@@ -32,7 +33,7 @@ export function RulerSheet({
   if (!showRulers) return <>{children}</>;
 
   // The design view is always upright; rotation/flip apply only at print time.
-  const { widthMm, heightMm } = getVisualPaperGeometry(form);
+  const { widthMm, heightMm } = getDesignPaperGeometry(form);
   const frame = { width: widthMm, height: heightMm };
   const pvW = frame.width * scale;
   const pvH = frame.height * scale;
@@ -318,10 +319,30 @@ function FieldPreviewContent({ field, scale }: { field: DynamicField; scale: num
     if (svg) {
       const realHeightMm = field.type === 'qrcode' ? (field.qrSizeMm ?? DEFAULT_QR_SIZE_MM) : (field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM);
       const realWidthMm = field.type === 'qrcode' ? realHeightMm : (field.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM);
-      const heightPx = Math.max(10, realHeightMm * scale);
-      const widthPx = Math.max(10, realWidthMm * scale);
+      // True scale, no minimum: a floor here would draw a symbol bigger than it prints.
+      const heightPx = realHeightMm * scale;
+      const widthPx = realWidthMm * scale;
       const square = field.type === 'qrcode';
       const quietPx = square ? (qrQuietZoneMm(sample, realHeightMm) ?? 0) * scale : 0;
+      if (!square) {
+        // Mirrors imgTag() in simple-template-renderer.ts: the printed 1D symbol
+        // always carries a human-readable line inside the same box.
+        const hriMm = Math.min(2, Math.max(1.6, realHeightMm * 0.25));
+        return (
+          <span aria-label={`${field.type} preview for ${sample}`} style={{
+            display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
+            width: widthPx, height: heightPx, overflow: 'hidden', lineHeight: 0, verticalAlign: 'top',
+          }}>
+            <span style={{ display: 'block', width: '100%', height: Math.max(1, realHeightMm - hriMm) * scale, lineHeight: 0 }}
+              dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', '<svg style="display:block;height:100%;width:100%" ') }} />
+            <span style={{
+              display: 'block', width: '100%', height: hriMm * scale, lineHeight: `${hriMm * scale}px`,
+              fontFamily: 'Arial,sans-serif', fontSize: 1.5 * scale, fontWeight: 400, textAlign: 'center',
+              whiteSpace: 'nowrap', overflow: 'hidden', color: '#000',
+            }}>{sample}</span>
+          </span>
+        );
+      }
       return (
         <span
           aria-label={`${field.type} preview for ${sample}`}
@@ -340,7 +361,8 @@ function FieldPreviewContent({ field, scale }: { field: DynamicField; scale: num
         />
       );
     }
-    return <span>[{field.type}: {sample || '?'}]</span>;
+    // Unencodable sample: nothing prints, but keep the field findable (the button's font-size is 0).
+    return <span style={{ fontSize: 10, lineHeight: 1.2, color: 'var(--state-danger-text, #b91c1c)' }}>[{field.type}: {sample || '?'}]</span>;
   }
   return <>{field.defaultValue || field.label || field.key || 'field'}</>;
 }
@@ -351,6 +373,7 @@ export function PaperCanvas({
   scale,
   sheetRef,
   selectedFieldId,
+  selectedFieldIds,
   onFieldPointerDown,
   onFieldSelect,
   onFieldNudge,
@@ -368,8 +391,10 @@ export function PaperCanvas({
   scale: number;
   sheetRef?: React.RefObject<HTMLDivElement>;
   selectedFieldId?: string | null;
+  /** Whole selection for multi-select; defaults to just `selectedFieldId`. */
+  selectedFieldIds?: string[];
   onFieldPointerDown?: (event: ReactPointerEvent<HTMLButtonElement>, id: string) => void;
-  onFieldSelect?: (id: string) => void;
+  onFieldSelect?: (id: string, event?: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void;
   onFieldNudge?: (id: string, deltaVisualXmm: number, deltaVisualYmm: number) => void;
   onFieldResizePointerDown?: (event: ReactPointerEvent<HTMLElement>, id: string) => void;
   showVerticalGrid?: boolean;
@@ -383,7 +408,7 @@ export function PaperCanvas({
   const { t } = useLocale();
   // Like Figma/Canva the design stays upright: the profile's rotation/flip
   // describe how the paper sits in the printer and are applied only at print.
-  const geometry = getVisualPaperGeometry(form);
+  const geometry = getDesignPaperGeometry(form);
   const pvW = geometry.widthMm * scale;
   const pvH = geometry.heightMm * scale;
   const pvMT = geometry.marginTopMm * scale;
@@ -393,6 +418,7 @@ export function PaperCanvas({
   const pvPrintW = geometry.printableWidthMm * scale;
   const pvPrintH = geometry.printableHeightMm * scale;
   const interactive = Boolean(onFieldPointerDown || onFieldSelect || onFieldNudge);
+  const selectedIds = new Set(selectedFieldIds ?? (selectedFieldId ? [selectedFieldId] : []));
 
   // Compute grid lines
   const gridLinesVertical: number[] = [];
@@ -443,7 +469,9 @@ export function PaperCanvas({
 
       <div style={{
         position: 'absolute', left: pvML, top: pvMT, width: pvPrintW, height: pvPrintH,
-        border: '1px dashed var(--pp-canvas-outline)', zIndex: 1,
+        // Outline, not border: a border moves every absolutely placed field 1px
+        // off the anchor the printer uses.
+        outline: '1px dashed var(--pp-canvas-outline)', outlineOffset: -1, zIndex: 1,
       }}>
         {/* Grid lines */}
         {gridLinesVertical.map((x) => (
@@ -489,11 +517,12 @@ export function PaperCanvas({
             key={f.id}
             type="button"
             aria-label={`${f.key || f.label || 'field'} at ${f.xMm}, ${f.yMm} mm`}
-            aria-pressed={selectedFieldId === f.id}
+            data-field-id={f.id}
+            aria-pressed={selectedIds.has(f.id)}
             aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"
             disabled={!interactive}
             onPointerDown={interactive ? (event) => onFieldPointerDown?.(event, f.id) : undefined}
-            onClick={interactive ? () => onFieldSelect?.(f.id) : undefined}
+            onClick={interactive ? (event) => onFieldSelect?.(f.id, event) : undefined}
             onKeyDown={onFieldNudge ? (event) => {
               const stepMm = event.shiftKey ? 1 : 0.1;
               const delta = event.key === 'ArrowLeft' ? [-stepMm, 0]
@@ -508,9 +537,12 @@ export function PaperCanvas({
             className="pp-canvas-field"
             style={{
               position: 'absolute', left: point.xMm * scale, top: point.yMm * scale,
-              fontSize: fontPointSizeToPreviewPixels(f.fontSize, scale), fontWeight: f.bold ? 700 : 400,
-              lineHeight: PRINT_LINE_HEIGHT,
+              // Barcode/QR spans print with font-size:0;line-height:0, so no text
+              // strut can push the symbol down; text uses the print line height.
+              fontSize: isSymbol(f) ? 0 : fontPointSizeToPreviewPixels(f.fontSize, scale), fontWeight: f.bold ? 700 : 400,
+              lineHeight: isSymbol(f) ? 0 : PRINT_LINE_HEIGHT,
               color: f.color, whiteSpace: 'nowrap',
+              ...(f.displayWidthMm ? { width: f.displayWidthMm * scale, overflow: 'hidden', textAlign: f.align } : {}),
               fontFamily: PRINT_FONT_FAMILY, pointerEvents: interactive ? 'auto' : 'none',
               cursor: interactive ? 'grab' : 'default',
               // No padding and no border: this element's box IS the printed
@@ -522,9 +554,9 @@ export function PaperCanvas({
               // takes part in layout. See __tests__/fieldPreviewFidelity.
               padding: 0,
               border: 'none',
-              outline: selectedFieldId === f.id ? '1px solid var(--primary)' : 'none',
+              outline: selectedIds.has(f.id) ? '1px solid var(--primary)' : 'none',
               outlineOffset: 2,
-              background: selectedFieldId === f.id ? 'var(--state-info-surface)' : 'transparent',
+              background: f.bgColor ?? (selectedIds.has(f.id) ? 'var(--state-info-surface)' : 'transparent'),
               transform: anchorTransform(f.align, geometry.rotated),
               transformOrigin: anchorTransformOrigin(f.align),
               zIndex: 4,
@@ -532,7 +564,7 @@ export function PaperCanvas({
           >
             <FieldPreviewContent field={f} scale={scale} />
             {/* Pointer-only resize grip; keyboard users resize from the Properties panel. */}
-            {onFieldResizePointerDown && selectedFieldId === f.id && (
+            {onFieldResizePointerDown && selectedFieldId === f.id && selectedIds.size === 1 && (
               <span aria-hidden="true" className={`pp-resize-handle pp-resize-handle--${resizeHandleSide(f)}`}
                 onPointerDown={(event) => onFieldResizePointerDown(event, f.id)}
                 onClick={(event) => event.stopPropagation()} />
@@ -599,6 +631,32 @@ export function PaperCanvas({
  * sits at the anchor, which is always on the paper even when long text is
  * clipped past the edge.
  */
+/**
+ * Measures selected fields as rendered on the design canvas, in mm from the
+ * printable-area origin. The canvas uses the print's own units and font, so
+ * this box is the printed one; align/distribute works on it like Figma does.
+ */
+export function measureFieldBoxes(sheet: HTMLElement | null, scale: number, geometry: { marginLeftMm: number; marginTopMm: number }, ids: string[]): FieldBox[] {
+  if (!sheet || scale <= 0) return [];
+  const origin = sheet.getBoundingClientRect();
+  return ids.flatMap((id) => {
+    const element = sheet.querySelector<HTMLElement>(`[data-field-id="${CSS.escape(id)}"]`);
+    if (!element) return [];
+    const rect = element.getBoundingClientRect();
+    return [{
+      id,
+      left: (rect.left - origin.left) / scale - geometry.marginLeftMm,
+      top: (rect.top - origin.top) / scale - geometry.marginTopMm,
+      width: rect.width / scale,
+      height: rect.height / scale,
+    }];
+  });
+}
+
+function isSymbol(field: DynamicField): boolean {
+  return field.type === 'barcode' || field.type === 'qrcode';
+}
+
 function resizeHandleSide(field: DynamicField): 'left' | 'right' {
   const isText = field.type !== 'barcode' && field.type !== 'qrcode';
   if (isText) return field.align === 'right' ? 'right' : 'left';

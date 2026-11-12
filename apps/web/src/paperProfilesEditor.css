@@ -661,3 +661,6 @@
 .paper-profiles-page .pp-resize-handle--right { right: -6px; cursor: nwse-resize; }
 .paper-profiles-page .pp-resize-handle--left { left: -6px; cursor: nesw-resize; }
 .paper-profiles-page .pp-resize-handle::before { content: ''; position: absolute; inset: -6px; }
+
+/* Figma-style marquee: drag on empty canvas space to select fields. */
+.paper-profiles-page .pp-marquee { border: 1px solid var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); pointer-events: none; z-index: 20; }

@@ -4,7 +4,8 @@ import {
   centerFieldAnchorHorizontal,
   centerFieldAnchorVertical,
 } from '../model/fieldGeometry.js';
-import { getVisualPaperGeometry, nudgePrintablePoint } from '../model/geometry.js';
+import { clampGroupDelta, getDesignPaperGeometry, nudgePrintablePoint } from '../model/geometry.js';
+import type { FieldMove } from '../model/align.js';
 import type { DynamicField, PaperForm, PaperProfile, PaperProfileUx } from '../model/types.js';
 import { editorReducer } from '../state/editorReducer.js';
 import { createEditorState, type SectionKey } from '../state/editorState.js';
@@ -63,6 +64,43 @@ export function usePaperProfileEditor() {
     dispatch({ type: 'UPDATE_FIELD', id, patch });
   }, []);
   const deleteField = useCallback((id: string) => dispatch({ type: 'DELETE_FIELD', id }), []);
+  /** The field plus the rest of the selection when it is part of one. */
+  const groupOf = useCallback((id: string) => (
+    state.selectedFieldIds.includes(id) ? state.selectedFieldIds : [id]
+  ), [state.selectedFieldIds]);
+  /** Copies of the field (or its whole selection) 2 mm down-right, selected — like Figma's Ctrl/Cmd+D. */
+  const duplicateField = useCallback((id: string) => {
+    const geometry = getDesignPaperGeometry(state.form);
+    const ids = groupOf(id);
+    const fields = state.ux.dynamicFields.filter((candidate) => ids.includes(candidate.id));
+    dispatch({ type: 'ADD_FIELDS', fields: fields.map((field) => ({
+      ...field,
+      id: fieldId(),
+      key: field.key ? `${field.key}_copy` : '',
+      ...nudgePrintablePoint(field.xMm, field.yMm, 2, 2, geometry),
+    })) });
+  }, [groupOf, state.form, state.ux.dynamicFields]);
+  const deleteFields = useCallback((ids: string[]) => dispatch({ type: 'DELETE_FIELDS', ids }), []);
+  const setSelection = useCallback((ids: string[]) => dispatch({ type: 'SET_SELECTION', ids }), []);
+  const toggleFieldSelection = useCallback((id: string) => dispatch({ type: 'TOGGLE_FIELD_SELECTION', id }), []);
+  const updateFields = useCallback((patches: { id: string; patch: Partial<DynamicField> }[]) => {
+    dispatch({ type: 'UPDATE_FIELDS', patches });
+  }, []);
+  /** Moves each field by its own visual delta (align/distribute) as one undo step. */
+  const moveFields = useCallback((moves: FieldMove[]) => {
+    const geometry = getDesignPaperGeometry(state.form);
+    const patches = moves.flatMap((move) => {
+      const field = state.ux.dynamicFields.find((candidate) => candidate.id === move.id);
+      if (!field || (Math.abs(move.dxMm) < 0.05 && Math.abs(move.dyMm) < 0.05)) return [];
+      return [{ id: move.id, patch: nudgePrintablePoint(field.xMm, field.yMm, move.dxMm, move.dyMm, geometry) }];
+    });
+    if (patches.length === 0) return;
+    dispatch({ type: 'UPDATE_FIELDS', patches });
+    dispatch({ type: 'BREAK_HISTORY' });
+  }, [state.form, state.ux.dynamicFields]);
+  const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
+  const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
+  const breakHistory = useCallback(() => dispatch({ type: 'BREAK_HISTORY' }), []);
   const selectField = useCallback((id: string | null) => dispatch({ type: 'SELECT_FIELD', id }), []);
   const setSection = useCallback((section: SectionKey, open: boolean) => {
     dispatch({ type: 'SET_SECTION', section, open });
@@ -80,27 +118,27 @@ export function usePaperProfileEditor() {
   const centerField = useCallback((id: string, axis: 'horizontal' | 'vertical') => {
     const field = state.ux.dynamicFields.find((candidate) => candidate.id === id);
     if (!field) return;
-    const geometry = getVisualPaperGeometry(state.form);
+    const geometry = getDesignPaperGeometry(state.form);
     const patch = axis === 'horizontal'
       ? centerFieldAnchorHorizontal(field, geometry)
       : centerFieldAnchorVertical(field, geometry);
     dispatch({ type: 'UPDATE_FIELD', id, patch });
   }, [state.form, state.ux.dynamicFields]);
+  /** Arrow-key nudge of the field, or of its whole selection as one piece. */
   const nudgeField = useCallback((id: string, deltaXmm: number, deltaYmm: number) => {
-    const field = state.ux.dynamicFields.find((candidate) => candidate.id === id);
-    if (!field) return;
+    const ids = groupOf(id);
+    const fields = state.ux.dynamicFields.filter((candidate) => ids.includes(candidate.id));
+    if (fields.length === 0) return;
+    const geometry = getDesignPaperGeometry(state.form);
+    const { dxMm, dyMm } = clampGroupDelta(fields, deltaXmm, deltaYmm, geometry);
     dispatch({
-      type: 'UPDATE_FIELD',
-      id,
-      patch: nudgePrintablePoint(
-        field.xMm,
-        field.yMm,
-        deltaXmm,
-        deltaYmm,
-        getVisualPaperGeometry(state.form),
-      ),
+      type: 'UPDATE_FIELDS',
+      patches: fields.map((field) => ({
+        id: field.id,
+        patch: nudgePrintablePoint(field.xMm, field.yMm, dxMm, dyMm, geometry),
+      })),
     });
-  }, [state.form, state.ux.dynamicFields]);
+  }, [groupOf, state.form, state.ux.dynamicFields]);
 
   return useMemo(() => ({
     state,
@@ -112,6 +150,18 @@ export function usePaperProfileEditor() {
     addField,
     updateField,
     deleteField,
+    duplicateField,
+    deleteFields,
+    toggleFieldSelection,
+    setSelection,
+    updateFields,
+    moveFields,
+    selectedFieldIds: state.selectedFieldIds,
+    undo,
+    redo,
+    breakHistory,
+    canUndo: state.past.length > 0,
+    canRedo: state.future.length > 0,
     selectField,
     setSection,
     setAllSections,
@@ -125,7 +175,7 @@ export function usePaperProfileEditor() {
     saveFailed: (error: string) => dispatch({ type: 'SAVE_FAILED', error }),
     dismissSaveError: () => dispatch({ type: 'DISMISS_SAVE_ERROR' }),
   }), [
-    addField, applyPreset, centerField, deleteField, nudgeField, patchForm, patchUx,
+    addField, applyPreset, breakHistory, centerField, deleteField, deleteFields, duplicateField, moveFields, nudgeField, redo, setSelection, toggleFieldSelection, undo, updateFields, patchForm, patchUx,
     resetEditor, selectField, setAllSections, setSection, startEditing, state, updateField,
   ]);
 }

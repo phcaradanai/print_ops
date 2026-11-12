@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { paperProfileForCell } from '@printerops/domain';
 import type {
   AuditRepositoryPort,
   PaperProfile,
@@ -39,21 +40,10 @@ function escapeHtmlAttr(raw: string): string {
  * (and WindowsSpoolerAdapter's printHtml) already renders literally.
  */
 function buildFieldsTemplateHtml(profile: PaperProfile): string {
-  const cellWidthMm = profile.layout && profile.layout.columns > 1
-    ? profile.layout.cellWidthMm
-    : profile.widthMm;
-  const cellHeightMm = profile.layout && profile.layout.columns > 1
-    ? profile.layout.cellHeightMm
-    : profile.heightMm;
-  const geometry = getOrientedPaperGeometry({
-    widthMm: cellWidthMm,
-    heightMm: cellHeightMm,
-    marginTopMm: profile.marginTopMm,
-    marginRightMm: profile.marginRightMm,
-    marginBottomMm: profile.marginBottomMm,
-    marginLeftMm: profile.marginLeftMm,
-    orientation: profile.orientation,
-  });
+  // Same surface the print path renders (each job is one cell, margins 0)
+  // and the editor canvas shows; the old cell-size-plus-media-margins box
+  // shifted every multi-column field by the margins.
+  const geometry = getOrientedPaperGeometry(paperProfileForCell(profile));
   const spans = (profile.fields ?? [])
     .map((f) => {
       const placeholderKey = f.key.trim() || f.id;
@@ -71,7 +61,9 @@ function buildFieldsTemplateHtml(profile: PaperProfile): string {
         `position:absolute;left:${xMm}mm;top:${yMm}mm;` +
         (isMachineReadable
           ? `${barcodeBoxStyle}font-size:0;line-height:0;`
-          : `font-size:${f.fontSize}pt;font-weight:${f.bold ? 700 : 400};color:${escapeHtmlAttr(f.color)};`) +
+          : `font-size:${f.fontSize}pt;font-weight:${f.bold ? 700 : 400};color:${escapeHtmlAttr(f.color)};`
+            + (f.displayWidthMm ? `display:inline-block;width:${f.displayWidthMm}mm;overflow:hidden;text-align:${f.align};` : '')
+            + (f.bgColor ? `background-color:${escapeHtmlAttr(f.bgColor)};` : '')) +
         `white-space:nowrap;` +
         fieldAnchorTransform(f.align);
       return `  <span style="${style}">{{${placeholderKey}}}</span>`;

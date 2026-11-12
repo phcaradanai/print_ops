@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import { DEFAULT_BARCODE_HEIGHT_MM, DEFAULT_BARCODE_WIDTH_MM, DEFAULT_QR_SIZE_MM } from '../model/defaults.js';
+import { alignBoxes, distributeBoxes, type AlignMode, type DistributeAxis, type FieldBox, type FieldMove } from '../model/align.js';
 import { clampFontSize } from '../model/geometry.js';
 import { displayValue, toMillimeters } from '../model/units.js';
 import type { DynamicField, PaperForm } from '../model/types.js';
@@ -13,13 +14,84 @@ import type { Translate } from './types.js';
  * Figma/Canva-style contextual inspector beside the canvas: the selected
  * field's properties, or the paper's when nothing is selected.
  */
-export function PropertiesPanel({ editor, t }: { editor: PaperProfileEditor; t: Translate }) {
+export function PropertiesPanel({ editor, t, measureSelection }: {
+  editor: PaperProfileEditor;
+  t: Translate;
+  /** Rendered boxes of the selected fields; align/distribute need it. */
+  measureSelection?: () => FieldBox[];
+}) {
   const field = editor.selectedField;
+  const multi = editor.selectedFieldIds.length > 1;
   return (
     <section className="pp-props" aria-label={t('page.paperProfiles.propertiesTitle')} aria-live="polite">
-      {field ? <FieldProperties field={field} editor={editor} t={t} /> : <PaperProperties editor={editor} t={t} />}
+      {multi ? <SelectionProperties editor={editor} t={t} measureSelection={measureSelection} />
+        : field ? <FieldProperties field={field} editor={editor} t={t} /> : <PaperProperties editor={editor} t={t} />}
       <p className="pp-props__hint">{t('page.paperProfiles.canvasShortcutsHint')}</p>
     </section>
+  );
+}
+
+const ALIGN_ACTIONS: { mode: AlignMode; label: string; path: string }[] = [
+  { mode: 'left', label: 'page.paperProfiles.alignSelectionLeft', path: 'M3 2v12M6 5h8M6 11h5' },
+  { mode: 'hcenter', label: 'page.paperProfiles.alignSelectionHCenter', path: 'M8 2v12M3 5h10M5 11h6' },
+  { mode: 'right', label: 'page.paperProfiles.alignSelectionRight', path: 'M13 2v12M2 5h8M5 11h5' },
+  { mode: 'top', label: 'page.paperProfiles.alignSelectionTop', path: 'M2 3h12M5 6v8M11 6v5' },
+  { mode: 'vmiddle', label: 'page.paperProfiles.alignSelectionVMiddle', path: 'M2 8h12M5 3v10M11 5v6' },
+  { mode: 'bottom', label: 'page.paperProfiles.alignSelectionBottom', path: 'M2 13h12M5 2v8M11 5v5' },
+];
+
+const DISTRIBUTE_ACTIONS: { axis: DistributeAxis; label: string; path: string }[] = [
+  { axis: 'horizontal', label: 'page.paperProfiles.distributeHorizontal', path: 'M2 2v12M14 2v12M6 5h4v6H6z' },
+  { axis: 'vertical', label: 'page.paperProfiles.distributeVertical', path: 'M2 2h12M2 14h12M5 6h6v4H5z' },
+];
+
+/** Figma-style inspector for a multi-selection: align, distribute, delete. */
+function SelectionProperties({ editor, t, measureSelection }: {
+  editor: PaperProfileEditor;
+  t: Translate;
+  measureSelection?: () => FieldBox[];
+}) {
+  const count = editor.selectedFieldIds.length;
+  const apply = (plan: (boxes: FieldBox[]) => FieldMove[]) => {
+    const boxes = measureSelection?.() ?? [];
+    editor.moveFields(plan(boxes));
+  };
+  return (
+    <>
+      <header className="pp-props__header">
+        <strong>{t('page.paperProfiles.selectedCount').replace('{n}', String(count))}</strong>
+        <IconButton icon={<PaperProfileIcon name="copy" />} label={t('page.paperProfiles.duplicateField')}
+          onClick={() => editor.state.selectedFieldId && editor.duplicateField(editor.state.selectedFieldId)} />
+        <IconButton icon={<PaperProfileIcon name="trash" />} label={t('page.paperProfiles.remove')}
+          onClick={() => editor.deleteFields(editor.selectedFieldIds)} />
+      </header>
+      <PropRow>
+        <div className="pp-props__segmented" role="group" aria-label={t('page.paperProfiles.alignSelection')}>
+          {ALIGN_ACTIONS.map((action) => (
+            <button key={action.mode} type="button" aria-label={t(action.label)} title={t(action.label)}
+              disabled={!measureSelection} onClick={() => apply((boxes) => alignBoxes(boxes, action.mode))}>
+              <Glyph path={action.path} />
+            </button>
+          ))}
+        </div>
+        <div className="pp-props__segmented" role="group" aria-label={t('page.paperProfiles.distributeSelection')}>
+          {DISTRIBUTE_ACTIONS.map((action) => (
+            <button key={action.axis} type="button" aria-label={t(action.label)} title={t(action.label)}
+              disabled={!measureSelection || count < 3} onClick={() => apply((boxes) => distributeBoxes(boxes, action.axis))}>
+              <Glyph path={action.path} />
+            </button>
+          ))}
+        </div>
+      </PropRow>
+    </>
+  );
+}
+
+function Glyph({ path }: { path: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <path d={path} />
+    </svg>
   );
 }
 
@@ -31,6 +103,8 @@ function FieldProperties({ field, editor, t }: { field: DynamicField; editor: Pa
       <header className="pp-props__header">
         <span className="pp-field-type-badge">{field.type === 'qrcode' ? 'QR' : field.type}</span>
         <strong>{field.label || field.key || t('page.paperProfiles.untitledField')}</strong>
+        <IconButton icon={<PaperProfileIcon name="copy" />} label={t('page.paperProfiles.duplicateField')}
+          onClick={() => editor.duplicateField(field.id)} />
         <IconButton icon={<PaperProfileIcon name="trash" />} label={t('page.paperProfiles.remove')}
           onClick={() => editor.deleteField(field.id)} />
       </header>
@@ -76,6 +150,17 @@ function FieldProperties({ field, editor, t }: { field: DynamicField; editor: Pa
           <input type="color" className="ui-color-field__swatch" value={field.color}
             aria-label={t('page.paperProfiles.fieldColor')} title={t('page.paperProfiles.fieldColor')}
             onChange={(event) => update({ color: event.target.value })} />
+          {/* 0 clears the fixed width back to the text's natural width. */}
+          <Num prefix="W" label={t('page.paperProfiles.fieldDisplayWidthMm')} value={field.displayWidthMm ?? 0}
+            normalize={(v) => Math.max(0, Math.min(500, v))}
+            onChange={(v) => update({ displayWidthMm: v > 0 ? v : undefined })} />
+          <input type="color" className="ui-color-field__swatch" value={field.bgColor ?? '#ffffff'}
+            aria-label={t('page.paperProfiles.fieldBgColor')} title={t('page.paperProfiles.fieldBgColor')}
+            onChange={(event) => update({ bgColor: event.target.value })} />
+          {field.bgColor && (
+            <IconButton icon={<span aria-hidden="true">×</span>} label={t('page.paperProfiles.clearBgColor')}
+              onClick={() => update({ bgColor: undefined })} />
+          )}
         </PropRow>
       )}
     </>

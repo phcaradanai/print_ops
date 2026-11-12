@@ -23,6 +23,7 @@ export type PaperProfileIconName =
   | 'plus'
   | 'presets'
   | 'profile'
+  | 'redo'
   | 'rotate-ccw'
   | 'rotate-cw'
   | 'ruler'
@@ -30,6 +31,8 @@ export type PaperProfileIconName =
   | 'search'
   | 'spinner'
   | 'trash'
+  | 'copy'
+  | 'undo'
   | 'vertical-grid'
   | 'warning';
 
@@ -61,6 +64,9 @@ export function PaperProfileIcon({
     plus: <path d="M10 4v12M4 10h12" />,
     presets: <><rect x="4" y="4" width="12" height="13" rx="1.5" /><path d="M7 4V2.75h6V4M7 8h6M7 11h6M7 14h4" /></>,
     profile: <><path d="M5 2.75h6l4 4V17H5V2.75Z" /><path d="M11 2.75V7h4M7.5 10h5M7.5 13h5" /></>,
+    copy: <><rect x="7" y="7" width="9" height="9" rx="1.5" /><path d="M13 7V5.5A1.5 1.5 0 0 0 11.5 4h-6A1.5 1.5 0 0 0 4 5.5v6A1.5 1.5 0 0 0 5.5 13H7" /></>,
+    undo: <><path d="M4 7h8.5a4.5 4.5 0 0 1 0 9H8" /><path d="M7 4 4 7l3 3" /></>,
+    redo: <><path d="M16 7H7.5a4.5 4.5 0 0 0 0 9H12" /><path d="m13 4 3 3-3 3" /></>,
     'rotate-ccw': <><path d="M4 8.5A6.5 6.5 0 1 1 5.5 14" /><path d="M4 4v4.5h4.5" /></>,
     'rotate-cw': <><path d="M16 8.5A6.5 6.5 0 1 0 14.5 14" /><path d="M16 4v4.5h-4.5" /></>,
     ruler: <><path d="m4 15.5 11.5-11.5 2.5 2.5L6.5 18 4 15.5Z" /><path d="m8 13-1.5-1.5M10.5 10.5 9 9M13 8l-1.5-1.5" /></>,

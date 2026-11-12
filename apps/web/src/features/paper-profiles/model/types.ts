@@ -25,6 +25,8 @@ export interface DynamicField {
   fontSize: number;
   bold: boolean;
   color: string;
+  displayWidthMm?: number;
+  bgColor?: string;
   align: 'left' | 'center' | 'right';
 }
 

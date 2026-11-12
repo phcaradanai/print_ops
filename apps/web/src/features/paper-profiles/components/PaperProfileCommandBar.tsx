@@ -52,6 +52,8 @@ export function PaperProfileCommandBar({ editor, persistence, popups, t, scrollT
             </SharedIconButton>
           )}
         </div>
+        <IconButton icon={<PaperProfileIcon name="undo" />} label={t('page.paperProfiles.undo')} disabled={!editor.canUndo} onClick={editor.undo} />
+        <IconButton icon={<PaperProfileIcon name="redo" />} label={t('page.paperProfiles.redo')} disabled={!editor.canRedo} onClick={editor.redo} />
         <PresetMenu editor={editor} popups={popups} t={t} />
         <IconButton icon={<PaperProfileIcon name="chevron" className={allExpanded ? 'pp-icon--expanded' : undefined} />}
           label={allExpanded ? t('page.paperProfiles.collapseAll') : t('page.paperProfiles.expandAll')}

@@ -18,6 +18,54 @@ const field = (id: string): DynamicField => ({
 });
 
 describe('editorReducer', () => {
+  it('undoes a whole drag as one step, then redoes it', () => {
+    let state = editorReducer(createEditorState(), { type: 'ADD_FIELD', field: field('a') });
+    for (const xMm of [1, 2, 3]) state = editorReducer(state, { type: 'UPDATE_FIELD', id: 'a', patch: { xMm, yMm: 0 } });
+    state = editorReducer(state, { type: 'BREAK_HISTORY' });
+    state = editorReducer(state, { type: 'UPDATE_FIELD', id: 'a', patch: { xMm: 9, yMm: 0 } });
+
+    state = editorReducer(state, { type: 'UNDO' });
+    expect(state.ux.dynamicFields[0]!.xMm).toBe(3);
+    state = editorReducer(state, { type: 'UNDO' });
+    expect(state.ux.dynamicFields[0]!.xMm).toBe(0);
+    state = editorReducer(state, { type: 'UNDO' });
+    expect(state.ux.dynamicFields).toEqual([]);
+    expect(state.selectedFieldId).toBeNull();
+
+    state = editorReducer(state, { type: 'REDO' });
+    state = editorReducer(state, { type: 'REDO' });
+    expect(state.ux.dynamicFields[0]!.xMm).toBe(3);
+    // A new edit drops the redo branch.
+    state = editorReducer(state, { type: 'DELETE_FIELD', id: 'a' });
+    expect(state.future).toEqual([]);
+  });
+
+  it('toggles a multi-selection and deletes it as one undo step', () => {
+    let state = createEditorState();
+    for (const id of ['a', 'b', 'c']) state = editorReducer(state, { type: 'ADD_FIELD', field: field(id) });
+    state = editorReducer(state, { type: 'SELECT_FIELD', id: 'a' });
+    state = editorReducer(state, { type: 'TOGGLE_FIELD_SELECTION', id: 'c' });
+    expect(state.selectedFieldIds).toEqual(['a', 'c']);
+    expect(state.selectedFieldId).toBe('c');
+    state = editorReducer(state, { type: 'TOGGLE_FIELD_SELECTION', id: 'c' });
+    expect(state.selectedFieldIds).toEqual(['a']);
+    expect(state.selectedFieldId).toBe('a');
+
+    state = editorReducer(state, { type: 'TOGGLE_FIELD_SELECTION', id: 'b' });
+    state = editorReducer(state, { type: 'DELETE_FIELDS', ids: state.selectedFieldIds });
+    expect(state.ux.dynamicFields.map((f) => f.id)).toEqual(['c']);
+    expect(state.selectedFieldIds).toEqual([]);
+    state = editorReducer(state, { type: 'UNDO' });
+    expect(state.ux.dynamicFields.map((f) => f.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('starts a loaded profile with empty history', () => {
+    let state = editorReducer(createEditorState(), { type: 'ADD_FIELD', field: field('a') });
+    state = editorReducer(state, { type: 'RESET_EDITOR' });
+    expect(state.past).toEqual([]);
+    expect(editorReducer(state, { type: 'UNDO' })).toBe(state);
+  });
+
   it('uses the same section keys as the runtime workspace', () => {
     expect(createEditorState().sectionsOpen).toEqual({
       basicInfo: true,

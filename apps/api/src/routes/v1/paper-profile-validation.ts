@@ -180,15 +180,19 @@ function checkFields(body: Record<string, unknown>): PaperProfileIssue[] {
     : body['orientation'] === 'portrait'
       ? 'portrait'
       : widthMm > heightMm ? 'landscape' : 'portrait';
-  const geometry = getOrientedPaperGeometry({
-    widthMm,
-    heightMm,
-    marginTopMm,
-    marginRightMm,
-    marginBottomMm,
-    marginLeftMm,
-    orientation,
-  });
+  // Fields live in one printed cell when the layout repeats labels across the
+  // media (paperProfileForCell), so check them against that cell.
+  const layout = body['layout'] as Record<string, unknown> | undefined;
+  const isGrid = layout && typeof layout === 'object' && isFiniteNumber(layout['columns']) && layout['columns'] > 1
+    && isFiniteNumber(layout['cellWidthMm']) && isFiniteNumber(layout['cellHeightMm']);
+  const geometry = getOrientedPaperGeometry(isGrid
+    ? {
+      widthMm: layout['cellWidthMm'] as number,
+      heightMm: layout['cellHeightMm'] as number,
+      marginTopMm: 0, marginRightMm: 0, marginBottomMm: 0, marginLeftMm: 0,
+      orientation,
+    }
+    : { widthMm, heightMm, marginTopMm, marginRightMm, marginBottomMm, marginLeftMm, orientation });
   const transform = resolveRenderTransform({
     rotation: isFiniteNumber(body['rotation']) ? body['rotation'] : 0,
     flipHorizontal: typeof body['flipHorizontal'] === 'boolean' ? body['flipHorizontal'] : false,
@@ -208,6 +212,17 @@ function checkFields(body: Record<string, unknown>): PaperProfileIssue[] {
     const yMm = field['yMm'];
     if (!isFiniteNumber(xMm) || !isFiniteNumber(yMm)) {
       issues.push({ field: `fields.${fieldId}.position`, message: 'field position must be finite numbers' });
+      return;
+    }
+
+    // bgColor lands inside a CSS style attribute: accept only #rrggbb.
+    if (field['bgColor'] !== undefined && !(typeof field['bgColor'] === 'string' && /^#[0-9a-f]{6}$/i.test(field['bgColor']))) {
+      issues.push({ field: `fields.${fieldId}.bgColor`, message: 'bgColor must be a #rrggbb hex color' });
+      return;
+    }
+    const displayWidthMm = field['displayWidthMm'];
+    if (displayWidthMm !== undefined && !(isFiniteNumber(displayWidthMm) && displayWidthMm > 0)) {
+      issues.push({ field: `fields.${fieldId}.displayWidthMm`, message: 'displayWidthMm must be a finite number greater than zero' });
       return;
     }
 

@@ -11,7 +11,7 @@ import {
 } from '@printerops/shared';
 import type { DynamicField, PaperForm, ValidationIssue } from './types.js';
 import { DEFAULT_BARCODE_HEIGHT_MM, DEFAULT_BARCODE_WIDTH_MM, DEFAULT_QR_SIZE_MM } from './defaults.js';
-import { getVisualPaperGeometry } from './geometry.js';
+import { getDesignPaperGeometry } from './geometry.js';
 
 type PaperFormForValidation = Pick<
   PaperForm,
@@ -132,7 +132,8 @@ export function getDynamicFieldSize(field: DynamicField): { widthMm: number; hei
       heightMm: field.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM,
     };
   }
-  return estimateTextFieldSizeMm(sampleTextForField(field), field.fontSize);
+  const size = estimateTextFieldSizeMm(sampleTextForField(field), field.fontSize);
+  return field.displayWidthMm ? { ...size, widthMm: field.displayWidthMm } : size;
 }
 
 export function getDynamicFieldContentBox(field: DynamicField): FieldContentBox {
@@ -148,7 +149,7 @@ export function getDynamicFieldContentBox(field: DynamicField): FieldContentBox 
 
 /** Frame-relative bounds of the field's printed content, in millimetres. */
 export function getDynamicFieldTransformedBounds(form: PaperForm, field: DynamicField): FieldContentBounds {
-  return fieldContentBounds(getVisualPaperGeometry(form), resolveRenderTransform(form), getDynamicFieldContentBox(field));
+  return fieldContentBounds(getDesignPaperGeometry(form), resolveRenderTransform(form), getDynamicFieldContentBox(field));
 }
 
 export interface DynamicFieldLimits {
@@ -164,7 +165,7 @@ export interface DynamicFieldLimits {
 
 /** What this field can still hold at its position, rotation and font size. */
 export function getDynamicFieldLimits(form: PaperForm, field: DynamicField): DynamicFieldLimits | null {
-  const geometry = getVisualPaperGeometry(form);
+  const geometry = getDesignPaperGeometry(form);
   const transform = resolveRenderTransform(form);
   const frame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, transform);
   if (![geometry.widthMm, geometry.heightMm, frame.width, frame.height].every(Number.isFinite)) return null;
@@ -193,7 +194,7 @@ export interface DynamicFieldDiagnostics {
 }
 
 export function validateDynamicFieldDiagnostics(form: PaperForm, fields: DynamicField[]): DynamicFieldDiagnostics {
-  const geometry = getVisualPaperGeometry(form);
+  const geometry = getDesignPaperGeometry(form);
   const transform = resolveRenderTransform(form);
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
