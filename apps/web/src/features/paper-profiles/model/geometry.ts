@@ -3,8 +3,6 @@ import {
   mapPrintablePointToVisual as mapPrintablePointToVisualShared,
   mapVisualPointToPrintable as mapVisualPointToPrintableShared,
   type PaperGeometry,
-  resolveRenderTransform,
-  resolveRenderTransformFrame,
 } from '@printerops/shared';
 import type { PaperForm } from './types.js';
 
@@ -21,17 +19,6 @@ export function getVisualPaperGeometry(
   >,
 ): PaperGeometry {
   return getOrientedPaperGeometry(form);
-}
-
-export function getVisualPaperTransformFrame(
-  form: Pick<PaperForm, 'widthMm' | 'heightMm' | 'marginTopMm' | 'marginRightMm' | 'marginBottomMm' | 'marginLeftMm' | 'orientation' | 'rotation' | 'flipHorizontal' | 'flipVertical'>,
-) {
-  const geometry = getVisualPaperGeometry(form);
-  return resolveRenderTransformFrame(
-    geometry.widthMm,
-    geometry.heightMm,
-    resolveRenderTransform(form),
-  );
 }
 
 export function mapPrintablePointToVisual(

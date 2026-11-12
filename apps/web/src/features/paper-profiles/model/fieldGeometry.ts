@@ -1,5 +1,7 @@
 import type { PaperGeometry } from '@printerops/shared';
-import { mapPrintablePointToVisual, mapVisualPointToPrintable } from './geometry.js';
+import { DEFAULT_BARCODE_HEIGHT_MM, DEFAULT_BARCODE_WIDTH_MM, DEFAULT_QR_SIZE_MM } from './defaults.js';
+import { clampFontSize, mapPrintablePointToVisual, mapVisualPointToPrintable } from './geometry.js';
+import type { DynamicField } from './types.js';
 
 export function resolveSelectionAfterDelete(
   fields: { id: string }[],
@@ -39,4 +41,38 @@ export function anchorTransformOrigin(align: 'left' | 'center' | 'right'): strin
   if (align === 'center') return 'center center';
   if (align === 'right') return 'right center';
   return 'left center';
+}
+
+/**
+ * Which side of a field the resize handle sits on, and how a horizontal drag
+ * changes the width: a left-anchored box grows by the drag, a centered one by
+ * twice it (both sides move), a right-anchored one grows leftwards.
+ */
+export const RESIZE_HANDLE_WIDTH_FACTOR = { left: 1, center: 2, right: -1 } as const;
+
+const clampMm = (value: number, max: number) => Math.round(Math.max(4, Math.min(max, value)) * 10) / 10;
+
+/**
+ * The patch a corner-handle drag of (dxMm, dyMm) applies to `start`, the field
+ * as it was when the drag began. Barcodes resize freely, QR codes stay
+ * square, and text scales its font size with the box height, as in Canva.
+ */
+export function resizeFieldPatch(
+  start: DynamicField,
+  dxMm: number,
+  dyMm: number,
+  startHeightMm: number,
+): Partial<DynamicField> {
+  const dwMm = dxMm * RESIZE_HANDLE_WIDTH_FACTOR[start.align];
+  if (start.type === 'barcode') {
+    return {
+      barcodeWidthMm: clampMm((start.barcodeWidthMm ?? DEFAULT_BARCODE_WIDTH_MM) + dwMm, 100),
+      barcodeHeightMm: clampMm((start.barcodeHeightMm ?? DEFAULT_BARCODE_HEIGHT_MM) + dyMm, 60),
+    };
+  }
+  if (start.type === 'qrcode') {
+    return { qrSizeMm: clampMm((start.qrSizeMm ?? DEFAULT_QR_SIZE_MM) + Math.max(dwMm, dyMm), 100) };
+  }
+  if (startHeightMm <= 0) return {};
+  return { fontSize: clampFontSize(start.fontSize * (startHeightMm + dyMm) / startHeightMm) };
 }

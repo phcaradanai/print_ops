@@ -1,6 +1,6 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { qrQuietZoneMm, renderBarcodeSvg } from '../../../lib/barcode.js';
-import { PRINT_FONT_FAMILY, PRINT_LINE_HEIGHT, inverseTransformVector, renderTransformCss, resolveRenderTransform, resolveRenderTransformFrame } from '@printerops/shared';
+import { PRINT_FONT_FAMILY, PRINT_LINE_HEIGHT } from '@printerops/shared';
 import { useLocale } from '../../../i18n/index.js';
 import { anchorTransform, anchorTransformOrigin } from '../model/fieldGeometry.js';
 import { fontPointSizeToPreviewPixels, getVisualPaperGeometry, mapPrintablePointToVisual } from '../model/geometry.js';
@@ -31,8 +31,9 @@ export function RulerSheet({
 }) {
   if (!showRulers) return <>{children}</>;
 
-  const geometry = getVisualPaperGeometry(form);
-  const frame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, resolveRenderTransform(form));
+  // The design view is always upright; rotation/flip apply only at print time.
+  const { widthMm, heightMm } = getVisualPaperGeometry(form);
+  const frame = { width: widthMm, height: heightMm };
   const pvW = frame.width * scale;
   const pvH = frame.height * scale;
   const rulerThickness = 24;
@@ -353,6 +354,7 @@ export function PaperCanvas({
   onFieldPointerDown,
   onFieldSelect,
   onFieldNudge,
+  onFieldResizePointerDown,
   showVerticalGrid = false,
   showHorizontalGrid = false,
   showAlignmentGuides = false,
@@ -369,6 +371,7 @@ export function PaperCanvas({
   onFieldPointerDown?: (event: ReactPointerEvent<HTMLButtonElement>, id: string) => void;
   onFieldSelect?: (id: string) => void;
   onFieldNudge?: (id: string, deltaVisualXmm: number, deltaVisualYmm: number) => void;
+  onFieldResizePointerDown?: (event: ReactPointerEvent<HTMLElement>, id: string) => void;
   showVerticalGrid?: boolean;
   showHorizontalGrid?: boolean;
   showAlignmentGuides?: boolean;
@@ -378,15 +381,11 @@ export function PaperCanvas({
   showDimensions?: boolean;
 }) {
   const { t } = useLocale();
-  const renderTransform = resolveRenderTransform(form);
+  // Like Figma/Canva the design stays upright: the profile's rotation/flip
+  // describe how the paper sits in the printer and are applied only at print.
   const geometry = getVisualPaperGeometry(form);
-  const transformFrame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, renderTransform);
-  const pvW = transformFrame.width * scale;
-  const pvH = transformFrame.height * scale;
-  const sourcePvW = geometry.widthMm * scale;
-  const sourcePvH = geometry.heightMm * scale;
-  const transformOffsetX = transformFrame.offsetX * scale;
-  const transformOffsetY = transformFrame.offsetY * scale;
+  const pvW = geometry.widthMm * scale;
+  const pvH = geometry.heightMm * scale;
   const pvMT = geometry.marginTopMm * scale;
   const pvMR = geometry.marginRightMm * scale;
   const pvMB = geometry.marginBottomMm * scale;
@@ -430,19 +429,6 @@ export function PaperCanvas({
         overflow: 'hidden',
       }}
     >
-      <div
-        data-printops-transform-layer="true"
-        style={{
-          position: 'absolute',
-          left: transformOffsetX,
-          top: transformOffsetY,
-          width: sourcePvW,
-          height: sourcePvH,
-          overflow: 'visible',
-          transformOrigin: '50% 50%',
-          transform: renderTransformCss(renderTransform),
-        }}
-      >
       {ux.watermarkText && (
         <div style={{
           position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
@@ -517,8 +503,7 @@ export function PaperCanvas({
                       : null;
               if (!delta) return;
               event.preventDefault();
-              const sourceDelta = inverseTransformVector(delta[0], delta[1], renderTransform);
-              onFieldNudge(f.id, sourceDelta.x, sourceDelta.y);
+              onFieldNudge(f.id, delta[0], delta[1]);
             } : undefined}
             className="pp-canvas-field"
             style={{
@@ -546,6 +531,12 @@ export function PaperCanvas({
             }}
           >
             <FieldPreviewContent field={f} scale={scale} />
+            {/* Pointer-only resize grip; keyboard users resize from the Properties panel. */}
+            {onFieldResizePointerDown && selectedFieldId === f.id && (
+              <span aria-hidden="true" className={`pp-resize-handle pp-resize-handle--${resizeHandleSide(f)}`}
+                onPointerDown={(event) => onFieldResizePointerDown(event, f.id)}
+                onClick={(event) => event.stopPropagation()} />
+            )}
           </button>
             );
           })()
@@ -598,9 +589,20 @@ export function PaperCanvas({
           pointerEvents: 'none', zIndex: 1,
         }} />
       ))}
-      </div>
     </div>
   );
+}
+
+/**
+ * Barcodes/QR take width from a horizontal drag, so their grip sits on the
+ * free side of the anchor. Text only scales with vertical drag, so its grip
+ * sits at the anchor, which is always on the paper even when long text is
+ * clipped past the edge.
+ */
+function resizeHandleSide(field: DynamicField): 'left' | 'right' {
+  const isText = field.type !== 'barcode' && field.type !== 'qrcode';
+  if (isText) return field.align === 'right' ? 'right' : 'left';
+  return field.align === 'right' ? 'left' : 'right';
 }
 
 // ── Main Page ──────────────────────────────────────────────────────

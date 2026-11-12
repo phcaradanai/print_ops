@@ -2,11 +2,11 @@ import type { RefObject } from 'react';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { useCanvasInteraction } from '../hooks/useCanvasInteraction.js';
-import { actualSizePercent, CSS_PX_PER_MM, getVisualPaperGeometry, getVisualPaperTransformFrame } from '../model/geometry.js';
+import { actualSizePercent, CSS_PX_PER_MM, getVisualPaperGeometry } from '../model/geometry.js';
 import { displayValue, toPixels } from '../model/units.js';
 import { CanvasToolbar, type CanvasOptions } from './CanvasToolbar.js';
 import { PaperCanvas, RulerSheet } from './PaperCanvas.js';
-import { SelectionStatus } from './SelectionStatus.js';
+import { PropertiesPanel } from './PropertiesPanel.js';
 import type { Translate } from './types.js';
 
 export function PreviewPanel({ editor, popups, interaction, options, setOptions, sheetRef, artwork, t }: {
@@ -21,11 +21,10 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
 }) {
   const { form, ux } = editor;
   const geometry = getVisualPaperGeometry(form);
-  const transformFrame = getVisualPaperTransformFrame(form);
   // Fit within the panel's ~560px box, but never scale past true physical
   // size — see CSS_PX_PER_MM for why an uncapped auto-fit isn't safe to use
   // as a print-size reference.
-  const scale = Math.min(560 / transformFrame.width, 560 / transformFrame.height, CSS_PX_PER_MM);
+  const scale = Math.min(560 / geometry.widthMm, 560 / geometry.heightMm, CSS_PX_PER_MM);
   // Not a PageLayout `detail` region: this canvas is the surface the operator
   // edits against (drag, nudge, select a field), so it is half of the primary
   // task rather than supporting evidence. Kept as a plain div — a page's only
@@ -38,11 +37,22 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
           <div><span className="pp-preview-header__title">{t('page.paperProfiles.labelCanvas')}</span>
             <span className="pp-preview-header__subtitle">{t('page.paperProfiles.canvasDragHint')}</span></div>
           <span className="pp-preview-header__size">
-            {displayValue(transformFrame.width, ux.displayUnit, form.dpi)} × {displayValue(transformFrame.height, ux.displayUnit, form.dpi)} {ux.displayUnit}
+            {displayValue(geometry.widthMm, ux.displayUnit, form.dpi)} × {displayValue(geometry.heightMm, ux.displayUnit, form.dpi)} {ux.displayUnit}
           </span>
         </div>
-        <CanvasToolbar options={options} setOptions={setOptions} onExpand={popups.openFullPreview} t={t} />
-        <div className="pp-preview-stage">
+        <CanvasToolbar editor={editor} options={options} setOptions={setOptions} onExpand={popups.openFullPreview} t={t} />
+        <div className="pp-preview-stage"
+          // Figma/Canva canvas habits: click empty space to deselect, Esc to
+          // deselect, Delete/Backspace removes the focused field.
+          onPointerDown={(event) => {
+            if (!(event.target as HTMLElement).closest('.pp-canvas-field')) editor.selectField(null);
+          }}
+          onKeyDown={(event) => {
+            const id = editor.state.selectedFieldId;
+            if (!id || !(event.target as HTMLElement).closest('.pp-canvas-field')) return;
+            if (event.key === 'Escape') { editor.selectField(null); (event.target as HTMLElement).blur(); }
+            if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); editor.deleteField(id); }
+          }}>
           <div className="pp-preview-stage__meta">
             <span>{t('page.paperProfiles.previewCanvas')}</span>
             <span>{form.orientation === 'portrait' ? t('page.paperProfiles.portrait') : t('page.paperProfiles.landscape')}</span>
@@ -52,6 +62,7 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
             <PaperCanvas form={form} ux={ux} scale={scale} sheetRef={sheetRef}
               selectedFieldId={editor.state.selectedFieldId}
               onFieldPointerDown={(event, id) => interaction.startDrag(event, id, sheetRef.current, scale)}
+              onFieldResizePointerDown={(event, id) => interaction.startResize(event, id, scale)}
               onFieldSelect={(id) => {
                 editor.selectField(id);
                 document.getElementById(`paper-field-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -71,7 +82,7 @@ export function PreviewPanel({ editor, popups, interaction, options, setOptions,
           <span>{t('page.paperProfiles.quickScale')}: {scale.toFixed(2)}x ({actualSizePercent(scale)}% {t('page.paperProfiles.actualSize')})</span>
           <span>{t('page.paperProfiles.quickFields')}: {ux.dynamicFields.length}</span>
         </div>
-        <SelectionStatus field={editor.selectedField} t={t} />
+        <PropertiesPanel editor={editor} t={t} />
       </div>
     </div>
   );

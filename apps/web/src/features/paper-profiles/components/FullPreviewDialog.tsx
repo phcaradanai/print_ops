@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PaperProfileEditor } from '../hooks/usePaperProfileEditor.js';
 import type { PaperProfilePopups } from '../hooks/usePaperProfilePopups.js';
 import type { useCanvasInteraction } from '../hooks/useCanvasInteraction.js';
-import { actualSizePercent, clampGridSpacing, CSS_PX_PER_MM, getVisualPaperTransformFrame, stepPreviewZoom } from '../model/geometry.js';
+import { actualSizePercent, clampGridSpacing, CSS_PX_PER_MM, getVisualPaperGeometry, stepPreviewZoom } from '../model/geometry.js';
 import { displayValue } from '../model/units.js';
 import { getFieldInspectorState } from '../state/selectors.js';
 import { type CanvasOptions } from './CanvasToolbar.js';
@@ -27,7 +27,7 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const stageRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
-  const transformFrame = getVisualPaperTransformFrame(editor.form);
+  const paper = getVisualPaperGeometry(editor.form);
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
@@ -42,9 +42,9 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
   // for close inspection.
   const fitScale = useMemo(() => Math.max(0.5, Math.min(
     CSS_PX_PER_MM,
-    Math.max(1, stageSize.width - 48) / transformFrame.width,
-    Math.max(1, stageSize.height - 48) / transformFrame.height,
-  )), [stageSize, transformFrame.height, transformFrame.width]);
+    Math.max(1, stageSize.width - 48) / paper.widthMm,
+    Math.max(1, stageSize.height - 48) / paper.heightMm,
+  )), [stageSize, paper.heightMm, paper.widthMm]);
   const scale = Math.max(0.25, Math.min(20, fitScale * zoom));
   const inspector = getFieldInspectorState(editor.ux.dynamicFields.length, Boolean(editor.selectedField));
   return (
@@ -87,7 +87,7 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
           <section className="paper-preview-modal__canvas" aria-label={t('page.paperProfiles.previewCanvas')}>
             <div className="paper-preview-modal__canvas-label">
               <span>{t('page.paperProfiles.previewCanvas')}</span>
-              <span>{displayValue(transformFrame.width, editor.ux.displayUnit, editor.form.dpi)} × {displayValue(transformFrame.height, editor.ux.displayUnit, editor.form.dpi)} {editor.ux.displayUnit} · {editor.form.dpi} DPI</span>
+              <span>{displayValue(paper.widthMm, editor.ux.displayUnit, editor.form.dpi)} × {displayValue(paper.heightMm, editor.ux.displayUnit, editor.form.dpi)} {editor.ux.displayUnit} · {editor.form.dpi} DPI</span>
             </div>
             <div ref={stageRef} className="paper-preview-modal__sheet-stage"
               onWheel={(event) => {
@@ -100,6 +100,7 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
                   <PaperCanvas form={editor.form} ux={editor.ux} scale={scale} sheetRef={sheetRef}
                     selectedFieldId={editor.state.selectedFieldId}
                     onFieldPointerDown={(event, id) => interaction.startDrag(event, id, sheetRef.current, scale)}
+              onFieldResizePointerDown={(event, id) => interaction.startResize(event, id, scale)}
                     onFieldSelect={editor.selectField} onFieldNudge={editor.nudgeField}
                     showVerticalGrid={options.verticalGrid} showHorizontalGrid={options.horizontalGrid}
                     showAlignmentGuides={options.alignmentGuides} showDimensions={options.dimensions}

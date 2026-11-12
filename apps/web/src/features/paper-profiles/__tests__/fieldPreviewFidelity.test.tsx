@@ -62,11 +62,11 @@ const UX: PaperProfileUx = {
  * matters: the padding this suite is about is applied only when the field is
  * draggable, so a read-only render would quietly pass and prove nothing.
  */
-function renderCanvas(scale: number): string {
+function renderCanvas(scale: number, form: PaperForm = FORM): string {
   return renderToStaticMarkup(
     <LocaleProvider>
       <PaperCanvas
-        form={FORM}
+        form={form}
         ux={UX}
         scale={scale}
         sheetRef={{ current: null }}
@@ -130,5 +130,13 @@ describe('field preview fidelity against the printed output', () => {
       fontPointSizeToPreviewPixels(FIELD.fontSize, CSS_PX_PER_MM),
       3,
     );
+  });
+
+  it.each([90, 180, 270])('keeps the design upright when the paper is rotated %d° for print', (rotation) => {
+    // Rotation/flip describe how the paper sits in the printer; the operator
+    // still edits the label the right way up, like Figma/Canva.
+    const rotated = renderCanvas(CSS_PX_PER_MM, { ...FORM, rotation, flipHorizontal: true });
+    expect(rotated).not.toContain('rotate(');
+    expect(fieldStyle(rotated)).toBe(fieldStyle(renderCanvas(CSS_PX_PER_MM)));
   });
 });

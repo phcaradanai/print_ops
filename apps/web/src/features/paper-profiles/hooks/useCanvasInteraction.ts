@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { getVisualPaperGeometry, mapPrintablePointToVisual, mapVisualPointToPrintable } from '../model/geometry.js';
-import { inverseTransformPoint, resolveRenderTransform, resolveRenderTransformFrame, transformPoint } from '@printerops/shared';
+import { resizeFieldPatch } from '../model/fieldGeometry.js';
+import type { DynamicField } from '../model/types.js';
 import type { PaperProfileEditor } from './usePaperProfileEditor.js';
 
 const SNAP_THRESHOLD_MM = 2;
@@ -45,19 +46,9 @@ export function useCanvasInteraction(editor: PaperProfileEditor) {
       if (!sheet) return;
       const rect = sheet.getBoundingClientRect();
       const geometry = getVisualPaperGeometry(form);
-      const transform = resolveRenderTransform(form);
-      const transformFrame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, transform);
-      const pointerPageX = (event.clientX - rect.left) / activeScaleRef.current - dragOffsetRef.current.xMm;
-      const pointerPageY = (event.clientY - rect.top) / activeScaleRef.current - dragOffsetRef.current.yMm;
-      const contentPoint = inverseTransformPoint(
-        pointerPageX - transformFrame.offsetX,
-        pointerPageY - transformFrame.offsetY,
-        geometry.widthMm,
-        geometry.heightMm,
-        transform,
-      );
-      const pointerX = contentPoint.x - geometry.marginLeftMm;
-      const pointerY = contentPoint.y - geometry.marginTopMm;
+      // The design canvas is upright (no print transform), so screen = paper.
+      const pointerX = (event.clientX - rect.left) / activeScaleRef.current - dragOffsetRef.current.xMm - geometry.marginLeftMm;
+      const pointerY = (event.clientY - rect.top) / activeScaleRef.current - dragOffsetRef.current.yMm - geometry.marginTopMm;
       const visualX = Math.max(0, Math.min(
         geometry.printableWidthMm,
         pointerX,
@@ -101,19 +92,10 @@ export function useCanvasInteraction(editor: PaperProfileEditor) {
     if (sheet && field) {
       const geometry = getVisualPaperGeometry(form);
       const rect = sheet.getBoundingClientRect();
-      const transform = resolveRenderTransform(form);
-      const transformFrame = resolveRenderTransformFrame(geometry.widthMm, geometry.heightMm, transform);
       const point = mapPrintablePointToVisual(field.xMm, field.yMm, geometry);
-      const transformedPoint = transformPoint(
-        geometry.marginLeftMm + point.xMm,
-        geometry.marginTopMm + point.yMm,
-        geometry.widthMm,
-        geometry.heightMm,
-        transform,
-      );
       dragOffsetRef.current = {
-        xMm: (event.clientX - rect.left) / scale - (transformedPoint.x + transformFrame.offsetX),
-        yMm: (event.clientY - rect.top) / scale - (transformedPoint.y + transformFrame.offsetY),
+        xMm: (event.clientX - rect.left) / scale - (geometry.marginLeftMm + point.xMm),
+        yMm: (event.clientY - rect.top) / scale - (geometry.marginTopMm + point.yMm),
       };
     }
     activeSheetRef.current = sheet;
@@ -122,7 +104,36 @@ export function useCanvasInteraction(editor: PaperProfileEditor) {
     setDraggingFieldId(id);
   }, []);
 
-  return { draggingFieldId, startDrag, endDrag };
+  const [resizingFieldId, setResizingFieldId] = useState<string | null>(null);
+  const resizeStartRef = useRef<{ field: DynamicField; clientX: number; clientY: number; scale: number; heightMm: number } | null>(null);
+
+  useEffect(() => {
+    if (!resizingFieldId) return;
+    const onPointerMove = (event: PointerEvent) => {
+      const start = resizeStartRef.current;
+      if (!start) return;
+      updateFieldRef.current(resizingFieldId, resizeFieldPatch(
+        start.field,
+        (event.clientX - start.clientX) / start.scale,
+        (event.clientY - start.clientY) / start.scale,
+        start.heightMm,
+      ));
+    };
+    return registerPointerDragListeners(document, onPointerMove, () => setResizingFieldId(null));
+  }, [resizingFieldId]);
+
+  /** Corner-handle resize; the handle sits inside the field's button. */
+  const startResize = useCallback((event: ReactPointerEvent<HTMLElement>, id: string, scale: number) => {
+    event.stopPropagation();
+    event.preventDefault();
+    const field = stateRef.current.ux.dynamicFields.find((candidate) => candidate.id === id);
+    const box = event.currentTarget.closest('.pp-canvas-field')?.getBoundingClientRect();
+    if (!field || !box) return;
+    resizeStartRef.current = { field, clientX: event.clientX, clientY: event.clientY, scale, heightMm: box.height / scale };
+    setResizingFieldId(id);
+  }, []);
+
+  return { draggingFieldId, startDrag, endDrag, resizingFieldId, startResize };
 }
 
 export { SNAP_THRESHOLD_MM };

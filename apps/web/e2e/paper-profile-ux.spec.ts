@@ -363,6 +363,41 @@ test.describe('paper profile controls', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
   });
 
+  test('canvas properties follow the selection and rotation keeps the design upright', async ({ page }) => {
+    await openEditor(page);
+    await editMixedProfile(page);
+    const props = page.locator('.pp-props');
+    await expect(props).toContainText('Paper');
+
+    // Fixture fields overlap; the last one renders on top.
+    const firstField = page.locator('.pp-canvas-field').last();
+    await firstField.click();
+    await expect(props).not.toContainText('Paper');
+    await expect(props.getByRole('button', { name: 'Bold' })).toBeVisible();
+
+    await page.getByRole('button', { name: /Rotate paper 90° right/ }).click();
+    await expect(page.locator('.pp-feed-preview')).toContainText('90°');
+    await expect(page.locator('[data-printops-transform-layer]')).toHaveCount(0);
+    await page.screenshot({ path: process.env.PP_SCREENSHOT ?? 'test-results/pp-properties.png' });
+
+    // Drag the corner grip: the selected field's size in Properties must grow.
+    const sizeInput = props.locator('input[type="number"]').nth(2);
+    const before = Number(await sizeInput.inputValue());
+    const grip = firstField.locator('.pp-resize-handle');
+    const gripBox = await grip.boundingBox();
+    expect(gripBox).not.toBeNull();
+    await page.mouse.move(gripBox!.x + 5, gripBox!.y + 5);
+    await page.mouse.down();
+    await page.mouse.move(gripBox!.x + 5, gripBox!.y + 45, { steps: 5 });
+    await page.mouse.up();
+    await expect.poll(async () => Number(await sizeInput.inputValue())).toBeGreaterThan(before);
+    await page.screenshot({ path: (process.env.PP_SCREENSHOT ?? 'test-results/pp-properties.png').replace('.png', '-resized.png') });
+
+    await firstField.focus();
+    await page.keyboard.press('Escape');
+    await expect(props).toContainText('Paper');
+  });
+
   test('every select has a readable, opaque closed control', async ({ page }) => {
     await openEditor(page);
     await editMixedProfile(page);
