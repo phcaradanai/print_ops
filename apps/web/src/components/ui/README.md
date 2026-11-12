@@ -62,6 +62,7 @@ Two different things, deliberately kept apart:
 6. Keep EN/TH copy in translations. Components accept content; they do not hard-code operator-facing language.
 7. Preserve explicit operational consequences. Shared composition must never combine proof generation with physical printing or weaken disabled safety states.
 8. Binary state must have a visible icon, shape, and localized label; never rely on color or text alone.
+9. Control height comes from the `size`/`controlSize` variant and the `--control-height-*` tokens only. Controls in one row share a size; never patch a height or padding from a page stylesheet. `e2e/control-dimensions.spec.ts` enforces this across routes.
 
 ## Adding a component
 

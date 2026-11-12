@@ -94,10 +94,10 @@
 .ui-tab__count { min-width: 1.4rem; padding: 0.12rem 0.38rem; border-radius: var(--rounded-pill); background: var(--neutral-subtle); text-align: center; }
 
 .ui-icon-button { display: inline-grid; flex: 0 0 auto; place-items: center; padding: 0; border: 1px solid var(--neutral-border-strong); border-radius: var(--rounded-md); background: var(--neutral-surface); color: var(--neutral-text); cursor: pointer; font-family: var(--font-body-family); font-weight: 600; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease; user-select: none; }
-.ui-icon-button--sm { width: 32px; height: 32px; font-size: 0.85rem; }
-.ui-icon-button--md { width: 38px; height: 38px; font-size: 0.95rem; }
-.ui-icon-button--lg { width: 44px; height: 44px; font-size: 1.1rem; }
-.ui-icon-button--primary { min-width: 44px; min-height: 44px; border-color: var(--primary); background: var(--primary); color: var(--neutral-surface); }
+.ui-icon-button--sm { width: var(--control-height-compact); height: var(--control-height-compact); font-size: 0.85rem; }
+.ui-icon-button--md { width: var(--control-height-standard); height: var(--control-height-standard); font-size: 0.95rem; }
+.ui-icon-button--lg { width: var(--control-height-touch); height: var(--control-height-touch); font-size: 1.1rem; }
+.ui-icon-button--primary { border-color: var(--primary); background: var(--primary); color: var(--neutral-surface); }
 /* A row-level danger trigger only opens a confirmation, so it is outlined;
    the filled rose is reserved for the final consequential button. */
 .ui-icon-button--danger { color: var(--status-failed); }

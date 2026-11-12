@@ -230,6 +230,11 @@
     width: 100%;
   }
 
+  /* Stacked in a column, the row-layout flex-basis would become the select's height. */
+  .webhook-workspace-page .webhook-pagination-controls .ui-select {
+    flex: 0 0 auto;
+  }
+
   .webhook-workspace-page .webhook-editor-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

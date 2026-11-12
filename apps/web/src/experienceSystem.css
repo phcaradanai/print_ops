@@ -526,8 +526,6 @@ body {
   border-color: var(--primary);
   background: var(--primary);
   box-shadow: none;
-  min-height: 44px;
-  min-width: 44px;
 }
 
 .ui-button--primary:hover:not(:disabled) {
@@ -874,8 +872,9 @@ body {
   .ui-chip,
   .nav-link,
   .nav-admin-toggle,
-  .session-signout-btn {
-    min-height: 44px;
+  .session-signout-btn,
+  .ui-input-group {
+    min-height: var(--control-height-touch);
   }
 
   .ui-check > input {

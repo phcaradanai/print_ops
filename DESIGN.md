@@ -116,7 +116,7 @@ components:
     typography: "{typography.action}"
     rounded: "{rounded.md}"
     padding: "0.48rem 1.15rem"
-    height: "44px"
+    height: "38px"
   button-primary-hover:
     backgroundColor: "{colors.primary-hover}"
     textColor: "{colors.neutral-surface}"
@@ -466,7 +466,17 @@ Never remove focus without replacing it. The skip link is the first focusable el
 
 ### Buttons
 
-- **Sizes:** 32px compact, 38px default and 44px large for secondary controls. Primary actions are at least 44×44px at every width; all controls retain the 44px touch floor below 1024px and on coarse pointers.
+- **Sizes:** Size is set by the size variant, never by the color variant: `sm` = `--control-height-compact` (34px), `md` = `--control-height-standard` (38px), `lg` = `--control-height-touch` (44px). A primary button sits at the same height as the secondary buttons, inputs and selects beside it. Every control keeps the 44px touch floor below 1024px and on coarse pointers.
+
+### Control dimensions
+
+Buttons, icon buttons, inputs, selects and search groups share three height tokens defined in `styles.css`: `--control-height-compact` (34px), `--control-height-standard` (38px), `--control-height-touch` (44px).
+
+- Controls that share a row use the same size variant. `apps/web/e2e/control-dimensions.spec.ts` fails when controls in one flex row differ in height, when a desktop field is off 34/38px, or when a mobile field is under 16px text or off the 44px touch height.
+- Field text is `--font-body-size`; vertical padding stays under the token so `min-height` alone sets the outer height. Below 1024px fields use 16px text so iOS does not zoom on focus.
+- `.ui-input-group` draws the border, so its inner input gives back 2px and the group matches a bare field.
+- Never set a height or padding on a control from a page stylesheet or by tag (`.ui-field input`). Pick a size variant instead.
+- Intentional exceptions: filter chips are 34px pills next to 38px fields; multi-row listboxes and textareas grow with their content; tab and segmented items follow their own component.
 - **Primary:** Flat Action Blue with white text. Hover deepens the blue without adding elevation; danger actions follow the same flat hover rule.
 - **Secondary:** White surface, strong neutral border, and body text color; hover fills with Warm Subtle Gray.
 - **Danger:** Consequence Rose fill with white text for destructive or physically consequential confirmation.

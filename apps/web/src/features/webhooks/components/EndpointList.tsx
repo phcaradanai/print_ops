@@ -141,13 +141,13 @@ export function EndpointList({
         ariaLabel={t('page.webhooks.resourceToolbar')}
         actions={
           <Inline gap="sm" className="webhook-toolbar-actions">
-            <Button variant="secondary" size="sm" onClick={onImportRequested}>
+            <Button variant="secondary" onClick={onImportRequested}>
               <TransferIcon action="import" /> {t('page.webhooks.import')}
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => void exportEndpoints('all')}>
+            <Button variant="secondary" onClick={() => void exportEndpoints('all')}>
               <TransferIcon action="export" /> {t('page.webhooks.exportAll')}
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => void exportEndpoints('filtered')}>
+            <Button variant="secondary" onClick={() => void exportEndpoints('filtered')}>
               <TransferIcon action="export" /> {t('page.webhooks.exportFiltered')}
             </Button>
           </Inline>

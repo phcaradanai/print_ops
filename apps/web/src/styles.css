@@ -43,6 +43,7 @@
   --state-info-text: #3730a3;
   --control-height-compact: 34px;
   --control-height-standard: 38px;
+  --control-height-touch: 44px;
 
   /* Device / service condition. Distinct from job status (statusColors.ts),
      which must render the server's literal string. Three pages each carried
@@ -4130,21 +4131,21 @@ td > .state-panel--empty {
 }
 
 .ui-button--md {
-  min-height: 38px;
+  min-height: var(--control-height-standard);
   padding: 0.48rem 1.15rem;
   font-size: var(--font-action-size);
   line-height: 1.4;
 }
 
 .ui-button--sm {
-  min-height: 32px;
+  min-height: var(--control-height-compact);
   padding: 0.32rem 0.8rem;
   font-size: var(--font-label-size);
   line-height: 1.4;
 }
 
 .ui-button--lg {
-  min-height: 44px;
+  min-height: var(--control-height-touch);
   padding: 0.65rem 1.45rem;
   font-size: var(--font-body-size);
   line-height: 1.4;
@@ -4464,9 +4465,9 @@ td > .state-panel--empty {
   font-weight: 500;
 }
 
-.ui-field input,
-.ui-field textarea,
-.ui-field select {
+.ui-field input:not(:where(.ui-input, .ui-select, .ui-textarea)),
+.ui-field textarea:not(:where(.ui-input, .ui-select, .ui-textarea)),
+.ui-field select:not(:where(.ui-input, .ui-select, .ui-textarea)) {
   box-sizing: border-box;
   width: 100%;
   border: 1.5px solid var(--neutral-border);
@@ -4478,17 +4479,17 @@ td > .state-panel--empty {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.ui-field input:focus,
-.ui-field textarea:focus,
-.ui-field select:focus {
+.ui-field input:not(:where(.ui-input, .ui-select, .ui-textarea)):focus,
+.ui-field textarea:not(:where(.ui-input, .ui-select, .ui-textarea)):focus,
+.ui-field select:not(:where(.ui-input, .ui-select, .ui-textarea)):focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
-.ui-field--invalid input,
-.ui-field--invalid textarea,
-.ui-field--invalid select {
+.ui-field--invalid input:not(:where(.ui-input, .ui-select, .ui-textarea)),
+.ui-field--invalid textarea:not(:where(.ui-input, .ui-select, .ui-textarea)),
+.ui-field--invalid select:not(:where(.ui-input, .ui-select, .ui-textarea)) {
   border-color: var(--danger-action);
   box-shadow: 0 0 0 3px rgba(159, 18, 57, 0.12);
 }

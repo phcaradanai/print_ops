@@ -109,9 +109,10 @@
   color: var(--neutral-surface);
 }
 
-.ops-page input:not([type='checkbox']):not([type='radio']),
-.ops-page select,
-.ops-page textarea {
+/* Raw controls only: shared components own their border states. :where() keeps the original specificity so component rules (e.g. the editor canvas) still win. */
+.ops-page input:not([type='checkbox']):not([type='radio']):not(:where(.ui-input, .ui-select, .ui-textarea)),
+.ops-page select:not(:where(.ui-input, .ui-select, .ui-textarea)),
+.ops-page textarea:not(:where(.ui-input, .ui-select, .ui-textarea)) {
   border-color: var(--neutral-border-strong);
   border-radius: var(--rounded-md);
   background: var(--neutral-surface);

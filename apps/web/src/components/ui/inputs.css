@@ -20,16 +20,18 @@
   background: var(--neutral-surface);
   color: var(--neutral-text);
   font: inherit;
+  font-size: var(--font-body-size);
   line-height: var(--font-body-line-height);
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 
+/* Vertical padding stays below the token so min-height alone sets the outer height. */
 .ui-input--md,
 .ui-select--md,
-.ui-textarea--md { min-height: var(--control-height-standard); padding: 0.5rem 0.7rem; }
+.ui-textarea--md { min-height: var(--control-height-standard); padding: 0.45rem 0.7rem; }
 .ui-input--sm,
 .ui-select--sm,
-.ui-textarea--sm { min-height: var(--control-height-compact); padding: 0.38rem 0.6rem; }
+.ui-textarea--sm { min-height: var(--control-height-compact); padding: 0.3rem 0.6rem; }
 .ui-textarea { min-height: 7rem; }
 .ui-textarea--mono { font-family: var(--font-mono-family); font-size: var(--font-mono-size); line-height: var(--font-mono-line-height); tab-size: 2; }
 .ui-textarea[data-resize='none'] { resize: none; }
@@ -54,7 +56,10 @@
 
 .ui-input--invalid,
 .ui-select--invalid,
-.ui-textarea--invalid { border-color: var(--state-danger-text); }
+.ui-textarea--invalid,
+.ui-input[aria-invalid="true"],
+.ui-select[aria-invalid="true"],
+.ui-textarea[aria-invalid="true"] { border-color: var(--state-danger-text); }
 
 .ui-input-group {
   position: relative;
@@ -70,6 +75,9 @@
 .ui-input-group:focus-within { border-color: var(--primary); outline: 2px solid color-mix(in srgb, var(--primary) 20%, transparent); outline-offset: 1px; }
 .ui-input-group--invalid { border-color: var(--state-danger-text); }
 .ui-input-group .ui-input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; box-shadow: none; }
+/* The group draws the border, so the inner field gives those 2px back and the group matches a bare control. */
+.ui-input-group .ui-input--md { min-height: calc(var(--control-height-standard) - 2px); }
+.ui-input-group .ui-input--sm { min-height: calc(var(--control-height-compact) - 2px); }
 .ui-input-group__affix { flex: 0 0 auto; display: grid; place-items: center; align-self: stretch; padding-inline-start: var(--spacing-md); }
 .ui-input-group__affix--end { padding-inline: 0 var(--spacing-md); }
 
@@ -176,3 +184,10 @@
 .ui-switch > input:focus-visible + .ui-switch__track { outline: 2px solid var(--primary); outline-offset: 2px; }
 .ui-switch.is-disabled { cursor: not-allowed; }
 .ui-switch.is-disabled .ui-switch__label { color: var(--neutral-text-muted); }
+
+/* iOS zooms any field under 16px; mirrors the bare-element rule in styles.css at component specificity. */
+@media (pointer: coarse), (max-width: 1024px) {
+  .ui-input,
+  .ui-select,
+  .ui-textarea { font-size: max(1rem, 16px); }
+}
