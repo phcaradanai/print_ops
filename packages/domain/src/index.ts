@@ -1,4 +1,5 @@
 // Models
+export * from './models/network-printer-search.js';
 export * from './models/printer.js';
 export * from './models/printer-readiness.js';
 export * from './models/job.js';
@@ -23,6 +24,7 @@ export * from './models/control.js';
 export * from './events/index.js';
 
 // Ports
+export * from './ports/network-printer-search.port.js';
 export * from './ports/printer-adapter.port.js';
 export * from './ports/repositories.port.js';
 export * from './ports/queue.port.js';

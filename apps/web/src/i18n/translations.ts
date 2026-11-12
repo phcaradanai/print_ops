@@ -1,5 +1,6 @@
 import { controlTranslations } from './controlTranslations.js';
 import { operationsTranslations } from './operationsTranslations.js';
+import { networkSearchTranslations } from './network-search-translations.js';
 
 export type Locale = 'en' | 'th';
 
@@ -8,6 +9,7 @@ export type TranslationDict = Record<string, string>;
 const en: TranslationDict = {
   ...controlTranslations.en,
   ...operationsTranslations.en,
+  ...networkSearchTranslations.en,
   'common.select': 'Select',
   'nav.breadcrumbAria': 'Breadcrumb',
   'serviceConnection.startingTitle': 'Starting PrintOps',
@@ -662,11 +664,11 @@ const en: TranslationDict = {
 
   // DiscoveredPrinters
   'page.discovery.title': 'Discovered Printers',
-  'page.discovery.description': 'Printers found on runner machines — read-only discovery. Register to add to Printer Registry.',
+  'page.discovery.description': 'Find installed printers on Runner machines or search the network by IP. Register a printer to add it to Printer Registry.',
   'page.discovery.refresh': 'Refresh',
   'page.discovery.loading': 'Loading...',
   'page.discovery.error': 'Error',
-  'page.discovery.empty': 'No discovered printers yet. Start a runner on a Windows machine to populate this list.',
+  'page.discovery.empty': 'No printers discovered yet. Check Runner discovery or search the network.',
   'page.discovery.printerName': 'Printer Name',
   'page.discovery.driver': 'Driver',
   'page.discovery.port': 'Port',
@@ -1683,6 +1685,7 @@ const en: TranslationDict = {
 const th: TranslationDict = {
   ...controlTranslations.th,
   ...operationsTranslations.th,
+  ...networkSearchTranslations.th,
   'common.select': 'เลือก',
   'nav.breadcrumbAria': 'เส้นทางหน้า',
   'serviceConnection.startingTitle': 'กำลังเริ่ม PrintOps',
@@ -2332,11 +2335,11 @@ const th: TranslationDict = {
 
   // DiscoveredPrinters
   'page.discovery.title': 'เครื่องพิมพ์ที่ค้นพบ',
-  'page.discovery.description': 'เครื่องพิมพ์ที่พบบนเครื่อง runner — การค้นหาแบบอ่านอย่างเดียว ลงทะเบียนเพื่อเพิ่มในทะเบียนเครื่องพิมพ์',
+  'page.discovery.description': 'ค้นหาเครื่องพิมพ์ที่ติดตั้งบน Runner หรือค้นหาในเครือข่ายด้วย IP ลงทะเบียนเพื่อเพิ่มในทะเบียนเครื่องพิมพ์',
   'page.discovery.refresh': 'รีเฟรช',
   'page.discovery.loading': 'กำลังโหลด...',
   'page.discovery.error': 'ข้อผิดพลาด',
-  'page.discovery.empty': 'ยังไม่พบเครื่องพิมพ์ เริ่ม runner บนเครื่อง Windows เพื่อแสดงรายการ',
+  'page.discovery.empty': 'ยังไม่พบเครื่องพิมพ์ ตรวจสอบการค้นหาของ Runner หรือค้นหาในเครือข่าย',
   'page.discovery.printerName': 'ชื่อเครื่องพิมพ์',
   'page.discovery.driver': 'ไดรเวอร์',
   'page.discovery.port': 'พอร์ต',

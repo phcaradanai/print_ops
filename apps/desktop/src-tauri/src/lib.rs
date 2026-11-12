@@ -197,7 +197,7 @@ const DESKTOP_APP_VERSION: &str = match option_env!("PRINTOPS_BUILD_VERSION") {
 };
 const DESKTOP_DB_SCHEMA_VERSION: &str = match option_env!("PRINTOPS_BUILD_DB_SCHEMA_VERSION") {
     Some(value) => value,
-    None => "8",
+    None => "10",
 };
 const NATIVE_ACCEPTANCE_BUILD: bool = option_env!("PRINTOPS_OTA_NATIVE_ACCEPTANCE_BUILD").is_some();
 

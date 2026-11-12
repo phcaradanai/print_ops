@@ -94,6 +94,10 @@ import { v1PrinterPrintRoutes } from './routes/v1/printer-print.routes.js';
 import { v1PrinterRoutes } from './routes/v1/printers.routes.js';
 import { v1ExportRoutes } from './routes/v1/exports.routes.js';
 import { v1RunnerPrinterRoutes } from './routes/v1/runner-printers.routes.js';
+import { v1NetworkPrinterSearchRoutes } from './routes/v1/network-printer-search.routes.js';
+import { NetworkPrinterSearchService } from './services/network-printer-search.service.js';
+import { InMemoryNetworkPrinterSearchRepository } from './infra/repos/in-memory-network-printer-search.repo.js';
+import { SqliteNetworkPrinterSearchRepository } from './infra/repos/sqlite/sqlite-network-printer-search.repo.js';
 import { v1RunnerJobRoutes } from './routes/v1/runner-jobs.routes.js';
 import { templateRoutes } from './routes/v1/template.routes.js';
 import { webhookRoutes } from './routes/v1/webhook.routes.js';
@@ -595,6 +599,10 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const exportJobs = new ExportJobsService(jobRepo, exporter);
   const checkPermission = new CheckPermissionService(permissionPolicy, eventBus);
   const syncDiscovery = new SyncPrinterDiscoveryService(discoveredPrinterRepo, runnerRepo);
+  const networkSearches = new NetworkPrinterSearchService(
+    useSqlite ? new SqliteNetworkPrinterSearchRepository() : new InMemoryNetworkPrinterSearchRepository(),
+    runnerRepo, discoveredPrinterRepo, auditRepo,
+  );
   const registerDiscovered = new RegisterDiscoveredPrinterService(discoveredPrinterRepo, printerRepo, auditRepo, checkPermission);
   const dynamicIntake = new DynamicIntakeService(
     webhookEndpointRepo,
@@ -1251,6 +1259,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1PrinterRoutes(v1, { printers: printerRepo, getPrinterStatus, apiKeyHook });
     await v1ExportRoutes(v1, { exportJobs, audit: auditRepo, exporter, apiKeyHook });
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
+    await v1NetworkPrinterSearchRoutes(v1, { searches: networkSearches });
     await v1RunnerJobRoutes(v1, { jobs: jobRepo, printers: printerRepo, traces: traceRepo, audit: auditRepo, events: eventBus });
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
     await printerCalibrationRoutes(v1, { calibrations: calibrationRepo, printers: printerRepo, papers: paperRepo, audit: auditRepo, createJob, executeJob });

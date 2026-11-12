@@ -30,6 +30,7 @@ export type AuditAction =
   | 'support_bundle.exported'
   | 'permission.denied'
   | 'printer.registered_from_discovery'
+  | 'printer.network_search_requested'
   | 'template.created'
   | 'template.auto_created'
   | 'template.updated'

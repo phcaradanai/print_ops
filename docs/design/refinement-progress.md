@@ -55,6 +55,15 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
 - Playwright e2e: 55 pass / 25 fail, identical failing set on unmodified `main` (stash, rebuild, rerun, diff).
 - Not verified: Tauri native window, physical screen reader, Thai copy review by a native speaker.
 
+## 2026-11-12 — network printer discovery
+
+- Added a network search form to Discovered Printers: select a Runner, enter IPv4 addresses/CIDR/ranges, then review search state and register reachable TCP 9100 candidates.
+- Reused `Panel`, `Stack`, `FormField`, `Input`, `Select`, `Button`, `Alert`, and existing typography exports. No stylesheet, token, or global override was added.
+- Added English/Thai copy for queued, running, completed, incomplete, expired, validation, and retry states. Search remains unavailable for viewers and explains when a Runner update is required.
+- Rendered English and Thai at 1440px, 1024px, and 390px: labels and help text wrap, controls remain usable, and no horizontal page overflow was observed. Captures: `artifacts/browser/commit-network-{en,th}-{1440,1024,390}.png`.
+- Unit tests: 677 web tests passed; production web build passed. The full Playwright suite passed 130 tests, including registration, newer searches from another operator, invalid inputs, status retry, permissions, and restored terminal states.
+- Remaining verification: actual VPN/printer access and native Windows packaging. No additional styling debt introduced.
+
 ## Next, in order
 
 1. **Fold the paper-profile hotfix layers** (`paperProfilesLayoutHotfix`, `Closure`, `Completion`, `LibraryGeometryHotfix`) into `paperProfilesLibrary.css` / `paperProfilesEditor.css`, deleting `!important` as you go. Gate: `paper-profile-ux` and `paper-profile-layout-regression` e2e, which first need their pre-existing failures fixed so they can detect a regression. Then delete the entries from the hotfix list in `designTokens.test.ts`.

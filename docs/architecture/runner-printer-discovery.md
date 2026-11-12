@@ -1,5 +1,50 @@
 # Runner Printer Discovery
 
+## On-demand network search (LAN / VPN)
+
+The Discovered Printers page also supports a network search from a selected Go
+Runner. Update the API, dashboard, and Runner together; only Runners advertising
+`metadata.network_printer_search: true` can accept this search. It runs even when
+`PRINTOPS_JOBS_ENABLED=false`, as in the desktop discovery-only configuration.
+
+1. Select the Runner whose machine can reach the printer through LAN or VPN.
+2. Enter a single IPv4 address (`192.168.1.50`), CIDR (`192.168.1.0/24`), or inclusive
+   range (`192.168.1.10-192.168.1.50`). Separate multiple targets with commas. Up to
+   256 distinct addresses are accepted; CIDR includes all addresses in its block.
+3. Start the search. The Runner checks TCP port **9100** with at most 16 concurrent
+   connections, a 1.5-second per-address timeout, and a 60-second overall deadline.
+   It sends no print bytes. An open TCP port is only a candidate; printer model and
+   physical output are not verified.
+4. Register a candidate in the discovery table to create a `raw_tcp_9100` printer
+   with `tcp://<address>:9100`, preserving the selected Runner association. Choose
+   compatible templates/paper settings before actual printing. Registration sends
+   no test page. IPP-only/LPD-only devices and IPv6 are not scanned in this release.
+
+The API persists commands and results in `network_printer_searches` (schema 10).
+Only one queued/running search is permitted per Runner. Queued work expires after
+120 seconds; a claim expires after 75 seconds. The Runner polls using outbound
+authenticated HTTP, so no incoming VPN connection to the Runner is required.
+Late results are rejected; retries of an identical completed report are idempotent.
+Partial results are retained when the scan times out. Revisiting the page restores
+the latest search for the selected Runner. Repeated scans retain registration links.
+
+API routes (prefix `/api/v1`):
+
+- `POST /runners/:runnerId/printer-searches` with `{ "targets": "192.168.1.0/24" }`
+  requires `printer:create`; returns HTTP 202 with a search ID.
+- `GET /runners/:runnerId/printer-searches/latest` and `GET /printer-searches/:id`
+  require `printer:read`. Dashboard responses omit the claim credential.
+- `POST /runners/:runnerId/printer-searches/claim` and
+  `POST /runners/:runnerId/printer-searches/:id/results` require `runner:manage`.
+  The result includes `claimToken`, a subset of requested `addresses`, and a boolean
+  `incomplete`. Claims are checked against the Runner and search on every report.
+
+Ping success does not establish TCP 9100 reachability. If nothing is found, check
+the target range, VPN routes, printer protocol, and firewall **from the selected
+Runner machine**. A completed empty result differs from an expired search, which
+means the Runner did not report in time. Repository tests use simulated endpoints;
+verify discovery and printing separately against the actual VPN before deployment.
+
 **Phase:** MVP Nippon  
 **Status:** Implemented
 

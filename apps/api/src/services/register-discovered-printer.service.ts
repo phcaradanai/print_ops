@@ -4,7 +4,8 @@ import type {
   AuditRepositoryPort,
   PermissionContext,
 } from '@printerops/domain';
-import { generateTraceId } from '@printerops/shared';
+import { generateTraceId, ValidationError } from '@printerops/shared';
+import { isIPv4 } from 'node:net';
 import { CheckPermissionService } from './check-permission.service.js';
 
 export class RegisterDiscoveredPrinterService {
@@ -26,10 +27,18 @@ export class RegisterDiscoveredPrinterService {
     if (!dp) throw new Error(`DiscoveredPrinter ${discoveredPrinterId} not found`);
     if (dp.registeredPrinterId) throw new Error(`Already registered as printer ${dp.registeredPrinterId}`);
 
+    const network = dp.attributes['discoverySource'] === 'network_scan';
+    const address = dp.attributes['networkAddress'];
+    if (network && (typeof address !== 'string' || !isIPv4(address) || dp.attributes['networkPort'] !== 9100)) {
+      throw new ValidationError('Invalid network printer endpoint; run network search again');
+    }
+
     const code =
       opts.printerCode ??
-      ((dp.localPrinterName.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '')) ||
-       `PRINTER_${discoveredPrinterId.slice(0, 8).toUpperCase()}`);
+      (network
+        ? `TCP_${(address as string).replace(/\./g, '_')}_9100_${dp.id.replace(/-/g, '').toUpperCase()}`
+        : ((dp.localPrinterName.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '')) ||
+          `PRINTER_${discoveredPrinterId.slice(0, 8).toUpperCase()}`));
 
     const existing = await this.printers.findByCode(code);
     if (existing) throw new Error(`Printer code ${code} already in use`);
@@ -38,8 +47,8 @@ export class RegisterDiscoveredPrinterService {
       code,
       name: dp.localPrinterName,
       location: opts.location,
-      protocol: 'windows_spooler',
-      connectionUri: `spooler://${dp.runnerId}/${encodeURIComponent(dp.localPrinterName)}`,
+      protocol: network ? 'raw_tcp_9100' : 'windows_spooler',
+      connectionUri: network ? `tcp://${address}:9100` : `spooler://${dp.runnerId}/${encodeURIComponent(dp.localPrinterName)}`,
       metadata: {
         runnerId: dp.runnerId,
         localPrinterName: dp.localPrinterName,

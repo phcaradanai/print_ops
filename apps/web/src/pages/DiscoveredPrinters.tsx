@@ -5,6 +5,7 @@ import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { useApiAction } from '../hooks/useApiAction.js';
 import { connectionTypeLabel } from '../lib/deviceHealth.js';
+import { NetworkPrinterSearch } from '../features/printer-discovery/network-printer-search.js';
 import {
   Alert,
   Badge,
@@ -112,6 +113,8 @@ export default function DiscoveredPrinters() {
           onRefresh={printersResource.refresh}
         />}
     >
+
+      <NetworkPrinterSearch onResults={printersResource.refresh} />
 
       {/* Tone was previously inferred by string-matching the message against a
           translated prefix — it broke the moment either string changed. */}

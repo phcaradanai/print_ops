@@ -16,7 +16,7 @@ import {
 const SQL_WASM_PATH = createRequire(import.meta.url).resolve('sql.js/dist/sql-wasm.wasm');
 let tempDir: string;
 
-describe('SQLite Control Repositories (Schema v9)', () => {
+describe('SQLite Control Repositories', () => {
   beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'printops-control-sqlite-'));
     process.env['PRINTOPS_DB_PATH'] = join(tempDir, 'printops.db');
@@ -29,10 +29,9 @@ describe('SQLite Control Repositories (Schema v9)', () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it('migrates schema to version 9 and initializes control tables', () => {
+  it('migrates to the current schema and initializes control tables', () => {
     const db = getDb();
     expect(schemaVersion(db)).toBe(CURRENT_SCHEMA_VERSION);
-    expect(CURRENT_SCHEMA_VERSION).toBe(9);
 
     const tables = db
       .exec("SELECT name FROM sqlite_master WHERE type = 'table'")

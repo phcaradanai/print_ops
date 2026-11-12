@@ -1,6 +1,6 @@
 import type { Database } from 'sql.js';
 
-export const CURRENT_SCHEMA_VERSION = 9;
+export const CURRENT_SCHEMA_VERSION = 10;
 
 export function schemaVersion(db: Database): number {
   const result = db.exec('PRAGMA user_version');
@@ -64,6 +64,7 @@ export function runSchemaMigration(db: Database): void {
     if (fromVersion < 7) migrateVersionSixToSeven(db);
     if (fromVersion < 8) migrateVersionSevenToEight(db);
     if (fromVersion < 9) migrateVersionEightToNine(db);
+    if (fromVersion < 10) migrateVersionNineToTen(db);
     ensureOptionalControlExtensions(db);
     db.run(`PRAGMA user_version=${CURRENT_SCHEMA_VERSION}`);
     db.run('COMMIT');
@@ -71,6 +72,19 @@ export function runSchemaMigration(db: Database): void {
     try { db.run('ROLLBACK'); } catch { /* retain the original migration error */ }
     throw error;
   }
+}
+
+function migrateVersionNineToTen(db: Database): void {
+  db.run(`CREATE TABLE IF NOT EXISTS network_printer_searches (
+    id TEXT PRIMARY KEY NOT NULL,
+    runner_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    data TEXT NOT NULL
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_network_printer_searches_runner ON network_printer_searches(runner_id, created_at)`);
+  db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_network_printer_searches_active
+    ON network_printer_searches(runner_id) WHERE state IN ('QUEUED', 'RUNNING')`);
 }
 
 /**

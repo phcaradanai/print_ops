@@ -19,6 +19,7 @@ import (
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/discovery"
 	fakediscovery "github.com/phcaradanai/print_ops/apps/runner-go/internal/discovery/fake"
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/discovery/macos"
+	"github.com/phcaradanai/print_ops/apps/runner-go/internal/discovery/network"
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/discovery/windows"
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/heartbeat"
 	"github.com/phcaradanai/print_ops/apps/runner-go/internal/jobs"
@@ -91,6 +92,7 @@ func runRunner(ctx context.Context) error {
 			"configured_executor_mode": string(cfg.ExecutorMode),
 			"jobs_enabled":             cfg.JobsEnabled,
 			"discovery_mode":           string(cfg.ResolveDiscoveryMode()),
+			"network_printer_search":   true,
 		},
 		Os:       cfg.OS,
 		Arch:     cfg.Arch,
@@ -127,6 +129,7 @@ func runRunner(ctx context.Context) error {
 	// Initial immediate discovery, then periodic loop.
 	syncDiscoveryOnce(ctx, client, discoverer, runnerID, cfg.Hostname, cfg.OS, metrics, log)
 	go runDiscoveryLoop(ctx, client, discoverer, runnerID, cfg.Hostname, cfg.OS, cfg.DiscoveryInterval, metrics, log)
+	go (&network.Looper{Client: client, RunnerID: runnerID, Log: log}).Run(ctx)
 
 	// Jobs loop runs in the foreground; heartbeat runs in a goroutine.
 	jobLooper := jobs.New(client, executor, metrics, log, runnerID, string(discoveryMode), string(cfg.ExecutorMode), jobs.DefaultConfig(cfg.PollInterval))
