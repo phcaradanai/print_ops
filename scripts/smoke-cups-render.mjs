@@ -8,6 +8,7 @@ import { CupsPrinterAdapter } from '@printerops/adapters';
 const exec = promisify(execFile);
 let submitted = 0;
 let expectedLeftMm = 0;
+let expectedPages = 1;
 const adapter = new CupsPrinterAdapter({ run: async (file, args) => {
   if (file === 'lpstat') return 'printer virtual is idle. enabled';
   if (file === 'lp') {
@@ -15,7 +16,7 @@ const adapter = new CupsPrinterAdapter({ run: async (file, args) => {
     const pdf = args.at(-1);
     assert.equal((await readFile(pdf)).subarray(0, 5).toString(), '%PDF-');
     const { stdout } = await exec('pdfinfo', [pdf]);
-    assert.match(stdout, /Pages:\s+1\b/);
+    assert.equal(Number(stdout.match(/Pages:\s+(\d+)/)?.[1]), expectedPages, stdout);
     const size = stdout.match(/Page size:\s+([\d.]+) x ([\d.]+) pts/);
     assert.ok(size, stdout);
     assert.ok(Math.abs(Number(size[1]) - 60 * 72 / 25.4) < 0.1, stdout);
@@ -53,5 +54,9 @@ expectedLeftMm = 8;
 assert.equal((await adapter.executeCommand({ ...withMargins,
   renderedPrintPayload: '<div style="position:relative;width:60mm;height:30mm"><span style="position:absolute;left:4mm;top:3mm;font:12px sans-serif">PrintOps ภาษาไทย</span></div>',
 })).errorCode, 'PRINT_NOT_VERIFIABLE');
-assert.equal(submitted, 3);
-console.log('PASS actual Linux Chromium: Thai text, one 60×30 mm page, manual/generated profile margins, one submission per job, UNVERIFIED');
+expectedPages = 2;
+assert.equal((await adapter.executeCommand({ ...withMargins,
+  renderedPrintPayload: Array(2).fill('<div style="position:relative;width:60mm;height:30mm;break-after:page"><span style="position:absolute;left:4mm;top:3mm;font:12px sans-serif">PrintOps ภาษาไทย</span></div>').join(''),
+})).errorCode, 'PRINT_NOT_VERIFIABLE');
+assert.equal(submitted, 4);
+console.log('PASS actual Linux Chromium: Thai text, 60×30 mm pages, manual/generated profile margins, no extra pages for one/two labels, one submission per job, UNVERIFIED');

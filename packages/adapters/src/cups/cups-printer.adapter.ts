@@ -103,8 +103,10 @@ export class CupsPrinterAdapter implements PrinterAdapterPort {
         const html = applyHtmlCalibration(applyHtmlMarginCompensation(applyHtmlRenderTransform(source, page, command, overrides), page, command, overrides), page, command);
         // Preserve the Windows driver margin origin without shrinking the page flow area.
         // CSS page margins split full-height label boxes into extra blank pages.
+        // Paint containment clips the shifted overflow while preserving existing
+        // one-label and multi-label page breaks, without shrinking barcode geometry.
         // PDF and driver share the label face size; the feed gap is not a page.
-        const css = `<style>@page{size:${page.widthMm}mm ${page.heightMm}mm;margin:0}html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{position:relative;left:${page.marginLeftMm}mm;top:${page.marginTopMm}mm}</style>`;
+        const css = `<style>@page{size:${page.widthMm}mm ${page.heightMm}mm;margin:0}html,body{margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}html{contain:paint}body{position:relative;left:${page.marginLeftMm}mm;top:${page.marginTopMm}mm}</style>`;
         const input = join(dir, 'label.html');
         await writeFile(input, html + css);
         await this.run('chromium', ['--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
