@@ -96,6 +96,7 @@ export class AcceptExternalJobService {
     actorId: string,
     source: IntakeSource = 'api',
   ): Promise<ExternalPrintJobResponse> {
+    // No request_id dedupe: a resend is always an intentional print (product requirement 2026-11-12).
     try {
       const result = await this.doExecute(req, actorId);
       void this.intakeLog?.record({
@@ -132,21 +133,6 @@ export class AcceptExternalJobService {
     req: ExternalPrintJobRequest,
     actorId: string
   ): Promise<ExternalPrintJobResponse> {
-    // Idempotency check
-    const existing = await this.jobs.findByRequestId(req.request_id, req.source_system);
-    if (existing) {
-      return {
-        print_job_id: existing.id,
-        request_id: req.request_id,
-        status: 'DUPLICATE_RETURNED',
-        trace_id: existing.traceId,
-        accepted_at: existing.createdAt,
-        queued_at: existing.queuedAt ?? existing.createdAt,
-        duplicate: true,
-        existing_job_id: existing.id,
-      };
-    }
-
     const renderOptions = externalRenderTransformOverrides(req);
     // An explicitly provided template that does not exist is a client error.
     //

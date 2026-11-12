@@ -698,22 +698,6 @@ describe('callback idempotency and recovery', () => {
     expect(after?.deliveryStatus).toBe('DELIVERED');
   });
 
-  it('does not break print idempotency', async () => {
-    await makeEndpoint(h, { endpointCode: 'dupe', callbackUrl: 'https://receiver.example/results' });
-    const first = await h.dynamicPrint.submit(
-      { request_id: 'DUP-1', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE, payload: { label: 'A' }, endpoint_code: 'dupe' },
-      'actor',
-    );
-    const second = await h.dynamicPrint.submit(
-      { request_id: 'DUP-1', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE, payload: { label: 'A' }, endpoint_code: 'dupe' },
-      'actor',
-    );
-    expect(second.duplicate).toBe(true);
-    expect(second.print_job_id).toBe(first.print_job_id);
-
-    await printAndSettle(h, first.print_job_id);
-    expect(h.httpCalls).toHaveLength(1);
-  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -1088,23 +1072,6 @@ describe('dynamic print acceptance callback', () => {
     expect(sent).toHaveLength(0);
   });
 
-  it('notifies a duplicate at acceptance even in result mode', async () => {
-    await makeEndpoint(h, {
-      endpointCode: 'nats-dupe', callbackUrl: 'https://receiver.example/r',
-      callbackOnPrintResult: true,
-    });
-    const req = {
-      request_id: 'R-NATS-3', source_system: SOURCE, code_template: TEMPLATE, code_profile: PROFILE,
-      payload: {}, endpoint_code: 'nats-dupe',
-    };
-    await h.dynamicPrint.submit(req, 'nats:medisync', { source: 'nats' });
-    expect(sent).toHaveLength(0);
-
-    await h.dynamicPrint.submit(req, 'nats:medisync', { source: 'nats' });
-    expect(sent).toHaveLength(1);
-    expect(sent[0]!.result).toMatchObject({ duplicate: true, status: 'DUPLICATE_RETURNED' });
-  });
-
   it('stays silent when no endpoint_code was supplied', async () => {
     await h.dynamicPrint.submit(
       {
@@ -1171,28 +1138,4 @@ describe('webhook intake path', () => {
     expect(h.httpCalls[0]!.body['status']).toBe('SUCCESS');
   });
 
-  it('notifies a duplicate at acceptance even when the endpoint is in result mode', async () => {
-    // A duplicate creates no new print, so it can never reach a terminal state.
-    // Suppressing its acceptance notification would leave the caller with
-    // nothing at all.
-    const sent: Array<Record<string, unknown>> = [];
-    h.dynamicIntake.setCallbackService({
-      send: async (ctx: { result: Record<string, unknown> }) => { sent.push(ctx.result); return { transport: 'HTTP' }; },
-    } as never);
-    await makeEndpoint(h, { endpointCode: 'intake-dupe', callbackUrl: 'https://receiver.example/results' });
-
-    const first = await h.dynamicIntake.execute({
-      endpointCode: 'intake-dupe', headers: {},
-      body: { request_id: 'WI-3', type: 'test_label', label: 'A' },
-    });
-    expect(sent).toHaveLength(0); // result mode: nothing at acceptance
-
-    const second = await h.dynamicIntake.execute({
-      endpointCode: 'intake-dupe', headers: {},
-      body: { request_id: 'WI-3', type: 'test_label', label: 'A' },
-    });
-    expect(second.print_job_id).toBe(first.print_job_id);
-    expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({ duplicate: true, status: 'DUPLICATE_RETURNED' });
-  });
 });
