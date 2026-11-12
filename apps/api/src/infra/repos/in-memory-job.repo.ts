@@ -12,7 +12,7 @@ export class InMemoryJobRepository implements JobRepositoryPort {
   }
 
   async findByRequestId(requestId: string, sourceSystem: string): Promise<Job | undefined> {
-    return Array.from(this.store.values()).find(
+    return Array.from(this.store.values()).reverse().find(
       (j) => j.requestId === requestId && j.sourceSystem === sourceSystem
     );
   }

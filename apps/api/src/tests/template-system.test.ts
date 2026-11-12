@@ -197,7 +197,7 @@ describe('Template management, sandbox, and dynamic intake', () => {
     expect(denied.statusCode).toBe(403);
   });
 
-  it('accepts dynamic intake, resolves static route, populates job metadata, trace, audit, and duplicate response', async () => {
+  it('accepts dynamic intake, resolves static route, populates job metadata, trace, audit, and prints again on resend', async () => {
     const { app } = await buildApp();
     const first = await app.inject({
       method: 'POST',
@@ -224,13 +224,13 @@ describe('Template management, sandbox, and dynamic intake', () => {
     const audit = await app.inject({ method: 'GET', url: '/audit-logs?resourceType=webhook', headers: auth(admin) });
     expect(JSON.stringify(audit.json())).toContain('webhook.intake.accepted');
 
-    const duplicate = await app.inject({
+    const resend = await app.inject({
       method: 'POST',
       url: '/api/v1/intake/dev-intake',
       payload: { request_id: 'INTAKE-001', type: 'lab_label', label: 'Tube A', barcode: 'ABC123', hn: 'HN001' },
     });
-    expect(duplicate.statusCode).toBe(200);
-    expect((duplicate.json() as { duplicate?: boolean }).duplicate).toBe(true);
+    expect(resend.statusCode).toBe(202);
+    expect((resend.json() as { print_job_id?: string }).print_job_id).not.toBe(body.print_job_id);
   });
 
   it('supports field-based printer and template mapping and rejects raw JS eval policies', async () => {

@@ -146,26 +146,7 @@ export class DynamicIntakeService {
     this.assertEndpointAuth(endpoint.authMode, endpoint.apiKey, req.headers);
 
     const requestId = requestIdFrom(req.body);
-    const existing = await this.jobs.findByRequestId(requestId, endpoint.sourceSystem);
-    if (existing) {
-      const result: IntakeResponse = {
-        accepted: true,
-        print_job_id: existing.id,
-        job_id: existing.id,
-        request_id: requestId,
-        trace_id: existing.traceId,
-        source_system: endpoint.sourceSystem,
-        created_at: existing.createdAt?.toISOString() ?? new Date().toISOString(),
-        queued_at: existing.queuedAt?.toISOString(),
-        resolved_printer_code: existing.printerCode ?? '',
-        resolved_template_code: existing.resolvedTemplateCode ?? existing.templateCode ?? '',
-        status: 'DUPLICATE_RETURNED',
-        duplicate: true,
-      };
-      void this.fireCallback(endpoint, req.body, result);
-      return result;
-    }
-
+    // No request_id dedupe: a resend is always an intentional print (product requirement 2026-11-12).
     const policy = await this.policies.findById(endpoint.routePolicyId);
     if (!policy) throw new NotFoundError('WebhookRoutePolicy', endpoint.routePolicyId);
 

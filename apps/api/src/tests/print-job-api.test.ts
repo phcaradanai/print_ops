@@ -81,40 +81,21 @@ describe('External Print Job API', () => {
     expect(result.duplicate).toBe(false);
   });
 
-  it('returns existing job on duplicate request_id (idempotency)', async () => {
+  it.each(['SUCCESS', 'QUEUED', 'FAILED'] as const)('resending a request_id prints again even when the earlier job is %s', async (status) => {
     await createPrinter.execute(
       { code: 'LAB_LABEL_01', name: 'Lab Label', protocol: 'fake', connectionUri: 'fake://lab', metadata: {} },
       'setup'
     );
+    const req = { request_id: 'REQ-AGAIN-001', source_system: 'integration-service', printer_code: 'LAB_LABEL_01', payload: {} };
+    const first = await acceptExternalJob.execute(req, 'sa-001');
+    await jobRepo.update(first.print_job_id, { status });
 
-    const first = await acceptExternalJob.execute(
-      {
-        request_id: 'REQ-DUPE-001',
-        source_system: 'integration-service',
-        printer_code: 'LAB_LABEL_01',
-        payload: {},
-      },
-      'sa-001'
-    );
-
-    const second = await acceptExternalJob.execute(
-      {
-        request_id: 'REQ-DUPE-001',
-        source_system: 'integration-service',
-        printer_code: 'LAB_LABEL_01',
-        payload: {},
-      },
-      'sa-001'
-    );
-
-    expect(second.duplicate).toBe(true);
-    expect(second.status).toBe('DUPLICATE_RETURNED');
-    expect(second.print_job_id).toBe(first.print_job_id);
-    expect(second.existing_job_id).toBe(first.print_job_id);
-
-    // Only one job should exist in the repo
-    const all = await jobRepo.findAll();
-    expect(all).toHaveLength(1);
+    const second = await acceptExternalJob.execute(req, 'sa-001');
+    expect(second.duplicate).toBe(false);
+    expect(second.print_job_id).not.toBe(first.print_job_id);
+    expect(await jobRepo.findAll()).toHaveLength(2);
+    // Lookup by request_id now resolves to the newest print.
+    expect((await jobRepo.findByRequestId('REQ-AGAIN-001', 'integration-service'))?.id).toBe(second.print_job_id);
   });
 
   it('different source_system with same request_id creates separate jobs', async () => {

@@ -123,7 +123,7 @@ describe('DynamicPrintService', () => {
     expect((job?.metadata as Record<string, unknown>)?.code_profile).toBe(PROFILE);
   });
 
-  it('is idempotent on request_id (same source_system)', async () => {
+  it('prints again on a repeated request_id (same source_system)', async () => {
     const first = await dynamicPrint.submit(
       { request_id: 'REQ-DYN-DUP', source_system: 'sys', code_template: TEMPLATE, code_profile: PROFILE, payload: {} },
       'sa-1',
@@ -132,9 +132,9 @@ describe('DynamicPrintService', () => {
       { request_id: 'REQ-DYN-DUP', source_system: 'sys', code_template: TEMPLATE, code_profile: PROFILE, payload: {} },
       'sa-1',
     );
-    expect(second.duplicate).toBe(true);
-    expect(second.print_job_id).toBe(first.print_job_id);
-    expect(await jobRepo.findAll()).toHaveLength(1);
+    expect(second.duplicate).toBe(false);
+    expect(second.print_job_id).not.toBe(first.print_job_id);
+    expect(await jobRepo.findAll()).toHaveLength(2);
   });
 
   it('honours an explicit printer_code override (skips binding resolution)', async () => {
@@ -201,16 +201,6 @@ describe('intake attempt logging', () => {
     );
     expect(intakeLog.record).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'api', outcome: 'accepted', requestId: 'REQ-LOG-001' }),
-    );
-  });
-
-  it('records a duplicate attempt as outcome "duplicate", not "accepted"', async () => {
-    const req = { request_id: 'REQ-LOG-DUP', source_system: 'sys', code_template: TEMPLATE, code_profile: PROFILE, payload: {} };
-    await dynamicPrint.submit(req, 'sa-1');
-    intakeLog.record.mockClear();
-    await dynamicPrint.submit(req, 'sa-1');
-    expect(intakeLog.record).toHaveBeenCalledWith(
-      expect.objectContaining({ outcome: 'duplicate', requestId: 'REQ-LOG-DUP' }),
     );
   });
 

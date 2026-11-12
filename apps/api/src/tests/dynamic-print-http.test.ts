@@ -57,7 +57,7 @@ describe('Dynamic print HTTP endpoint (POST /api/v1/printer/:code_template/:code
     expect(body.print_job_id).toBeTruthy();
   });
 
-  it('is idempotent on (request_id + source_system) — resend returns 200 duplicate', async () => {
+  it('resending the same request_id prints again (201, new job)', async () => {
     const { app } = await buildApp();
 
     const payload = {
@@ -81,10 +81,10 @@ describe('Dynamic print HTTP endpoint (POST /api/v1/printer/:code_template/:code
       headers: withApiKey(),
       payload,
     });
-    expect(second.statusCode).toBe(200);
+    expect(second.statusCode).toBe(201);
     const body = second.json() as { duplicate: boolean; print_job_id: string };
-    expect(body.duplicate).toBe(true);
-    expect(body.print_job_id).toBe((first.json() as { print_job_id: string }).print_job_id);
+    expect(body.duplicate).toBe(false);
+    expect(body.print_job_id).not.toBe((first.json() as { print_job_id: string }).print_job_id);
   });
 
   it('returns 400 when request_id is missing', async () => {

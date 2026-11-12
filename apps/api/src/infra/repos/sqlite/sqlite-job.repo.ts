@@ -75,7 +75,8 @@ export class SqliteJobRepository implements JobRepositoryPort {
 
   async findByRequestId(requestId: string, sourceSystem: string): Promise<Job | undefined> {
     const db = getDb();
-    const stmt = db.prepare('SELECT * FROM jobs WHERE request_id = ? AND source_system = ?');
+    // Newest first: a request_id can be printed again once its earlier job succeeded.
+    const stmt = db.prepare('SELECT * FROM jobs WHERE request_id = ? AND source_system = ? ORDER BY created_at DESC LIMIT 1');
     stmt.bind([requestId, sourceSystem]);
     if (stmt.step()) {
       const row = stmt.getAsObject();
