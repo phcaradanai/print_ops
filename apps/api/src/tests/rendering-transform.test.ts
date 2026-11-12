@@ -94,4 +94,25 @@ describe('HTML rendering transforms', () => {
     expect(renderedPrintPayload).toContain('12/11/2569|1,234.50 ฿|');
     expect(payload.visit.date).toBe('2026-11-12');
   });
+
+  it('escapes payload values in HTML but not in native command engines', async () => {
+    const renderer = new SimpleTemplateRenderer();
+    const paper = makePaper({ rotation: 0 });
+    const payload = { name: 'A&B <img src=x onerror=alert(1)>' };
+    const html = await renderer.renderPrintPayload({ ...makeTemplate(), content: '<p>{{name}}</p>' }, payload, paper);
+    expect(html.renderedPrintPayload).toContain('<p>A&amp;B &lt;img src=x onerror=alert(1)&gt;</p>');
+    const zpl = await renderer.renderPrintPayload({ ...makeTemplate(), engine: 'ZPL', content: '^FD{{name}}^FS' }, payload, paper);
+    expect(zpl.renderedPrintPayload).toBe('^FDA&B <img src=x onerror=alert(1)>^FS');
+  });
+
+  it('fills defaults for nested keys without clobbering scalars', async () => {
+    const base = { label: '', xMm: 0, yMm: 0, fontSize: 10, bold: false, color: '#000000', align: 'left' as const, type: 'text' as const };
+    const paper = makePaper({ rotation: 0, fields: [
+      { ...base, id: 'a', key: 'patient.hn', defaultValue: 'HN-DEFAULT' },
+      { ...base, id: 'b', key: 'ward.name', defaultValue: 'W-DEFAULT' },
+    ] });
+    const template = { ...makeTemplate(), content: '<p>{{patient.hn}}|{{ward}}</p>' };
+    const out = await new SimpleTemplateRenderer().renderPrintPayload(template, { patient: {}, ward: '7A' }, paper);
+    expect(out.renderedPrintPayload).toContain('<p>HN-DEFAULT|7A</p>');
+  });
 });

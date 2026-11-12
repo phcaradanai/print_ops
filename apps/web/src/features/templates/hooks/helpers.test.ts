@@ -30,4 +30,8 @@ describe('local template preview transform frame', () => {
     });
     expect(preview).toContain('width:48mm;height:25mm;background:#fff');
   });
+
+  it('escapes sample values in an HTML preview, like the print render', () => {
+    expect(localPreview('<p>{{name}}</p>', 'HTML', { name: 'A&B <b>x</b>' })).toBe('<p>A&amp;B &lt;b&gt;x&lt;/b&gt;</p>');
+  });
 });

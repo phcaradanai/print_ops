@@ -111,9 +111,11 @@ export function localPreview(
   let body: string;
 
   if (isHtml) {
-    body = content.replace(COMBINED_PREVIEW_PATTERN, (_raw, kind: BarcodeKind | undefined, explicitKey: string | undefined, plainKey: string | undefined) =>
-      resolveToken(kind, (explicitKey ?? plainKey)!).html,
-    );
+    // Values are data, escaped like the server's print render; only barcode markup is raw.
+    body = content.replace(COMBINED_PREVIEW_PATTERN, (_raw, kind: BarcodeKind | undefined, explicitKey: string | undefined, plainKey: string | undefined) => {
+      const token = resolveToken(kind, (explicitKey ?? plainKey)!);
+      return token.raw ? token.html : escapeHtml(token.html);
+    });
   } else {
     let out = '';
     let lastIndex = 0;

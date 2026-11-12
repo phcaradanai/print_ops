@@ -63,12 +63,13 @@ function valueAt(payload: Record<string, unknown>, field: string): unknown {
 
 /** Fills keys the caller omitted (or sent empty) with the paper-profile field's defaultValue. */
 function withFieldDefaults(payload: Record<string, unknown>, paperProfile?: PaperProfile): Record<string, unknown> {
-  const merged = { ...payload };
+  let merged = payload;
   for (const f of paperProfile?.fields ?? []) {
     const key = f.key?.trim();
     if (!key || !f.defaultValue) continue;
     const v = valueAt(merged, key);
-    if (v == null || v === '') merged[key] = f.defaultValue;
+    // setAt writes "patient.hn" where valueAt reads it; a flat "patient.hn" key was never found.
+    if (v == null || v === '') merged = setAt(merged, key, f.defaultValue);
   }
   return withFieldFormats(merged, paperProfile);
 }
@@ -88,13 +89,24 @@ function withFieldFormats(payload: Record<string, unknown>, paperProfile?: Paper
 
 /** Copy-on-write set at a dotted path, so the caller's payload is never mutated. */
 function setAt(payload: Record<string, unknown>, path: string, value: unknown): Record<string, unknown> {
-  if (path in payload || !path.includes('.')) return { ...payload, [path]: value };
+  if (!path.includes('.')) return { ...payload, [path]: value };
   const [head, ...rest] = path.split('.');
   const child = payload[head!];
-  return { ...payload, [head!]: setAt(child && typeof child === 'object' ? child as Record<string, unknown> : {}, rest.join('.'), value) };
+  // Never overwrite a scalar the template may print on its own ({{patient}}).
+  if (child != null && (typeof child !== 'object' || Array.isArray(child))) return payload;
+  return { ...payload, [head!]: setAt((child ?? {}) as Record<string, unknown>, rest.join('.'), value) };
 }
 
-function renderContent(content: string, payload: Record<string, unknown>): { rendered: string; warnings: string[] } {
+/**
+ * Payload values are data. In HTML they are escaped, so "A&B" prints as written
+ * and a value can't inject markup or script into the WebView2 print page.
+ * Native command engines (ZPL/TSPL/RAW) take the value as-is.
+ */
+function valueText(engine: string, value: unknown): string {
+  return engine === 'HTML' ? escapeHtml(String(value)) : String(value);
+}
+
+function renderContent(content: string, payload: Record<string, unknown>, engine: string): { rendered: string; warnings: string[] } {
   const warnings: string[] = [];
   const rendered = content.replace(FIELD_PATTERN, (_raw, field: string) => {
     const value = valueAt(payload, field);
@@ -102,7 +114,7 @@ function renderContent(content: string, payload: Record<string, unknown>): { ren
       warnings.push(`Missing field: ${field}`);
       return '';
     }
-    return String(value);
+    return valueText(engine, value);
   });
   return { rendered, warnings };
 }
@@ -309,14 +321,14 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
       rendered = dpl.dpl;
       warnings.push(...dpl.warnings);
     } else if (tokens.size === 0) {
-      const r = renderContent(template.content, payload);
+      const r = renderContent(template.content, payload, template.engine);
       rendered = r.rendered;
       warnings.push(...r.warnings);
     } else if (template.engine === 'HTML') {
       // HTML is genuinely rendered/printed as markup, so embedding the real
       // image IS the print output — not just a preview convenience.
       const images = await resolveBarcodeImages(tokens, payload);
-      rendered = this.substituteRaw(template.content, payload, tokens, (tok) => {
+      rendered = this.substituteRaw(template.content, payload, tokens, template.engine, (tok) => {
         const img = images.get(tok.raw);
         if (!img?.dataUri) {
           if (img?.warning) warnings.push(img.warning);
@@ -331,7 +343,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     } else if (template.engine === 'ZPL') {
       // Zebra printers decode ^BC/^BQ natively — emit the real command so it
       // prints as an actual scannable barcode, not the raw text value.
-      rendered = this.substituteRaw(template.content, payload, tokens, (tok) => {
+      rendered = this.substituteRaw(template.content, payload, tokens, template.engine, (tok) => {
         const value = valueAt(payload, tok.key);
         if (value == null) {
           warnings.push(`Missing field: ${tok.key}`);
@@ -345,7 +357,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
       // field). TSPL/EPL authors wrap it with their own native BARCODE
       // command exactly as they would with a plain {{field}}; RAW_TEXT/
       // JSON_LAYOUT have no barcode capability to target at all.
-      rendered = this.substituteRaw(template.content, payload, tokens, (tok) => {
+      rendered = this.substituteRaw(template.content, payload, tokens, template.engine, (tok) => {
         const value = valueAt(payload, tok.key);
         if (value == null) {
           warnings.push(`Missing field: ${tok.key}`);
@@ -376,13 +388,14 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
     content: string,
     payload: Record<string, unknown>,
     tokens: Map<string, BarcodeToken>,
+    engine: string,
     onToken: (tok: BarcodeToken) => string,
   ): string {
     return content.replace(COMBINED_PATTERN, (raw, _kind, _explicitKey, _symbology, plainKey: string | undefined) => {
       const tok = tokens.get(raw);
       if (tok) return onToken(tok);
       const value = plainKey ? valueAt(payload, plainKey) : undefined;
-      return value == null ? '' : String(value);
+      return value == null ? '' : valueText(engine, value);
     });
   }
 
@@ -411,8 +424,8 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
 
     if (isHtml) {
       body = tokens.size === 0
-        ? renderContent(template.content, payload).rendered
-        : this.substituteRaw(template.content, payload, tokens, (tok) => {
+        ? renderContent(template.content, payload, template.engine).rendered
+        : this.substituteRaw(template.content, payload, tokens, template.engine, (tok) => {
           const img = images.get(tok.raw);
           return img?.dataUri ? imgTag(img.dataUri, tok.kind, {
             heightMm: tok.heightMm,
@@ -421,7 +434,7 @@ export class SimpleTemplateRenderer implements TemplateRendererPort {
           }, tok.widthMm, String(valueAt(payload, tok.key))) : '';
         });
     } else if (tokens.size === 0) {
-      body = escapeHtml(renderContent(template.content, payload).rendered);
+      body = escapeHtml(renderContent(template.content, payload, template.engine).rendered);
     } else {
       body = '';
       let lastIndex = 0;
