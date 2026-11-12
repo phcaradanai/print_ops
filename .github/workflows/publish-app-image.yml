@@ -43,6 +43,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run build:packages
+          npm run build -w apps/web
           npm run test -w packages/adapters
           npm run test -w apps/api -- --pool=forks --maxWorkers=2 --minWorkers=1
       - name: Build Linux application
