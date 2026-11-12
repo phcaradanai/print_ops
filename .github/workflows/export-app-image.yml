@@ -1,0 +1,44 @@
+name: Export verified PrintOps App image
+on:
+  push:
+    branches: ['codex/printops-app-linux-*']
+    paths: ['.github/workflows/export-app-image.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      IMAGE: registry.pg.xenex.io/printops-app:0.1.44
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Export the same application source that passed the publish checks.
+          ref: 327b208
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: docker/setup-buildx-action@v3
+      - name: Build release image
+        run: |
+          docker buildx build --platform linux/amd64 --load \
+            --file infra/docker/Dockerfile.app \
+            --build-arg APP_VERSION=0.1.44 \
+            --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" \
+            --tag "$IMAGE" .
+      - name: Verify app persistence and real Linux label rendering
+        run: |
+          node scripts/smoke-app-image.mjs "$IMAGE"
+          docker run --rm -i --entrypoint node "$IMAGE" --input-type=module < scripts/smoke-cups-render.mjs
+      - name: Export verified image for a local registry upload
+        run: |
+          docker save "$IMAGE" | gzip -1 > printops-app-0.1.44-linux-amd64.tar.gz
+          sha256sum printops-app-0.1.44-linux-amd64.tar.gz > printops-app-0.1.44-linux-amd64.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: printops-app-0.1.44-linux-amd64
+          path: printops-app-0.1.44-linux-amd64.tar.gz*
+          compression-level: 0
+          retention-days: 1
