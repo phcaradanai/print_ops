@@ -406,6 +406,48 @@ body {
   background: var(--command-progress-fill);
 }
 
+/* In the 56px topbar and the drawer head, the full four-row card stacked under
+   the pill and spilled out of the bar. There it becomes one slim row beside
+   the pill: action + percent over a thin bar. Phase/byte detail stays in the
+   accessible value text and in the full card on the dashboard. */
+.app-topbar__gateway .client-control-status-stack,
+.app-nav__gateway .client-control-status-stack {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.app-topbar__gateway {
+  min-width: 0;
+}
+
+.app-topbar__gateway .remote-command-progress,
+.app-nav__gateway .remote-command-progress {
+  width: 11rem;
+  max-width: 100%;
+  gap: 0.2rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.app-topbar__gateway .remote-command-progress--dark {
+  border-color: var(--neutral-border);
+  background: var(--neutral-surface);
+  color: var(--neutral-text);
+}
+
+.app-topbar__gateway .remote-command-progress__description,
+.app-topbar__gateway .remote-command-progress__detail,
+.app-nav__gateway .remote-command-progress__description,
+.app-nav__gateway .remote-command-progress__detail {
+  display: none;
+}
+
+.app-topbar__gateway .remote-command-progress__bar,
+.app-nav__gateway .remote-command-progress__bar {
+  height: 4px;
+}
+
 /* Nav groups */
 
 .nav-group {

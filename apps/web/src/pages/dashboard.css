@@ -75,6 +75,47 @@
   align-items: start;
 }
 
+/* Web Control card: title and status stack wrap instead of squeezing the
+   progress card into a sliver beside the title. */
+.dashboard-control__row {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  row-gap: var(--spacing-sm);
+}
+
+.dashboard-control__row > .client-control-status-stack {
+  flex: 1 1 16rem;
+  max-width: 24rem;
+}
+
+/* Table identifiers truncate with an ellipsis (full value in the title
+   tooltip) instead of breaking mid-word, e.g. "MICROSOFT_PRINT_TO_PD / F". */
+.dashboard-cell-link {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: normal;
+}
+
+.dashboard-cell-link--id {
+  max-width: 10rem;
+}
+
+.dashboard-cell-link--printer {
+  max-width: 14rem;
+}
+
+/* Lets the name column of the printer-health table shrink below its content
+   so the truncate rules can take effect (auto table layout otherwise grows). */
+.dashboard-printer-health__name {
+  width: 100%;
+  max-width: 0;
+}
+
+.dashboard-printer-health__status {
+  white-space: nowrap;
+}
+
 @media (max-width: 1024px) {
   .dashboard-grid {
     grid-template-columns: minmax(0, 1fr);

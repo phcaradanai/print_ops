@@ -245,7 +245,7 @@ export default function Dashboard() {
 
           <Panel padding="md">
             <Stack gap="xs">
-              <Inline gap="xs" style={{ alignItems: 'center' }}>
+              <Inline gap="xs" className="dashboard-control__row" style={{ alignItems: 'center' }}>
                 <Text size="body" weight="semibold">{t('client.control.indicator')}</Text>
                 <ClientControlStatusBadge />
               </Inline>
@@ -284,8 +284,8 @@ export default function Dashboard() {
                 {recentJobs.map((j) => (
                   <tr key={j.id}>
                     <DataCell label={t('page.dashboard.jobId')}>
-                      <Link to={`/jobs/${j.id}`} className="ui-link" title={j.id}>
-                        <Mono>{j.id}</Mono>
+                      <Link to={`/jobs/${j.id}`} className="ui-link dashboard-cell-link dashboard-cell-link--id" title={j.id}>
+                        <Mono truncate>{j.id}</Mono>
                       </Link>
                     </DataCell>
                     <DataCell label={t('page.dashboard.status')}>
@@ -295,10 +295,10 @@ export default function Dashboard() {
                       {j.printerId ? (
                         <Link
                           to={`/printers/${j.printerId}`}
-                          className="ui-link"
+                          className="ui-link dashboard-cell-link dashboard-cell-link--printer"
                           title={j.printerCode ?? j.printerId}
                         >
-                          <Text>{j.printerCode ?? j.printerId}</Text>
+                          <Text truncate>{j.printerCode ?? j.printerId}</Text>
                         </Link>
                       ) : (
                         <Text tone="muted">{t('common.noData')}</Text>
@@ -336,13 +336,13 @@ export default function Dashboard() {
               <tbody>
                 {printers.map((p) => (
                   <tr key={p.id}>
-                    <DataCell label={t('page.printers.name')}>
-                      <Link to={`/printers/${p.id}`} className="ui-link" title={t('page.printerDetail.title')}>
-                        <Text weight="semibold">{p.code}</Text>
+                    <DataCell label={t('page.printers.name')} className="dashboard-printer-health__name">
+                      <Link to={`/printers/${p.id}`} className="ui-link dashboard-cell-link" title={`${p.code}${p.name ? ` · ${p.name}` : ''}`}>
+                        <Text weight="semibold" truncate>{p.code}</Text>
                         {p.name && <Text size="label" tone="muted" truncate>{p.name}{p.location ? ` · ${p.location}` : ''}</Text>}
                       </Link>
                     </DataCell>
-                    <DataCell label={t('page.printers.status')} align="right">
+                    <DataCell label={t('page.printers.status')} align="right" className="dashboard-printer-health__status">
                       {p.status?.code
                         ? <StatusIndicator condition={p.status.code} />
                         : <Text tone="muted">{t('common.noData')}</Text>}

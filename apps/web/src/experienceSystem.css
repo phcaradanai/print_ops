@@ -227,13 +227,16 @@
 
 .app-nav__head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--spacing-sm);
 }
 
 .app-nav__gateway {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   padding-top: 0.15rem;
 }
 
