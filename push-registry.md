@@ -107,24 +107,31 @@ copying a Windows database alone does not migrate its driver or bindings.
 During cutover, stop the old client executors before switching intake or
 restoring a copy of their queue on the server.
 
-Copy `infra/docker/docker-compose.app.yml` to the Linux server. Generate a unique
-JWT secret with `openssl rand -hex 32`, save it in a protected env file:
+Use the registry-only stack file `infra/docker/docker-compose.app.stack.yml`
+(Docker Compose v2 or Portainer Standalone; not `docker stack deploy`/Swarm).
+It pulls `registry.pg.xenex.io/printops-app:0.1.45`, binds the CUPS socket,
+keeps data in the named volume `app_data`, and adds a healthcheck and log
+rotation.
 
-```dotenv
-PRINTOPS_APP_VERSION=0.1.45
-PRINTOPS_APP_JWT_SECRET=<generated secret>
-PRINTOPS_APP_BIND_ADDRESS=127.0.0.1
-PRINTOPS_APP_PORT=8081
-```
+Copy the stack file and `infra/docker/app.env.example` to the Linux server, save
+the env file as `/etc/printops/printops-app.env` (`chmod 600`), and set
+`PRINTOPS_APP_JWT_SECRET` to the output of `openssl rand -hex 32`. Then:
 
 ```sh
-docker compose --env-file /path/to/printops-app.env -f infra/docker/docker-compose.app.yml pull
-docker compose --env-file /path/to/printops-app.env -f infra/docker/docker-compose.app.yml up -d
+docker compose --env-file /etc/printops/printops-app.env -f docker-compose.app.stack.yml config --quiet
+docker compose --env-file /etc/printops/printops-app.env -f docker-compose.app.stack.yml pull
+docker compose --env-file /etc/printops/printops-app.env -f docker-compose.app.stack.yml up -d
+curl -fsS http://127.0.0.1:8081/api/health   # expect "version":"0.1.45"
 ```
 
+In Portainer, create a Standalone stack from the file and enter the same
+variables. To upgrade later, change `PRINTOPS_APP_VERSION` and run `pull` and
+`up -d` again. Never use `down -v`; it deletes `app_data`.
+
 Put the loopback listener behind the existing HTTPS reverse proxy. On first
-access, complete owner setup. The Compose stack uses a named volume `app_data`;
-retain and back it up across upgrades. It is separate from Web Control storage.
+access, complete owner setup. Retain and back up the `app_data` volume across
+upgrades. It is separate from Web Control storage.
+`infra/docker/docker-compose.app.yml` remains equivalent for plain Compose use.
 
 ## Build and publish
 

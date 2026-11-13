@@ -1,0 +1,45 @@
+# Registry-only stack for the PrintOps App (operator UI + API + local print worker).
+# Targets Docker Compose v2 / Portainer Standalone; images are not built here.
+# Not intended for `docker stack deploy` (Swarm): Swarm ignores host_ip binding
+# and cannot enforce create_host_path: false on the CUPS socket bind.
+#
+# Host prerequisites: CUPS running on the Linux host, the printer's Linux driver
+# installed, and a queue created (see push-registry.md "Deploy the application UI/API").
+name: printops-app
+
+services:
+  app:
+    image: "registry.pg.xenex.io/printops-app:${PRINTOPS_APP_VERSION:-0.1.45}"
+    init: true
+    environment:
+      JWT_SECRET: "${PRINTOPS_APP_JWT_SECRET:?Set PRINTOPS_APP_JWT_SECRET to a unique random secret (openssl rand -hex 32)}"
+      PRINTOPS_RUNNER_BOOTSTRAP_SECRET: "${PRINTOPS_RUNNER_BOOTSTRAP_SECRET:-}"
+      PRINTOPS_RETENTION_DAYS: "${PRINTOPS_RETENTION_DAYS:-7}"
+      PRINTOPS_RETENTION_MAX_ROWS: "${PRINTOPS_RETENTION_MAX_ROWS:-1000}"
+    ports:
+      - target: 3001
+        published: "${PRINTOPS_APP_PORT:-8081}"
+        host_ip: "${PRINTOPS_APP_BIND_ADDRESS:-127.0.0.1}"
+        protocol: tcp
+    volumes:
+      - app_data:/data
+      - type: bind
+        source: /run/cups/cups.sock
+        target: /run/cups/cups.sock
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped
+
+volumes:
+  app_data:
