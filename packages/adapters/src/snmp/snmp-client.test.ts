@@ -6,7 +6,9 @@ import { snmpGet } from './snmp-client.js';
 const OID = '1.3.6.1.2.1.43.10.2.1.4.1.1';
 let agent: dgram.Socket | undefined;
 
-afterEach(() => agent?.close());
+afterEach(() => {
+  agent?.close();
+});
 
 // Fake agent that drops the first `drop` requests and echoes the rest back
 // (an echoed GetRequest parses as a varbind list with NULL values).
