@@ -144,10 +144,10 @@ export function EndpointList({
             <Button variant="secondary" onClick={onImportRequested}>
               <TransferIcon action="import" /> {t('page.webhooks.import')}
             </Button>
-            <Button variant="secondary" onClick={() => void exportEndpoints('all')}>
+            <Button variant="secondary" onClick={() => exportEndpoints('all')}>
               <TransferIcon action="export" /> {t('page.webhooks.exportAll')}
             </Button>
-            <Button variant="secondary" onClick={() => void exportEndpoints('filtered')}>
+            <Button variant="secondary" onClick={() => exportEndpoints('filtered')}>
               <TransferIcon action="export" /> {t('page.webhooks.exportFiltered')}
             </Button>
           </Inline>
@@ -182,7 +182,7 @@ export function EndpointList({
             {t('page.webhooks.selectCount').replace('{n}', String(selectedIds.length))}
           </Text>
           <Inline gap="sm" className="webhook-selection-actions__buttons">
-            <Button variant="secondary" onClick={() => void exportEndpoints('selected')}>
+            <Button variant="secondary" onClick={() => exportEndpoints('selected')}>
               <TransferIcon action="export" /> {t('page.webhooks.exportSelected')}
             </Button>
             <Button variant="ghost" onClick={() => setSelectedIds([])}>

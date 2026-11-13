@@ -1,5 +1,6 @@
 import { ApiError, apiErrorFromResponse, networkApiError } from './errors.js';
 import { logError } from '../lib/logError.js';
+import { beginActivity } from '../lib/activity.js';
 import { exportJsonFile } from '../tauri.js';
 
 export { ApiError, errorMessage, errorTechnicalSummary } from './errors.js';
@@ -190,24 +191,123 @@ async function authenticatedResponse(path: string, init: RequestInit, scope: str
   const headers = new Headers(authHeaders(init.body != null));
   new Headers(init.headers).forEach((value, key) => headers.set(key, value));
   const url = apiUrl(path);
+  // Every mutating request lights the global activity bar and flashes its
+  // outcome; plain reads are tracked by the poll controller instead.
+  const method = (init.method ?? 'GET').toUpperCase();
+  const endActivity = method === 'GET' || method === 'HEAD' ? null : beginActivity('mutate');
 
   let res: Response;
   try {
     res = await fetch(url, { ...init, headers });
   } catch (cause) {
+    endActivity?.('error');
     const error = networkApiError(path, cause);
     logError(scope, error);
     throw error;
   }
 
   if (!res.ok) {
+    endActivity?.('error');
     const error = await apiErrorFromResponse(res, path);
     logError(scope, error);
     if (res.status === 401) notifyUnauthorized();
     throw error;
   }
 
+  endActivity?.('success');
   return res;
+}
+
+export interface UploadProgress {
+  /** Bytes sent so far. */
+  loaded: number;
+  /** Total request bytes. */
+  total: number;
+  /** `uploading` while bytes leave the browser, `processing` once all are sent
+   *  and the server is still verifying/storing before it answers. */
+  phase: 'uploading' | 'processing';
+}
+
+/**
+ * JSON request with real upload progress. `fetch` cannot report request-body
+ * progress, so large artifacts (app installers) go through XHR here. Auth,
+ * error mapping and the activity bar behave exactly like apiFetch.
+ */
+export function apiUpload<T>(
+  path: string,
+  body: unknown,
+  onProgress?: (progress: UploadProgress) => void,
+  options: { method?: string } = {},
+): Promise<T> {
+  const method = options.method ?? 'POST';
+  const payload = JSON.stringify(body);
+  const endActivity = beginActivity('mutate');
+
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, apiUrl(path));
+    new Headers(authHeaders(true)).forEach((value, key) => xhr.setRequestHeader(key, value));
+
+    xhr.upload.onprogress = (event) => {
+      const total = event.lengthComputable && event.total > 0 ? event.total : payload.length;
+      onProgress?.({ loaded: event.loaded, total, phase: event.loaded >= total ? 'processing' : 'uploading' });
+    };
+    xhr.upload.onload = () => {
+      onProgress?.({ loaded: payload.length, total: payload.length, phase: 'processing' });
+    };
+
+    const fail = (error: ApiError) => {
+      endActivity('error');
+      logError('apiUpload', error);
+      reject(error);
+    };
+
+    xhr.onerror = () => fail(networkApiError(path, new Error('Upload failed')));
+    xhr.onabort = () => fail(networkApiError(path, new Error('Upload cancelled')));
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const res = new Response(xhr.responseText || null, {
+          status: xhr.status,
+          statusText: xhr.statusText,
+          headers: { 'Content-Type': xhr.getResponseHeader('Content-Type') ?? 'application/json' },
+        });
+        void apiErrorFromResponse(res, path).then((error) => {
+          if (xhr.status === 401) notifyUnauthorized();
+          fail(error);
+        });
+        return;
+      }
+      endActivity('success');
+      try {
+        resolve((xhr.responseText ? JSON.parse(xhr.responseText) : undefined) as T);
+      } catch (cause) {
+        reject(new ApiError({ status: xhr.status, path, message: 'The server returned a malformed response.', code: 'INVALID_JSON', cause }));
+      }
+    };
+
+    onProgress?.({ loaded: 0, total: payload.length, phase: 'uploading' });
+    xhr.send(payload);
+  });
+}
+
+/**
+ * Reads a File as base64 (without the data: prefix) and reports read
+ * progress, so a large installer does not look frozen while it loads.
+ */
+export function readFileBase64(file: File, onProgress?: (fraction: number) => void): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) onProgress?.(event.loaded / event.total);
+    };
+    reader.onload = () => {
+      onProgress?.(1);
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      resolve(result.split(',')[1] ?? result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
 }
 
 /** A DELETE command has no response-body contract, even when called via apiFetch. */

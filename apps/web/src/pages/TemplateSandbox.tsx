@@ -744,7 +744,7 @@ export default function TemplateSandbox() {
             <Inline gap="sm" className="sandbox-actions">
               <Button
                 variant="secondary"
-                onClick={() => void renderPreview()}
+                onClick={() => renderPreview()}
                 busy={loading.render}
                 busyLabel={t('page.sandbox.rendering')}
               >

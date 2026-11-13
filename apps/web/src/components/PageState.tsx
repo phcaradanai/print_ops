@@ -22,7 +22,16 @@ export function LoadingState({ label }: { label?: string }) {
   const { t } = useLocale();
   return (
     <p className="state-panel state-panel--loading loading-text" role="status" aria-live="polite">
-      {label ?? t('common.loading')}
+      <span className="state-panel__loading-head">
+        <span className="state-panel__spinner" aria-hidden="true" />
+        <span>{label ?? t('common.loading')}</span>
+      </span>
+      {/* Skeleton hints at the shape of what is coming instead of a bare word. */}
+      <span className="state-skeleton" aria-hidden="true">
+        <span className="state-skeleton__line" />
+        <span className="state-skeleton__line" />
+        <span className="state-skeleton__line state-skeleton__line--short" />
+      </span>
     </p>
   );
 }

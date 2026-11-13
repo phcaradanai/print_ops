@@ -88,7 +88,7 @@ export function ServiceAccountSettings() {
           <strong>{t('settings.serviceAccounts.copyNow')}</strong>
           <div className="settings-hint--mono" style={{ overflowWrap: 'anywhere', marginTop: '0.5rem' }}>{issuedKey}</div>
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-            <Button variant="secondary" onClick={() => void navigator.clipboard.writeText(issuedKey)}>
+            <Button variant="secondary" onClick={() => navigator.clipboard.writeText(issuedKey)}>
               {t('settings.serviceAccounts.copy')}
             </Button>
             <Button variant="secondary" onClick={() => setIssuedKey(null)}>
@@ -119,10 +119,10 @@ export function ServiceAccountSettings() {
           <StateBadge value={account.isActive} onLabel={t('status.active')} offLabel={t('status.inactive')} />
           {account.isActive && (
             <div className="settings-actions" style={{ marginTop: '0.5rem' }}>
-              <Button variant="secondary" disabled={busy !== null} busy={busy === account.id} onClick={() => void rotate(account.id)}>
+              <Button variant="secondary" disabled={busy !== null} busy={busy === account.id} onClick={() => rotate(account.id)}>
                 {t('settings.serviceAccounts.rotate')}
               </Button>
-              <Button variant="danger" disabled={busy !== null} busy={busy === account.id} onClick={() => void revoke(account.id)}>
+              <Button variant="danger" disabled={busy !== null} busy={busy === account.id} onClick={() => revoke(account.id)}>
                 {t('settings.serviceAccounts.revoke')}
               </Button>
             </div>

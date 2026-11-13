@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { apiFetch, triggerDirectDownload } from '../api/client.js';
+import { apiFetch, apiUpload, readFileBase64, triggerDirectDownload, type UploadProgress } from '../api/client.js';
 import { compareVersions } from '@printerops/domain';
 import { useLocale } from '../i18n/index.js';
 import { formatRelativeTime } from '../lib/relativeTime.js';
@@ -103,6 +103,10 @@ export default function WebControlReleases() {
   const [importUrlOrPath, setImportUrlOrPath] = useState('');
   const [importMode, setImportMode] = useState<'file' | 'path'>('file');
   const [importError, setImportError] = useState<string | null>(null);
+  /** 0..1 while the chosen installer is being read into memory; null otherwise. */
+  const [importReadProgress, setImportReadProgress] = useState<number | null>(null);
+  const [importUpload, setImportUpload] = useState<UploadProgress | null>(null);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
 
   // Edit / Designation dialog state
@@ -210,23 +214,33 @@ export default function WebControlReleases() {
     if (match && !importVersion) {
       setImportVersion(match[1]);
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const res = reader.result as string;
-      const base64 = res.split(',')[1] ?? res;
-      setImportBase64(base64);
-    };
-    reader.readAsDataURL(file);
+    // Large installers take visible time to read; show it, and keep Import
+    // disabled until the bytes are actually ready (previously Import could
+    // fire with no artifact attached while the read was still running).
+    setImportBase64(null);
+    setImportReadProgress(0);
+    readFileBase64(file, setImportReadProgress)
+      .then((base64) => {
+        setImportBase64(base64);
+        setImportReadProgress(null);
+      })
+      .catch((err: unknown) => {
+        setImportReadProgress(null);
+        setImportError(err instanceof Error ? err.message : String(err));
+      });
   };
 
   const handleImportRelease = async () => {
+    if (importMode === 'file' && !importBase64) {
+      setImportError(t('control.releases.fileNotReady'));
+      return;
+    }
     setIsSubmitting(true);
     setImportError(null);
+    setImportNotice(null);
+    const importedVersion = importVersion;
     try {
-      await apiFetch('/v1/control/releases/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await apiUpload('/v1/control/releases/import', {
           filename: importFile?.name || (importUrlOrPath ? importUrlOrPath.split(/[/\\]/).pop() : undefined),
           artifactBase64: importBase64 ?? undefined,
           artifactPath: importMode === 'path' && !importUrlOrPath.startsWith('http') ? importUrlOrPath : undefined,
@@ -237,9 +251,9 @@ export default function WebControlReleases() {
           isLts: importIsLts,
           isLatest: importIsLatest,
           releaseNotes: importNotes || undefined,
-        }),
-      });
+      }, setImportUpload);
       setImportModalOpen(false);
+      setImportNotice(t('control.releases.importedNotice').replace('{version}', importedVersion));
       setImportFile(null);
       setImportBase64(null);
       setImportVersion('');
@@ -250,6 +264,7 @@ export default function WebControlReleases() {
       setImportError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsSubmitting(false);
+      setImportUpload(null);
     }
   };
 
@@ -428,6 +443,11 @@ export default function WebControlReleases() {
           {t('control.releases.storageSummary').replace('{detail}', storageConfig.provider === 'minio' ? `MinIO (${storageConfig.minio.bucket})` : `Local (${storageConfig.localPath})`)}
         </Badge>
       </Inline>
+      {importNotice && (
+        <Alert tone="success" onDismiss={() => setImportNotice(null)}>
+          {importNotice}
+        </Alert>
+      )}
       {downloadNotice && (
         <Alert tone="info" onDismiss={() => setDownloadNotice(null)}>
           {downloadNotice}
@@ -614,7 +634,8 @@ export default function WebControlReleases() {
           </Button>
           <Button
             variant="primary"
-            disabled={isSubmitting || !importVersion || (importMode === 'file' ? !importFile : !importUrlOrPath.trim())}
+            disabled={isSubmitting || !importVersion || (importMode === 'file' ? !importFile || !importBase64 : !importUrlOrPath.trim())}
+            busy={isSubmitting}
             onClick={handleImportRelease}
           >
             {isSubmitting ? t('control.releases.importing') : t('control.releases.importSubmit')}
@@ -630,6 +651,25 @@ export default function WebControlReleases() {
             <Alert tone="error" title={t('control.releases.importFailedTitle')}>
               {importError}
             </Alert>
+          )}
+
+          {importReadProgress !== null && (
+            <TransferProgress
+              label={t('control.releases.readingFile')}
+              fraction={importReadProgress}
+              detail={importFile ? formatMegabytes(importFile.size * importReadProgress) + ' / ' + formatMegabytes(importFile.size) : undefined}
+            />
+          )}
+          {importUpload && (
+            <TransferProgress
+              label={importUpload.phase === 'processing' ? t('control.releases.processingUpload') : t('control.releases.uploadingFile')}
+              fraction={importUpload.phase === 'processing' ? null : importUpload.loaded / Math.max(1, importUpload.total)}
+              detail={importUpload.phase === 'processing'
+                ? undefined
+                : t('control.releases.uploadBytes')
+                  .replace('{current}', formatMegabytes(importUpload.loaded))
+                  .replace('{total}', formatMegabytes(importUpload.total))}
+            />
           )}
 
           <Stack gap="md">
@@ -812,7 +852,7 @@ export default function WebControlReleases() {
           <Button variant="secondary" disabled={isSubmitting} onClick={() => setRevokeTarget(null)}>
             {t('common.cancel')}
           </Button>
-          <Button variant="danger" busy={isSubmitting} onClick={() => void handleConfirmRevoke()}>
+          <Button variant="danger" busy={isSubmitting} onClick={() => handleConfirmRevoke()}>
             {t('control.releases.revoke')}
           </Button>
         </>}
@@ -978,4 +1018,36 @@ export default function WebControlReleases() {
       </Dialog>
     </PageLayout>
   );
+}
+
+/**
+ * Determinate (fraction 0..1) or indeterminate (fraction null) transfer row,
+ * styled like the remote-command progress card so reading, uploading and
+ * server-side verification look like one continuous flow.
+ */
+function TransferProgress({ label, fraction, detail }: { label: string; fraction: number | null; detail?: string }) {
+  const percent = fraction === null ? null : Math.max(0, Math.min(100, Math.round(fraction * 100)));
+  return (
+    <div className="remote-command-progress remote-command-progress--running transfer-progress" role="group" aria-live="polite" aria-label={percent === null ? label : `${label} ${percent}%`}>
+      <div className="remote-command-progress__heading">
+        <span className="remote-command-progress__action">{label}</span>
+        {percent !== null && <strong>{percent}%</strong>}
+      </div>
+      <progress
+        className={`remote-command-progress__bar${percent === null ? ' transfer-progress__bar--indeterminate' : ''}`}
+        value={percent ?? undefined}
+        max={100}
+        aria-label={label}
+      />
+      {detail && (
+        <div className="remote-command-progress__detail">
+          <span>{detail}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatMegabytes(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

@@ -242,7 +242,7 @@ export default function DiscoveredPrinters() {
             <Button variant="secondary" onClick={() => setPendingRegister(null)}>
               {t('common.cancel')}
             </Button>
-            <Button onClick={() => void confirmRegister()} busy={register.pending}>
+            <Button onClick={() => confirmRegister()} busy={register.pending}>
               {t('page.discovery.register')}
             </Button>
           </>

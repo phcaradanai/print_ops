@@ -49,7 +49,7 @@ export function VersionHistoryMenu({ editor, t, onRestored }: { editor: PaperPro
               </span>
               {index === 0
                 ? <small>{t('page.paperProfiles.versionCurrent')}</small>
-                : <Button size="sm" variant="secondary" disabled={dirty || busy} onClick={() => void restore(version.versionId)}>{t('page.paperProfiles.versionRestore')}</Button>}
+                : <Button size="sm" variant="secondary" disabled={dirty || busy} onClick={() => restore(version.versionId)}>{t('page.paperProfiles.versionRestore')}</Button>}
             </div>
           ))}
         </div>

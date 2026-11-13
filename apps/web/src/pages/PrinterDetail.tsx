@@ -145,11 +145,11 @@ export default function PrinterDetail() {
         />}
       footer={
         <>
-          <Button variant="secondary" onClick={() => void runRefreshStatus()} busy={refreshStatus.pending}>
+          <Button variant="secondary" onClick={() => runRefreshStatus()} busy={refreshStatus.pending}>
             {t('page.printerDetail.getStatus')}
           </Button>
           <Button
-            onClick={() => void runTestPrint()}
+            onClick={() => runTestPrint()}
             busy={testPrint.pending}
             busyLabel={t('page.printerDetail.testPrintSending')}
             disabled={!readiness.ready}

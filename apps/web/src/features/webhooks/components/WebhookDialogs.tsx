@@ -88,7 +88,7 @@ export function WebhookDialogs({ controller }: { controller: WebhookWorkspaceCon
               <Text size="label" tone="muted">{t('page.webhooks.detailsIntakeUrl')}</Text>
               <CodeBlock label={t('page.webhooks.detailsIntakeUrl')}>{detailsUrl}</CodeBlock>
               <Inline gap="sm">
-                <Button variant="secondary" size="sm" onClick={() => void copyUrl()}>
+                <Button variant="secondary" size="sm" onClick={() => copyUrl()}>
                   <ActionIcon name="copy" /> {t('page.webhooks.copyIntakeUrl')}
                 </Button>
                 {copied && (
@@ -162,7 +162,7 @@ export function WebhookDialogs({ controller }: { controller: WebhookWorkspaceCon
             <Button variant="secondary" onClick={() => setPendingDelete(null)}>
               {t('common.cancel')}
             </Button>
-            <Button variant="danger" busy={busy} onClick={() => void confirmDelete()}>
+            <Button variant="danger" busy={busy} onClick={() => confirmDelete()}>
               <ActionIcon name="delete" /> {t('page.webhooks.deleteTitle')}
             </Button>
           </>
@@ -187,7 +187,7 @@ export function WebhookDialogs({ controller }: { controller: WebhookWorkspaceCon
             <Button variant="secondary" onClick={() => setBatchDeleteOpen(false)}>
               {t('common.cancel')}
             </Button>
-            <Button variant="danger" busy={busy} onClick={() => void confirmBatchDelete()}>
+            <Button variant="danger" busy={busy} onClick={() => confirmBatchDelete()}>
               <ActionIcon name="delete" />{' '}
               {t('page.webhooks.batchDeleteConfirm').replace('{n}', String(selectedEndpoints.length))}
             </Button>
@@ -215,7 +215,7 @@ export function WebhookDialogs({ controller }: { controller: WebhookWorkspaceCon
             <Button variant="secondary" onClick={() => setImportCandidates(null)}>
               {t('common.cancel')}
             </Button>
-            <Button busy={busy} onClick={() => void confirmImport()}>
+            <Button busy={busy} onClick={() => confirmImport()}>
               {t('page.webhooks.importApply')}
             </Button>
           </>

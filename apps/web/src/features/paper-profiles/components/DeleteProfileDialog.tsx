@@ -29,7 +29,7 @@ export function DeleteProfileDialog({ persistence, t }: {
           </Button>
           <Button
             variant="danger"
-            onClick={() => void persistence.confirmDelete()}
+            onClick={() => persistence.confirmDelete()}
             busy={persistence.deletePending}
             busyLabel={t('page.paperProfiles.deleteProfile')}
           >

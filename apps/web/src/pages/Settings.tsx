@@ -674,7 +674,7 @@ export default function Settings() {
               )}
 
               <Inline gap="sm">
-                <Button variant="secondary" busy={natsTesting} busyLabel={t('settings.nats.testing')} onClick={() => void handleNatsTest()}>
+                <Button variant="secondary" busy={natsTesting} busyLabel={t('settings.nats.testing')} onClick={() => handleNatsTest()}>
                   {t('settings.nats.testConnection')}
                 </Button>
               </Inline>
@@ -744,7 +744,7 @@ export default function Settings() {
                   disabled={!natsDirty}
                   busy={natsSaving}
                   busyLabel={t('common.loading')}
-                  onClick={() => void handleNatsSave()}
+                  onClick={() => handleNatsSave()}
                 >
                   {t('settings.nats.applyAndRestart')}
                 </Button>
@@ -816,7 +816,7 @@ export default function Settings() {
                       disabled={!controlPlaneUrl.trim() || !enrollmentToken.trim()}
                       busy={enroll.pending}
                       busyLabel={t('settings.control.connecting')}
-                      onClick={() => void handleControlEnroll()}
+                      onClick={() => handleControlEnroll()}
                     >
                       {t('settings.control.connect')}
                     </Button>

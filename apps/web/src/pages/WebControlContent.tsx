@@ -470,7 +470,7 @@ export default function WebControlContent() {
                   <Button
                     variant="secondary"
                     disabled={!inventoryDeviceId || isReadingClient || isImporting}
-                    onClick={() => void readClientCatalog()}
+                    onClick={() => readClientCatalog()}
                   >
                     {isReadingClient ? t('control.content.contactingClient') : t('control.content.readCatalog')}
                   </Button>
@@ -514,7 +514,7 @@ export default function WebControlContent() {
                       <DataCell label={t('control.content.colName')}>{item.name}</DataCell>
                       <DataCell label={t('control.content.colDetails')}><Text size="label" tone="muted">{item.details}</Text></DataCell>
                       <DataCell label={t('control.content.colAction')}>
-                        <Button size="sm" variant="secondary" disabled={isReadingClient || isImporting} onClick={() => void pullClientItem(item)}>
+                        <Button size="sm" variant="secondary" disabled={isReadingClient || isImporting} onClick={() => pullClientItem(item)}>
                           {t('control.content.pullForReview')}
                         </Button>
                       </DataCell>
@@ -546,7 +546,7 @@ export default function WebControlContent() {
                       )}
                     </FormField>
                   </Stack>
-                  <Button variant="primary" disabled={isImporting || !importCode.trim() || !pullCommandId} onClick={() => void importPulledBundle()}>
+                  <Button variant="primary" disabled={isImporting || !importCode.trim() || !pullCommandId} onClick={() => importPulledBundle()}>
                     {isImporting ? t('control.content.importing') : t('control.content.importCopy')}
                   </Button>
                   {importError && <Text size="label" tone="danger">{importError}</Text>}
@@ -692,7 +692,7 @@ export default function WebControlContent() {
             <Button
               variant="primary"
               disabled={isPublishing || !selectedContent || selectedDeviceIds.length === 0}
-              onClick={() => void publish()}
+              onClick={() => publish()}
             >
               {isPublishing ? t('control.content.publishing') : t(selectedDeviceIds.length === 1 ? 'control.content.publishOne' : 'control.content.publishMany').replace('{count}', String(selectedDeviceIds.length))}
             </Button>

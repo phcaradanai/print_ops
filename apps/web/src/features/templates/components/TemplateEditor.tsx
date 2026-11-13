@@ -195,7 +195,7 @@ export function TemplateEditor() {
           </Button>
           <Inline gap="sm">
             <Button
-              onClick={() => void submit()}
+              onClick={() => submit()}
               busy={busy}
               busyLabel={t('page.templates.saving')}
             >

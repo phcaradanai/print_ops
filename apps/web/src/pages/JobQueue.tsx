@@ -353,7 +353,7 @@ export default function JobQueue() {
       width="full"
       actions={
         <Inline gap="sm">
-          <Button variant="secondary" onClick={() => void apiDownload('/exports/jobs.csv', 'jobs.csv')}>
+          <Button variant="secondary" onClick={() => apiDownload('/exports/jobs.csv', 'jobs.csv')}>
             <TransferIcon action="export" /> {t('page.jobQueue.exportCsv')}
           </Button>
           <Freshness
@@ -538,7 +538,7 @@ export default function JobQueue() {
                         {isReprintable && <Button
                           variant={reprintButtonVariant(getJobVerdict(j.status))}
                           size="sm"
-                          onClick={() => void openReprint(j)}
+                          onClick={() => openReprint(j)}
                           busy={openingJobId === j.id || reprintingId === j.id}
                           busyLabel={t('page.jobQueue.reprintSubmitting')}
                           aria-label={t('page.jobQueue.reprintJob').replace('{id}', j.id.slice(0, 8))}

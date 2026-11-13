@@ -406,6 +406,42 @@ body {
   background: var(--command-progress-fill);
 }
 
+/* Full-width variant for upload/read progress inside dialogs. */
+.transfer-progress {
+  max-width: none;
+}
+
+/* Indeterminate <progress> (no value): a sliding segment instead of the
+   browser's default, which some engines render as an empty track. */
+.transfer-progress__bar--indeterminate:indeterminate {
+  background:
+    linear-gradient(90deg, transparent 0%, var(--command-progress-fill) 40%, var(--command-progress-fill) 60%, transparent 100%)
+    no-repeat,
+    var(--neutral-border);
+  background-size: 40% 100%, 100% 100%;
+  animation: transfer-progress-slide 1.2s ease-in-out infinite;
+}
+
+.transfer-progress__bar--indeterminate:indeterminate::-webkit-progress-bar {
+  background: transparent;
+}
+
+.transfer-progress__bar--indeterminate:indeterminate::-moz-progress-bar {
+  background: transparent;
+}
+
+@keyframes transfer-progress-slide {
+  0% { background-position: -40% 0, 0 0; }
+  100% { background-position: 140% 0, 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transfer-progress__bar--indeterminate:indeterminate {
+    animation: none;
+    background-position: 50% 0, 0 0;
+  }
+}
+
 /* In the 56px topbar and the drawer head, the full four-row card stacked under
    the pill and spilled out of the bar. There it becomes one slim row beside
    the pill: action + percent over a thin bar. Phase/byte detail stays in the
@@ -4024,6 +4060,60 @@ body {
 
 .state-panel--loading {
   text-align: left;
+}
+
+.state-panel__loading-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--neutral-text-muted);
+}
+
+.state-panel__spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  border: 2px solid color-mix(in srgb, var(--primary) 25%, transparent);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: ui-button-spin 0.7s linear infinite;
+}
+
+.state-skeleton {
+  display: grid;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+.state-skeleton__line {
+  display: block;
+  height: 0.75rem;
+  border-radius: var(--rounded-sm, 4px);
+  background: linear-gradient(
+    90deg,
+    var(--neutral-subtle) 0%,
+    color-mix(in srgb, var(--neutral-border) 70%, var(--neutral-subtle)) 45%,
+    var(--neutral-subtle) 90%
+  );
+  background-size: 200% 100%;
+  animation: state-skeleton-shimmer 1.3s ease-in-out infinite;
+}
+
+.state-skeleton__line--short {
+  width: 60%;
+}
+
+@keyframes state-skeleton-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .state-panel__spinner,
+  .state-skeleton__line {
+    animation: none;
+  }
 }
 
 /* Quiet by design: an empty list is information, not an alert. Inside a

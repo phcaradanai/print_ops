@@ -50,13 +50,13 @@ export default function AccountSecurity() {
               <>
                 <CodeBlock label={t('recovery.generated')} scroll={false}>{recoveryCode}</CodeBlock>
                 <Text as="p" role="status">{t('recovery.generated')}</Text>
-                <Button type="button" variant="ghost" onClick={() => void copyRecoveryCode()}>
+                <Button type="button" variant="ghost" onClick={() => copyRecoveryCode()}>
                   {t('recovery.copy')}
                 </Button>
                 {copyMessage && <Text as="p" role="status">{copyMessage}</Text>}
               </>
             )}
-            <Button type="button" disabled={generating} busy={generating} onClick={() => void generateRecoveryCode()}>
+            <Button type="button" disabled={generating} busy={generating} onClick={() => generateRecoveryCode()}>
               {generating ? t('recovery.generating') : recoveryCode ? t('recovery.regenerate') : t('recovery.generate')}
             </Button>
           </Stack>

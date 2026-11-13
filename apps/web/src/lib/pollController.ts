@@ -52,6 +52,8 @@ function defaultSubscribeVisibility(onChange: () => void): () => void {
   return () => document.removeEventListener('visibilitychange', onChange);
 }
 
+import { beginActivity } from './activity.js';
+
 export function createPollController<T>(options: PollControllerOptions<T>): PollController {
   const {
     fetcher,
@@ -106,9 +108,14 @@ export function createPollController<T>(options: PollControllerOptions<T>): Poll
     }, intervalMs);
   }
 
-  async function attempt(): Promise<void> {
+  /**
+   * `foreground` attempts (first load, manual refresh) light the global
+   * activity bar; scheduled ticks stay silent so polling never pulses it.
+   */
+  async function attempt(foreground = false): Promise<void> {
     if (stopped || inFlight) return;
     inFlight = true;
+    const endActivity = foreground ? beginActivity('load') : null;
     const runGeneration = generation;
     const hasData = snapshot.data !== undefined;
     emit({
@@ -137,6 +144,7 @@ export function createPollController<T>(options: PollControllerOptions<T>): Poll
         stale: snapshot.data !== undefined,
       });
     } finally {
+      endActivity?.();
       if (runGeneration === generation) inFlight = false;
       if (!stopped) schedule();
     }
@@ -158,7 +166,7 @@ export function createPollController<T>(options: PollControllerOptions<T>): Poll
         void attempt();
       });
       // Initial load is independent from the recurring-polling switch.
-      void attempt();
+      void attempt(true);
     },
 
     stop(): void {
@@ -173,7 +181,7 @@ export function createPollController<T>(options: PollControllerOptions<T>): Poll
     refresh(): void {
       if (stopped) return;
       clearTimer();
-      void attempt();
+      void attempt(true);
     },
 
     setPollingEnabled(enabled: boolean): void {

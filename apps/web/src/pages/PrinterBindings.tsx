@@ -160,7 +160,7 @@ export default function PrinterBindings() {
           title={editingId ? t('page.bindings.editTitle') : t('page.bindings.title')}
           footer={
             <Inline gap="sm">
-              <Button onClick={() => void saveBinding.run(form)} busy={saveBinding.pending}>
+              <Button onClick={() => saveBinding.run(form)} busy={saveBinding.pending}>
                 {editingId ? t('common.save') : t('common.bind')}
               </Button>
               {editingId && (

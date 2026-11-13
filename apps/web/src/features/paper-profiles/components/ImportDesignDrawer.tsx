@@ -124,7 +124,7 @@ function ImportReview({ controller, t }: { controller: ImportDesignController; t
       )}
       <Inline gap="sm" className="pp-import-actions">
         <Button variant="secondary" onClick={controller.reset}>{t('page.paperProfiles.importBack')}</Button>
-        <Button onClick={() => void controller.submit()} disabled={draftErrors.length > 0}>
+        <Button onClick={() => controller.submit()} disabled={draftErrors.length > 0}>
           {t('page.paperProfiles.importButton')}
         </Button>
       </Inline>

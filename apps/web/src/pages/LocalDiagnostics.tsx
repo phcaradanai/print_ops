@@ -238,7 +238,7 @@ export default function LocalDiagnostics() {
               actions={
                 <Button
                   size="sm"
-                  onClick={() => void triggerDiscover(runner.id)}
+                  onClick={() => triggerDiscover(runner.id)}
                   busy={refreshingRunnerId === runner.id}
                   busyLabel={t('page.diagnostics.requesting')}
                   disabled={refreshingRunnerId !== null && refreshingRunnerId !== runner.id}

@@ -1,0 +1,72 @@
+/* Global activity line — see components/ActivityBar.tsx. */
+
+.activity-bar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 10000;
+  height: 3px;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.activity-bar__fill {
+  width: 0;
+  height: 100%;
+  border-radius: 0 999px 999px 0;
+  background: var(--primary);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+.activity-bar[data-phase='running'] {
+  opacity: 1;
+}
+
+/* Fill to the end, hold briefly so the outcome colour registers, then fade. */
+.activity-bar[data-phase='finishing'] {
+  animation: activity-bar-fade 0.65s ease-out forwards;
+}
+
+@keyframes activity-bar-fade {
+  0%, 55% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.activity-bar[data-phase='running'] .activity-bar__fill {
+  animation: activity-bar-creep 9s cubic-bezier(0.08, 0.7, 0.2, 1) forwards;
+}
+
+.activity-bar[data-phase='finishing'] .activity-bar__fill {
+  width: 100%;
+  transition: width 0.25s ease-out;
+}
+
+.activity-bar[data-tone='mutate'] .activity-bar__fill {
+  background: var(--semantic-info);
+}
+
+.activity-bar[data-tone='success'] .activity-bar__fill {
+  background: var(--semantic-success);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--semantic-success) 55%, transparent);
+}
+
+.activity-bar[data-tone='error'] .activity-bar__fill {
+  background: var(--semantic-error);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--semantic-error) 55%, transparent);
+}
+
+@keyframes activity-bar-creep {
+  0% { width: 0; }
+  10% { width: 30%; }
+  100% { width: 88%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-bar[data-phase='running'] .activity-bar__fill {
+    animation: none;
+    width: 60%;
+  }
+
+  .activity-bar[data-phase='finishing'] .activity-bar__fill {
+    transition: none;
+  }
+}

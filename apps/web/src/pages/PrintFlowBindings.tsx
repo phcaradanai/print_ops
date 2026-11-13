@@ -164,7 +164,7 @@ function CopyableValue({
         variant="secondary"
         size="sm"
         aria-label={copied ? copiedLabel : copyAriaLabel}
-        onClick={() => void copy()}
+        onClick={() => copy()}
       >
         {copied ? copiedLabel : copyLabel}
       </Button>

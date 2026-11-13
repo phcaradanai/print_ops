@@ -340,20 +340,20 @@ export function EndpointEditor({ controller }: { controller: WebhookWorkspaceCon
 
       <div className="webhook-editor-actions" role="group" aria-label={t('page.webhooks.editorCreateTitle')}>
         <Button variant="ghost" onClick={closeEditor}>{t('common.cancel')}</Button>
-        <Button variant="secondary" busy={busy} onClick={() => void saveEndpoint(false)}>
+        <Button variant="secondary" busy={busy} onClick={() => saveEndpoint(false)}>
           {t('page.webhooks.saveDraft')}
         </Button>
         <Stack gap="xs" className="webhook-test-action">
           <Button
             variant="secondary"
             disabled={!editingId || busy}
-            onClick={() => void testCallback()}
+            onClick={() => testCallback()}
           >
             <ActionIcon name="play" /> {t('page.webhooks.testSavedEndpoint')}
           </Button>
           {!editingId && <Text size="label" tone="muted">{t('page.webhooks.unsavedTestHelp')}</Text>}
         </Stack>
-        <Button busy={busy} onClick={() => void saveEndpoint(true)}>
+        <Button busy={busy} onClick={() => saveEndpoint(true)}>
           {editingId ? t('page.webhooks.saveEndpoint') : t('page.webhooks.createEndpoint')}
         </Button>
       </div>

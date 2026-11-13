@@ -120,7 +120,7 @@ export default function RoutePolicies() {
         title={t('page.routePolicies.createPolicy')}
         footer={(
           <Button
-            onClick={() => void createPolicy.run(raw)}
+            onClick={() => createPolicy.run(raw)}
             busy={createPolicy.pending}
             busyLabel={t('page.routePolicies.creatingPolicy')}
             disabled={jsonError !== null}

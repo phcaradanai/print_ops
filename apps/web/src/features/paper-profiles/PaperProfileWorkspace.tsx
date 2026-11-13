@@ -169,7 +169,7 @@ export default function PaperProfileWorkspace() {
             </Button>
             <Button
               variant="secondary"
-              onClick={() => void persistence.exportAll()}
+              onClick={() => persistence.exportAll()}
               disabled={persistence.profiles.length === 0}
             >
               <TransferIcon action="export" /> {t('page.paperProfiles.exportAllProfiles')}

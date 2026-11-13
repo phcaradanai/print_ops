@@ -65,7 +65,7 @@ export default function ExportCenter() {
             footer={(
               <Button
                 variant="secondary"
-                onClick={() => void run(item)}
+                onClick={() => run(item)}
                 busy={download.pending && activeFilename === item.filename}
                 busyLabel={t('page.export.downloading')}
               >

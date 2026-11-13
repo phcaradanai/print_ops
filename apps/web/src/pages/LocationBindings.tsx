@@ -85,7 +85,7 @@ export default function LocationBindings() {
           title={editingId ? t('page.locations.editTitle') : t('page.locations.title')}
           footer={
             <Inline gap="sm">
-              <Button onClick={() => void save.run(form)} busy={save.pending}>{editingId ? t('common.save') : t('common.bind')}</Button>
+              <Button onClick={() => save.run(form)} busy={save.pending}>{editingId ? t('common.save') : t('common.bind')}</Button>
               {editingId && <Button variant="ghost" onClick={() => { setEditingId(null); setForm(EMPTY); }}>{t('common.cancel')}</Button>}
             </Inline>
           }
@@ -161,7 +161,7 @@ export default function LocationBindings() {
                   <DataCell label={col.default}>
                     {b.isDefault
                       ? <Badge tone="info">{t('page.bindings.isDefault')}</Badge>
-                      : <Button size="sm" variant="ghost" busy={makeDefault.pending} onClick={() => void makeDefault.run(b)}>{t('page.locations.makeDefault')}</Button>}
+                      : <Button size="sm" variant="ghost" busy={makeDefault.pending} onClick={() => makeDefault.run(b)}>{t('page.locations.makeDefault')}</Button>}
                   </DataCell>
                   <DataCell label={col.actions} actions>
                     <Inline gap="xs">

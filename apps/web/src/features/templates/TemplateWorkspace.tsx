@@ -140,7 +140,7 @@ export function TemplateWorkspaceInner() {
             <Button variant="secondary" onClick={() => setPendingDelete(null)}>
               {t('common.cancel')}
             </Button>
-            <Button variant="danger" onClick={() => void confirmDelete()}>
+            <Button variant="danger" onClick={() => confirmDelete()}>
               {t('common.delete')}
             </Button>
           </Inline>
