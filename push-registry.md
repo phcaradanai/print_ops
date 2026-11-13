@@ -23,8 +23,17 @@ node scripts/publish-control-plane-images.mjs
 
 Target: `registry.pg.xenex.io/printops-app:0.1.44` (`linux/amd64`).
 
-Status: build/publish verification pending. Digest and Actions run will be
-recorded after the registry confirms the push.
+Status: Linux build and all pre-publish checks passed. Registry upload is in
+progress; the tag is not yet available. Digest will be recorded after the
+registry confirms publication.
+
+Build source: `327b208` on `codex/printops-app-linux-0.1.44`.
+[Publish workflow](https://github.com/phcaradanai/print_ops/actions/runs/43197615607)
+
+Verification: adapters 126 tests, API 663 passed / 1 conditional skip, Web 677
+unit tests and 136 Playwright tests. Built-image checks cover app health/version,
+SPA assets/deep links, owner setup/login, persisted SQLite after recreation, and
+real Chromium PDFs with Thai text, profile margins and one/two-label pagination.
 
 This image packages the normal PrintOps operator application (not Web Control),
 the API, and an optional Linux Go runner. App versions are synchronized at
@@ -62,6 +71,17 @@ driver and create its network queue (for example `POSTEK_G2000`). Verify that
 mounts that socket into the app and refuses to create a directory in its place.
 CUPS drivers/filters are installed on the host, not in the application image.
 Do not create a raw queue for HTML/PDF and expect the printer to interpret PDF.
+Use a dedicated printer queue (not a class with automatic failover), and disable
+CUPS job replay on backend errors during host setup:
+
+```sh
+sudo lpadmin -p POSTEK_G2000 -o printer-error-policy=abort-job
+```
+
+The application does not retry submissions; this host policy also prevents CUPS
+from being configured to retry a partially delivered job. See the
+[OpenPrinting error-policy reference](https://openprinting.github.io/cups/doc/admin.html).
+Never manually restart a submitted job until its physical outcome is checked.
 
 Register the configured queue via authenticated `POST /api/printers`, for example:
 
@@ -79,6 +99,8 @@ Register the configured queue via authenticated `POST /api/printers`, for exampl
 Import/reuse the existing templates and profiles, then bind them to this printer.
 Existing Windows `spooler://...` bindings must be changed to the new CUPS printer;
 copying a Windows database alone does not migrate its driver or bindings.
+During cutover, stop the old client executors before switching intake or
+restoring a copy of their queue on the server.
 
 Copy `infra/docker/docker-compose.app.yml` to the Linux server. Generate a unique
 JWT secret with `openssl rand -hex 32`, save it in a protected env file:
