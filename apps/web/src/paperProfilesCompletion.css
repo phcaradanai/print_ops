@@ -138,3 +138,126 @@
     min-height: clamp(260px, 45dvh, 480px);
   }
 }
+
+/* Printer-feed readout sits in the toolbar but had no frame, so it read as
+ * stray text beside the flip button. Give it the same height, radius and
+ * border as its neighbours, as a read-only chip. */
+.paper-profiles-page .pp-canvas-toolbar .pp-feed-preview {
+  align-self: stretch;
+  gap: var(--spacing-sm);
+  padding: 0 var(--spacing-md);
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-md);
+  background: var(--neutral-paper);
+  color: var(--neutral-text);
+  font-family: var(--font-mono-family);
+  font-weight: 600;
+}
+
+/* Calibration actions had no styles: stacked, touching, unequal widths.
+ * Same two-column grid and gap as the X/Y offset inputs above them. */
+.paper-profiles-page .pp-calibration-actions {
+  display: grid;
+  /* Side by side when both labels fit on one line, otherwise stacked. */
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-lg);
+}
+
+.paper-profiles-page .pp-calibration-copy,
+.paper-profiles-page .pp-calibration-status {
+  color: var(--neutral-text-muted);
+  font-size: var(--font-label-size);
+  line-height: 1.45;
+}
+
+.paper-profiles-page .pp-calibration-copy {
+  margin-bottom: var(--spacing-md);
+}
+
+.paper-profiles-page .pp-calibration-status {
+  margin-top: var(--spacing-md);
+}
+
+.paper-profiles-page .pp-calibration-status[role='alert'] {
+  color: var(--state-danger-text);
+}
+
+.paper-profiles-page .pp-calibration-actions > .ui-button {
+  width: 100%;
+}
+
+/* Fields section: helper line was unstyled (inherited heading size) and the
+ * field cards were stacked with no gap. */
+.paper-profiles-page .pp-preview-only-hint {
+  margin: var(--spacing-md) 0 0;
+  color: var(--neutral-text-muted);
+  font-size: var(--font-label-size);
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.paper-profiles-page .pp-field-list {
+  display: grid;
+  gap: var(--spacing-sm);
+}
+
+.paper-profiles-page .pp-field-list:not(:empty) {
+  margin-top: var(--spacing-md);
+}
+
+/* Import drawer review step. */
+.pp-drawer--import .pp-import-thumbnail {
+  display: block;
+  max-width: 100%;
+  max-height: 16rem;
+  margin: var(--spacing-md) 0;
+  object-fit: contain;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-md);
+  background: var(--neutral-paper);
+}
+
+.pp-drawer--import .pp-import-file-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs) var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  color: var(--neutral-text-muted);
+  font-size: var(--font-label-size);
+}
+
+.pp-drawer--import .pp-import-file-info > span:first-child {
+  flex-basis: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--neutral-text);
+  font-weight: 600;
+}
+
+.pp-drawer--import .pp-import-form {
+  margin-top: var(--spacing-md);
+}
+
+.pp-drawer--import .pp-import-actions {
+  justify-content: flex-end;
+  margin-top: var(--spacing-lg);
+}
+
+/* Field card: group headings were the same size/colour as the control labels
+ * under them with only ~9px above, so groups ran together. Separate each
+ * group with a rule and give the heading one step more weight. */
+.paper-profiles-page .pp-field-row__group-label {
+  margin: var(--spacing-md) 0 var(--spacing-sm);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--neutral-border);
+  color: var(--neutral-text);
+  font-size: var(--font-label-size);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.paper-profiles-page .pp-field-row__content,
+.paper-profiles-page .pp-field-row__position {
+  gap: var(--spacing-sm);
+}
