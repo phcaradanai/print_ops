@@ -29,6 +29,15 @@ describe('Template management, sandbox, and dynamic intake', () => {
     const printer = printers.find((item) => item.protocol === 'fake');
     expect(template).toBeDefined();
     expect(printer).toBeDefined();
+    const papers = (await app.inject({
+      method: 'GET', url: '/api/v1/paper-profiles', headers: auth(admin),
+    })).json() as Array<{ id: string; dpi: number }>;
+    const paper = papers.find((item) => item.id === template!.paperProfileId)!;
+    const calibration = await app.inject({
+      method: 'POST', url: '/api/v1/printer-calibrations', headers: auth(admin),
+      payload: { printerId: printer!.id, paperProfileId: paper.id, dpi: paper.dpi, xOffsetDots: 0, yOffsetDots: 100 },
+    });
+    expect(calibration.statusCode).toBe(201);
 
     const submitted = await app.inject({
       method: 'POST',
@@ -50,7 +59,12 @@ describe('Template management, sandbox, and dynamic intake', () => {
     for (let attempt = 0; attempt < 20 && status !== 'SUCCESS'; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 5));
       const read = await app.inject({ method: 'GET', url: `/jobs/${body.jobId}`, headers: auth(admin) });
-      status = (read.json() as { status: string }).status;
+      const job = read.json();
+      expect(job.metadata).toMatchObject({
+        paperProfile: { paperProfileId: paper.id, dpi: paper.dpi },
+        printerCalibration: { printerId: printer!.id, paperProfileId: paper.id, dpi: paper.dpi, yOffsetDots: 100 },
+      });
+      status = job.status;
     }
     expect(status).toBe('SUCCESS');
   });

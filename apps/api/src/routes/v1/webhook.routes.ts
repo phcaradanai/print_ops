@@ -14,7 +14,7 @@ import type {
   CallbackTransport,
   JobPriority,
 } from '@printerops/domain';
-import { evaluatePrinterReadiness } from '@printerops/domain';
+import { evaluatePrinterReadiness, snapshotPaperProfileGeometry } from '@printerops/domain';
 import type { DynamicIntakeService } from '../../services/dynamic-intake.service.js';
 import type { CreatePrintJobService } from '../../services/create-print-job.service.js';
 import type { ExecuteJobService } from '../../services/execute-job.service.js';
@@ -305,8 +305,11 @@ export async function webhookRoutes(
           warnings: rendered.warnings,
           sandbox: true,
           paperProfile: {
+            paperProfileId: paper.id,
+            code: paper.code,
+            name: paper.name,
             widthMm: paper.widthMm,
-             gapMm: paper.gapMm ?? 0,
+            gapMm: paper.gapMm ?? 0,
             heightMm: paper.heightMm,
             marginTopMm: paper.marginTopMm,
             marginRightMm: paper.marginRightMm,
@@ -314,6 +317,7 @@ export async function webhookRoutes(
             marginLeftMm: paper.marginLeftMm,
             orientation: paper.orientation,
             dpi: paper.dpi,
+            geometry: snapshotPaperProfileGeometry(paper),
           },
         },
       },

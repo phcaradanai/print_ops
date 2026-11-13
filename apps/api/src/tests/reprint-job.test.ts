@@ -120,7 +120,12 @@ describe('ReprintJobService print content', () => {
   });
 
   it('reuses existing printable bytes without rendering again', async () => {
-    const original = originalJob({ renderedPrintPayload: '<p>stored</p>' });
+    const paperProfile = { widthMm: 81, heightMm: 71, dpi: 203 };
+    const original = originalJob({
+      paperProfileId: 'paper-1',
+      renderedPrintPayload: '<p>stored</p>',
+      metadata: { paperProfile, pageHeightMm: 80, printerCalibration: { printerId: 'printer-1' } },
+    });
     const h = buildService(original);
 
     await h.service.execute(original.id, {
@@ -132,8 +137,13 @@ describe('ReprintJobService print content', () => {
 
     expect(h.renderer.renderPrintPayload).not.toHaveBeenCalled();
     expect(h.createJob.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ renderedPrintPayload: '<p>stored</p>' }),
+      expect.objectContaining({
+        renderedPrintPayload: '<p>stored</p>',
+        paperProfileId: 'paper-1',
+        metadata: expect.objectContaining({ paperProfile, pageHeightMm: 80 }),
+      }),
       'operator',
     );
+    expect(vi.mocked(h.createJob.execute).mock.calls[0]?.[0].metadata).not.toHaveProperty('printerCalibration');
   });
 });

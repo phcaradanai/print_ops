@@ -60,6 +60,7 @@ export interface Printer {
 export interface PrintCommand {
   jobId: string;
   printerId: string;
+  paperProfileId?: string;
   traceId: string;
   connectionUri?: string;
   documentUrl?: string;

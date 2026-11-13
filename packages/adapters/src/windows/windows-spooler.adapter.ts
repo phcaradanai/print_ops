@@ -37,6 +37,14 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+class InvalidPrinterCalibrationError extends Error {
+  readonly code = 'INVALID_PRINTER_CALIBRATION';
+
+  constructor(detail: string) {
+    super(`INVALID_PRINTER_CALIBRATION: ${detail}`);
+  }
+}
+
 /**
  * Everything outside this process that the adapter touches.
  *
@@ -487,7 +495,9 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const observedJobIds = new Set(submissions.flatMap((submission) => submission.jobIds));
+      const calibrationError = err instanceof InvalidPrinterCalibrationError ? err : undefined;
       const definitelyBeforeSubmission =
+        calibrationError !== undefined ||
         message.includes('PrinterUnavailable') ||
         message.includes('UNSUPPORTED_PRINT_FORMAT') ||
         message.includes('HTML_PRINT_HELPER_NOT_FOUND') ||
@@ -508,7 +518,7 @@ export class WindowsSpoolerAdapter implements PrinterAdapterPort {
       return {
         success: false,
         jobId,
-        errorCode: submissionMayHavePrinted ? 'PRINT_NOT_VERIFIABLE' : submissionErrorCode(message),
+        errorCode: submissionMayHavePrinted ? 'PRINT_NOT_VERIFIABLE' : calibrationError?.code ?? submissionErrorCode(message),
         message: submissionMayHavePrinted
           ? `WindowsSpoolerAdapter: ${subject} on "${printerName}" may have printed ` +
             `${submittedCopies} of ${copies} requested copy/copies before submission failed: ${message}. Do not auto-retry.`
@@ -1640,6 +1650,14 @@ if ($null -eq $workOffline -and $null -ne $win32) { $workOffline = $win32.WorkOf
     html: string,
     command: PrintCommand,
   ): Promise<PrintSubmission> {
+    const renderOverrides = resolveCommandRenderTransformOverrides(command);
+    const page = resolveHtmlPageSettings(html, command.metadata, renderOverrides);
+    const transformedHtml = applyHtmlRenderTransform(html, page, command, renderOverrides);
+    const calibratedHtml = applyHtmlCalibration(
+      applyHtmlMarginCompensation(transformedHtml, page, command, renderOverrides),
+      page,
+      command,
+    );
     // A persistent serve-mode helper keeps ONE WebView2 environment alive per
     // printer instead of cold-starting a fresh WebView2 for every job
     // (DEFECT-05: ~1-2s per job of process + runtime initialisation, which is
@@ -1654,14 +1672,6 @@ if ($null -eq $workOffline -and $null -ne $win32) { $workOffline = $win32.WorkOf
     const stagedRequestFile = `${requestFile}.pending`;
     const resultFile = join(session.dir, `result-${jobId}.json`);
     try {
-      const renderOverrides = resolveCommandRenderTransformOverrides(command);
-      const page = resolveHtmlPageSettings(html, command.metadata, renderOverrides);
-      const transformedHtml = applyHtmlRenderTransform(html, page, command, renderOverrides);
-      const calibratedHtml = applyHtmlCalibration(
-        applyHtmlMarginCompensation(transformedHtml, page, command, renderOverrides),
-        page,
-        command,
-      );
       await writeFile(file, calibratedHtml, 'utf-8');
       const jobName = `PrintOps:${command.jobId ?? jobId}`;
       // Serve-mode requests omit resultPath/userDataFolder: the result goes
@@ -2273,15 +2283,11 @@ export function applyHtmlMarginCompensation(
  * keeps the template coordinates deterministic while correcting the physical
  * printer origin measured for one printer/profile/DPI tuple.
  */
-export function applyHtmlCalibration(
-  html: string,
-  page: HtmlPageSettings,
-  command: PrintCommand,
-): string {
+function readPrinterCalibration(command: PrintCommand) {
   const raw = command.metadata?.['printerCalibration'];
-  if (raw === undefined || raw === null) return html;
+  if (raw === undefined || raw === null) return undefined;
   if (typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new Error('INVALID_PRINTER_CALIBRATION: calibration must be an object');
+    throw new InvalidPrinterCalibrationError('calibration must be an object');
   }
 
   const calibration = raw as Record<string, unknown>;
@@ -2291,9 +2297,12 @@ export function applyHtmlCalibration(
     : {};
   const printerId = calibration['printerId'];
   const paperProfileId = calibration['paperProfileId'];
-  const expectedPaperProfileId = profileValues['paperProfileId'];
+  const snapshotProfileId = profileValues['paperProfileId'];
+  const expectedPaperProfileId = command.paperProfileId ?? snapshotProfileId;
   const dpi = calibration['dpi'];
-  const expectedDpi = metadataNumber(command.metadata, 'dpi');
+  // Top-level DPI can come from the printer. The rendered paper snapshot
+  // determines the physical size of each calibration dot.
+  const expectedDpi = profileValues['dpi'] ?? metadataNumber(command.metadata, 'dpi');
   const xOffsetDots = calibration['xOffsetDots'];
   const yOffsetDots = calibration['yOffsetDots'];
   const valid =
@@ -2301,17 +2310,27 @@ export function applyHtmlCalibration(
     printerId === command.printerId &&
     typeof paperProfileId === 'string' && paperProfileId.length > 0 &&
     paperProfileId === expectedPaperProfileId &&
-    Number.isInteger(dpi) && dpi === expectedDpi && (dpi as number) > 0 &&
-    Number.isInteger(xOffsetDots) && Math.abs(xOffsetDots as number) <= 10000 &&
-    Number.isInteger(yOffsetDots) && Math.abs(yOffsetDots as number) <= 10000;
+    (snapshotProfileId === undefined || paperProfileId === snapshotProfileId) &&
+    typeof dpi === 'number' && Number.isInteger(dpi) && dpi === expectedDpi && dpi > 0 &&
+    typeof xOffsetDots === 'number' && Number.isInteger(xOffsetDots) && Math.abs(xOffsetDots) <= 10000 &&
+    typeof yOffsetDots === 'number' && Number.isInteger(yOffsetDots) && Math.abs(yOffsetDots) <= 10000;
   if (!valid) {
-    throw new Error(
-      'INVALID_PRINTER_CALIBRATION: calibration does not match the printer, paper profile, or DPI',
-    );
+    throw new InvalidPrinterCalibrationError('calibration does not match the printer, paper profile, or DPI');
   }
+  return { dpi, xOffsetDots, yOffsetDots };
+}
 
-  const xMm = (xOffsetDots as number) * 25.4 / (dpi as number);
-  const yMm = (yOffsetDots as number) * 25.4 / (dpi as number);
+export function applyHtmlCalibration(
+  html: string,
+  page: HtmlPageSettings,
+  command: PrintCommand,
+): string {
+  const calibration = readPrinterCalibration(command);
+  if (!calibration) return html;
+
+  const { dpi, xOffsetDots, yOffsetDots } = calibration;
+  const xMm = xOffsetDots * 25.4 / dpi;
+  const yMm = yOffsetDots * 25.4 / dpi;
   const frameStyle =
     'position:relative;width:' + formatCalibrationMm(page.widthMm) + 'mm;' +
     'height:' + formatCalibrationMm(page.heightMm) + 'mm;overflow:hidden;box-sizing:border-box;';
@@ -2700,37 +2719,16 @@ function isDatamaxDplPayload(data: Buffer): boolean {
 
 function dplCoordinate(value: number): string {
   if (!Number.isInteger(value) || value < 0 || value > 9999) {
-    throw new Error('INVALID_PRINTER_CALIBRATION: DPL field moved outside the 0..9999 dot coordinate range');
+    throw new InvalidPrinterCalibrationError('DPL field moved outside the 0..9999 dot coordinate range');
   }
   return String(value).padStart(4, '0');
 }
 
 /** Apply a validated printer/profile calibration to native DPL fields. */
 export function applyDplCalibration(data: Buffer, command: PrintCommand): Buffer {
-  const raw = command.metadata?.['printerCalibration'];
-  if (raw === undefined || raw === null) return data;
-  if (typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new Error('INVALID_PRINTER_CALIBRATION: calibration must be an object');
-  }
-  const calibration = raw as Record<string, unknown>;
-  const profile = command.metadata?.['paperProfile'];
-  const profileValues = profile && typeof profile === 'object' && !Array.isArray(profile)
-    ? profile as Record<string, unknown>
-    : {};
-  const valid =
-    typeof calibration['printerId'] === 'string' && calibration['printerId'] === command.printerId &&
-    typeof calibration['paperProfileId'] === 'string' &&
-      calibration['paperProfileId'] === profileValues['paperProfileId'] &&
-    Number.isInteger(calibration['dpi']) && calibration['dpi'] === metadataNumber(command.metadata, 'dpi') &&
-    (calibration['dpi'] as number) > 0 &&
-    Number.isInteger(calibration['xOffsetDots']) && Math.abs(calibration['xOffsetDots'] as number) <= 10000 &&
-    Number.isInteger(calibration['yOffsetDots']) && Math.abs(calibration['yOffsetDots'] as number) <= 10000;
-  if (!valid) {
-    throw new Error('INVALID_PRINTER_CALIBRATION: calibration does not match the printer, paper profile, or DPI');
-  }
-  const xOffsetDots = calibration['xOffsetDots'] as number;
-  const yOffsetDots = calibration['yOffsetDots'] as number;
-  const dpi = calibration['dpi'] as number;
+  const calibration = readPrinterCalibration(command);
+  if (!calibration) return data;
+  const { dpi, xOffsetDots, yOffsetDots } = calibration;
   const xOffsetUnits = Math.round((xOffsetDots * 25.4 * 10) / dpi);
   const yOffsetUnits = Math.round((yOffsetDots * 25.4 * 10) / dpi);
   const shifted = data.toString('latin1').split('\r').map((line) => {

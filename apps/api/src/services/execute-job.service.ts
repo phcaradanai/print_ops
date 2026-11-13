@@ -177,6 +177,7 @@ export class ExecuteJobService {
       adapterRun = adapter.executeCommand({
         jobId,
         printerId: printer.id,
+        paperProfileId: job.paperProfileId,
         traceId: job.traceId,
         connectionUri: printer.connectionUri,
         documentUrl: job.documentUrl,

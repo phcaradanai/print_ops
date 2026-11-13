@@ -401,6 +401,43 @@ describe('persistent serve-mode helper sessions', () => {
     expect(result.errorCode).toBe('PRINT_NOT_VERIFIABLE');
   });
 
+  const calibratedCommand = {
+    paperProfileId: 'paper-1',
+    metadata: {
+      dpi: 300,
+      paperProfile: { widthMm: 81, heightMm: 71, dpi: 203 },
+      printerCalibration: { printerId: 'printer-1', paperProfileId: 'paper-1', dpi: 203, xOffsetDots: 0, yOffsetDots: 100 },
+    },
+  };
+
+  it('submits a calibrated legacy job using its saved paper profile and paper DPI', async () => {
+    const h = makeServeHarness({ usb: true });
+    const result = await h.adapter.executeCommand(htmlPrintCommand(calibratedCommand));
+    expect(result.success).toBe(true);
+    expect(result.raw).toMatchObject({ deviceConfirmation: 'local-spooler-delivery' });
+  });
+
+  it.each([
+    { printerId: 'other-printer' },
+    { paperProfileId: 'other-paper' },
+    { dpi: 300 },
+  ])('rejects a conflicting calibration before starting the helper: %o', async (conflict) => {
+    const h = makeServeHarness({ usb: true });
+    const result = await h.adapter.executeCommand(htmlPrintCommand({
+      ...calibratedCommand,
+      metadata: {
+        ...calibratedCommand.metadata,
+        printerCalibration: { ...calibratedCommand.metadata.printerCalibration, ...conflict },
+      },
+    }));
+    expect(result).toMatchObject({
+      success: false,
+      errorCode: 'INVALID_PRINTER_CALIBRATION',
+      raw: { submittedCopies: 0 },
+    });
+    expect(h.spawns).toHaveLength(0);
+  });
+
   it('reports SUCCESS via spooler delivery when printer-side IPP is structurally unavailable', async () => {
     // WSD printers (Microsoft IPP Class Driver) expose no reachable IPP/SNMP
     // endpoint. When the local spooler observed our exact job and delivered it,
