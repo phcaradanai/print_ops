@@ -1,0 +1,161 @@
+version: "3.9"
+
+# ==============================================================================
+# HAPYmed PrintOps Control Plane Stack - Production on CHG 3 (Docker Standalone)
+# ==============================================================================
+# Architecture Highlights:
+# - Target Node: VM 1 (Primary - 10.103.254.25)
+# - Registry: Uses ${PRINTOPS_IMAGE_PREFIX} from .env (registry.node1.ch3.local:80/...)
+# - Storage: /mnt/gluster-shared/apps/hapy/printops/api (GlusterFS Replicated Pool)
+# - Messaging: Reuses shared 'infra-nats' via 'nginx_net' (nats://nats-node1:4222)
+# - Ingress/Web: Routed through Nginx Proxy Manager via 'nginx_net'
+# ==============================================================================
+
+services:
+  # 1. Init Container: กำหนดค่า Stream ให้กับ NATS JetStream (ทำงานครั้งเดียวแล้วจบ)
+  control-stream:
+    container_name: printops-control-stream
+    image: "${PRINTOPS_IMAGE_PREFIX:?Set PRINTOPS_IMAGE_PREFIX}-api:${PRINTOPS_CONTROL_PLANE_VERSION:?Set PRINTOPS_CONTROL_PLANE_VERSION}"
+    command: ["node", "ensure-control-stream.mjs"]
+    environment:
+      PRINTOPS_CONTROL_NATS_URL: nats://nats-node1:4222
+      PRINTOPS_CONTROL_NATS_STREAM: PRINTOPS_CONTROL
+    networks:
+      - nginx_net
+    restart: "no"
+
+  # 2. API Service: ควบคุมการสั่งพิมพ์ อัปเดตสถานะ และบริหาร Client อุปกรณ์
+  api:
+    container_name: printops-api
+    image: "${PRINTOPS_IMAGE_PREFIX:?Set PRINTOPS_IMAGE_PREFIX}-api:${PRINTOPS_CONTROL_PLANE_VERSION:?Set PRINTOPS_CONTROL_PLANE_VERSION}"
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3001"
+      JWT_SECRET: "${PRINTOPS_CONTROL_JWT_SECRET:?Set PRINTOPS_CONTROL_JWT_SECRET to a unique random secret}"
+      DB_MODE: sqlite
+      SQL_WASM_PATH: /app/node_modules/sql.js/dist/sql-wasm.wasm
+      PRINTOPS_DATA_DIR: /data
+      PRINTOPS_DB_PATH: /data/printops.db
+      PRINTOPS_DEVICE_IDENTITY_PATH: /data/device-identity.json
+      PRINTOPS_RELEASES_DIR: /data/releases
+      STORAGE_PROVIDER: local
+      # PRINTOPS_DEV_SEED: "false"
+      PRINTOPS_DEV_SEED: "true"
+      PRINTOPS_CONTROL_ROLE: control-plane
+      PRINTOPS_CONTROL_NATS_URL: nats://nats-node1:4222
+      PRINTOPS_CONTROL_PUBLIC_NATS_URL: "${PRINTOPS_CONTROL_PUBLIC_NATS_URL:?Set PRINTOPS_CONTROL_PUBLIC_NATS_URL}"
+      PRINTOPS_CONTROL_NATS_STREAM: PRINTOPS_CONTROL
+    volumes:
+      - /mnt/gluster-shared/apps/hapy/printops/api:/data
+    networks:
+      - nginx_net
+    depends_on:
+      control-stream:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # 3. Web Service: หน้า Dashboard สำหรับจัดการและตรวจสถานะเครื่องพิมพ์
+  web:
+    container_name: printops-web
+    image: "${PRINTOPS_IMAGE_PREFIX:?Set PRINTOPS_IMAGE_PREFIX}-web:${PRINTOPS_CONTROL_PLANE_VERSION:?Set PRINTOPS_CONTROL_PLANE_VERSION}"
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    networks:
+      - nginx_net
+    depends_on:
+      api:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # 4. CUPS Service: ตัวกลางจัดการคิวพิมพ์
+  cups:
+    container_name: printops-cups
+    image: registry.node1.ch3.local:80/cups:2026-11-09-amd64
+    ports:
+      - "${PRINTOPS_CUPS_BIND_ADDRESS:-127.0.0.1}:${PRINTOPS_CUPS_PORT:-631}:631"
+    volumes:
+      - cups_etc:/etc/cups
+      - cups_spool:/var/spool/cups
+    networks:
+      - nginx_net
+    restart: unless-stopped
+
+  # 5. App Service: PrintOps App (UI + API)
+  app:
+    container_name: printops-app
+    image: registry.node1.ch3.local:80/printops-app:${PRINTOPS_APP_VERSION:-0.1.45}
+    init: true
+    environment:
+      PRINTOPS_DEV_SEED: "true"
+      # JWT_SECRET: "${PRINTOPS_APP_JWT_SECRET:?Set PRINTOPS_APP_JWT_SECRET to a unique random secret}"
+      JWT_SECRET: "${PRINTOPS_APP_JWT_SECRET:-ae2a436107815a3b6ded09ebe73e4feef67419bc94ff3e8fe538fcf6e57015c8}"
+      PRINTOPS_RUNNER_BOOTSTRAP_SECRET: "${PRINTOPS_RUNNER_BOOTSTRAP_SECRET:-}"
+      CUPS_SERVER: "cups:631"
+    ports:
+      - "${PRINTOPS_APP_BIND_ADDRESS:-127.0.0.1}:${PRINTOPS_APP_PORT:-8081}:3001"
+    volumes:
+      - app_data:/data
+    restart: unless-stopped
+    networks:
+      - nginx_net
+    depends_on:
+      cups:
+        condition: service_started
+      api:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # 6. Runner Service: Go Runner สำหรับดึงงานพิมพ์จาก App ไปส่งออก CUPS
+  runner:
+    container_name: printops-runner
+    image: registry.node1.ch3.local:80/printops-app:${PRINTOPS_APP_VERSION:-0.1.45}
+    command: ["/usr/local/bin/printops-runner", "run"]
+    environment:
+      PRINTOPS_API_BASE_URL: "http://app:3001"
+      PRINTOPS_RUNNER_NAME: "${PRINTOPS_RUNNER_NAME:-printops-runner-vm1}"
+      PRINTOPS_RUNNER_BOOTSTRAP_SECRET: "${PRINTOPS_RUNNER_BOOTSTRAP_SECRET:-}"
+      PRINTOPS_EXECUTOR_MODE: "cups"
+      CUPS_SERVER: "cups:631"
+    restart: unless-stopped
+    networks:
+      - nginx_net
+    depends_on:
+      app:
+        condition: service_healthy
+      cups:
+        condition: service_started
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+networks:
+  nginx_net:
+    external: true
+
+volumes:
+  app_data:
+  cups_etc:
+  cups_spool:
