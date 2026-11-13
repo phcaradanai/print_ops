@@ -1,43 +1,48 @@
-# Web Control 1.0.5
+# Web Control 1.0.6
 
-Published for `linux/amd64` from app release `0.1.39`, commit
-`128d74461e4d6aa3f3c4995c63d9cd64267451ea`.
+Published for `linux/amd64` from app release `0.1.45`, commit
+`35ede634860ede45030cbffed1964ff0e56049be`.
 
-[Successful GitHub Actions publish](https://github.com/phcaradanai/print_ops/actions/runs/42981313244)
+[Successful GitHub Actions publish](https://github.com/phcaradanai/print_ops/actions/runs/43359859445)
 
 | Image | Published digest |
 | --- | --- |
-| `registry.pg.xenex.io/printops-control-plane-api:1.0.5` | `sha256:a1273c0ec0ea9240b323916c9f3cf3fb5ce101ea9822115bf2918e372feb5034` |
-| `registry.pg.xenex.io/printops-control-plane-web:1.0.5` | `sha256:959cf03281105e98e88ec9129bbb0d78c724e9fe42e53ba2192ada8d990df273` |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.6` | `sha256:4f9c610efa415c3c495fe9b1007e6bf71ce1710be6be4cded862341040c45659` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.6` | `sha256:d129f2dbdf1e75bab30433f024db5377850b5220d8c678ab38fd84bdbf3270a1` |
+
+Previous: 1.0.5 (app `0.1.39`, commit `128d744`), api
+`sha256:a1273c0ec0ea9240b323916c9f3cf3fb5ce101ea9822115bf2918e372feb5034`, web
+`sha256:959cf03281105e98e88ec9129bbb0d78c724e9fe42e53ba2192ada8d990df273`.
 
 Manual publish from a Docker build host:
 
 ```powershell
 $env:PRINTOPS_IMAGE_PREFIX = "registry.pg.xenex.io/printops-control-plane"
-$env:PRINTOPS_CONTROL_PLANE_VERSION = "1.0.5"
+$env:PRINTOPS_CONTROL_PLANE_VERSION = "1.0.6"
 node scripts/publish-control-plane-images.mjs
 ```
 
 
-# Web App PrintOps 0.1.44
+# Web App PrintOps 0.1.45
 
-Target: `registry.pg.xenex.io/printops-app:0.1.44` (`linux/amd64`).
+Image: `registry.pg.xenex.io/printops-app:0.1.45` (`linux/amd64`).
 
-Status: Linux build and all pre-publish checks passed. Registry upload is in
-progress; the tag is not yet available. Digest will be recorded after the
-registry confirms publication.
+Status: published. Registry digest
+`sha256:c8056eecce1f55cf2de3ff607cdc08b43d5dda66228b2030a47f5e678be40bf8`.
 
-Build source: `327b208` on `codex/printops-app-linux-0.1.44`.
-[Publish workflow](https://github.com/phcaradanai/print_ops/actions/runs/43197615607)
+Build source: `35ede634860ede45030cbffed1964ff0e56049be` on `main`. Built and
+pushed from a local Docker Desktop host (not the GitHub workflow).
 
-Verification: adapters 126 tests, API 663 passed / 1 conditional skip, Web 677
-unit tests and 136 Playwright tests. Built-image checks cover app health/version,
-SPA assets/deep links, owner setup/login, persisted SQLite after recreation, and
-real Chromium PDFs with Thai text, profile margins and one/two-label pagination.
+Verification: `scripts/smoke-app-image.mjs` passed (health/version, SPA
+assets/deep links, owner setup/login, SQLite persistence after recreation,
+runner binary, single API worker). The workflow-only checks (full test suite,
+Compose validation, Chromium Thai-label rendering via `smoke-cups-render.mjs`)
+were not run for this publish.
 
 This image packages the normal PrintOps operator application (not Web Control),
 the API, and an optional Linux Go runner. App versions are synchronized at
-`0.1.44`; Web Control remains `1.0.5`.
+`0.1.45`; Web Control is `1.0.6`. The Windows desktop installers for `0.1.45`
+were built from the same commit and passed `release:verify`.
 
 ## Linux printing flow
 
@@ -106,7 +111,7 @@ Copy `infra/docker/docker-compose.app.yml` to the Linux server. Generate a uniqu
 JWT secret with `openssl rand -hex 32`, save it in a protected env file:
 
 ```dotenv
-PRINTOPS_APP_VERSION=0.1.44
+PRINTOPS_APP_VERSION=0.1.45
 PRINTOPS_APP_JWT_SECRET=<generated secret>
 PRINTOPS_APP_BIND_ADDRESS=127.0.0.1
 PRINTOPS_APP_PORT=8081
@@ -134,10 +139,10 @@ Manual equivalent on a Docker build host, from the repository root:
 ```sh
 docker buildx build --platform linux/amd64 --load \
   -f infra/docker/Dockerfile.app \
-  --build-arg APP_VERSION=0.1.44 \
+  --build-arg APP_VERSION=0.1.45 \
   --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" \
-  -t registry.pg.xenex.io/printops-app:0.1.44 .
-node scripts/smoke-app-image.mjs registry.pg.xenex.io/printops-app:0.1.44
-docker push registry.pg.xenex.io/printops-app:0.1.44
-docker buildx imagetools inspect registry.pg.xenex.io/printops-app:0.1.44
+  -t registry.pg.xenex.io/printops-app:0.1.45 .
+node scripts/smoke-app-image.mjs registry.pg.xenex.io/printops-app:0.1.45
+docker push registry.pg.xenex.io/printops-app:0.1.45
+docker buildx imagetools inspect registry.pg.xenex.io/printops-app:0.1.45
 ```
