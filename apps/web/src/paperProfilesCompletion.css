@@ -1,33 +1,140 @@
+/*
+ * Paper Profile editor — final spacing/overflow pass. Loaded last, so these
+ * rules settle the conflicts left by the earlier hotfix layers.
+ */
 
+/* The editor stage renders its own header card; the scaffold divider and its
+ * padding only left an empty band between that card and the workspace. */
+.paper-profiles-page .ops-page__header:has(> .pp-page-header--editor) {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
 
-/* At phone widths the prior rules placed the save and close controls on row 1
- * while the status also spanned row 1. Explicit placement avoids overlap and
- * implicit columns extending beyond the inspector rail. */
-@media (max-width: 430px) {
-  .paper-profiles-page .pp-command-actions {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+/* The global <=1024px rule turns page headers into columns, which made the
+ * heading's 28rem flex-basis a 28rem height. The editor header already wraps
+ * (toolbar basis is 100%), so it stays a wrapping row at every width. */
+.paper-profiles-page .pp-page-header--editor {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.paper-profiles-page.ops-page:has(.pp-page-header--editor) {
+  row-gap: var(--spacing-lg);
+}
+
+/* Command bar: status on its own row, every action on one row beneath it,
+ * save/close grouped at the end. A flex row cannot strand buttons on a
+ * second line the way the fixed 5-column grid did with 7 actions. */
+.paper-profiles-page .pp-command-actions {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--spacing-xs);
+}
+
+.paper-profiles-page .pp-command-status {
+  flex: 1 1 100%;
+  order: -1;
+  min-height: 2rem;
+  white-space: nowrap !important;
+}
+
+.paper-profiles-page .pp-command-actions > .ui-icon-button--primary {
+  margin-left: auto;
+}
+
+/* Form grids: labels that wrap to two lines must not push their input down
+ * out of line with its neighbours. */
+.paper-profiles-page .pp-form-scroll .ui-grid {
+  align-items: end;
+}
+
+/* Rotation: number input and the four presets share one full-width row
+ * instead of squeezing four chips into a third of the panel. */
+.paper-profiles-page .pp-form-scroll .ui-grid > :has(.pp-rotation-control) {
+  grid-column: 1 / -1;
+}
+
+.paper-profiles-page .pp-rotation-control {
+  grid-template-columns: minmax(5rem, 7rem) minmax(0, 1fr);
+  align-items: center;
+}
+
+.paper-profiles-page .pp-rotation-preset {
+  min-height: 2.25rem;
+}
+
+/* Switches carry their own label; without it the form shows a bare "Off". */
+.paper-profiles-page .pp-form-scroll .ui-switch__label {
+  display: block;
+  white-space: normal;
+}
+
+.paper-profiles-page .pp-form-scroll .ui-grid > .ui-switch {
+  grid-column: 1 / -1;
+  align-self: center;
+}
+
+/* Multi-column layout block was unstyled (heading rendered at body size). */
+.paper-profiles-page .pp-layout-controls {
+  display: grid;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--neutral-border);
+}
+
+.paper-profiles-page .pp-layout-controls__heading {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.paper-profiles-page .pp-layout-controls__heading strong {
+  font-size: var(--font-body-size);
+  font-weight: 650;
+  color: var(--neutral-text);
+}
+
+.paper-profiles-page .pp-layout-controls__heading span,
+.paper-profiles-page .pp-layout-summary {
+  color: var(--neutral-text-muted);
+  font-size: var(--font-label-size);
+  line-height: 1.45;
+}
+
+.paper-profiles-page .pp-layout-error {
+  color: var(--state-danger-text);
+  font-size: var(--font-label-size);
+}
+
+/* Full preview sidebar: every block shares the heading's inset. */
+.paper-preview-modal__sample {
+  display: grid;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-md) 0.85rem;
+  border-bottom: 1px solid var(--neutral-border);
+  font-size: var(--font-body-size);
+  font-weight: 600;
+  color: var(--neutral-text);
+}
+
+.paper-preview-modal__sample small {
+  font-size: var(--font-label-size);
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+/* Stacked layout: the preview panel had a fixed height that the info rows and
+ * paper section consumed, leaving the canvas ~40px tall. Let the panel grow
+ * and guarantee the canvas a usable stage instead. */
+@media (max-width: 1180px) {
+  .paper-profiles-page .pp-preview-panel {
+    height: auto !important;
+    min-height: 0 !important;
   }
 
-  .paper-profiles-page .pp-command-status {
-    grid-column: 1 / -1;
-    grid-row: 1;
-  }
-
-  .paper-profiles-page .pp-command-actions > :nth-child(2) {
-    grid-column: 1;
-    grid-row: 2;
-    justify-self: center;
-  }
-
-  .paper-profiles-page .pp-command-actions > :nth-child(3) {
-    grid-column: 2;
-    grid-row: 2;
-    justify-self: center;
-  }
-
-  .paper-profiles-page .pp-command-actions > .ds-btn--primary {
-    grid-column: 3;
-    grid-row: 2;
-    justify-self: center;
+  .paper-profiles-page .pp-preview-stage {
+    min-height: clamp(260px, 45dvh, 480px);
   }
 }

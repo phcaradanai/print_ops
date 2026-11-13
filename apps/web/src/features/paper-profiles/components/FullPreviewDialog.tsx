@@ -132,7 +132,7 @@ export function FullPreviewDialog({ editor, popups, interaction, options, setOpt
                   disabled={!editor.selectedField} disabledReason={t('page.paperProfiles.centerDisabledNoField')} />
               </div>
             )}
-            <label style={{ display: 'grid', gap: '0.25rem' }}>
+            <label className="paper-preview-modal__sample">
               {t('page.paperProfiles.sampleData')}
               <Textarea controlSize="sm" mono rows={3} value={sampleJson} placeholder='{"hn": "12345"}'
                 invalid={sample.error}
