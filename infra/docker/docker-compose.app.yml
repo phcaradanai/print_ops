@@ -1,7 +1,7 @@
 name: printops-app
 services:
   app:
-    image: registry.pg.xenex.io/printops-app:${PRINTOPS_APP_VERSION:-0.1.44}
+    image: registry.pg.xenex.io/printops-app:${PRINTOPS_APP_VERSION:-0.1.45}
     init: true
     environment:
       JWT_SECRET: "${PRINTOPS_APP_JWT_SECRET:?Set PRINTOPS_APP_JWT_SECRET to a unique random secret}"

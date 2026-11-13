@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      IMAGE: registry.pg.xenex.io/printops-app:0.1.44
+      IMAGE: registry.pg.xenex.io/printops-app:0.1.45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,7 +25,7 @@ jobs:
         run: |
           docker buildx build --platform linux/amd64 --load \
             --file infra/docker/Dockerfile.app \
-            --build-arg APP_VERSION=0.1.44 \
+            --build-arg APP_VERSION=0.1.45 \
             --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" \
             --tag "$IMAGE" .
       - name: Verify app persistence and real Linux label rendering
@@ -34,11 +34,11 @@ jobs:
           docker run --rm -i --entrypoint node "$IMAGE" --input-type=module < scripts/smoke-cups-render.mjs
       - name: Export verified image for a local registry upload
         run: |
-          docker save "$IMAGE" | gzip -1 > printops-app-0.1.44-linux-amd64.tar.gz
-          sha256sum printops-app-0.1.44-linux-amd64.tar.gz > printops-app-0.1.44-linux-amd64.tar.gz.sha256
+          docker save "$IMAGE" | gzip -1 > printops-app-0.1.45-linux-amd64.tar.gz
+          sha256sum printops-app-0.1.45-linux-amd64.tar.gz > printops-app-0.1.45-linux-amd64.tar.gz.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: printops-app-0.1.44-linux-amd64
-          path: printops-app-0.1.44-linux-amd64.tar.gz*
+          name: printops-app-0.1.45-linux-amd64
+          path: printops-app-0.1.45-linux-amd64.tar.gz*
           compression-level: 0
           retention-days: 1
