@@ -1,3 +1,14 @@
+# Web Control 1.0.8
+
+Published for `linux/amd64` with local `docker build` and `docker push`.
+The API and Web images use the source from commit `4d9aca0`, with
+`VITE_CONTROL_PLANE_VERSION=1.0.8` for the Web image.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.8` | `sha256:3008aea81311bdf3960e6d28208b7ff2a66b05eb485ebe26df37e334c907edca` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.8` | `sha256:431b91737f714a27bcaa3281cb2d72634204f4374841245cee58e1c21519ce8e` |
+
 # Web Control 1.0.6
 
 Published for `linux/amd64` from app release `0.1.45`, commit
