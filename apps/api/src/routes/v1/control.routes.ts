@@ -515,7 +515,15 @@ export async function controlRoutes(
         isLatest?: boolean;
         artifactRef?: string;
         sha256?: string;
+        schemaVersion?: number;
       };
+      if (body.schemaVersion !== undefined) {
+        const release = await deps.releases.getRelease(id);
+        if (!release) return reply.status(404).send({ error: 'Release not found' });
+        if (!isHostedManifestRef(release.manifestRef) || existsSync(hostedManifestPath(release))) {
+          return reply.status(409).send({ error: 'Database schema can only be corrected on releases with a generated manifest' });
+        }
+      }
       const updated = await deps.releases.updateRelease(id, body);
       return reply.send(updated);
     },

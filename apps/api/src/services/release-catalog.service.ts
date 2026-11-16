@@ -69,8 +69,12 @@ export class ReleaseCatalogService {
       isLts?: boolean;
       isLatest?: boolean;
       sha256?: string;
+      schemaVersion?: number;
     },
   ): Promise<ReleaseCatalogRecord> {
+    if (patch.schemaVersion !== undefined && (!Number.isSafeInteger(patch.schemaVersion) || patch.schemaVersion < 1)) {
+      throw new ValidationError('schemaVersion must be a positive integer');
+    }
     const existing = await this.releases.findById(id);
     if (!existing) {
       throw new NotFoundError('Release', id);

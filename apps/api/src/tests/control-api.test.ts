@@ -233,6 +233,9 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
         manifestUrl: 'http://printops.node1.ch3.local/api/v1/control/releases/0.1.38/manifest.json',
       });
       expect(staged.signatureVerification).toBe('verified');
+      const schemaEdit = await app.inject({ method: 'PATCH', url: `/api/v1/control/releases/${id}`, headers,
+        payload: { schemaVersion: 10 } });
+      expect(schemaEdit.statusCode).toBe(409);
       expect((await app.inject('/api/v1/control/releases/0.1.38/secret.db')).statusCode).toBe(404);
       expect((await app.inject(`/api/v1/control/releases/${id}/download`)).statusCode).toBe(401);
       await app.inject({ method: 'PATCH', url: `/api/v1/control/releases/${id}`, headers, payload: { status: 'REVOKED' } });
@@ -244,19 +247,28 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
     }
   });
 
-  it('updates from only an uploaded installer with no manifest or publisher key', async () => {
+  it('repairs the schema of an already imported installer and stages it on a newer client', async () => {
     const artifact = Buffer.from('unsigned-self-hosted-installer');
     const headers = { authorization: `Bearer ${ownerToken}`, host: 'printops.local:8080' };
     const imported = await app.inject({ method: 'POST', url: '/api/v1/control/releases/import', headers,
       payload: { version: '0.1.38', filename: 'PrintOps_0.1.38.exe', artifactBase64: artifact.toString('base64') } });
     expect(imported.statusCode).toBe(201);
+    const releaseUrl = `/api/v1/control/releases/${imported.json().id}`;
+    const manifestUrl = '/api/v1/control/releases/0.1.38/manifest.json';
+    const invalid = await app.inject({ method: 'PATCH', url: releaseUrl, headers, payload: { schemaVersion: 10.5 } });
+    expect(invalid.statusCode).toBe(400);
+    expect((await app.inject(manifestUrl)).json().compatibility.schema_version).toBe(8);
+    const corrected = await app.inject({ method: 'PATCH', url: releaseUrl, headers, payload: { schemaVersion: 10 } });
+    expect(corrected.statusCode, corrected.body).toBe(200);
+    expect(corrected.json().schemaVersion).toBe(10);
+    expect((await app.inject(manifestUrl)).json().compatibility.schema_version).toBe(10);
     const station = await app.inject({ method: 'POST', url: '/api/v1/control/announce',
-      payload: { installationId: 'exe-only-station', hostname: 'station', appVersion: '0.1.37', schemaVersion: 8 } });
+      payload: { installationId: 'exe-only-station', hostname: 'station', appVersion: '0.1.37', schemaVersion: 10 } });
     const command = await app.inject({ method: 'POST', url: `/api/v1/control/devices/${station.json().deviceId}/commands`, headers,
       payload: { type: 'OTA_INSTALL', targetVersion: '0.1.38', idempotencyKey: 'exe-only-install' } });
     expect(command.statusCode, command.body).toBe(202);
     const config = otaConfigFromEnv({ PRINTOPS_OTA_ENABLED: 'true', PRINTOPS_APP_VERSION: '0.1.37',
-      PRINTOPS_DB_SCHEMA_VERSION: '8', PRINTOPS_OTA_DATA_DIR: releasesDirectory });
+      PRINTOPS_DB_SCHEMA_VERSION: '10', PRINTOPS_OTA_DATA_DIR: releasesDirectory });
     const client = new OtaUpdateService({
       state: new InMemoryOtaUpdateStateRepository(), config,
       fetchImpl: async (input) => {

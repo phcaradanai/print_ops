@@ -240,6 +240,9 @@ describe('SQLite Control Repositories', () => {
     const list = await repo.findAll({ channel: 'stable', platform: 'windows-x64' });
     expect(list.length).toBe(1);
     expect(list[0]?.version).toBe('0.1.29');
+
+    await repo.update(release.id, { schemaVersion: 10 });
+    expect(await repo.findById(release.id)).toMatchObject({ schemaVersion: 10, sha256: release.sha256 });
   });
 
   it('records and queries control audit logs', async () => {
