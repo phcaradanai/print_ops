@@ -8,6 +8,7 @@ import { hashPassword } from '../infra/auth/password.js';
 import { createHash, generateKeyPairSync, sign, verify } from 'node:crypto';
 import { canonicalJson, OtaUpdateService, otaConfigFromEnv } from '../services/ota-update.service.js';
 import { InMemoryOtaUpdateStateRepository } from '../infra/repos/in-memory-ota-state.repo.js';
+import { CURRENT_SCHEMA_VERSION } from '../infra/db/sqlite.schema.js';
 
 function signedManifest(artifact: Buffer) {
   const keys = generateKeyPairSync('ed25519');
@@ -184,7 +185,7 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
     try {
       const imported = await app.inject({
         method: 'POST', url: '/api/v1/control/releases/import', headers,
-        payload: { version: '0.1.38', filename: 'uploaded-installer.exe', artifactBase64: artifact.toString('base64') },
+        payload: { version: '0.1.38', filename: 'uploaded-installer.exe', artifactBase64: artifact.toString('base64'), schemaVersion: 8 },
       });
       expect(imported.statusCode).toBe(201);
       const id = imported.json().id;
@@ -247,23 +248,80 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
     }
   });
 
-  it('repairs the schema of an already imported installer and stages it on a newer client', async () => {
+  it('exposes current schema version defaults and inherits schemaVersion from signedManifest on import', async () => {
+    const headers = { authorization: `Bearer ${ownerToken}` };
+    const defaultsRes = await app.inject({ method: 'GET', url: '/api/v1/control/releases/defaults', headers });
+    expect(defaultsRes.statusCode).toBe(200);
+    expect(defaultsRes.json()).toEqual({ schemaVersion: CURRENT_SCHEMA_VERSION });
+
+    const artifact = Buffer.from('manifest-derived-schema-installer');
+    const { envelope } = signedManifest(artifact);
+    envelope.manifest.compatibility.schema_version = 10;
+    const { keys } = signedManifest(artifact);
+    const signed = {
+      envelope_version: 1,
+      manifest: {
+        ...envelope.manifest,
+        compatibility: { min_supported_version: '0.1.25', schema_version: 10 },
+      },
+      signature: '',
+    };
+    signed.signature = sign(null, Buffer.from(canonicalJson(signed.manifest)), keys.privateKey).toString('base64');
+    signed.manifest.artifacts.desktop['windows-x64'].signature = sign(
+      null,
+      Buffer.from(signed.manifest.artifacts.desktop['windows-x64'].sha256, 'hex'),
+      keys.privateKey,
+    ).toString('base64');
+    signed.signature = sign(null, Buffer.from(canonicalJson(signed.manifest)), keys.privateKey).toString('base64');
+
+    const imported = await app.inject({
+      method: 'POST',
+      url: '/api/v1/control/releases/import',
+      headers,
+      payload: {
+        version: '0.1.38',
+        filename: 'PrintOps_0.1.38.exe',
+        artifactBase64: artifact.toString('base64'),
+        signedManifest: signed,
+      },
+    });
+    expect(imported.statusCode, imported.body).toBe(201);
+    expect(imported.json().schemaVersion).toBe(10);
+    expect(imported.json().minSupportedVersion).toBe('0.1.25');
+  });
+
+  it('defaults exe-only import to CURRENT_SCHEMA_VERSION, blocks schema downgrades, and repairs an older imported release', async () => {
     const artifact = Buffer.from('unsigned-self-hosted-installer');
     const headers = { authorization: `Bearer ${ownerToken}`, host: 'printops.local:8080' };
+
+    const defaultImported = await app.inject({
+      method: 'POST',
+      url: '/api/v1/control/releases/import',
+      headers,
+      payload: { version: '0.1.39', filename: 'PrintOps_0.1.39.exe', artifactBase64: artifact.toString('base64') },
+    });
+    expect(defaultImported.statusCode).toBe(201);
+    expect(defaultImported.json().schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+
     const imported = await app.inject({ method: 'POST', url: '/api/v1/control/releases/import', headers,
-      payload: { version: '0.1.38', filename: 'PrintOps_0.1.38.exe', artifactBase64: artifact.toString('base64') } });
+      payload: { version: '0.1.38', filename: 'PrintOps_0.1.38.exe', artifactBase64: artifact.toString('base64'), schemaVersion: 8 } });
     expect(imported.statusCode).toBe(201);
     const releaseUrl = `/api/v1/control/releases/${imported.json().id}`;
     const manifestUrl = '/api/v1/control/releases/0.1.38/manifest.json';
     const invalid = await app.inject({ method: 'PATCH', url: releaseUrl, headers, payload: { schemaVersion: 10.5 } });
     expect(invalid.statusCode).toBe(400);
     expect((await app.inject(manifestUrl)).json().compatibility.schema_version).toBe(8);
+
+    const station = await app.inject({ method: 'POST', url: '/api/v1/control/announce',
+      payload: { installationId: 'exe-only-station', hostname: 'station', appVersion: '0.1.37', schemaVersion: 10 } });
+    const rejectedInstall = await app.inject({ method: 'POST', url: `/api/v1/control/devices/${station.json().deviceId}/commands`, headers,
+      payload: { type: 'OTA_INSTALL', targetVersion: '0.1.38', idempotencyKey: 'exe-only-downgrade' } });
+    expect(rejectedInstall.statusCode).toBe(409);
+
     const corrected = await app.inject({ method: 'PATCH', url: releaseUrl, headers, payload: { schemaVersion: 10 } });
     expect(corrected.statusCode, corrected.body).toBe(200);
     expect(corrected.json().schemaVersion).toBe(10);
     expect((await app.inject(manifestUrl)).json().compatibility.schema_version).toBe(10);
-    const station = await app.inject({ method: 'POST', url: '/api/v1/control/announce',
-      payload: { installationId: 'exe-only-station', hostname: 'station', appVersion: '0.1.37', schemaVersion: 10 } });
     const command = await app.inject({ method: 'POST', url: `/api/v1/control/devices/${station.json().deviceId}/commands`, headers,
       payload: { type: 'OTA_INSTALL', targetVersion: '0.1.38', idempotencyKey: 'exe-only-install' } });
     expect(command.statusCode, command.body).toBe(202);
@@ -354,7 +412,7 @@ describe('Web Control API Routes (Phase 1, 2, 3, 6, 8)', () => {
     const { envelope } = signedManifest(Buffer.from('installer'));
     const headers = { authorization: `Bearer ${ownerToken}` };
     const imported = await app.inject({ method: 'POST', url: '/api/v1/control/releases/import', headers,
-      payload: { version: '0.1.38', artifactUrl: 'https://cdn.local/setup.exe',
+      payload: { version: '0.1.38', artifactUrl: 'https://cdn.local/setup.exe', schemaVersion: 8,
         ...(placeholder ? {} : { sha256: 'b'.repeat(64) }) } });
     expect(imported.statusCode).toBe(201);
     const attached = await app.inject({ method: 'PUT', url: `/api/v1/control/releases/${imported.json().id}/manifest`,

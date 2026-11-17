@@ -7,6 +7,7 @@ import {
   forbiddenTrackedArtifacts,
   freshness,
   inspectRequiredFile,
+  readCurrentSchemaVersion,
   versionConsistency,
 } from './release-verify-lib.mjs';
 
@@ -50,4 +51,13 @@ test('freshness rejects output older than source outside tolerance', () => {
   assert.equal(freshness(10_000, 12_001).ok, false);
   assert.equal(freshness(10_000, 12_000).ok, true);
   assert.equal(freshness(15_000, 12_000).ok, true);
+});
+
+test('readCurrentSchemaVersion parses positive CURRENT_SCHEMA_VERSION and rejects invalid forms', () => {
+  assert.equal(readCurrentSchemaVersion('export const CURRENT_SCHEMA_VERSION = 11;\n'), 11);
+  assert.throws(() => readCurrentSchemaVersion('const OTHER = 1;'));
+  assert.throws(() => readCurrentSchemaVersion('export const CURRENT_SCHEMA_VERSION = 0;'));
+  assert.throws(() => readCurrentSchemaVersion(
+    'export const CURRENT_SCHEMA_VERSION = 10;\nexport const CURRENT_SCHEMA_VERSION = 11;',
+  ));
 });

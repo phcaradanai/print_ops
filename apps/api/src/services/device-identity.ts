@@ -9,6 +9,7 @@ import { generateId } from '@printerops/shared';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import os from 'node:os';
+import { CURRENT_SCHEMA_VERSION } from '../infra/db/sqlite.schema.js';
 
 export type DeviceCommandReplayStatus = 'PROCESSING' | 'PROCESSED';
 
@@ -79,7 +80,7 @@ export class DeviceIdentityStore {
     );
     this.defaultSiteId = opts.defaultSiteId || process.env['PRINTOPS_SITE_ID'] || 'default-site';
     this.appVersion = opts.appVersion || process.env['PRINTOPS_APP_VERSION'] || '0.1.32';
-    this.schemaVersion = opts.schemaVersion ?? 7;
+    this.schemaVersion = opts.schemaVersion ?? CURRENT_SCHEMA_VERSION;
     this.runnerVersion = opts.runnerVersion || process.env['PRINTOPS_RUNNER_VERSION'] || '0.1.28';
 
     this.identity = this.loadOrInitialize();

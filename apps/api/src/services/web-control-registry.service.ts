@@ -14,6 +14,7 @@ import type {
 import { AppError, ConflictError, NotFoundError, ValidationError, generateId } from '@printerops/shared';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { getDb } from '../infra/db/sqlite.js';
+import { CURRENT_SCHEMA_VERSION } from '../infra/db/sqlite.schema.js';
 import { DEFAULT_CONTROL_PLANE_STREAM } from '../infra/nats/control-plane-transport.js';
 import { deriveJobMirrorCredential, hashDeviceToken, verifyControlMessage } from './control-message-auth.js';
 export { hashDeviceToken } from './control-message-auth.js';
@@ -655,7 +656,7 @@ export class WebControlRegistryService {
       platform: input.platform,
       architecture: input.architecture,
       appVersion: input.appVersion,
-      schemaVersion: input.schemaVersion ?? 8,
+      schemaVersion: input.schemaVersion ?? CURRENT_SCHEMA_VERSION,
       runnerVersion: input.runnerVersion ?? '0.1.28',
       deviceTokenHash,
       displayName: input.displayName ?? input.hostname,

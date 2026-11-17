@@ -165,7 +165,7 @@ export async function controlRoutes(
         platform: body.platform || 'windows-x64',
         architecture: body.architecture || 'x64',
         appVersion: body.appVersion || '0.1.32',
-        schemaVersion: body.schemaVersion ?? 8,
+        schemaVersion: body.schemaVersion ?? CURRENT_SCHEMA_VERSION,
         runnerVersion: body.runnerVersion,
         siteId: body.siteId || 'default-site',
         displayName: body.displayName,
@@ -800,6 +800,13 @@ export async function controlRoutes(
     },
   );
   app.get(
+    '/control/releases/defaults',
+    { onRequest: [requirePermission('control:read')] },
+    async (_req: FastifyRequest, reply: FastifyReply) => {
+      return reply.send({ schemaVersion: CURRENT_SCHEMA_VERSION });
+    },
+  );
+  app.get(
     '/control/releases/latest',
     { onRequest: [requirePermission('control:read')] },
     async (req: FastifyRequest, reply: FastifyReply) => {
@@ -1003,17 +1010,36 @@ export async function controlRoutes(
         return reply.status(400).send({ error: 'version is required or must be present in filename' });
       }
 
+      let parsedEnvelope: ReturnType<typeof parseReleaseManifestEnvelope> | undefined;
+      if (body.signedManifest !== undefined) {
+        try {
+          if (Buffer.byteLength(JSON.stringify(body.signedManifest) ?? '', 'utf8') > 1_048_576) {
+            throw new Error('Manifest exceeds 1 MiB');
+          }
+          parsedEnvelope = parseReleaseManifestEnvelope(body.signedManifest);
+        } catch {
+          throw new ValidationError('signedManifest must be a valid signed OTA manifest envelope (at most 1 MiB)');
+        }
+      }
+      const manifestObj = parsedEnvelope?.manifest;
+
       if (!sha256) {
-        const manifest = body.signedManifest === undefined ? undefined : parseReleaseManifestEnvelope(body.signedManifest).manifest;
         const platform = body.platform ?? 'windows-x64';
-        sha256 = manifest?.artifacts[platform === 'windows-x64' ? 'desktop' : 'api']?.[platform]?.sha256
+        sha256 = manifestObj?.artifacts[platform === 'windows-x64' ? 'desktop' : 'api']?.[platform]?.sha256
           ?? createHash('sha256').update(artifactRef).digest('hex');
       }
 
       const platform = body.platform ?? 'windows-x64';
+      const schemaVersion = body.schemaVersion ?? manifestObj?.compatibility.schemaVersion ?? CURRENT_SCHEMA_VERSION;
+      if (!Number.isSafeInteger(schemaVersion) || schemaVersion < 1) {
+        throw new ValidationError('schemaVersion must be a positive integer');
+      }
+      const minSupportedVersion = body.minSupportedVersion?.trim()
+        || manifestObj?.compatibility.minSupportedVersion
+        || '0.1.0';
       const manifestRef = `/api/v1/control/releases/${version}${platform === 'node-bundle' ? '/node-bundle' : ''}/manifest.json`;
       const manifestEntry = body.signedManifest === undefined ? undefined
-        : validateHostedManifest(body.signedManifest, { version, platform, schemaVersion: body.schemaVersion ?? 8, sha256 });
+        : validateHostedManifest(body.signedManifest, { version, platform, schemaVersion, sha256 });
       const signature = manifestEntry?.signature || body.signature?.trim() || `sig_auto_${sha256.slice(0, 32)}`;
       const isLts = Boolean(body.isLts || body.channel === 'lts');
       const channel = body.channel ?? (isLts ? 'lts' : 'stable');
@@ -1023,12 +1049,12 @@ export async function controlRoutes(
         channel,
         platform,
         architecture: body.architecture ?? 'x64',
-        schemaVersion: body.schemaVersion ?? 8,
+        schemaVersion,
         manifestRef,
         artifactRef,
         sha256,
         signature,
-        minSupportedVersion: body.minSupportedVersion ?? '0.1.0',
+        minSupportedVersion,
         releaseNotes: body.releaseNotes,
         isLts,
         isLatest: body.isLatest,

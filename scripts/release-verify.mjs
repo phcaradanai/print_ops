@@ -14,6 +14,7 @@ import {
   forbiddenTrackedArtifacts,
   freshness,
   inspectRequiredFile,
+  readCurrentSchemaVersion,
   versionConsistency,
 } from './release-verify-lib.mjs';
 import {
@@ -339,6 +340,24 @@ function installers(version, minimumMtime) {
 checkBuildHost();
 checkToolchain();
 const version = checkVersions();
+const sourceSchemaVersion = readCurrentSchemaVersion(
+  readFileSync(join(root, 'apps/api/src/infra/db/sqlite.schema.ts'), 'utf8'),
+);
+if (otaEnv.PRINTOPS_DB_SCHEMA_VERSION !== undefined) {
+  const configuredSchema = Number(otaEnv.PRINTOPS_DB_SCHEMA_VERSION);
+  if (!Number.isSafeInteger(configuredSchema) || configuredSchema < 1) {
+    fail('ota:manifest-schema-version', 'PRINTOPS_DB_SCHEMA_VERSION must be a positive integer');
+  } else if (configuredSchema !== sourceSchemaVersion) {
+    fail(
+      'ota:manifest-schema-version',
+      `PRINTOPS_DB_SCHEMA_VERSION (${configuredSchema}) does not match CURRENT_SCHEMA_VERSION (${sourceSchemaVersion}) in apps/api/src/infra/db/sqlite.schema.ts`,
+    );
+  } else {
+    pass('ota:manifest-schema-version', `schema v${sourceSchemaVersion}`);
+  }
+} else {
+  pass('ota:manifest-schema-version', `schema v${sourceSchemaVersion} (from sqlite.schema.ts)`);
+}
 checkForbiddenArtifacts();
 checkSigningConfig();
 prepareBuildPublicKey();
@@ -412,7 +431,9 @@ if (postBundle && failures.length === 0) {
     // to the target version makes every ordinary A -> B upgrade reject itself
     // because the running A version is below B.
     const minSupportedVersion = otaEnv.PRINTOPS_OTA_MIN_SUPPORTED_VERSION?.trim();
-    const schemaVersion = Number(otaEnv.PRINTOPS_DB_SCHEMA_VERSION ?? '10');
+    const schemaVersion = otaEnv.PRINTOPS_DB_SCHEMA_VERSION !== undefined
+      ? Number(otaEnv.PRINTOPS_DB_SCHEMA_VERSION)
+      : sourceSchemaVersion;
     const bundledPublicKeyPath = join(root, 'apps/desktop/src-tauri/resources/ota-public-key.txt');
     const bundledPublicKey = existsSync(bundledPublicKeyPath)
       ? readFileSync(bundledPublicKeyPath, 'utf8').trim()

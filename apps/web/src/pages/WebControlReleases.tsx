@@ -79,11 +79,13 @@ export default function WebControlReleases() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
 
+  const [defaultSchemaVersion, setDefaultSchemaVersion] = useState(11);
+
   // Register dialog state
   const [formVersion, setFormVersion] = useState('');
   const [formChannel, setFormChannel] = useState<'stable' | 'beta' | 'rc' | 'lts'>('stable');
   const [formPlatform, setFormPlatform] = useState<'windows-x64' | 'node-bundle'>('windows-x64');
-  const [formSchemaVersion, setFormSchemaVersion] = useState(8);
+  const [formSchemaVersion, setFormSchemaVersion] = useState(11);
   const [formManifestRef, setFormManifestRef] = useState('');
   const [formArtifactRef, setFormArtifactRef] = useState('');
   const [formSha256, setFormSha256] = useState('');
@@ -99,6 +101,10 @@ export default function WebControlReleases() {
   const [importVersion, setImportVersion] = useState('');
   const [importChannel, setImportChannel] = useState<'stable' | 'lts' | 'beta' | 'rc'>('stable');
   const [importPlatform, setImportPlatform] = useState<'windows-x64' | 'node-bundle'>('windows-x64');
+  const [importSchemaVersion, setImportSchemaVersion] = useState(11);
+  const [importMinVersion, setImportMinVersion] = useState('0.1.0');
+  const [importSignedManifest, setImportSignedManifest] = useState<unknown | null>(null);
+  const [importManifestSummary, setImportManifestSummary] = useState<string | null>(null);
   const [importIsLts, setImportIsLts] = useState(false);
   const [importIsLatest, setImportIsLatest] = useState(true);
   const [importNotes, setImportNotes] = useState('');
@@ -115,6 +121,7 @@ export default function WebControlReleases() {
   const [editingRelease, setEditingRelease] = useState<ReleaseItem | null>(null);
   const [editStatus, setEditStatus] = useState<ReleaseItem['status']>('AVAILABLE');
   const [editChannel, setEditChannel] = useState<ReleaseItem['channel']>('stable');
+  const [editSchemaVersion, setEditSchemaVersion] = useState(11);
   const [editIsLts, setEditIsLts] = useState(false);
   const [editIsLatest, setEditIsLatest] = useState(false);
   const [editNotes, setEditNotes] = useState('');
@@ -139,6 +146,18 @@ export default function WebControlReleases() {
   const [storageTestResult, setStorageTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [storageTesting, setStorageTesting] = useState(false);
   const [storageSaving, setStorageSaving] = useState(false);
+
+  useEffect(() => {
+    void apiFetch<{ schemaVersion?: number }>('/v1/control/releases/defaults')
+      .then((data) => {
+        if (typeof data?.schemaVersion === 'number' && Number.isSafeInteger(data.schemaVersion) && data.schemaVersion >= 1) {
+          setDefaultSchemaVersion(data.schemaVersion);
+          setFormSchemaVersion(data.schemaVersion);
+          setImportSchemaVersion(data.schemaVersion);
+        }
+      })
+      .catch(() => { /* fallback remains */ });
+  }, []);
 
   useEffect(() => {
     if (!canManageControl) return;
@@ -233,9 +252,64 @@ export default function WebControlReleases() {
       });
   };
 
+  const handleManifestFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setImportSignedManifest(null);
+      setImportManifestSummary(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(await file.text()) as {
+        envelope_version?: number;
+        signature?: string;
+        manifest?: {
+          release?: { version?: string; channel?: string; notes?: string };
+          compatibility?: { schema_version?: number; schemaVersion?: number; min_supported_version?: string; minSupportedVersion?: string };
+        };
+        release?: { version?: string; channel?: string; notes?: string };
+        compatibility?: { schema_version?: number; schemaVersion?: number; min_supported_version?: string; minSupportedVersion?: string };
+      };
+      const manifest = parsed.manifest ?? parsed;
+      const version = manifest.release?.version;
+      const channel = manifest.release?.channel;
+      const notes = manifest.release?.notes;
+      const schemaVer = manifest.compatibility?.schema_version ?? manifest.compatibility?.schemaVersion;
+      const minVer = manifest.compatibility?.min_supported_version ?? manifest.compatibility?.minSupportedVersion;
+      if (typeof schemaVer !== 'number' || !Number.isSafeInteger(schemaVer) || schemaVer < 1) {
+        throw new Error('compatibility.schema_version is missing or invalid');
+      }
+      if (version) setImportVersion(version);
+      if (channel === 'stable' || channel === 'beta' || channel === 'rc') {
+        setImportChannel(channel);
+        setImportIsLts(false);
+      }
+      setImportSchemaVersion(schemaVer);
+      if (minVer) setImportMinVersion(minVer);
+      if (notes && !importNotes) setImportNotes(notes);
+      setImportSignedManifest(parsed.manifest && typeof parsed.signature === 'string' ? parsed : null);
+      setImportManifestSummary(
+        t('control.releases.manifestLoaded')
+          .replace('{version}', version ?? (importVersion || '—'))
+          .replace('{schema}', String(schemaVer)),
+      );
+      setImportError(null);
+    } catch (err) {
+      setImportSignedManifest(null);
+      setImportManifestSummary(null);
+      setImportError(
+        t('control.releases.manifestInvalid').replace('{message}', err instanceof Error ? err.message : String(err)),
+      );
+    }
+  };
+
   const handleImportRelease = async () => {
     if (importMode === 'file' && !importBase64) {
       setImportError(t('control.releases.fileNotReady'));
+      return;
+    }
+    if (!Number.isSafeInteger(importSchemaVersion) || importSchemaVersion < 1) {
+      setImportError(t('control.releases.invalidSchemaVersion'));
       return;
     }
     setIsSubmitting(true);
@@ -251,6 +325,9 @@ export default function WebControlReleases() {
           version: importVersion,
           channel: importIsLts ? 'lts' : importChannel,
           platform: importPlatform,
+          schemaVersion: importSchemaVersion,
+          minSupportedVersion: importMinVersion.trim() || undefined,
+          signedManifest: importSignedManifest ?? undefined,
           isLts: importIsLts,
           isLatest: importIsLatest,
           releaseNotes: importNotes || undefined,
@@ -260,6 +337,10 @@ export default function WebControlReleases() {
       setImportFile(null);
       setImportBase64(null);
       setImportVersion('');
+      setImportSchemaVersion(defaultSchemaVersion);
+      setImportMinVersion('0.1.0');
+      setImportSignedManifest(null);
+      setImportManifestSummary(null);
       setImportNotes('');
       setImportUrlOrPath('');
       releasesResource.refresh();
@@ -298,6 +379,7 @@ export default function WebControlReleases() {
     setEditingRelease(release);
     setEditStatus(release.status);
     setEditChannel(release.channel);
+    setEditSchemaVersion(release.schemaVersion);
     setEditIsLts(Boolean(release.isLts || release.channel === 'lts'));
     setEditIsLatest(Boolean(release.isLatest));
     setEditNotes(release.releaseNotes ?? '');
@@ -307,6 +389,10 @@ export default function WebControlReleases() {
 
   const handleSaveEdit = async () => {
     if (!editingRelease) return;
+    if (!Number.isSafeInteger(editSchemaVersion) || editSchemaVersion < 1) {
+      setEditError(t('control.releases.invalidSchemaVersion'));
+      return;
+    }
     setIsSubmitting(true);
     setEditError(null);
     try {
@@ -319,6 +405,7 @@ export default function WebControlReleases() {
           isLts: editIsLts,
           isLatest: editIsLatest,
           releaseNotes: editNotes,
+          ...(editSchemaVersion !== editingRelease.schemaVersion ? { schemaVersion: editSchemaVersion } : {}),
         }),
       });
       setEditModalOpen(false);
@@ -419,10 +506,10 @@ export default function WebControlReleases() {
               <Button variant="secondary" onClick={handleOpenStorageModal}>
                 {t('control.storage.button')}
               </Button>
-              <Button variant="secondary" onClick={() => { setRegisterError(null); setRegisterModalOpen(true); }}>
+              <Button variant="secondary" onClick={() => { setRegisterError(null); setFormSchemaVersion(defaultSchemaVersion); setRegisterModalOpen(true); }}>
                 {t('control.releases.registerRelease')}
               </Button>
-              <Button variant="primary" onClick={() => { setImportError(null); setImportModalOpen(true); }}>
+              <Button variant="primary" onClick={() => { setImportError(null); setImportSchemaVersion(defaultSchemaVersion); setImportModalOpen(true); }}>
                 {t('control.releases.importApp')}
               </Button>
             </>
@@ -755,6 +842,35 @@ export default function WebControlReleases() {
               )}
             </FormField>
 
+            <Grid columns={2} gap="md">
+              <FormField label={t('control.releases.schemaVersion')} required hint={t('control.releases.schemaVersionHint')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={importSchemaVersion}
+                    onChange={(e) => setImportSchemaVersion(Number(e.target.value))}
+                  />
+                )}
+              </FormField>
+              <FormField label={t('control.releases.minSupportedVersion')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    placeholder="0.1.0"
+                    value={importMinVersion}
+                    onChange={(e) => setImportMinVersion(e.target.value)}
+                  />
+                )}
+              </FormField>
+            </Grid>
+
+            <FormField label={t('control.releases.manifestFileOptional')} hint={importManifestSummary ?? undefined}>
+              {(control) => <Input {...control} type="file" accept=".json" onChange={(e) => void handleManifestFileChange(e)} />}
+            </FormField>
+
             <Stack gap="sm" role="group" aria-label={t('control.releases.designations')}>
               <Text size="label" weight="semibold">{t('control.releases.designations')}</Text>
               <Checkbox
@@ -832,6 +948,19 @@ export default function WebControlReleases() {
                 )}
               </FormField>
             </Grid>
+
+            <FormField label={t('control.releases.schemaVersion')} required hint={t('control.releases.schemaVersionEditHint')}>
+              {(control) => (
+                <Input
+                  {...control}
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={editSchemaVersion}
+                  onChange={(e) => setEditSchemaVersion(Number(e.target.value))}
+                />
+              )}
+            </FormField>
 
             <Stack gap="sm" role="group" aria-label={t('control.releases.designations')}>
               <Text size="label" weight="semibold">{t('control.releases.designations')}</Text>

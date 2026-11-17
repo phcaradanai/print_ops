@@ -127,7 +127,15 @@ export class ReleaseCatalogService {
       }
     }
 
-    // Schema version forward jump limit (must not skip forward multiple breaking schema versions without migration path)
+    // Schema version compatibility:
+    // - Never downgrade to an older DB schema (client forward-guard refuses opening a newer DB).
+    // - Must not skip forward multiple breaking schema versions without migration path.
+    if (release.schemaVersion < device.schemaVersion) {
+      return {
+        compatible: false,
+        reason: `Release requires database schema v${release.schemaVersion}, but device uses schema v${device.schemaVersion}`,
+      };
+    }
     if (release.schemaVersion > device.schemaVersion + 2) {
       return {
         compatible: false,

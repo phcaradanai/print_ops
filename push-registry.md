@@ -1,3 +1,37 @@
+# Web Control 1.0.12
+
+Published for `linux/amd64` with `node scripts/publish-control-plane-images.mjs`
+(`PRINTOPS_IMAGE_PREFIX=registry.pg.xenex.io/printops-control-plane`,
+`PRINTOPS_CONTROL_PLANE_VERSION=1.0.12`, `VITE_CONTROL_PLANE_VERSION=1.0.12`).
+
+Fixes permanent OTA schema version alignment:
+- `POST /api/v1/control/releases/import` derives `schemaVersion` / `minSupportedVersion` from `signedManifest` when provided and defaults to `CURRENT_SCHEMA_VERSION` instead of `8`.
+- `ReleaseCatalogService.isCompatible()` rejects releases whose `schemaVersion < device.schemaVersion` so incompatible releases cannot be targeted.
+- `WebControlReleases.tsx` exposes `Schema Version` and optional `ota-manifest.json` import in Import App, plus `Schema Version` editing in Manage Release.
+- `GET /api/v1/control/releases/defaults` supplies `CURRENT_SCHEMA_VERSION` to the UI.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.12` | `sha256:a09cacfa45c28147e495b5cc6d6fb72a50bd36d319414101e5049dfd4a877fe8` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.12` | `sha256:a328dad22cd783b698ad6c5559816302069dcda49e0f04f9e49ee4c14b49ff54` |
+
+# Web App PrintOps 0.1.49
+
+Image: `registry.pg.xenex.io/printops-app:0.1.49` (`linux/amd64`).
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-app:0.1.49` | `sha256:77e004a666e2dcefaf1c6d7fead2f4d87902b561c28c62d2c8c86967e56c8c51` |
+
+`node scripts/smoke-app-image.mjs registry.pg.xenex.io/printops-app:0.1.49` passed: health/version, SPA/assets/deep links, owner/login, SQLite persistence, runner binary, single API worker.
+
+Windows desktop installers, built with `npm run desktop:bundle` (`apps/desktop/src-tauri/build.rs` reads `CURRENT_SCHEMA_VERSION=11` directly from `sqlite.schema.ts`; OTA manifest written to `artifacts/prod-01/ota-manifest.json` with `compatibility.schema_version: 11`):
+
+| Installer | Size | SHA-256 |
+| --- | --- | --- |
+| `PrintOps_0.1.49_x64_en-US.msi` | 48,603,136 B | `7a516a64dbdfafb65373903791b9bb4ee8c65df876bae5ce1b0fc1cb5f47e9d7` |
+| `PrintOps_0.1.49_x64-setup.exe` (NSIS) | 37,432,819 B | `4c4b7c9b1993361e960c7ccd727fafbe4815236731c7ae119b67d47163897aaa` |
+
 # Web Control 1.0.11
 
 Published for `linux/amd64` with local `docker buildx build --load` and

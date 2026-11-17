@@ -30,3 +30,15 @@ export function freshness(outputTime, sourceTime, toleranceMs = 2_000) {
     ? { ok: false, detail: 'packaged resource is older than its source' }
     : { ok: true, detail: 'resource is current' };
 }
+
+export function readCurrentSchemaVersion(schemaSource) {
+  const matches = [...schemaSource.matchAll(/\bexport\s+const\s+CURRENT_SCHEMA_VERSION\s*=\s*(\d+)\s*;/g)];
+  if (matches.length !== 1) {
+    throw new Error('sqlite.schema.ts must contain exactly one CURRENT_SCHEMA_VERSION constant');
+  }
+  const version = Number(matches[0][1]);
+  if (!Number.isSafeInteger(version) || version < 1) {
+    throw new Error('CURRENT_SCHEMA_VERSION must be a positive safe integer');
+  }
+  return version;
+}

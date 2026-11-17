@@ -142,6 +142,35 @@ describe('ReleaseCatalogService (Phase 6)', () => {
       platform: 'windows-x64',
     });
     expect(checkRevoked.compatible).toBe(false);
+
+    // 5. Release with lower DB schema than device is not compatible (prevents client schema-downgrade failure)
+    const olderSchemaRelease = await service.registerRelease({
+      version: '0.1.48',
+      platform: 'windows-x64',
+      schemaVersion: 8,
+      manifestRef: 'https://releases.local/v0.1.48/manifest.json',
+      artifactRef: 'https://releases.local/v0.1.48/setup.exe',
+      sha256: 'hash48',
+      signature: 'sig48',
+      minSupportedVersion: '0.1.25',
+    });
+    const checkSchemaDowngrade = service.isCompatible(olderSchemaRelease, {
+      appVersion: '0.1.47',
+      schemaVersion: 10,
+      platform: 'windows-x64',
+    });
+    expect(checkSchemaDowngrade.compatible).toBe(false);
+    expect(checkSchemaDowngrade.reason).toContain('schema v8');
+    expect(checkSchemaDowngrade.reason).toContain('schema v10');
+
+    // 6. Release with forward schema jump > 2 is not compatible
+    const checkTooFarAhead = service.isCompatible(olderSchemaRelease, {
+      appVersion: '0.1.28',
+      schemaVersion: 5,
+      platform: 'windows-x64',
+    });
+    expect(checkTooFarAhead.compatible).toBe(false);
+    expect(checkTooFarAhead.reason).toContain('Schema jump too large');
   });
 
   it('finds latest compatible release for a device', async () => {
