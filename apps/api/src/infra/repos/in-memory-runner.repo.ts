@@ -36,4 +36,8 @@ export class InMemoryRunnerRepository implements RunnerRepositoryPort {
     this.store.set(id, updated);
     return updated;
   }
+
+  async delete(id: string): Promise<void> {
+    if (!this.store.delete(id)) throw new Error(`Runner ${id} not found`);
+  }
 }

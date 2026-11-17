@@ -41,6 +41,12 @@ export async function v1UserRoutes(
     if (!Array.isArray(allowedPages) || allowedPages.some(page => !APP_PAGES.includes(page as AppPage))) {
       return reply.status(400).send({ error: 'allowedPages must contain only known application pages' });
     }
+    // A zero-page list is not "no pages allowed by accident" — it denies every
+    // page, so the account signs in to an empty shell. Access is removed by
+    // leaving a page out of the list, never by saving an empty one.
+    if (allowedPages.length === 0) {
+      return reply.status(400).send({ error: 'allowedPages must allow at least one page' });
+    }
     const currentUser = await deps.users.findById(payload.sub);
     const targetUser = await deps.users.findById(id);
     if (!currentUser) return reply.status(401).send({ error: 'Unauthorized' });

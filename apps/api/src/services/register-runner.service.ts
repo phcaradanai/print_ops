@@ -6,6 +6,8 @@ import type {
   RegisterRunnerInput,
 } from '@printerops/domain';
 import { generateId, generateTraceId, generateCorrelationId } from '@printerops/shared';
+import { ConflictError } from '@printerops/shared';
+import { isRunnerTerminated } from './runner-lifecycle.service.js';
 
 export class RegisterRunnerService {
   constructor(
@@ -23,6 +25,15 @@ export class RegisterRunnerService {
       (runner) => runner.name === input.name && runner.hostname === input.hostname,
     );
     if (existing) {
+      // An operator terminated this runner on purpose. Letting a still-running
+      // process re-register itself would silently undo that, so the tombstone has to
+      // be removed first (delete it from the Runners page) before it can come back.
+      if (isRunnerTerminated(existing)) {
+        throw new ConflictError(
+          `Runner '${existing.name}' on '${existing.hostname}' was terminated by an operator. `
+          + 'Delete the terminated runner record before registering it again.',
+        );
+      }
       const runner = await this.runners.update(existing.id, {
         ipAddress: input.ipAddress,
         status: 'online',

@@ -123,8 +123,9 @@ export class SqliteDeviceRegistryRepository implements DeviceRegistryRepositoryP
       `INSERT INTO control_devices (
         device_id, installation_id, site_id, hostname, platform, architecture,
         app_version, schema_version, runner_version, enrolled_at, last_seen_at,
-        connection_state, print_state, ota_state, device_token_hash, status, display_name
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ONLINE', 'IDLE', 'IDLE', ?, 'ACTIVE', ?)`,
+        connection_state, print_state, ota_state, device_token_hash, status, display_name,
+        ip_addresses_json, capabilities_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ONLINE', 'IDLE', 'IDLE', ?, 'ACTIVE', ?, ?, ?)`,
       [
         input.deviceId,
         input.installationId,
@@ -139,6 +140,10 @@ export class SqliteDeviceRegistryRepository implements DeviceRegistryRepositoryP
         now,
         input.deviceTokenHash,
         input.displayName ?? null,
+        // A discovered device only gets these fields at creation time; dropping them
+        // left the record without any pull address until a second discovery pass.
+        input.ipAddresses ? JSON.stringify(input.ipAddresses) : null,
+        input.capabilities ? JSON.stringify(input.capabilities) : null,
       ],
     );
     const created = await this.findById(input.deviceId);

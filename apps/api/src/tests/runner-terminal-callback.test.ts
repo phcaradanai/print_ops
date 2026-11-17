@@ -8,6 +8,7 @@ import { InMemoryTraceRepository } from '../infra/repos/in-memory-trace.repo.js'
 import { InMemoryAuditRepository } from '../infra/repos/in-memory-audit.repo.js';
 import { InMemoryJobQueue } from '../infra/queue/in-memory-queue.js';
 import { InMemoryEventBus } from '../infra/eventbus/in-memory-eventbus.js';
+import { InMemoryRunnerRepository } from '../infra/repos/in-memory-runner.repo.js';
 import { InMemoryCallbackDeliveryRepository } from '../infra/repos/in-memory-callback-delivery.repo.js';
 import { CreatePrintJobService } from '../services/create-print-job.service.js';
 import { v1RunnerJobRoutes } from '../routes/v1/runner-jobs.routes.js';
@@ -87,6 +88,7 @@ async function buildFixture(): Promise<Fixture> {
     await v1RunnerJobRoutes(v1, {
       jobs: jobRepo, printers: printerRepo, traces: traceRepo,
       audit: auditRepo, events: eventBus,
+      runners: new InMemoryRunnerRepository(),
     });
   }, { prefix: '/api/v1' });
   await app.ready();

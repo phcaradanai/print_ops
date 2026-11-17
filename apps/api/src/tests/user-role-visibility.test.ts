@@ -30,7 +30,7 @@ async function buildTestApp() {
   }
 
   await app.register(async (v1) => v1UserRoutes(v1, { users }), { prefix: '/api/v1' });
-  return app;
+  return { app, users };
 }
 
 describe('user directory role visibility', () => {
@@ -40,7 +40,7 @@ describe('user directory role visibility', () => {
     ['OPERATOR', ['OPERATOR', 'VIEWER']],
     ['VIEWER', ['VIEWER']],
   ] as const)('%s sees only its own role and lower roles', async (role, visibleRoles) => {
-    const app = await buildTestApp();
+    const { app } = await buildTestApp();
     const authorization = `Bearer ${app.jwt.sign({ sub: role.toLowerCase(), role, email: `${role.toLowerCase()}@example.test` })}`;
 
     const response = await app.inject({
@@ -57,7 +57,7 @@ describe('user directory role visibility', () => {
   });
 
   it('allows a higher role to set lower-role page access', async () => {
-    const app = await buildTestApp();
+    const { app } = await buildTestApp();
     const authorization = `Bearer ${app.jwt.sign({ sub: 'admin', role: 'ADMIN', email: 'admin@example.test' })}`;
     const response = await app.inject({ method: 'PUT', url: '/api/v1/users/operator/access', headers: { authorization }, payload: { allowedPages: ['/', '/jobs'] } });
     expect(response.statusCode).toBe(200);
@@ -66,7 +66,7 @@ describe('user directory role visibility', () => {
   });
 
   it('accepts Web Control pages in user allowedPages', async () => {
-    const app = await buildTestApp();
+    const { app } = await buildTestApp();
     const authorization = `Bearer ${app.jwt.sign({ sub: 'owner', role: 'OWNER', email: 'owner@example.test' })}`;
     const controlPages = [
       '/control/devices',
@@ -88,8 +88,37 @@ describe('user directory role visibility', () => {
     await app.close();
   });
 
+  it('rejects a zero-page allowedPages list and leaves the stored access intact', async () => {
+    const { app, users } = await buildTestApp();
+    const authorization = `Bearer ${app.jwt.sign({ sub: 'owner', role: 'OWNER', email: 'owner@example.test' })}`;
+
+    // Start from a known, valid access list.
+    const seeded = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/users/operator/access',
+      headers: { authorization },
+      payload: { allowedPages: ['/', '/jobs'] },
+    });
+    expect(seeded.statusCode).toBe(200);
+
+    // A zero-page list would deny every page and blank the shell for that
+    // account, so it is rejected before it can be persisted.
+    const rejected = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/users/operator/access',
+      headers: { authorization },
+      payload: { allowedPages: [] },
+    });
+    expect(rejected.statusCode).toBe(400);
+    expect(rejected.json().error).toContain('at least one page');
+
+    // No row was modified: the repository still holds the previous list.
+    expect((await users.findById('operator'))?.allowedPages).toEqual(['/', '/jobs']);
+    await app.close();
+  });
+
   it('prevents self-service and upward access changes while OWNER remains immutable', async () => {
-    const app = await buildTestApp();
+    const { app } = await buildTestApp();
     const operatorAuth = `Bearer ${app.jwt.sign({ sub: 'operator', role: 'OPERATOR', email: 'operator@example.test' })}`;
     expect((await app.inject({ method: 'PUT', url: '/api/v1/users/operator/access', headers: { authorization: operatorAuth }, payload: { allowedPages: ['/'] } })).statusCode).toBe(403);
     expect((await app.inject({ method: 'PUT', url: '/api/v1/users/admin/access', headers: { authorization: operatorAuth }, payload: { allowedPages: ['/'] } })).statusCode).toBe(403);
@@ -99,7 +128,7 @@ describe('user directory role visibility', () => {
   });
 
   it('allows only a higher role to activate or deactivate a lower-role account', async () => {
-    const app = await buildTestApp();
+    const { app } = await buildTestApp();
     const adminAuth = `Bearer ${app.jwt.sign({ sub: 'admin', role: 'ADMIN', email: 'admin@example.test' })}`;
     const deactivate = await app.inject({
       method: 'PUT',
@@ -122,7 +151,7 @@ describe('user directory role visibility', () => {
   });
 
   it('rejects self, equal-role, upward, OWNER, and malformed status changes', async () => {
-    const app = await buildTestApp();
+    const { app } = await buildTestApp();
     const operatorAuth = `Bearer ${app.jwt.sign({ sub: 'operator', role: 'OPERATOR', email: 'operator@example.test' })}`;
     const ownerAuth = `Bearer ${app.jwt.sign({ sub: 'owner', role: 'OWNER', email: 'owner@example.test' })}`;
     expect((await app.inject({ method: 'PUT', url: '/api/v1/users/operator/status', headers: { authorization: operatorAuth }, payload: { isActive: false } })).statusCode).toBe(403);

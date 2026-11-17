@@ -39,6 +39,7 @@ async function main(): Promise<void> {
     applyContentBundle: (bundle) => target.applyContentBundle(bundle),
     getClientContentIndex: () => target.getClientContentIndex(),
     exportClientContent: (kind, code) => target.exportClientContent(kind, code),
+    getRecentSyncedJobs: async () => (await target.getLocalControlJobs()).jobs,
     eventPublisher: async (subject, event) => {
       await transport.publishEvent(subject, signControlMessageWithToken(deviceToken, event) as unknown as Record<string, unknown>, event.eventId);
     },

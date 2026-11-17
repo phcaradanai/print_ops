@@ -101,6 +101,8 @@ export interface RunnerRepositoryPort {
   findAll(opts?: ListOptions): Promise<Runner[]>;
   create(input: RegisterRunnerInput & { id: string }): Promise<Runner>;
   update(id: string, patch: Partial<Runner>): Promise<Runner>;
+  /** Removes a runner registration. Throws when the id is unknown. */
+  delete(id: string): Promise<void>;
 }
 
 export interface AuditRepositoryPort {

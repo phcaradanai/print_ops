@@ -1,3 +1,70 @@
+# Web Control 1.0.11
+
+Published for `linux/amd64` with local `docker buildx build --load` and
+`docker push` from the working tree on top of `5ec1a57`. Both images contain the
+incoming-jobs fix (job mirror sweep, per-station pull credential, `host:port`
+discovery, `control_device_jobs` identity check) and the `apps/web/nginx.conf`
+change that resolves the API upstream per request. The Web image is built with
+`VITE_CONTROL_PLANE_VERSION=1.0.11`.
+
+This release also fixes the empty Web Control shell (empty/legacy `allowedPages`,
+missing catch-all route, `currentVersion` vs `appVersion`), hardens
+`/control/local-jobs`, and adds runner terminate/delete with the "at least one
+runner must remain" rule.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.11` | `sha256:d29c468094aef9550b46d2681bee8cf66249038ec4548defa532c1a4275dc8a8` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.11` | `sha256:46d8f1d3e9452e391ee94d0b23cf087a00b6da1496ae2634ae78d2907dc24b4a` |
+
+```powershell
+$env:PRINTOPS_IMAGE_PREFIX = "registry.pg.xenex.io/printops-control-plane"
+$env:PRINTOPS_CONTROL_PLANE_VERSION = "1.0.11"
+node scripts/publish-control-plane-images.mjs   # builds and pushes
+```
+
+Deploy with `PRINTOPS_CONTROL_PLANE_VERSION=1.0.11` and
+`PRINTOPS_APP_VERSION=0.1.48` in the server env file; both sides must move together
+because the station is what sends `recentJobs` and reports its job-mirror port.
+
+# Web App PrintOps 0.1.48
+
+Image: `registry.pg.xenex.io/printops-app:0.1.48` (`linux/amd64`).
+
+Must be deployed together with Web Control 1.0.11: the station side is what attaches
+`recentJobs` to its heartbeat (the only job-history path that crosses NAT), reports
+`address:port` so the control plane pulls from the right port, and enforces the new
+job-mirror credential.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-app:0.1.48` | `sha256:3fd20eb98588ed86e4dddf12bbdbdecafb4cf1c933488b1c4d3c7fa025bdf77c` |
+
+`scripts/smoke-app-image.mjs registry.pg.xenex.io/printops-app:0.1.48` passed: health/version,
+SPA assets and deep links, owner setup/login, SQLite persistence across container
+recreation, runner binary, single API worker.
+
+Windows desktop installers, built with `npm run desktop:bundle` (release verification
+passed; OTA manifest written to `artifacts/prod-01/ota-manifest.json`):
+
+| Installer | Size | SHA-256 |
+| --- | --- | --- |
+| `PrintOps_0.1.48_x64_en-US.msi` | 48,603,136 B | `9dc12fbb6a3556da2203113664b72cfbd671708bbea44b55a9e0e5fe0b194dc6` |
+| `PrintOps_0.1.48_x64-setup.exe` (NSIS) | 37,425,468 B | `37c425711d45b878b6a06353049e01d93eec2b95ed5fa1376b48fcea61495303` |
+
+```sh
+docker buildx build --platform linux/amd64 --load \
+  -f infra/docker/Dockerfile.app \
+  --build-arg APP_VERSION=0.1.48 \
+  --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" \
+  -t registry.pg.xenex.io/printops-app:0.1.48 .
+node scripts/smoke-app-image.mjs registry.pg.xenex.io/printops-app:0.1.48
+docker push registry.pg.xenex.io/printops-app:0.1.48
+```
+
+The Windows desktop installers are built from the same source with
+`npm run desktop:bundle` and carry the same fixes.
+
 # Web Control 1.0.8
 
 Published for `linux/amd64` with local `docker build` and `docker push`.

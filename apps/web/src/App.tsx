@@ -1,4 +1,4 @@
-import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
   createContext,
   lazy,
@@ -22,13 +22,57 @@ import { ServiceConnectionScreen } from './components/ServiceConnectionScreen.js
 import { NavIcon } from './components/NavIcon.js';
 import { ActionIcon } from './components/ActionIcon.js';
 import { errorMessage } from './api/errors.js';
-import { Input, Button, FormField } from './components/ui/index.js';
+import { EmptyState, Input, Button, FormField } from './components/ui/index.js';
 import webPackage from '../package.json';
 
 export const APP_VERSION = webPackage.version;
 export const CONTROL_PLANE_VERSION = import.meta.env.VITE_CONTROL_PLANE_VERSION || '1.0.0';
 const CONTROL_APP = import.meta.env.VITE_CONTROL_APP === 'true';
 if (CONTROL_APP && typeof document !== 'undefined') document.title = 'Web Control';
+
+/**
+ * Pages this session is restricted to, or `undefined` when nothing restricts it.
+ *
+ * Three cases all mean "no restriction". Before this helper existed each caller
+ * tested `!user.allowedPages` directly, so an *empty* list (which is truthy)
+ * was treated as a whitelist matching nothing and locked a non-OWNER out of
+ * every page — empty `<main>`, empty sidebar:
+ *  - no list at all: legacy sessions and seeds never carried one;
+ *  - an empty list: a zero-page selection. The API now rejects saving one, but
+ *    rows written before that still hold `[]`;
+ *  - a list saved by the *other* build. PrintOps dashboard paths never start
+ *    with `/control/`, and Web Control paths always do, so a page list with no
+ *    entry for the build that is running cannot say anything about that build.
+ *    A page list from the other build must not lock a user out: switching
+ *    between a dashboard and a Web Control server would otherwise blank the
+ *    shell. (The reverse direction works by the same test.)
+ * OWNER is unrestricted regardless; the route gate below handles that.
+ */
+export function allowedPageSet(
+  user: SessionUser,
+  controlApp: boolean = CONTROL_APP,
+): readonly string[] | undefined {
+  const pages = user.allowedPages;
+  if (!pages || pages.length === 0) return undefined;
+  const belongsToBuild = controlApp
+    ? pages.some((page) => page.startsWith('/control/'))
+    : pages.some((page) => !page.startsWith('/control/'));
+  return belongsToBuild ? pages : undefined;
+}
+
+/** Route gate for one nav-owned page path: OWNER always passes, an unrestricted
+ *  session always passes, and a URL with no nav item is not page-restricted —
+ *  detail routes and `/account/security` have to stay reachable. */
+export function isPagePathAllowed(
+  user: SessionUser,
+  pagePath: string | undefined,
+  controlApp: boolean = CONTROL_APP,
+): boolean {
+  if (user.role === 'OWNER') return true;
+  if (!pagePath) return true;
+  const allowed = allowedPageSet(user, controlApp);
+  return allowed ? allowed.includes(pagePath) : true;
+}
 
 const Dashboard = lazy(() => import('./pages/Dashboard.js'));
 const Printers = lazy(() => import('./pages/Printers.js'));
@@ -523,9 +567,26 @@ const NAV_ITEMS: NavItem[] = [
     group: 'admin',
   },
 ];
-const VISIBLE_NAV_ITEMS = NAV_ITEMS.filter((item) =>
-  CONTROL_APP ? item.to.startsWith('/control/') : !item.to.startsWith('/control/'),
-);
+/** Nav items that belong to the running build. `/control/*` pages are the Web
+ *  Control build; everything else is the PrintOps dashboard. */
+function navItemsForBuild(controlApp: boolean): NavItem[] {
+  return NAV_ITEMS.filter((item) =>
+    controlApp ? item.to.startsWith('/control/') : !item.to.startsWith('/control/'),
+  );
+}
+const VISIBLE_NAV_ITEMS = navItemsForBuild(CONTROL_APP);
+
+/** First page of the running build this session may open. Used as the shell's
+ *  home target and as the terminal route's way back. */
+export function firstAllowedNavPath(
+  user: SessionUser,
+  controlApp: boolean = CONTROL_APP,
+): string {
+  const item = navItemsForBuild(controlApp).find(
+    (nav) => nav.roles.includes(user.role) && isPagePathAllowed(user, nav.to, controlApp),
+  );
+  return item?.to ?? (controlApp ? '/control/devices' : '/');
+}
 
 // ----- startup / recovery -----
 
@@ -875,7 +936,9 @@ function AppNav({
   const [adminExpanded, setAdminExpanded] = useState(false);
 
   const visibleNav = useMemo(
-    () => VISIBLE_NAV_ITEMS.filter((item) => item.roles.includes(user.role) && (user.role === 'OWNER' || !user.allowedPages || user.allowedPages.includes(item.to))),
+    () => VISIBLE_NAV_ITEMS.filter(
+      (item) => item.roles.includes(user.role) && isPagePathAllowed(user, item.to),
+    ),
     [user],
   );
 
@@ -1208,6 +1271,28 @@ function RequireRoles({
 }
 
 /**
+ * Terminal route for an address no other route claims. Without it an unknown
+ * URL rendered an entirely empty `<main>`: no 404, no explanation and no way
+ * back. The button offers the shell's own home target (the first page this
+ * session may open), so a restricted user can still recover.
+ */
+function PageNotFound({ homeRoute }: { homeRoute: string }) {
+  const { t } = useLocale();
+  const navigate = useNavigate();
+  return (
+    <EmptyState
+      title={t('notFound.title')}
+      hint={t('notFound.hint')}
+      action={
+        <Button variant="secondary" size="sm" onClick={() => navigate(homeRoute, { replace: true })}>
+          {t('notFound.home')}
+        </Button>
+      }
+    />
+  );
+}
+
+/**
  * Desktop chrome: page trail on the left, global state and identity on the
  * right. Hidden below 1024px, where the drawer owns navigation.
  */
@@ -1252,7 +1337,7 @@ function AppTopbar({ user }: { user: SessionUser }) {
   );
 }
 
-function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
+export function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
   const { t } = useLocale();
   const location = useLocation();
   const currentNavItem = VISIBLE_NAV_ITEMS.find((item) =>
@@ -1260,10 +1345,14 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
   );
   const pagePath = currentNavItem?.to;
   const roleAllowed = !CONTROL_APP || !currentNavItem || currentNavItem.roles.includes(user.role);
-  const pageAllowed = roleAllowed && (user.role === 'OWNER' || !user.allowedPages || !pagePath || user.allowedPages.includes(pagePath));
-  const controlHomeRoute = VISIBLE_NAV_ITEMS.find(
-    (item) => item.roles.includes(user.role) && (user.role === 'OWNER' || !user.allowedPages || user.allowedPages.includes(item.to)),
-  )?.to ?? '/control/devices';
+  // An empty list, a legacy list or a list saved by the other build means "no
+  // restriction" — see allowedPageSet. A `/control/*` URL that matches no nav
+  // item is deliberately *not* turned into "not authorized": it passes this
+  // gate and lands on the terminal route below, which states that the page
+  // does not exist. Unknown URLs must never be silently rendered as an empty
+  // `<main>`, which is what happened before that route existed.
+  const pageAllowed = roleAllowed && isPagePathAllowed(user, pagePath);
+  const controlHomeRoute = firstAllowedNavPath(user);
   return (
     <SessionProvider user={user}>
     <ClientControlStatusProvider>
@@ -1346,6 +1435,8 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
             <Route path="/control/users" element={<UsersRoles />} />
             <Route path="/users" element={<Navigate to="/control/users" replace />} />
           </>}
+          {/* Terminal route: one shared not-found surface for both builds. */}
+          <Route path="*" element={<PageNotFound homeRoute={CONTROL_APP ? controlHomeRoute : '/'} />} />
           </Routes>
         </Suspense>}
         </main>

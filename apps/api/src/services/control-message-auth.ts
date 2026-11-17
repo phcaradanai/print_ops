@@ -39,3 +39,26 @@ export function verifyControlMessage<T>(tokenHash: string, payload: T, signature
 export function verifyControlMessageWithToken<T>(token: string, payload: T, signature: string): boolean {
   return verifyControlMessage(hashDeviceToken(token), payload, signature);
 }
+
+const JOB_MIRROR_CREDENTIAL_LABEL = 'printops.job-mirror.v1';
+
+/**
+ * Credential a control plane presents to read this device's job mirror.
+ *
+ * The control plane only ever stores the SHA-256 of a device token, and the station
+ * only ever holds the token itself, so neither can send the other's secret. Both can
+ * derive the same value from the hash instead, which is what lets a control plane pull
+ * from *any* enrolled station without a configured shared secret and without knowing
+ * which stations exist in advance.
+ */
+export function deriveJobMirrorCredential(tokenHash: string, deviceId: string): string {
+  if (!tokenHashPattern.test(tokenHash)) throw new Error('device token hash must be a SHA-256 hex digest');
+  if (!deviceId.trim()) throw new Error('device id is required to derive the job mirror credential');
+  return createHmac('sha256', Buffer.from(tokenHash, 'hex'))
+    .update(`${JOB_MIRROR_CREDENTIAL_LABEL}.${deviceId.trim()}`)
+    .digest('hex');
+}
+
+export function deriveJobMirrorCredentialFromToken(token: string, deviceId: string): string {
+  return deriveJobMirrorCredential(hashDeviceToken(token), deviceId);
+}

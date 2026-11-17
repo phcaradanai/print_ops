@@ -102,7 +102,11 @@ export interface ControlStationItem {
   displayName?: string;
   hostname: string;
   platform: string;
-  currentVersion: string;
+  /** Installed PrintOps application semver, straight from `DeviceRecord.appVersion`. */
+  appVersion: string;
+  /** Release the control plane recommends for this device; `null` when none. */
+  latestCompatibleVersion?: string | null;
+  hasUpdateAvailable?: boolean;
   connectionState: string;
   lastSeenAt: string;
   ipAddresses?: string[];
@@ -747,7 +751,15 @@ export default function WebControlJobs() {
                               <Badge tone={online ? 'success' : 'danger'}>
                                 {online ? t('control.jobs.online') : t('control.jobs.offline')}
                               </Badge>
-                              <Badge tone="neutral">v{dev.currentVersion}</Badge>
+                              <Badge tone="neutral">v{dev.appVersion}</Badge>
+                              {dev.hasUpdateAvailable && (
+                                <Badge
+                                  tone="warning"
+                                  title={`${t('control.devices.colLatestCompatible')}: v${dev.latestCompatibleVersion ?? ''}`}
+                                >
+                                  UPDATE
+                                </Badge>
+                              )}
                               {canManageControl && (
                                 <Button
                                   size="sm"
@@ -910,7 +922,7 @@ export default function WebControlJobs() {
                       ? t('control.jobs.online')
                       : t('control.jobs.offline')}
                   </Badge>
-                  <Badge tone="neutral">v{selectedDevice.currentVersion}</Badge>
+                  <Badge tone="neutral">v{selectedDevice.appVersion}</Badge>
                   <Mono size="label" tone="muted">
                     {selectedDevice.deviceId} · {selectedDevice.siteId}
                   </Mono>

@@ -7,12 +7,14 @@ import type {
   EventBusPort,
   Job,
   JobStatus,
+  RunnerRepositoryPort,
   TraceStep,
   JobSucceeded,
   JobFailed,
 } from '@printerops/domain';
 import { generateId } from '@printerops/shared';
 import { emitPrintJobTerminal } from '../../services/emit-terminal-event.js';
+import { isRunnerTerminated } from '../../services/runner-lifecycle.service.js';
 
 /**
  * Runner-scoped job endpoints (Go runner / future runners).
@@ -32,6 +34,7 @@ export async function v1RunnerJobRoutes(
     traces: TraceRepositoryPort;
     audit: AuditRepositoryPort;
     events: EventBusPort;
+    runners: RunnerRepositoryPort;
   }
 ): Promise<void> {
   const auth = { onRequest: [app.authenticate] };
@@ -49,6 +52,16 @@ export async function v1RunnerJobRoutes(
     // MVP: no server-side long-poll; ignore wait_ms. The runner's poll loop
     // already implements its own interval/backoff.
     void body.wait_ms;
+
+    // A terminated runner keeps its id so its in-flight jobs can still report
+    // results, but it must never be handed new work.
+    const runner = await deps.runners.findById(runnerId);
+    if (runner && isRunnerTerminated(runner)) {
+      return reply.status(409).send({
+        error: 'CONFLICT',
+        message: `Runner '${runner.name}' was terminated and can no longer claim jobs.`,
+      });
+    }
 
     // Fetch a handful, not one: with two runners and a full queue, losing the
     // claim race on the single candidate used to waste a whole poll interval.

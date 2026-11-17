@@ -35,12 +35,51 @@ verification and automatic rollback on failure. Event creation failure disables
 external OTA rather than running without shutdown coordination. The updater
 runs per operation; it is not installed as a service or scheduled task.
 
+## Runner lifecycle
+
+The Runners page can stop and remove a job-receiving runner, but the gateway never
+allows the last one to go: with no runner able to claim work, queued jobs would stop
+draining with no error anywhere. `POST /api/runners/:id/terminate` marks a runner
+terminated and offline and leaves the record in place as a tombstone, while
+`DELETE /api/runners/:id` removes the registration. Deleting a terminated record is
+always allowed — that is how an operator lets that host register again. Both actions
+audit (`runner.terminated`, `runner.deleted`) and publish `RunnerTerminated`/
+`RunnerDeleted`.
+
+A terminated runner cannot heartbeat, poll `GET /runners/:id/poll`, claim work through
+`POST /api/v1/runners/:id/jobs/next`, or re-register under the same host+name, so a
+still-running process cannot quietly undo the operator's decision. It can still report
+results for jobs it already claimed, so in-flight work is never stranded. Terminating
+does not stop the remote process: stop its container or service separately.
+
 ## Web Control device presence
 
 `GET /api/v1/control/devices` re-runs `PRINTOPS_CLIENT_URL` and built-in local
 discovery targets at most once every 30 seconds. This refreshes reachable
 stations while the device list is open; arbitrary IPs scanned manually are not
-kept in the automatic probe set unless configured.
+kept in the automatic probe set unless configured. The discovered address is
+stored as `host:port`, so a station on a non-default port is later pulled from
+the same address rather than the default print port.
+
+## Web Control incoming job history
+
+Web Control is not bound to a single PrintOps instance. `/control/jobs` mirrors the
+jobs of every station the control plane knows about — enrolled, announced, discovered,
+or listed in `PRINTOPS_CONTROL_DISCOVERY_TARGETS` — and a background sweep refreshes
+that mirror every 30 seconds without a manual Sync. An enrolled station also pushes up
+to 50 changed, redacted jobs in its heartbeat (bounded by a 192 KiB serialized budget
+and a five-minute full resync), which is the path that works across NAT and firewalls.
+A station reports `address:port` in its heartbeat, so a containerised station on 3001
+is pulled from the right address instead of the default print port. Pulls are
+authorised by a credential both sides derive from the device token hash, so a new
+customer needs no configuration beyond enrollment; stations that never enrolled fall
+back to the optional `PRINTOPS_CONTROL_PULL_TOKEN`. A pulled mirror whose reported
+installation identity disagrees with the device record is discarded rather than filed
+under the wrong station.
+
+The web container resolves the API service per request instead of once at startup, so
+recreating only the API container no longer leaves Web Control talking to a stale
+address — a failure that shows up as "no data at all" while the API is healthy.
 
 The registry reports `STALE` after 30 seconds and `OFFLINE` after 90 seconds
 without a successful probe or authenticated NATS heartbeat. Older address-only

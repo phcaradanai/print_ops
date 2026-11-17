@@ -1,8 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import type { RegisterRunnerService } from '../services/register-runner.service.js';
 import type { RunnerHeartbeatService } from '../services/runner-heartbeat.service.js';
+import type { RunnerLifecycleService } from '../services/runner-lifecycle.service.js';
+import { isRunnerTerminated } from '../services/runner-lifecycle.service.js';
 import type { RunnerRepositoryPort, RegisterRunnerInput, JobRepositoryPort, Runner } from '@printerops/domain';
-import { requirePermission } from './v1/permission-guard.js';
+import { ConflictError } from '@printerops/shared';
+import { requirePermission, actor } from './v1/permission-guard.js';
 
 /**
  * Old desktop releases created a new record on every launch. Keep the public
@@ -26,6 +29,7 @@ export async function runnerRoutes(
     jobs: JobRepositoryPort;
     registerRunner: RegisterRunnerService;
     runnerHeartbeat: RunnerHeartbeatService;
+    runnerLifecycle: RunnerLifecycleService;
   }
 ): Promise<void> {
   // Previously guarded only by `app.authenticate` (any logged-in user could
@@ -51,8 +55,46 @@ export async function runnerRoutes(
     return deps.runnerHeartbeat.execute(id);
   });
 
+  // Stop a runner from receiving work, keeping its record so the operator can see
+  // and delete it. Refused when it is the last runner still able to claim jobs.
+  app.post('/runners/:id/terminate', manage, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      return reply.send(await deps.runnerLifecycle.terminate(id, actor(req)));
+    } catch (err) {
+      if (err instanceof ConflictError) {
+        return reply.status(409).send({ error: 'CONFLICT', message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  // Remove a runner registration outright. The last usable runner cannot be deleted.
+  app.delete('/runners/:id', manage, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      await deps.runnerLifecycle.remove(id, actor(req));
+      return reply.status(204).send();
+    } catch (err) {
+      if (err instanceof ConflictError) {
+        return reply.status(409).send({ error: 'CONFLICT', message: err.message });
+      }
+      throw err;
+    }
+  });
+
   // Poll for next QUEUED job — runner uses this to dequeue
   app.get('/runners/:id/poll', jobRead, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const runner = await deps.runners.findById(id);
+    if (!runner) return reply.status(404).send({ error: `Runner ${id} not found` });
+    // A terminated runner keeps its id but must not be handed any more work.
+    if (isRunnerTerminated(runner)) {
+      return reply.status(409).send({
+        error: 'CONFLICT',
+        message: `Runner '${runner.name}' was terminated and can no longer claim jobs.`,
+      });
+    }
     const queued = await deps.jobs.findAll({ status: 'QUEUED', limit: 1 });
     if (queued.length === 0) return reply.send(null);
     return reply.send(queued[0]);

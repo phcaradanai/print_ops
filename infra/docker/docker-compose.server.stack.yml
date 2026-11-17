@@ -47,6 +47,16 @@ services:
       PRINTOPS_CONTROL_NATS_URL: nats://nats-node1:4222
       PRINTOPS_CONTROL_PUBLIC_NATS_URL: "${PRINTOPS_CONTROL_PUBLIC_NATS_URL:?Set PRINTOPS_CONTROL_PUBLIC_NATS_URL}"
       PRINTOPS_CONTROL_NATS_STREAM: PRINTOPS_CONTROL
+      # Web Control is not tied to any single station. Every station it learns about —
+      # by enrollment, by announce, or by a discovery sweep — has its job history pulled
+      # automatically, and an enrolled station also pushes it in its heartbeat. Only add
+      # entries here for stations this host can reach but cannot enroll (comma separated,
+      # e.g. "http://app:3001,http://lab-2:3001"); leave empty otherwise.
+      PRINTOPS_CONTROL_DISCOVERY_TARGETS: "${PRINTOPS_CONTROL_DISCOVERY_TARGETS:-}"
+      # Optional shared secret for pulling stations that are NOT enrolled (a discovery-only
+      # station has no token the two sides share). Enrolled stations authenticate with a
+      # credential both sides derive, so this stays empty for a fully enrolled fleet.
+      PRINTOPS_CONTROL_PULL_TOKEN: "${PRINTOPS_CONTROL_PULL_TOKEN:-}"
     volumes:
       - /mnt/gluster-shared/apps/hapy/printops/api:/data
     networks:
@@ -100,7 +110,7 @@ services:
   # 5. App Service: PrintOps App (UI + API)
   app:
     container_name: printops-app
-    image: registry.node1.ch3.local:80/printops-app:${PRINTOPS_APP_VERSION:-0.1.45}
+    image: registry.node1.ch3.local:80/printops-app:${PRINTOPS_APP_VERSION:-0.1.48}
     init: true
     environment:
       PRINTOPS_DEV_SEED: "true"
@@ -108,6 +118,10 @@ services:
       JWT_SECRET: "${PRINTOPS_APP_JWT_SECRET:-ae2a436107815a3b6ded09ebe73e4feef67419bc94ff3e8fe538fcf6e57015c8}"
       PRINTOPS_RUNNER_BOOTSTRAP_SECRET: "${PRINTOPS_RUNNER_BOOTSTRAP_SECRET:-}"
       CUPS_SERVER: "cups:631"
+      # Optional. Only needed when this station is NOT enrolled with Web Control: it is
+      # then the shared secret Web Control must present to read the job mirror. Enrolling
+      # the station removes the need for it.
+      PRINTOPS_CONTROL_PULL_TOKEN: "${PRINTOPS_CONTROL_PULL_TOKEN:-}"
     ports:
       - "${PRINTOPS_APP_BIND_ADDRESS:-127.0.0.1}:${PRINTOPS_APP_PORT:-8081}:3001"
     volumes:
@@ -129,7 +143,7 @@ services:
   # 6. Runner Service: Go Runner สำหรับดึงงานพิมพ์จาก App ไปส่งออก CUPS
   runner:
     container_name: printops-runner
-    image: registry.node1.ch3.local:80/printops-app:${PRINTOPS_APP_VERSION:-0.1.45}
+    image: registry.node1.ch3.local:80/printops-app:${PRINTOPS_APP_VERSION:-0.1.48}
     command: ["/usr/local/bin/printops-runner", "run"]
     environment:
       PRINTOPS_API_BASE_URL: "http://app:3001"

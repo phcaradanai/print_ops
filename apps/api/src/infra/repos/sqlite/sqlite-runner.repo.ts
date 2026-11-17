@@ -103,4 +103,11 @@ export class SqliteRunnerRepository implements RunnerRepositoryPort {
 
     return (await this.findById(id))!;
   }
+
+  async delete(id: string): Promise<void> {
+    const db = getDb();
+    const existing = await this.findById(id);
+    if (!existing) throw new Error(`Runner ${id} not found`);
+    db.run('DELETE FROM runners WHERE id = ?', [id]);
+  }
 }

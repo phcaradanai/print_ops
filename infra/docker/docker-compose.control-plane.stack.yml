@@ -62,6 +62,15 @@ services:
       PRINTOPS_CONTROL_NATS_URL: nats://nats:4222
       PRINTOPS_CONTROL_PUBLIC_NATS_URL: "${PRINTOPS_CONTROL_PUBLIC_NATS_URL:?Set PRINTOPS_CONTROL_PUBLIC_NATS_URL to the NATS URL reachable by client devices}"
       PRINTOPS_CONTROL_NATS_STREAM: PRINTOPS_CONTROL
+      # Optional. Web Control is not tied to any single station: every station it learns
+      # about by enrollment or announce is pulled from automatically. List here only the
+      # stations this host can reach but cannot enroll, comma separated
+      # (e.g. "http://app:3001,http://lab-2:3001").
+      PRINTOPS_CONTROL_DISCOVERY_TARGETS: "${PRINTOPS_CONTROL_DISCOVERY_TARGETS:-}"
+      # Optional shared secret, needed only for pulling stations that are not enrolled.
+      PRINTOPS_CONTROL_PULL_TOKEN: "${PRINTOPS_CONTROL_PULL_TOKEN:-}"
+      # Older single-target variable; still honoured, superseded by the list above.
+      PRINTOPS_CLIENT_URL: "${PRINTOPS_CLIENT_URL:-}"
     volumes:
       - control_api_data:/data
     depends_on:

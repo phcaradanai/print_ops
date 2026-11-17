@@ -5,6 +5,7 @@ import type {
   ControlOtaTransitionEvent,
   ControlContentIndex,
   ControlContentKind,
+  ControlSyncedJob,
   DeviceHeartbeatPayload,
   DevicePrintState,
   OtaTransitionState,
@@ -22,6 +23,73 @@ import type {
 } from './ota-update.service.js';
 
 const CONTROL_INSTALL_RETRY_DELAY_MS = 1_000;
+
+// ─── Heartbeat job sync ───────────────────────────────────────────────────────
+// A station's job history reaches Web Control through the heartbeat JetStream
+// message, because the control plane usually cannot open an inbound HTTP
+// connection to a workstation behind NAT or a customer firewall. The payload is
+// bounded three ways so a busy station can never push a heartbeat past the
+// broker's maximum message size (which would stall presence, not just jobs):
+// a per-heartbeat job count, a serialized byte budget, and a delta watermark so
+// unchanged jobs are not resent every ten seconds.
+export const HEARTBEAT_MAX_JOBS = 50;
+export const HEARTBEAT_MAX_JOB_BYTES = 192 * 1024;
+/** How many of the station's newest jobs to read before the delta selector trims them. */
+export const HEARTBEAT_JOB_SOURCE_LIMIT = 250;
+/** Full resync cadence, so a control plane that lost its copy recovers. */
+export const HEARTBEAT_FULL_RESYNC_MS = 5 * 60_000;
+
+function jobUpdatedAtMs(job: ControlSyncedJob): number {
+  const raw = job.updatedAt ?? job.finishedAt ?? job.completedAt ?? job.createdAt;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Picks the subset of a station's jobs to attach to the next heartbeat.
+ *
+ * Returns the jobs whose last update is newer than `since` (newest first,
+ * capped by count and serialized size) plus the watermark the caller should
+ * send on the following heartbeat. `force` re-sends the newest jobs regardless
+ * of the watermark so a control plane that was rebuilt or reset converges.
+ */
+export function selectHeartbeatJobs(
+  jobs: readonly ControlSyncedJob[],
+  options: { since: number; force?: boolean; maxJobs?: number; maxBytes?: number },
+): { jobs: ControlSyncedJob[]; nextSince: number } {
+  const maxJobs = options.maxJobs ?? HEARTBEAT_MAX_JOBS;
+  const maxBytes = options.maxBytes ?? HEARTBEAT_MAX_JOB_BYTES;
+  if (!Array.isArray(jobs) || jobs.length === 0 || maxJobs <= 0 || maxBytes <= 0) {
+    return { jobs: [], nextSince: options.since };
+  }
+
+  const ordered = jobs
+    .map((job) => ({ job, at: jobUpdatedAtMs(job) }))
+    .sort((a, b) => b.at - a.at);
+
+  const selected: ControlSyncedJob[] = [];
+  let bytes = 0;
+  let nextSince = options.since;
+  for (const entry of ordered) {
+    if (selected.length >= maxJobs) break;
+    if (!options.force && entry.at <= options.since) continue;
+    let size: number;
+    try {
+      size = Buffer.byteLength(JSON.stringify(entry.job), 'utf8');
+    } catch {
+      continue;
+    }
+    // Never let one pathological job block the heartbeat for the whole station, but
+    // also never send a single job that alone exceeds the budget.
+    if (size > maxBytes) continue;
+    if (bytes + size > maxBytes) break;
+    selected.push(entry.job);
+    bytes += size;
+    if (entry.at > nextSince) nextSince = entry.at;
+  }
+  return { jobs: selected, nextSince };
+}
+
 function isContentCommand(type: ControlCommandEnvelope['type']): boolean {
   return type === 'CONTENT_SYNC' || type === 'CONTENT_LIST' || type === 'CONTENT_PULL';
 }
@@ -205,6 +273,12 @@ export interface ControlAgentDeps {
   ) => Promise<ControlContentSyncResult>;
   getClientContentIndex?: () => Promise<ControlContentIndex>;
   exportClientContent?: (kind: ControlContentKind, code: string) => Promise<ControlContentBundle>;
+  /**
+   * Supplies this station's job history in the redacted shape the control plane
+   * stores. Omitted by deployments that do not report jobs (there is then no
+   * `recentJobs` field on the heartbeat, exactly as before).
+   */
+  getRecentSyncedJobs?: () => Promise<ControlSyncedJob[]>;
 }
 
 export class PrintOpsControlAgent {
@@ -218,6 +292,11 @@ export class PrintOpsControlAgent {
   private readonly applyContentBundle?: ControlAgentDeps['applyContentBundle'];
   private readonly getClientContentIndex?: ControlAgentDeps['getClientContentIndex'];
   private readonly exportClientContent?: ControlAgentDeps['exportClientContent'];
+  private readonly getRecentSyncedJobs?: ControlAgentDeps['getRecentSyncedJobs'];
+  /** Watermark for the job delta carried by heartbeats. */
+  private lastHeartbeatJobsAt = 0;
+  private lastHeartbeatJobsFullSyncAt = 0;
+  private warnedHeartbeatJobsFailure = false;
   private readonly logger?: ControlAgentDeps['logger'];
   private heartbeatInterval?: NodeJS.Timeout;
   private isProcessingCommand = false;
@@ -234,6 +313,7 @@ export class PrintOpsControlAgent {
     this.applyContentBundle = deps.applyContentBundle;
     this.getClientContentIndex = deps.getClientContentIndex;
     this.exportClientContent = deps.exportClientContent;
+    this.getRecentSyncedJobs = deps.getRecentSyncedJobs;
     this.logger = deps.logger;
     this.startupReconciliation = this.reconcileStartupState();
     void this.startupReconciliation.catch((err) => {
@@ -998,6 +1078,35 @@ export class PrintOpsControlAgent {
     }
   }
 
+  /**
+   * Collects the job delta for one heartbeat. Failure to read the local job
+   * repository must never block a heartbeat, so it degrades to "no jobs this
+   * round" and retries on the next tick.
+   */
+  private async collectHeartbeatJobs(): Promise<ControlSyncedJob[] | undefined> {
+    if (!this.getRecentSyncedJobs) return undefined;
+    let jobs: ControlSyncedJob[];
+    try {
+      jobs = await this.getRecentSyncedJobs();
+    } catch (error) {
+      if (!this.warnedHeartbeatJobsFailure) {
+        this.warnedHeartbeatJobsFailure = true;
+        this.logger?.warn('Failed to read local jobs for the control-plane heartbeat', error);
+      }
+      return undefined;
+    }
+    this.warnedHeartbeatJobsFailure = false;
+    const force = Date.now() - this.lastHeartbeatJobsFullSyncAt >= HEARTBEAT_FULL_RESYNC_MS;
+    const selection = selectHeartbeatJobs(jobs, { since: this.lastHeartbeatJobsAt, force });
+    if (selection.jobs.length > 0) {
+      this.lastHeartbeatJobsAt = selection.nextSince;
+      if (force) this.lastHeartbeatJobsFullSyncAt = Date.now();
+    } else if (force) {
+      this.lastHeartbeatJobsFullSyncAt = Date.now();
+    }
+    return selection.jobs;
+  }
+
   async buildHeartbeat(): Promise<DeviceHeartbeatPayload> {
     const printStatus = await this.getPrintStatus();
     const otaStatus = await this.otaService.getStatus();
@@ -1007,6 +1116,7 @@ export class PrintOpsControlAgent {
     } catch (error) {
       this.logger?.warn('Failed to read local installation details', error);
     }
+    const recentJobs = await this.collectHeartbeatJobs();
 
     return {
       deviceId: this.identity.deviceId,
@@ -1028,6 +1138,7 @@ export class PrintOpsControlAgent {
       ...(deviceInfo?.dataPath ? { dataPath: deviceInfo.dataPath } : {}),
       ...(deviceInfo?.osVersion ? { osVersion: deviceInfo.osVersion } : {}),
       ...(deviceInfo?.ipAddresses ? { ipAddresses: deviceInfo.ipAddresses } : {}),
+      ...(recentJobs !== undefined ? { recentJobs } : {}),
       capabilities: deviceInfo?.capabilities ?? ['ota'],
     };
   }

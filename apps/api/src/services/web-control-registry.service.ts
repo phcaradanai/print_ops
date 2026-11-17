@@ -15,10 +15,58 @@ import { AppError, ConflictError, NotFoundError, ValidationError, generateId } f
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { getDb } from '../infra/db/sqlite.js';
 import { DEFAULT_CONTROL_PLANE_STREAM } from '../infra/nats/control-plane-transport.js';
-import { hashDeviceToken, verifyControlMessage } from './control-message-auth.js';
+import { deriveJobMirrorCredential, hashDeviceToken, verifyControlMessage } from './control-message-auth.js';
 export { hashDeviceToken } from './control-message-auth.js';
 const AUTO_DISCOVERY_INTERVAL_MS = 30_000;
 const SENSITIVE_PAYLOAD_KEY_PATTERN = /secret|token|password|api_?key/i;
+/** How often the control plane refreshes every known station's job mirror. */
+export const JOB_SYNC_INTERVAL_MS = 30_000;
+/** Parallel station pulls, so a large fleet cannot saturate one tick. */
+const JOB_SYNC_CONCURRENCY = 4;
+
+/**
+ * Stations the control plane should probe over HTTP, in addition to the ones it
+ * already knows from enrollment heartbeats and from `PRINTOPS_CLIENT_URL`.
+ *
+ * `PRINTOPS_CONTROL_DISCOVERY_TARGETS` is a comma-separated list, because a control
+ * plane serves many stations: each entry is one station origin, and an operator adds
+ * or removes entries without touching the deployment shape. Entries may omit the
+ * scheme and the port; `stationBaseUrl` fills in the defaults.
+ */
+export function defaultDiscoveryTargets(env: NodeJS.ProcessEnv = process.env): string[] {
+  const listed = (env['PRINTOPS_CONTROL_DISCOVERY_TARGETS'] ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const legacySingle = (env['PRINTOPS_CLIENT_URL'] ?? '').trim();
+  const candidates = [
+    ...(legacySingle ? [legacySingle] : []),
+    ...listed,
+    // Stations co-located with the control plane, for a single-host install.
+    'http://host.docker.internal:31415',
+    'http://127.0.0.1:31415',
+    'http://localhost:31415',
+  ];
+  return [...new Set(candidates)];
+}
+
+/** Keeps every station pull independent while bounding how many run at once. */
+async function runWithLimit<T>(items: readonly T[], limit: number, run: (item: T) => Promise<unknown>): Promise<void> {
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(Math.max(limit, 1), items.length) }, async () => {
+    while (cursor < items.length) {
+      const item = items[cursor];
+      cursor += 1;
+      if (item === undefined) return;
+      try {
+        await run(item);
+      } catch {
+        // One unreachable station must not stop the sweep.
+      }
+    }
+  });
+  await Promise.all(workers);
+}
 
 function sanitizeSyncedPayload(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
@@ -74,6 +122,72 @@ function stringArrayField(value: unknown, key: string): string[] | undefined {
     : undefined;
 }
 
+/**
+ * Builds the base URL of a station from a stored address entry.
+ *
+ * Discovery stores `host:port` because the default station port is not the only
+ * one in use: a Compose station listens on 3001 behind its own service name. Blindly
+ * appending :31415 reached a *different* station's mirror and filed its jobs under
+ * this device, so only a port-less entry gets the default.
+ */
+export function stationBaseUrl(host: string): string {
+  const trimmed = host.trim().replace(/\/+$/, '');
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  const hasPort = /:\d+$/.test(trimmed);
+  return hasPort ? `http://${trimmed}` : `http://${trimmed}:31415`;
+}
+
+/**
+ * Host part of a stored station address, lower-cased. Older discovery rows stored a
+ * bare hostname while current rows store `host:port`, so deduplicating records that
+ * describe the same station must ignore the port.
+ */
+export function addressHostName(address: string): string {
+  return address
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/.*$/, '')
+    .replace(/:\d+$/, '')
+    .toLowerCase();
+}
+
+/**
+ * True when a pulled job mirror really belongs to the device record that asked for
+ * it. An unknown identity on either side is accepted, because older stations do not
+ * report an installation id; a known disagreement is not.
+ */
+export function sameStationIdentity(
+  recordInstallationId: string | undefined,
+  reportedInstallationId: unknown,
+): boolean {
+  if (typeof reportedInstallationId !== 'string' || reportedInstallationId.trim().length === 0) return true;
+  if (!recordInstallationId || recordInstallationId.trim().length === 0) return true;
+  return recordInstallationId.trim() === reportedInstallationId.trim();
+}
+
+/**
+ * Headers the control plane presents when it pulls one station's job mirror.
+ *
+ * The shared `PRINTOPS_CONTROL_PULL_TOKEN` wins when it is configured, because every
+ * station accepts it — enrolled or not. Without it, the control plane falls back to the
+ * credential both sides derive from the device token hash, which an enrolled station can
+ * verify and which needs no configuration per customer. A station that never enrolled
+ * accepts the pull outright when neither is in play.
+ */
+export function stationPullCredentialHeaders(
+  device: Pick<DeviceRecord, 'deviceId' | 'deviceTokenHash'>,
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  const shared = (env['PRINTOPS_CONTROL_PULL_TOKEN'] ?? '').trim();
+  if (shared) return { 'x-control-pull-token': shared };
+  try {
+    return { 'x-control-pull-token': deriveJobMirrorCredential(device.deviceTokenHash, device.deviceId) };
+  } catch {
+    // A malformed stored hash cannot yield a credential.
+    return {};
+  }
+}
+
 
 export interface WebControlRegistryConfig {
   natsUrl?: string;
@@ -88,6 +202,7 @@ export interface WebControlRegistryDeps {
   audit?: ControlAuditRepositoryPort;
   config?: WebControlRegistryConfig;
   useSqlite?: boolean;
+  logger?: Pick<Console, 'info' | 'warn' | 'error'>;
 }
 
 export class WebControlRegistryService {
@@ -96,15 +211,18 @@ export class WebControlRegistryService {
   private readonly audit?: ControlAuditRepositoryPort;
   private readonly config: Required<WebControlRegistryConfig>;
   private readonly useSqlite: boolean;
+  private readonly logger?: Pick<Console, 'info' | 'warn' | 'error'>;
   private readonly deviceJobs = new Map<string, Map<string, ControlSyncedJob>>();
   private lastAutoDiscoveryAt = 0;
   private automaticDiscoveryInFlight?: Promise<void>;
+  private readonly lastJobSyncAt = new Map<string, number>();
 
   constructor(deps: WebControlRegistryDeps) {
     this.deviceRegistry = deps.deviceRegistry;
     this.enrollmentTokens = deps.enrollmentTokens;
     this.audit = deps.audit;
     this.useSqlite = Boolean(deps.useSqlite);
+    this.logger = deps.logger;
     this.config = {
       natsUrl: deps.config?.natsUrl || process.env['PRINTOPS_CONTROL_NATS_URL'] || 'nats://127.0.0.1:4222',
       natsStream: deps.config?.natsStream || process.env['PRINTOPS_CONTROL_NATS_STREAM'] || DEFAULT_CONTROL_PLANE_STREAM,
@@ -405,20 +523,35 @@ export class WebControlRegistryService {
 
   async syncJobsFromReachableDevice(device: DeviceRecord): Promise<ControlSyncedJob[]> {
     const hosts = (device.ipAddresses ?? []).map((ip) => ip.trim()).filter(Boolean);
+    const headers = stationPullCredentialHeaders(device);
     for (const host of hosts) {
-      const baseUrl = host.startsWith('http://') || host.startsWith('https://')
-        ? host.replace(/\/+$/, '')
-        : `http://${host}:31415`;
+      const baseUrl = stationBaseUrl(host);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 1500);
       try {
-        const res = await fetch(`${baseUrl}/api/v1/control/local-jobs`, { signal: controller.signal });
+        const res = await fetch(`${baseUrl}/api/v1/control/local-jobs`, {
+          signal: controller.signal,
+          headers,
+        });
         if (!res.ok) continue;
-        const data = (await res.json()) as { jobs?: ControlSyncedJob[] };
-        if (Array.isArray(data?.jobs)) {
-          await this.upsertDeviceJobs(device.deviceId, data.jobs);
-          break;
+        const data = (await res.json()) as {
+          installationId?: string;
+          jobs?: ControlSyncedJob[];
+        };
+        if (!Array.isArray(data?.jobs)) continue;
+        // A stored address can reach a different station than the one this record
+        // describes (a re-imaged workstation, a reused address). Storing that
+        // response would show another station's jobs under this device name, so
+        // skip it while the two identities disagree.
+        if (!sameStationIdentity(device.installationId, data.installationId)) {
+          this.logger?.warn(
+            `Skipping job sync for ${device.deviceId}: ${baseUrl} reports installation `
+            + `"${data.installationId}" but this device is "${device.installationId}"`,
+          );
+          continue;
         }
+        await this.upsertDeviceJobs(device.deviceId, data.jobs);
+        break;
       } catch {
         // unreachable or timeout; try next address
       } finally {
@@ -426,6 +559,49 @@ export class WebControlRegistryService {
       }
     }
     return this.getDeviceJobs(device.deviceId);
+  }
+
+  /**
+   * Refreshes the job mirror of every station this control plane knows about,
+   * whatever the source of that knowledge: enrollment heartbeat, `announce`, a
+   * discovery sweep, or a manual Discover. Nothing has to be configured per
+   * customer — a station that appears once is pulled from on the next tick.
+   */
+  async syncAllDeviceJobs(
+    options: { force?: boolean; intervalMs?: number } = {},
+  ): Promise<{ attempted: number; pulled: number }> {
+    const devices = await this.listDevices();
+    const now = Date.now();
+    const minInterval = options.intervalMs ?? JOB_SYNC_INTERVAL_MS;
+    const due = devices.filter((device) => {
+      if ((device.ipAddresses ?? []).length === 0) return false;
+      if (options.force) return true;
+      return now - (this.lastJobSyncAt.get(device.deviceId) ?? 0) >= minInterval;
+    });
+    for (const device of due) this.lastJobSyncAt.set(device.deviceId, now);
+    let pulled = 0;
+    await runWithLimit(due, JOB_SYNC_CONCURRENCY, async (device) => {
+      const jobs = await this.syncJobsFromReachableDevice(device);
+      if (jobs.length > 0) pulled += 1;
+    });
+    return { attempted: due.length, pulled };
+  }
+
+  /**
+   * Starts the background sweep that populates the job mirror. The fleet read stays a
+   * read: without this, the only ways to ingest were a manual Sync press or a
+   * discovery tick, which is why the Jobs page could sit empty on a station the
+   * control plane had already found.
+   */
+  startJobSyncLoop(intervalMs: number = JOB_SYNC_INTERVAL_MS): () => void {
+    const sweep = () => {
+      void this.syncAllDeviceJobs({ intervalMs })
+        .catch((error: unknown) => this.logger?.warn('Station job sweep failed', error));
+    };
+    const timer = setInterval(sweep, intervalMs);
+    timer.unref?.();
+    sweep();
+    return () => clearInterval(timer);
   }
 
   async autoRegisterDevice(input: {
@@ -491,12 +667,7 @@ export class WebControlRegistryService {
   async discoverDevices(targets?: string[]): Promise<DeviceRecord[]> {
     const candidateTargets = (targets && targets.length > 0)
       ? targets
-      : [
-          process.env['PRINTOPS_CLIENT_URL'],
-          'http://host.docker.internal:31415',
-          'http://127.0.0.1:31415',
-          'http://localhost:31415',
-        ].filter(Boolean) as string[];
+      : defaultDiscoveryTargets();
 
     const discovered: DeviceRecord[] = [];
 
@@ -555,7 +726,9 @@ export class WebControlRegistryService {
             appVersion,
             schemaVersion: numberField(infoData, 'schemaVersion') ?? 8,
             capabilities: stringArrayField(infoData, 'capabilities') ?? ['content-sync-v1', 'ota-v1'],
-            ipAddresses: [parsedUrl.hostname],
+            // `host` keeps the discovered port; `hostname` would drop it and make a
+            // later pull reach whatever else listens on the default port.
+            ipAddresses: [parsedUrl.host],
             displayName: `${hostname} (Auto-Discovered)`,
             preserveDisplayName: true,
           });
@@ -563,10 +736,19 @@ export class WebControlRegistryService {
           const jobsCtrl = new AbortController();
           const jobsTimeout = setTimeout(() => jobsCtrl.abort(), 1500);
           try {
-            const jobsRes = await fetch(`${url}/api/v1/control/local-jobs`, { signal: jobsCtrl.signal });
+            const jobsRes = await fetch(`${url}/api/v1/control/local-jobs`, {
+              signal: jobsCtrl.signal,
+              headers: stationPullCredentialHeaders(record),
+            });
             if (jobsRes.ok) {
-              const jobsPayload = (await jobsRes.json()) as { jobs?: ControlSyncedJob[] };
-              if (Array.isArray(jobsPayload?.jobs)) {
+              const jobsPayload = (await jobsRes.json()) as {
+                installationId?: string;
+                jobs?: ControlSyncedJob[];
+              };
+              if (
+                Array.isArray(jobsPayload?.jobs)
+                && sameStationIdentity(record.installationId, jobsPayload.installationId)
+              ) {
                 await this.upsertDeviceJobs(record.deviceId, jobsPayload.jobs);
               }
             }
@@ -596,15 +778,17 @@ export class WebControlRegistryService {
 
     // Older discovery records without an installation identity can describe
     // the same station as a later identity-aware probe of the same endpoint.
+    // Compare by host, because a stored address may or may not carry the station
+    // port (`host` from older rows, `host:port` from current discovery).
     const identifiedAddresses = new Set(
       allDevices
         .filter((device) => !device.installationId.startsWith('discovered_'))
         .flatMap((device) => device.ipAddresses ?? [])
-        .map((address) => address.toLowerCase()),
+        .map(addressHostName),
     );
     const visibleDevices = devices.filter((device) => {
       if (!device.installationId.startsWith('discovered_')) return true;
-      return !(device.ipAddresses ?? []).some((address) => identifiedAddresses.has(address.toLowerCase()));
+      return !(device.ipAddresses ?? []).some((address) => identifiedAddresses.has(addressHostName(address)));
     });
     const enriched = visibleDevices.map((device) => this.applyDynamicConnectionState(device));
     if (filter?.connectionState) {

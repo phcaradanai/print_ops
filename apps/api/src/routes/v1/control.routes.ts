@@ -12,18 +12,20 @@ import type {
   ReleaseRecordStatus,
 } from '@printerops/domain';
 import type { WebControlRegistryService } from '../../services/web-control-registry.service.js';
+import { stationBaseUrl, stationPullCredentialHeaders } from '../../services/web-control-registry.service.js';
+import { deriveJobMirrorCredentialFromToken } from '../../services/control-message-auth.js';
 import type { ControlCommandService } from '../../services/control-command.service.js';
 import type { ReleaseCatalogService } from '../../services/release-catalog.service.js';
 import type { ControlContentSyncService } from '../../services/control-content-sync.service.js';
 import type { ReleaseStorageService, MinioStorageConfig } from '../../services/release-storage.service.js';
 import type { ReprintJobService, ReprintJobInput } from '../../services/reprint-job.service.js';
 import { AppError, ValidationError, generateId } from '@printerops/shared';
-import { requirePermission, actor } from './permission-guard.js';
+import { requirePermission, requirePermissionOrInternal, actor } from './permission-guard.js';
 import { jobToControlSyncedJob } from '../job-redaction.js';
 import { CURRENT_SCHEMA_VERSION } from '../../infra/db/sqlite.schema.js';
 import { LOCAL_CONTROL_CAPABILITIES } from '../../services/control-device-info.service.js';
 import os from 'node:os';
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import { createReadStream, existsSync, statSync, mkdirSync, writeFileSync, readFileSync, renameSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { parseReleaseManifestEnvelope } from '../../services/ota-update.service.js';
@@ -41,6 +43,55 @@ export interface ControlRoutesDeps {
   reprintJob?: ReprintJobService;
   localDeviceId?: () => string;
   localInstallationId?: () => string;
+  /** This station's enrollment token, when enrolled — used to accept job-mirror pulls. */
+  localDeviceToken?: () => string | undefined;
+  /** Loopback updater token, so the bundled control agent can read the job mirror. */
+  internalToken?: string;
+}
+
+/**
+ * Guards the station-side job mirror (`/control/local-jobs`).
+ *
+ * An enrolled station needs no configuration: the control plane derives a credential
+ * from the device token hash it already stores, and the station derives the same value
+ * from the token it already holds. That is what lets one Web Control pull from every
+ * customer it knows about without a per-station secret.
+ *
+ * A station that has never enrolled cannot derive one, so pulls from it also accept the
+ * optional shared `PRINTOPS_CONTROL_PULL_TOKEN`; with neither available the historical
+ * open behaviour is kept rather than breaking an existing deployment blind, and
+ * registration warns about it.
+ */
+export function stationJobMirrorGuard(options: {
+  permission: 'control:read' | 'job:retry';
+  internalToken?: string;
+  deviceId?: () => string | undefined;
+  deviceToken?: () => string | undefined;
+}) {
+  const permissionGuard = requirePermissionOrInternal(options.permission, options.internalToken);
+  return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const supplied = req.headers['x-control-pull-token'];
+    const deviceId = options.deviceId?.()?.trim();
+    const deviceToken = options.deviceToken?.()?.trim();
+    if (typeof supplied === 'string' && supplied && deviceId && deviceToken) {
+      try {
+        if (constantTimeEquals(supplied, deriveJobMirrorCredentialFromToken(deviceToken, deviceId))) return;
+      } catch {
+        // Fall through to the remaining options.
+      }
+    }
+    const shared = (process.env['PRINTOPS_CONTROL_PULL_TOKEN'] ?? '').trim();
+    if (shared && typeof supplied === 'string' && constantTimeEquals(supplied, shared)) return;
+    if (!deviceToken && !shared) return;
+    await permissionGuard(req, reply);
+  };
+}
+
+function constantTimeEquals(a: string, b: string): boolean {
+  const left = Buffer.from(a, 'utf8');
+  const right = Buffer.from(b, 'utf8');
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
 }
 
 export async function controlRoutes(
@@ -51,6 +102,16 @@ export async function controlRoutes(
   const importBodyLimit = Number(importLimitSetting) * 1024 * 1024;
   if (!/^[0-9]+$/.test(importLimitSetting) || !Number.isSafeInteger(importBodyLimit) || importBodyLimit <= 0) {
     throw new Error('PRINTOPS_RELEASE_IMPORT_MAX_MIB must be a positive whole number of MiB');
+  }
+
+  const stationEnrolled = Boolean(deps.localDeviceToken?.()?.trim());
+  if (!stationEnrolled && !process.env['PRINTOPS_CONTROL_PULL_TOKEN']?.trim()) {
+    app.log.warn(
+      'This station is not enrolled with a control plane and PRINTOPS_CONTROL_PULL_TOKEN is not set: '
+      + '/control/local-jobs accepts pulls without a credential, which exposes this station\'s job payloads '
+      + 'and its reprint trigger to anything that can reach the station port. Enrolling this station, or setting '
+      + 'the same token on the station and on the control plane, closes that.',
+    );
   }
 
   // ─── Enrollment Tokens & Bootstrap ──────────────────────────────────────────
@@ -214,19 +275,31 @@ export async function controlRoutes(
 
   // ─── Station Jobs Sync & Fleet Jobs Hub ─────────────────────────────────────
 
-  app.get('/control/local-jobs', async (_req: FastifyRequest, reply: FastifyReply) => {
-    if (!deps.jobs) {
-      return reply.send({ jobs: [] });
-    }
-    const localId = deps.localDeviceId?.() ?? 'local-printops';
-    const jobs = await deps.jobs.findAll({ limit: 500 });
-    return reply.send({
-      deviceId: localId,
-      jobs: jobs.map((job) => jobToControlSyncedJob(job, localId)),
-    });
-  });
+  const stationMirrorGuardOptions = {
+    internalToken: deps.internalToken,
+    deviceId: deps.localDeviceId,
+    deviceToken: deps.localDeviceToken,
+  } as const;
 
-  app.post('/control/local-jobs/:jobId/reprint', async (req: FastifyRequest, reply: FastifyReply) => {
+  app.get(
+    '/control/local-jobs',
+    { onRequest: [stationJobMirrorGuard({ permission: 'control:read', ...stationMirrorGuardOptions })] },
+    async (_req: FastifyRequest, reply: FastifyReply) => {
+      const localId = deps.localDeviceId?.() ?? 'local-printops';
+      const localInstallationId = deps.localInstallationId?.();
+      // deviceId alone cannot identify the station across installs: the control
+      // plane assigns its own id, so the puller also compares installationId before
+      // storing these jobs under a device. Returning both keeps that check honest.
+      const jobs = deps.jobs ? await deps.jobs.findAll({ limit: 500 }) : [];
+      return reply.send({
+        deviceId: localId,
+        ...(localInstallationId ? { installationId: localInstallationId } : {}),
+        jobs: jobs.map((job) => jobToControlSyncedJob(job, localId)),
+      });
+    },
+  );
+
+  app.post('/control/local-jobs/:jobId/reprint', { onRequest: [stationJobMirrorGuard({ permission: 'job:retry', ...stationMirrorGuardOptions })] }, async (req: FastifyRequest, reply: FastifyReply) => {
     if (!deps.jobs || !deps.reprintJob) {
       return reply.status(503).send({ error: 'Local reprint service is unavailable' });
     }
@@ -297,10 +370,10 @@ export async function controlRoutes(
     { onRequest: [requirePermission('control:read')] },
     async (_req: FastifyRequest, reply: FastifyReply) => {
       await deps.registry.discoverDevices();
-      const devices = await deps.registry.listDevices();
-      await Promise.all(
-        devices.map((device) => deps.registry.syncJobsFromReachableDevice(device)),
-      );
+      // Force-refresh every station this control plane knows about, not just the
+      // discovery targets: a customer found by enrollment or by a previous sweep is
+      // pulled from here as well.
+      await deps.registry.syncAllDeviceJobs({ force: true });
       const payload = await buildFleetControlJobsPayload(deps);
       return reply.send(payload);
     },
@@ -389,10 +462,9 @@ export async function controlRoutes(
 
       // 2. Forward to reachable remote PrintOps station over HTTP if it has IP addresses
       const hosts = (device.ipAddresses ?? []).map((ip) => ip.trim()).filter(Boolean);
+      const stationHeaders = stationPullCredentialHeaders(device);
       for (const host of hosts) {
-        const baseUrl = host.startsWith('http://') || host.startsWith('https://')
-          ? host.replace(/\/+$/, '')
-          : `http://${host}:31415`;
+        const baseUrl = stationBaseUrl(host);
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 3000);
         try {
@@ -400,7 +472,10 @@ export async function controlRoutes(
             `${baseUrl}/api/v1/control/local-jobs/${encodeURIComponent(jobId)}/reprint`,
             {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                ...stationHeaders,
+              },
               body: JSON.stringify({
                 printerId: body.printerId,
                 copies: body.copies,

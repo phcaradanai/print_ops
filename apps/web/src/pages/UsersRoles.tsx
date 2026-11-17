@@ -331,8 +331,11 @@ export default function UsersRoles() {
           <Button
             busy={changeAccess.pending}
             busyLabel={t('common.saving')}
+            // A zero-page list would lock the account out of every page (and
+            // blank the whole shell after sign-in), so it can never be saved.
+            disabled={selectedPages.length === 0}
             onClick={() => {
-              if (!accessUser) return;
+              if (!accessUser || selectedPages.length === 0) return;
               const activePaths = new Set(PAGE_OPTIONS.map(({ path }) => path));
               const preservedPages = (accessUser.allowedPages ?? []).filter((path) => !activePaths.has(path));
               const nextAllowedPages = [...new Set([...preservedPages, ...selectedPages.filter((path) => activePaths.has(path))])];
@@ -358,6 +361,9 @@ export default function UsersRoles() {
               <Badge>{t(`session.role.${accessUser.role}`)}</Badge>
             </div>
             <Text tone="muted" size="label">{t('page.usersRoles.accessHint')}</Text>
+            {selectedPages.length === 0 && (
+              <Text tone="danger" size="label" role="status">{t('page.usersRoles.accessRequired')}</Text>
+            )}
             <div className="users-access__toolbar">
               <Text role="status" size="label" weight="semibold">
                 {t('page.usersRoles.selectedPages')

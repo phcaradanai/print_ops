@@ -4,6 +4,7 @@ import type {
   ControlContentBundle,
   ControlContentIndex,
   ControlContentKind,
+  ControlSyncedJob,
 } from '@printerops/domain';
 import type { ControlContentSyncResult } from './control-content-sync.service.js';
 import type {
@@ -109,6 +110,15 @@ export class ControlTargetHttp implements OtaUpdateServicePort {
 
   async recordControlAgentHeartbeat(): Promise<void> {
     await this.request<{ accepted: boolean }>('/api/v1/ota/control-agent-heartbeat', 'POST');
+  }
+
+  /**
+   * Reads this station's job mirror over loopback with the updater token. The
+   * standalone agent relays it to the control plane in each heartbeat, so Web
+   * Control sees jobs without ever opening an inbound path to the station.
+   */
+  getLocalControlJobs(): Promise<{ installationId?: string; jobs: ControlSyncedJob[] }> {
+    return this.request<{ installationId?: string; jobs: ControlSyncedJob[] }>('/api/v1/control/local-jobs');
   }
 
   checkForUpdate(manifestUrl?: string) {

@@ -44,6 +44,35 @@ describe('SQLite Control Repositories', () => {
     expect(tables).toContain('control_audit_logs');
   });
 
+  it('persists discovery address and capabilities at creation time', async () => {
+    const repo = new SqliteDeviceRegistryRepository();
+
+    const created = await repo.create({
+      deviceId: 'dev_discovered_001',
+      installationId: 'discovered_app_3001',
+      siteId: 'default-site',
+      hostname: 'printops-app',
+      platform: 'linux-x64',
+      architecture: 'x64',
+      appVersion: '0.1.47',
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      runnerVersion: '0.1.47',
+      deviceTokenHash: 'hash_discovered_001',
+      displayName: 'printops-app (Auto-Discovered)',
+      ipAddresses: ['app:3001'],
+      capabilities: ['ota', 'content-sync-v1'],
+    });
+
+    // A discovered device only ever gets these fields on creation, so they must not
+    // be dropped by the INSERT: without them the job pull has no address to dial.
+    expect(created.ipAddresses).toEqual(['app:3001']);
+    expect(created.capabilities).toEqual(['ota', 'content-sync-v1']);
+
+    const reloaded = await repo.findById('dev_discovered_001');
+    expect(reloaded?.ipAddresses).toEqual(['app:3001']);
+    expect(reloaded?.capabilities).toEqual(['ota', 'content-sync-v1']);
+  });
+
   it('creates and retrieves device records with heartbeats', async () => {
     const repo = new SqliteDeviceRegistryRepository();
 

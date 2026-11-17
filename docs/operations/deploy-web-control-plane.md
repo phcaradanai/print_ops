@@ -89,6 +89,64 @@ Clients must be able to reach the address advertised by
 `PRINTOPS_CONTROL_PUBLIC_NATS_URL`: enrollment hands clients that exact URL, so
 a Docker-internal hostname is not reachable from a workstation.
 
+### How Web Control receives incoming job history
+
+Web Control is **not bound to one PrintOps instance**. It mirrors the jobs of every
+station it knows about, and a station becomes known in any of these ways — none of
+which requires editing a station list on the control plane:
+
+* it enrolls (the normal path for a customer workstation);
+* it announces itself;
+* a discovery sweep reaches it;
+* it is listed in `PRINTOPS_CONTROL_DISCOVERY_TARGETS` (optional, comma separated);
+* someone presses **Discover** in the UI.
+
+Once a station is known, its job history arrives by the first available path:
+
+1. **Heartbeat push.** An enrolled station reads its own job repository and attaches
+   up to 50 changed, redacted jobs to every tenth heartbeat. This crosses NAT and
+   firewalls, so it is the path used by remote customers. Nothing to configure.
+2. **Automatic pull.** A background sweep every 30 seconds pulls
+   `GET /api/v1/control/local-jobs` from **every** known station that reports a
+   reachable address, four at a time. A station reports `address:port` in its
+   heartbeat (for example `10.0.0.7:31415`, or `printops-app:3001` in a container),
+   so the control plane never has to guess the port. `POST /api/v1/control/jobs/sync`
+   forces one sweep immediately.
+
+A station the server cannot dial simply contributes through its heartbeat; no error
+is surfaced.
+
+#### The web container must follow a recreated API
+
+The bundled `apps/web/nginx.conf` resolves the API service per request
+(`resolver 127.0.0.11` plus a variable in `proxy_pass`) instead of once when nginx
+starts. A static `proxy_pass` keeps the address it resolved at startup, so recreating
+the API container — a normal image upgrade, or `docker compose up -d api` on its own —
+left a still-running web container proxying every API call to the old address. The
+dashboard then showed no data at all while the API and its database were healthy.
+If you copy this config into another reverse proxy, keep the request-time resolution.
+
+#### Authenticating the pull
+
+`GET /api/v1/control/local-jobs` exposes job payloads and
+`POST /api/v1/control/local-jobs/:jobId/reprint` creates real print jobs, so neither
+is left open on an untrusted network. Two credentials are accepted:
+
+* **Enrolled stations need no configuration.** The control plane stores only the
+  SHA-256 of each device token, and the station holds the token, so both derive the
+  same request credential with HMAC-SHA256. Adding a customer therefore needs nothing
+  beyond enrollment, which is exactly what "Web Control already knows that customer"
+  means.
+* **Stations that are not enrolled** cannot derive that value. For those, set the same
+  optional `PRINTOPS_CONTROL_PULL_TOKEN` on the station and on the control plane. When
+  it is set, the control plane presents it for every station, because every station
+  accepts it. If neither applies, the station keeps the original unauthenticated pull
+  and logs a warning at startup — enroll it or set the token to close that.
+
+An operator session with `control:read` (or `job:retry` for reprints) is always
+accepted, and the bundled control agent reads the mirror over loopback with the updater
+token.
+
 ### Deployment environment reference
 
 | Variable | Values / default | Purpose |
@@ -105,7 +163,10 @@ a Docker-internal hostname is not reachable from a workstation.
 | `PRINTOPS_WEB_BIND_ADDRESS` | `127.0.0.1` | Host interface for the web port; keep loopback behind a reverse proxy. |
 | `PRINTOPS_WEB_PORT` | `8080` | Published web port. |
 | `PRINTOPS_CONTROL_PUBLIC_HTTP_URL` | Optional HTTP(S) origin | Client-reachable origin for hosted OTA manifests, e.g. `http://printops.node1.ch3.local` or `https://printops.example:8443`. Set explicitly behind a TLS proxy. Defaults to the request protocol and Host, including port. |
-| `PRINTOPS_CONTROL_PLANE_VERSION` | `1.0.8` | Control Plane image tag/version; independent of the PrintOps app version. |
+| `PRINTOPS_CONTROL_DISCOVERY_TARGETS` | Optional comma-separated station origins, e.g. `http://app:3001,http://lab-2:3001` | Stations this host can reach but cannot enroll. Stations found by enrollment or announce are pulled from automatically, so this is normally empty. Scheme and port may be omitted. |
+| `PRINTOPS_CLIENT_URL` | Optional station origin | Single-target predecessor of the list above; still honoured. |
+| `PRINTOPS_CONTROL_PULL_TOKEN` | Optional; shared with unenrolled stations only | Shared secret for pulling a station that is not enrolled, which cannot derive a per-device credential. Enrolled stations need no value here. |
+| `PRINTOPS_CONTROL_PLANE_VERSION` | `1.0.11` | Control Plane image tag/version; independent of the PrintOps app version. |
 | `PRINTOPS_IMAGE_PREFIX` | Optional for source builds; required by registry stack | Registry/repository prefix for API and Web images. |
 | `PRINTOPS_API_UPSTREAM` | `api:3001` | API service DNS name and port reachable by the web container; override when its Docker network alias differs. |
 | `PRINTOPS_RELEASE_IMPORT_MAX_MIB` | Positive whole number; default `128` | Maximum Base64 JSON import request size in MiB, shared by API and Web. |
@@ -182,7 +243,7 @@ Run from the repository root on a machine with Docker Buildx. Authenticate to th
 ```sh
 docker login ghcr.io
 PRINTOPS_IMAGE_PREFIX=ghcr.io/my-org/printops-control-plane \
-PRINTOPS_CONTROL_PLANE_VERSION=1.0.0 \
+PRINTOPS_CONTROL_PLANE_VERSION=1.0.11 \
 node scripts/publish-control-plane-images.mjs
 ```
 

@@ -621,6 +621,23 @@ const en: TranslationDict = {
   'page.runners.subtitle': 'Monitor and manage connected print runners',
   'page.runners.search': 'Search runners',
   'page.runners.searchPlaceholder': 'Search by name, host or protocol…',
+  'page.runners.actions': 'Actions',
+  'page.runners.terminate': 'Terminate',
+  'page.runners.terminateTitle': 'Terminate this runner?',
+  'page.runners.terminateHint':
+    'The runner stops receiving work immediately and cannot heartbeat or register again until its record is deleted. '
+    + 'Jobs it already printed or is printing still report their result. Stop its process (container or service) on its host.',
+  'page.runners.terminateDone': 'Runner terminated. It can no longer claim print jobs.',
+  'page.runners.delete': 'Delete',
+  'page.runners.deleteTitle': 'Delete this runner?',
+  'page.runners.deleteHint':
+    'The registration is removed from the list. If the runner process is still running and not terminated, '
+    + 'it will register itself again on its next heartbeat.',
+  'page.runners.deleteWarning': 'This removes the runner registration permanently.',
+  'page.runners.deleteDone': 'Runner deleted.',
+  'page.runners.terminated': 'TERMINATED',
+  'page.runners.terminatedHint': 'Terminated runners cannot claim jobs. Delete the record to let this host register again.',
+  'page.runners.lastRunnerBlocked': 'At least one runner must remain to receive print jobs.',
 
   // AuditLogs
   'page.auditLogs.title': 'Audit Logs',
@@ -638,6 +655,7 @@ const en: TranslationDict = {
   'page.usersRoles.subtitle': 'Manage user accounts, roles, and page access',
   'page.usersRoles.pageAccess': 'Page access',
   'page.usersRoles.accessHint': 'Select the pages this account can open, then save your changes.',
+  'page.usersRoles.accessRequired': 'Select at least one page before saving.',
   'page.usersRoles.selectedPages': '{count} of {total} pages selected',
   'page.usersRoles.selectAll': 'Select all',
   'page.usersRoles.clearSelection': 'Clear selection',
@@ -1485,6 +1503,11 @@ const en: TranslationDict = {
   // Authorization
   'auth.notAuthorized.title': 'Not authorized',
   'auth.notAuthorized.message': 'You do not have permission to view this page. It is restricted to the sysadmin role.',
+
+  // Terminal route (an address no page claims)
+  'notFound.title': 'Page not found',
+  'notFound.hint': 'No page matches this address. It may have moved, or the link may be incomplete.',
+  'notFound.home': 'Go to start page',
 
   // Import Design (Paper Profiles)
   'page.paperProfiles.importDesign': 'Import Design',
@@ -2379,6 +2402,23 @@ const th: TranslationDict = {
   'page.runners.subtitle': 'ตรวจสอบสถานะและกิจกรรมของตัวรับงานทั้งหมดบนระบบ',
   'page.runners.search': 'ค้นหาตัวรับงาน',
   'page.runners.searchPlaceholder': 'ค้นหาจากชื่อ โฮสต์ หรือโปรโตคอล…',
+  'page.runners.actions': 'จัดการ',
+  'page.runners.terminate': 'หยุดรับงาน',
+  'page.runners.terminateTitle': 'หยุดตัวรับงานนี้หรือไม่?',
+  'page.runners.terminateHint':
+    'ตัวรับงานจะหยุดรับงานทันที และจะส่งสัญญาณหรือลงทะเบียนใหม่ไม่ได้จนกว่าจะลบรายการนี้ '
+    + 'งานที่พิมพ์เสร็จหรือกำลังพิมพ์อยู่ยังรายงานผลได้ตามปกติ ควรหยุดโปรเซสของมัน (คอนเทนเนอร์หรือเซอร์วิส) บนเครื่องนั้นด้วย',
+  'page.runners.terminateDone': 'หยุดตัวรับงานแล้ว จะไม่สามารถรับงานพิมพ์ได้อีก',
+  'page.runners.delete': 'ลบ',
+  'page.runners.deleteTitle': 'ลบตัวรับงานนี้หรือไม่?',
+  'page.runners.deleteHint':
+    'รายการลงทะเบียนจะถูกลบออกจากตาราง หากโปรเซสยังทำงานอยู่และยังไม่ถูกหยุดรับงาน '
+    + 'มันจะลงทะเบียนกลับมาใหม่ในการส่งสัญญาณครั้งถัดไป',
+  'page.runners.deleteWarning': 'การลบนี้เป็นการลบรายการลงทะเบียนอย่างถาวร',
+  'page.runners.deleteDone': 'ลบตัวรับงานแล้ว',
+  'page.runners.terminated': 'ปิดรับงานแล้ว',
+  'page.runners.terminatedHint': 'ตัวรับงานที่ถูกหยุดจะรับงานไม่ได้ ต้องลบรายการนี้ก่อนจึงจะลงทะเบียนใหม่ได้',
+  'page.runners.lastRunnerBlocked': 'ต้องเหลือตัวรับงานอย่างน้อย 1 ตัวเพื่อรับงานพิมพ์',
 
   // AuditLogs
   'page.auditLogs.title': 'บันทึกการตรวจสอบ',
@@ -2396,6 +2436,7 @@ const th: TranslationDict = {
   'page.usersRoles.subtitle': 'จัดการบัญชีผู้ใช้ บทบาท และสิทธิ์การเข้าถึงหน้าต่างๆ',
   'page.usersRoles.pageAccess': 'การเข้าถึงหน้า',
   'page.usersRoles.accessHint': 'เลือกหน้าที่บัญชีนี้สามารถเข้าถึงได้ แล้วกดบันทึกเพื่อใช้การเปลี่ยนแปลง',
+  'page.usersRoles.accessRequired': 'เลือกอย่างน้อยหนึ่งหน้าก่อนบันทึก',
   'page.usersRoles.selectedPages': 'เลือกแล้ว {count} จาก {total} หน้า',
   'page.usersRoles.selectAll': 'เลือกทั้งหมด',
   'page.usersRoles.clearSelection': 'ล้างการเลือก',
@@ -3241,6 +3282,11 @@ const th: TranslationDict = {
   // Authorization
   'auth.notAuthorized.title': 'ไม่มีสิทธิ์เข้าถึง',
   'auth.notAuthorized.message': 'หน้านี้จำกัดเฉพาะผู้ดูแลระบบเท่านั้น',
+
+  // Terminal route (an address no page claims)
+  'notFound.title': 'ไม่พบหน้านี้',
+  'notFound.hint': 'ไม่มีหน้าที่ตรงกับที่อยู่นี้ อาจถูกย้ายไปแล้ว หรือลิงก์ไม่ครบถ้วน',
+  'notFound.home': 'กลับไปหน้าเริ่มต้น',
 
   // Import Design (Paper Profiles)
   'page.paperProfiles.importDesign': 'นำเข้าการออกแบบ',

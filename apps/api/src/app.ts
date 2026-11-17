@@ -74,6 +74,7 @@ import { CancelJobService } from './services/cancel-job.service.js';
 import { ExecuteJobService } from './services/execute-job.service.js';
 import { RegisterRunnerService } from './services/register-runner.service.js';
 import { RunnerHeartbeatService } from './services/runner-heartbeat.service.js';
+import { RunnerLifecycleService } from './services/runner-lifecycle.service.js';
 import { ExportJobsService } from './services/export-jobs.service.js';
 import { CheckPermissionService } from './services/check-permission.service.js';
 import { SyncPrinterDiscoveryService } from './services/sync-printer-discovery.service.js';
@@ -146,6 +147,7 @@ import { FileOtaArtifactStateStore } from './services/ota-artifact-state.js';
 import { ExternalUpdaterInstaller, externalUpdaterConfigured, type ExternalUpdaterConfig } from './services/external-updater-installer.js';
 import { FileOtaPolicyStateStore, OtaUpdatePolicyWorker } from './services/ota-update-policy.js';
 import { controlRoutes } from './routes/v1/control.routes.js';
+import { jobToControlSyncedJob } from './routes/job-redaction.js';
 import { requirePermission } from './routes/v1/permission-guard.js';
 import { WebControlRegistryService } from './services/web-control-registry.service.js';
 import { ReleaseCatalogService } from './services/release-catalog.service.js';
@@ -153,7 +155,7 @@ import { ControlCommandService } from './services/control-command.service.js';
 import { ReleaseStorageService } from './services/release-storage.service.js';
 import { SqliteStorageSettingsRepository } from './infra/repos/sqlite/sqlite-storage-settings.repo.js';
 import { InMemoryStorageSettingsRepository } from './infra/repos/in-memory-storage-settings.repo.js';
-import { PrintOpsControlAgent } from './services/control-agent.service.js';
+import { HEARTBEAT_JOB_SOURCE_LIMIT, PrintOpsControlAgent } from './services/control-agent.service.js';
 import { DeviceIdentityStore } from './services/device-identity.js';
 import { signControlMessageWithToken, verifyControlMessageWithToken } from './services/control-message-auth.js';
 import { CURRENT_SCHEMA_VERSION } from './infra/db/sqlite.schema.js';
@@ -606,6 +608,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const executeJob = new ExecuteJobService(jobRepo, printerRepo, traceRepo, auditRepo, queue, eventBus, registry);
   const registerRunner = new RegisterRunnerService(runnerRepo, auditRepo, eventBus);
   const runnerHeartbeat = new RunnerHeartbeatService(runnerRepo, eventBus);
+  const runnerLifecycle = new RunnerLifecycleService(runnerRepo, auditRepo, eventBus);
   const exportJobs = new ExportJobsService(jobRepo, exporter);
   const checkPermission = new CheckPermissionService(permissionPolicy, eventBus);
   const syncDiscovery = new SyncPrinterDiscoveryService(discoveredPrinterRepo, runnerRepo);
@@ -1108,6 +1111,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     enrollmentTokens: controlTokenRepo,
     audit: controlAuditRepo,
     useSqlite,
+    logger: app.log,
     config: {
       natsUrl: process.env['PRINTOPS_CONTROL_PUBLIC_NATS_URL'] ?? process.env['PRINTOPS_CONTROL_NATS_URL'],
       natsStream: process.env['PRINTOPS_CONTROL_NATS_STREAM'],
@@ -1166,6 +1170,13 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       applyContentBundle: (bundle, onProgress) => controlContentSyncService.applyBundle(bundle, onProgress),
       getClientContentIndex: () => controlContentSyncService.createClientContentIndex(),
       exportClientContent: (kind, code) => controlContentSyncService.createClientContentBundle(kind, code),
+      // Web Control mirrors this station's job history from the heartbeat, since
+      // a control plane on another network cannot open an inbound HTTP connection
+      // to the station. Redaction happens here, before anything leaves the host.
+      getRecentSyncedJobs: async () => {
+        const jobs = await jobRepo.findAll({ limit: HEARTBEAT_JOB_SOURCE_LIMIT });
+        return jobs.map((job) => jobToControlSyncedJob(job, deviceId));
+      },
       eventPublisher: async (subject, event) => {
         const deviceToken = deviceIdentityStore.getDeviceToken();
         if (!deviceControlTransport || !deviceToken) {
@@ -1261,7 +1272,18 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   } else if (deviceIdentityStore.isEnrolled()) {
     app.log.info('control agent is offline: PRINTOPS_CONTROL_NATS_URL is not configured');
   }
+
+  // Web Control's incoming-jobs view mirrors every station the control plane knows.
+  // The sweep keeps that mirror current without a manual Sync press, and it covers any
+  // station that appears by enrollment, announce or discovery — no per-station setup.
+  // Not started under the unit-test environment, where it would only issue unawaited
+  // network calls between assertions.
+  const stopJobSyncLoop = controlRole === 'control-plane' && process.env['NODE_ENV'] !== 'test'
+    ? webControlRegistry.startJobSyncLoop()
+    : undefined;
+
   app.addHook('onClose', async () => {
+    stopJobSyncLoop?.();
     await stopDeviceControlConnection();
     await controlPlaneTransport?.stop();
   });
@@ -1286,7 +1308,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     });
     await printerRoutes(api, { printers: printerRepo, createPrinter, getPrinterStatus, registry });
     await jobRoutes(api, { jobs: jobRepo, traces: traceRepo, createJob, executeJob, reprintJob });
-    await runnerRoutes(api, { runners: runnerRepo, jobs: jobRepo, registerRunner, runnerHeartbeat });
+    await runnerRoutes(api, { runners: runnerRepo, jobs: jobRepo, registerRunner, runnerHeartbeat, runnerLifecycle });
     await auditRoutes(api, { audit: auditRepo });
     await exportRoutes(api, { exportJobs, audit: auditRepo, printers: printerRepo, exporter });
   };
@@ -1303,7 +1325,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
     await v1NetworkPrinterSearchRoutes(v1, { searches: networkSearches });
     await v1LocationBindingRoutes(v1, { bindings: locationBindingRepo, locations: locationPrinters });
-    await v1RunnerJobRoutes(v1, { jobs: jobRepo, printers: printerRepo, traces: traceRepo, audit: auditRepo, events: eventBus });
+    await v1RunnerJobRoutes(v1, { jobs: jobRepo, printers: printerRepo, traces: traceRepo, audit: auditRepo, events: eventBus, runners: runnerRepo });
     await templateRoutes(v1, { templates: templateRepo, papers: paperRepo, bindings: bindingRepo, printers: printerRepo, renderer: templateRenderer, audit: auditRepo });
     await printerCalibrationRoutes(v1, { calibrations: calibrationRepo, printers: printerRepo, papers: paperRepo, audit: auditRepo, createJob, executeJob });
     await sandboxRoutes(v1, { sandbox: sandboxSvc, connectivity: connectivitySvc, audit: auditRepo });
@@ -1497,6 +1519,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       reprintJob,
       localDeviceId: () => deviceIdentityStore.getIdentity().deviceId,
       localInstallationId: () => deviceIdentityStore.getIdentity().installationId,
+      localDeviceToken: () => deviceIdentityStore.getDeviceToken(),
+      internalToken: otaConfig.healthToken,
     });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 

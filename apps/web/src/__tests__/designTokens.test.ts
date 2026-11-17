@@ -9,7 +9,7 @@
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -23,7 +23,11 @@ function cssFiles(dir = SRC): string[] {
   });
 }
 
-const sheets = cssFiles().map((path) => ({ path: relative(SRC, path), css: readFileSync(path, 'utf8') }));
+const sheets = cssFiles().map((path) => ({
+  // Compare with forward slashes so the allowlist below matches on Windows too.
+  path: relative(SRC, path).split(sep).join('/'),
+  css: readFileSync(path, 'utf8'),
+}));
 
 function luminance(hex: string): number {
   const [r, g, b] = [1, 3, 5].map((i) => {

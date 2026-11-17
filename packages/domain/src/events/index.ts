@@ -155,6 +155,20 @@ export interface RunnerHeartbeatReceived extends DomainEvent {
   runnerId: string;
 }
 
+/** A runner was stopped from taking work but its record is kept as a tombstone. */
+export interface RunnerTerminated extends DomainEvent {
+  eventType: 'RunnerTerminated';
+  runnerId: string;
+  runnerName: string;
+}
+
+/** A runner registration was deleted outright. */
+export interface RunnerDeleted extends DomainEvent {
+  eventType: 'RunnerDeleted';
+  runnerId: string;
+  runnerName: string;
+}
+
 export interface PermissionDenied extends DomainEvent {
   eventType: 'PermissionDenied';
   userId: string;
@@ -191,6 +205,8 @@ export type AnyDomainEvent =
   | PrintJobTerminal
   | RunnerRegistered
   | RunnerHeartbeatReceived
+  | RunnerTerminated
+  | RunnerDeleted
   | PermissionDenied
   | AuditRecorded
   | TraceRecorded;

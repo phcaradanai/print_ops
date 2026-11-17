@@ -20,6 +20,8 @@ export type AuditAction =
   | 'runner.reconnected'
   | 'runner.heartbeat'
   | 'runner.offline'
+  | 'runner.terminated'
+  | 'runner.deleted'
   | 'user.login'
   | 'user.created'
   | 'user.updated'

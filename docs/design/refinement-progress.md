@@ -1,5 +1,72 @@
 # Refinement progress
 
+## 2026-11-17 (release 0.1.48 / 1.0.11) — Runner terminate & delete
+
+The Runners page had no way to stop or remove a job receiver. Added:
+
+- **`POST /api/runners/:id/terminate`** stops a runner taking work and keeps its record
+  as a tombstone (`metadata.terminated`, `terminatedAt`, `terminatedBy`, status
+  `offline`); **`DELETE /api/runners/:id`** removes the registration. Both are guarded by
+  `runner:manage`, audited (`runner.terminated` / `runner.deleted`) and publish
+  `RunnerTerminated` / `RunnerDeleted`.
+- **At least one runner must remain.** Removing the last runner able to claim work is
+  refused with `409 CONFLICT` and an explanation, because the queue would silently stop
+  draining. The rule counts raw records, so legacy duplicate rows still count; the page
+  applies the same rule to the deduplicated list and disables the button with a reason.
+- **A terminated runner cannot come back on its own**: heartbeat, the legacy poll, the
+  `jobs/next` claim and re-registration under the same host+name all return `409`. It can
+  still report results for jobs it already claimed, so in-flight work is not stranded.
+- **UI:** an Actions column with Terminate/Delete, a confirmation `Dialog` (backdrop
+  click disabled for the destructive case), a `Terminated` badge, an inline `Alert` on
+  the API's 409 message, and a success notice. Reuses existing primitives; new strings in
+  both locales; no new stylesheet or literal colour.
+- **Tests:** `apps/api/src/tests/runner-lifecycle.test.ts` (9) and
+  `apps/web/src/__tests__/runnerLifecycle.test.ts` (4).
+
+## 2026-11-17 (later) — Web Control shows no data: job mirror, blank-screen gates
+
+The Incoming Jobs hub shipped in `b01dae9` read a mirror that nothing ever filled,
+and two page-level gates could blank the whole shell. Fixed:
+
+- **Job mirror producer.** `PrintOpsControlAgent.buildHeartbeat()` now attaches
+  up to 50 changed, redacted jobs (`HEARTBEAT_MAX_JOBS`), bounded to a 192 KiB
+  serialized budget and resent in full every five minutes. The in-process agent
+  reads `jobRepo`; the standalone agent reads it over loopback through the new
+  `ControlTargetHttp.getLocalControlJobs()`. Nothing in the product had ever
+  produced `recentJobs` or called `POST /control/devices/:id/jobs`, so the hub was
+  empty for every station the control plane could not dial.
+- **Discovery address.** Discovery stores `host:port` instead of `hostname`, so a
+  station on a non-default port is no longer pulled from `:31415` (which filed one
+  station's jobs under another device). Pulls also discard a mirror whose reported
+  installation identity disagrees with the device record, and SQLite `create()`
+  now persists `ip_addresses_json`/`capabilities_json` (a discovered device had no
+  pull address until a second discovery pass).
+- **Co-located and multi-station discovery.** Discovery is a list
+  (`PRINTOPS_CONTROL_DISCOVERY_TARGETS`), not one pinned station, and a background
+  sweep now pulls the job mirror of *every* station the control plane knows — enrolled,
+  announced or discovered — every 30 seconds, so a customer that appears once shows up
+  without pressing Sync. No deployment names a specific station in a required variable.
+- **Pull authentication.** `/control/local-jobs` (job payloads) and its reprint trigger
+  were unauthenticated. An enrolled station is now read with a credential both sides
+  derive from the device token hash (no configuration per customer); a station that
+  never enrolled uses the optional `PRINTOPS_CONTROL_PULL_TOKEN`; an operator session
+  or the loopback updater token also works. A station with neither warns at startup.
+- **Blank Web Control shell.** An empty `allowedPages` array denied every page and
+  emptied the sidebar (RBAC parity made this reachable); a legacy page list saved by
+  the dashboard build locked the control build out; unknown `/control/*` URLs
+  rendered an empty `<main>` because there was no catch-all route; and the Jobs hub
+  read `currentVersion`, which the API never sends. All four are fixed, with tests
+  in `apps/web/src/__tests__/` and `apps/api/src/tests/`.
+- **Web container followed a stale API address.** `apps/web/nginx.conf` resolved the
+  API upstream once at startup, so recreating only the API container left the running
+  web container proxying to the old address — the dashboard then showed nothing while
+  the API was healthy. It now resolves per request via Docker's resolver.
+- **Verified in Docker Desktop** with a control plane, two separate stations and the
+  web image built from source: both stations were discovered from the generic target
+  list, their jobs appeared without pressing Sync, the payload explorer received the
+  keys, the web container served the Web Control bundle and returned the same data,
+  and unauthenticated station pulls were refused once the shared token was set.
+
 ## 2026-11-12 (later) — real-data review and concept retheme
 
 The first pass used a mocked API and missed problems that only appear with records. This pass rendered all 18 routes against the running dev API (real data, Thai and English, 1440 and 390px) and applied the owner's concept board.
