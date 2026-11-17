@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch, apiUpload, readFileBase64, triggerDirectDownload, type UploadProgress } from '../api/client.js';
+import { useHasPermission } from '../api/session.js';
 import { compareVersions } from '@printerops/domain';
 import { useLocale } from '../i18n/index.js';
 import { formatRelativeTime } from '../lib/relativeTime.js';
@@ -71,6 +72,7 @@ const RELEASES_POLL_MS = 15_000;
 
 export default function WebControlReleases() {
   const { t } = useLocale();
+  const canManageControl = useHasPermission('control:manage');
 
   const [registerModalOpen, setRegisterModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -139,10 +141,11 @@ export default function WebControlReleases() {
   const [storageSaving, setStorageSaving] = useState(false);
 
   useEffect(() => {
+    if (!canManageControl) return;
     void apiFetch<StorageSettingsData>('/v1/control/storage-settings')
       .then((data) => { if (data) setStorageConfig(data); })
       .catch(() => { /* default fallback */ });
-  }, []);
+  }, [canManageControl]);
   const fetchReleases = useCallback(() => apiFetch<ReleaseItem[]>('/v1/control/releases'), []);
   const releasesResource = useApiResource(fetchReleases, { intervalMs: RELEASES_POLL_MS });
   const releases = releasesResource.data ?? [];
@@ -411,15 +414,19 @@ export default function WebControlReleases() {
               {t('control.releases.downloadLatest')} (v{latestAvailableRelease.version})
             </Button>
           )}
-          <Button variant="secondary" onClick={handleOpenStorageModal}>
-            {t('control.storage.button')}
-          </Button>
-          <Button variant="secondary" onClick={() => { setRegisterError(null); setRegisterModalOpen(true); }}>
-            {t('control.releases.registerRelease')}
-          </Button>
-          <Button variant="primary" onClick={() => { setImportError(null); setImportModalOpen(true); }}>
-            {t('control.releases.importApp')}
-          </Button>
+          {canManageControl && (
+            <>
+              <Button variant="secondary" onClick={handleOpenStorageModal}>
+                {t('control.storage.button')}
+              </Button>
+              <Button variant="secondary" onClick={() => { setRegisterError(null); setRegisterModalOpen(true); }}>
+                {t('control.releases.registerRelease')}
+              </Button>
+              <Button variant="primary" onClick={() => { setImportError(null); setImportModalOpen(true); }}>
+                {t('control.releases.importApp')}
+              </Button>
+            </>
+          )}
           <Freshness
             lastSuccessAt={releasesResource.lastSuccessAt}
             stale={releasesResource.stale}
@@ -439,9 +446,11 @@ export default function WebControlReleases() {
             {t('control.releases.latestAppRelease').replace('{version}', latestAvailableRelease.version)}
           </Badge>
         )}
-        <Badge className="ui-badge--wrap" tone={storageConfig.provider === 'minio' ? 'info' : 'neutral'}>
-          {t('control.releases.storageSummary').replace('{detail}', storageConfig.provider === 'minio' ? `MinIO (${storageConfig.minio.bucket})` : `Local (${storageConfig.localPath})`)}
-        </Badge>
+        {canManageControl && (
+          <Badge className="ui-badge--wrap" tone={storageConfig.provider === 'minio' ? 'info' : 'neutral'}>
+            {t('control.releases.storageSummary').replace('{detail}', storageConfig.provider === 'minio' ? `MinIO (${storageConfig.minio.bucket})` : `Local (${storageConfig.localPath})`)}
+          </Badge>
+        )}
       </Inline>
       {importNotice && (
         <Alert tone="success" onDismiss={() => setImportNotice(null)}>
@@ -521,22 +530,28 @@ export default function WebControlReleases() {
                     <Text size="label" tone="muted">{formatRelativeTime(t, rel.createdAt)}</Text>
                   </DataCell>
                   <DataCell label={t('control.releases.colAction')}>
-                    <Inline gap="xs">
-                      <Button size="sm" variant="secondary" onClick={() => handleOpenEdit(rel)}>
-                        {t('control.releases.manage')}
+                    {canManageControl ? (
+                      <Inline gap="xs">
+                        <Button size="sm" variant="secondary" onClick={() => handleOpenEdit(rel)}>
+                          {t('control.releases.manage')}
+                        </Button>
+                        <RowActionMenu
+                          label={t('control.releases.rowActions').replace('{version}', rel.version)}
+                          items={rel.status === 'AVAILABLE' ? [
+                            { id: 'download', label: `${t('control.releases.downloadApp')} v${rel.version}`, onSelect: () => handleDownloadRelease(rel) },
+                            ...(rel.isLatest ? [] : [{ id: 'latest', label: t('control.releases.setLatest'), onSelect: () => void handleSetLatest(rel) }]),
+                            { id: 'lts', label: rel.isLts ? t('control.releases.unsetLts') : t('control.releases.setLts'), onSelect: () => void handleToggleLts(rel) },
+                            { id: 'revoke', label: t('control.releases.revoke'), danger: true, onSelect: () => setRevokeTarget(rel) },
+                          ] : [
+                            { id: 'activate', label: t('control.releases.activate'), onSelect: () => void setReleaseStatus(rel, 'AVAILABLE') },
+                          ]}
+                        />
+                      </Inline>
+                    ) : rel.status === 'AVAILABLE' ? (
+                      <Button size="sm" variant="secondary" onClick={() => handleDownloadRelease(rel)}>
+                        {t('common.download')}
                       </Button>
-                      <RowActionMenu
-                        label={t('control.releases.rowActions').replace('{version}', rel.version)}
-                        items={rel.status === 'AVAILABLE' ? [
-                          { id: 'download', label: `${t('control.releases.downloadApp')} v${rel.version}`, onSelect: () => handleDownloadRelease(rel) },
-                          ...(rel.isLatest ? [] : [{ id: 'latest', label: t('control.releases.setLatest'), onSelect: () => void handleSetLatest(rel) }]),
-                          { id: 'lts', label: rel.isLts ? t('control.releases.unsetLts') : t('control.releases.setLts'), onSelect: () => void handleToggleLts(rel) },
-                          { id: 'revoke', label: t('control.releases.revoke'), danger: true, onSelect: () => setRevokeTarget(rel) },
-                        ] : [
-                          { id: 'activate', label: t('control.releases.activate'), onSelect: () => void setReleaseStatus(rel, 'AVAILABLE') },
-                        ]}
-                      />
-                    </Inline>
+                    ) : null}
                   </DataCell>
                 </tr>
               );

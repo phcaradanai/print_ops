@@ -1,5 +1,11 @@
 import { JOB_STATUSES, type JobStatus } from '@printerops/domain';
 
+import {
+  extractJobPayload,
+  matchesKeyFilter,
+  parseJobSearchQuery,
+  type JobKeyFilter,
+} from './jobPayload.js';
 import { getJobVerdict } from './jobVerdict.js';
 
 export type JobQueueStatusFilter = 'ALL' | JobStatus | 'NEEDS_ATTENTION';
@@ -15,6 +21,8 @@ export interface JobQueueListItem {
   templateCode?: string;
   resolvedTemplateCode?: string;
   payloadSnapshot?: string;
+  payload?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -43,6 +51,7 @@ export function buildJobQueueView<T extends JobQueueListItem>(
   input: {
     status: JobQueueStatusFilter;
     search: string;
+    keyFilters?: JobKeyFilter[];
     page: number;
     pageSize: number;
   },
@@ -54,15 +63,24 @@ export function buildJobQueueView<T extends JobQueueListItem>(
     }
   }
 
-  const needle = input.search.trim().toLocaleLowerCase();
+  const parsedSearch = parseJobSearchQuery(input.search);
+  const activeKeyFilters = [
+    ...(input.keyFilters ?? []).filter((f) => f.key.trim().length > 0 && f.value.trim().length > 0),
+    ...parsedSearch.keyQueries,
+  ];
   const filtered = jobs.filter((job) => {
     if (input.status === 'NEEDS_ATTENTION') {
       if (!jobNeedsAttention(job.status)) return false;
     } else if (input.status !== 'ALL' && job.status !== input.status) {
       return false;
     }
-    if (!needle) return true;
-    return [
+    const payload = extractJobPayload(job);
+    for (const kf of activeKeyFilters) {
+      if (!matchesKeyFilter(payload, kf)) return false;
+    }
+    if (parsedSearch.textTerms.length === 0) return true;
+    const payloadParts = Object.entries(payload).flatMap(([key, value]) => [key, value]);
+    const candidates = [
       job.id,
       job.status,
       job.printerCode,
@@ -73,7 +91,11 @@ export function buildJobQueueView<T extends JobQueueListItem>(
       job.templateCode,
       job.resolvedTemplateCode,
       job.payloadSnapshot,
-    ].some((value) => value?.toLocaleLowerCase().includes(needle));
+      ...payloadParts,
+    ];
+    return parsedSearch.textTerms.every((term) =>
+      candidates.some((value) => value?.toLocaleLowerCase().includes(term)),
+    );
   });
 
   const pageSize = Math.max(1, Math.trunc(input.pageSize));

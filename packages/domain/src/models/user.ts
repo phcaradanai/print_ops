@@ -1,6 +1,6 @@
 export type Role = 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER';
 
-export const APP_PAGES = ['/', '/printers', '/jobs', '/runners', '/templates', '/paper-profiles', '/discovered-printers', '/diagnostics', '/template-sandbox', '/webhooks', '/route-policies', '/printer-bindings', '/print-flow', '/audit-logs', '/users', '/export', '/settings', '/control/devices', '/control/releases'] as const;
+export const APP_PAGES = ['/', '/printers', '/jobs', '/runners', '/templates', '/paper-profiles', '/discovered-printers', '/diagnostics', '/template-sandbox', '/webhooks', '/route-policies', '/printer-bindings', '/print-flow', '/audit-logs', '/users', '/export', '/settings', '/control/devices', '/control/content', '/control/paper-profiles', '/control/templates', '/control/jobs', '/control/releases', '/control/users'] as const;
 export type AppPage = typeof APP_PAGES[number];
 
 export type Permission =

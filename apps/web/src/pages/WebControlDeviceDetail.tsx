@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiFetch, triggerDirectDownload } from '../api/client.js';
+import { useHasPermission } from '../api/session.js';
 import { useLocale } from '../i18n/index.js';
 import { formatRelativeTime } from '../lib/relativeTime.js';
 import { useApiResource } from '../hooks/useApiResource.js';
@@ -16,8 +17,10 @@ import {
   Dialog,
   EmptyState,
   ErrorState,
+  FormField,
   Freshness,
   Inline,
+  Input,
   LoadingState,
   Mono,
   PageLayout,
@@ -99,12 +102,19 @@ export default function WebControlDeviceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t } = useLocale();
+  const canManageControl = useHasPermission('control:manage');
 
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [actionType, setActionType] = useState<'INSTALL' | 'ROLLBACK' | 'CHECK'>('INSTALL');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [targetVersion, setTargetVersion] = useState('');
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameDisplayName, setRenameDisplayName] = useState('');
+  const [renameSiteId, setRenameSiteId] = useState('');
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameNotice, setRenameNotice] = useState<string | null>(null);
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   const fetchDevice = useCallback(() => apiFetch<DeviceDetailData>(`/v1/control/devices/${id}`), [id]);
   const deviceResource = useApiResource(fetchDevice, { intervalMs: DETAIL_POLL_MS });
@@ -194,6 +204,42 @@ export default function WebControlDeviceDetail() {
     return state === 'STALE' ? 'warning' : 'danger';
   }
 
+  const handleSaveRename = async () => {
+    if (!device) return;
+    setRenameBusy(true);
+    setRenameError(null);
+    try {
+      const updated = await apiFetch<{ displayName?: string }>(
+        `/v1/control/devices/${encodeURIComponent(device.deviceId)}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            displayName: renameDisplayName.trim(),
+            siteId: renameSiteId.trim() || undefined,
+          }),
+        },
+      );
+      setRenameNotice(
+        t('control.devices.displayNameSaved').replace(
+          '{name}',
+          updated.displayName || renameDisplayName.trim() || device.deviceId,
+        ),
+      );
+      setRenameOpen(false);
+      deviceResource.refresh();
+    } catch (err) {
+      setRenameError(
+        t('control.devices.displayNameSaveFailed').replace(
+          '{message}',
+          err instanceof Error ? err.message : String(err),
+        ),
+      );
+    } finally {
+      setRenameBusy(false);
+    }
+  };
+
   return (
     <PageLayout
       title={t('control.devices.detailTitle').replace('{name}', device.displayName || device.hostname)}
@@ -204,6 +250,25 @@ export default function WebControlDeviceDetail() {
           <Button variant="ghost" onClick={() => navigate('/control/devices')}>
             {t('control.devices.backToDevices')}
           </Button>
+          <Button
+            variant="secondary"
+            onClick={() => navigate(`/control/jobs?deviceId=${encodeURIComponent(device.deviceId)}`)}
+          >
+            {t('control.devices.viewJobs')}
+          </Button>
+          {canManageControl && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setRenameDisplayName(device.displayName ?? device.hostname ?? '');
+                setRenameSiteId(device.siteId ?? 'default');
+                setRenameError(null);
+                setRenameOpen(true);
+              }}
+            >
+              {t('control.devices.editDisplayName')}
+            </Button>
+          )}
           <Freshness
             lastSuccessAt={deviceResource.lastSuccessAt}
             stale={deviceResource.stale}
@@ -215,6 +280,11 @@ export default function WebControlDeviceDetail() {
       }
     >
       <Stack gap="lg">
+        {renameNotice && (
+          <Alert tone="success" onDismiss={() => setRenameNotice(null)}>
+            {renameNotice}
+          </Alert>
+        )}
         {isRecoveryRequired && (
           <Alert tone="error" title={t('control.devices.recoveryTitle')}>
             {t('control.devices.recoveryBody').replace('{state}', device.otaState)}
@@ -246,50 +316,57 @@ export default function WebControlDeviceDetail() {
               <Badge tone={device.printState === 'PRINTING' ? 'info' : 'neutral'}>{t('control.devices.colPrint')}: {device.printState}</Badge>
             </Inline>
 
+            {canManageControl && (
+              <>
+                <Inline gap="xs">
+                  <Button
+                    variant="secondary"
+                    disabled={isOffline || isBusy}
+                    onClick={() => handleOpenConfirm('CHECK')}
+                  >
+                    {t('control.devices.checkUpdate')}
+                  </Button>
+                </Inline>
+                <Stack gap="xs" style={{ minWidth: '220px' }}>
+                  <Text size="label" weight="medium">{t('control.devices.targetVersion')}</Text>
+                  <Select
+                    aria-label={t('control.devices.targetVersion')}
+                    value={targetVersion}
+                    disabled={isOffline || isBusy || compatibleReleases.length === 0 || isRecoveryRequired}
+                    onChange={(event) => setTargetVersion(event.target.value)}
+                  >
+                    {compatibleReleases.length === 0
+                      ? <option value="">{t('control.devices.noCompatibleRelease')}</option>
+                      : compatibleReleases.map((release) => (
+                        <option key={release.version} value={release.version}>
+                          v{release.version} · {release.channel ?? 'stable'} · schema v{release.schemaVersion}
+                        </option>
+                      ))}
+                  </Select>
+                  <Text size="label" tone="muted">{t('control.devices.compatibleReleasesHint')}</Text>
+                </Stack>
+              </>
+            )}
             <Inline gap="xs">
-              <Button
-                variant="secondary"
-                disabled={isOffline || isBusy}
-                onClick={() => handleOpenConfirm('CHECK')}
-              >
-                {t('control.devices.checkUpdate')}
-              </Button>
+              {canManageControl && (
+                <>
+                  <Button
+                    variant="primary"
+                    disabled={isOffline || isBusy || !device.hasUpdateAvailable || !selectedRelease || isRecoveryRequired}
+                    onClick={() => handleOpenConfirm('INSTALL')}
+                  >
+                    {t('control.devices.requestUpdate')}
+                  </Button>
 
-            </Inline>
-            <Stack gap="xs" style={{ minWidth: '220px' }}>
-              <Text size="label" weight="medium">{t('control.devices.targetVersion')}</Text>
-              <Select
-                aria-label={t('control.devices.targetVersion')}
-                value={targetVersion}
-                disabled={isOffline || isBusy || compatibleReleases.length === 0 || isRecoveryRequired}
-                onChange={(event) => setTargetVersion(event.target.value)}
-              >
-                {compatibleReleases.length === 0
-                  ? <option value="">{t('control.devices.noCompatibleRelease')}</option>
-                  : compatibleReleases.map((release) => (
-                    <option key={release.version} value={release.version}>
-                      v{release.version} · {release.channel ?? 'stable'} · schema v{release.schemaVersion}
-                    </option>
-                  ))}
-              </Select>
-              <Text size="label" tone="muted">{t('control.devices.compatibleReleasesHint')}</Text>
-            </Stack>
-            <Inline gap="xs">
-              <Button
-                variant="primary"
-                disabled={isOffline || isBusy || !device.hasUpdateAvailable || !selectedRelease || isRecoveryRequired}
-                onClick={() => handleOpenConfirm('INSTALL')}
-              >
-                {t('control.devices.requestUpdate')}
-              </Button>
-
-              <Button
-                variant="danger"
-                disabled={isOffline || isBusy || isRecoveryRequired}
-                onClick={() => handleOpenConfirm('ROLLBACK')}
-              >
-                {t('control.devices.rollback')}
-              </Button>
+                  <Button
+                    variant="danger"
+                    disabled={isOffline || isBusy || isRecoveryRequired}
+                    onClick={() => handleOpenConfirm('ROLLBACK')}
+                  >
+                    {t('control.devices.rollback')}
+                  </Button>
+                </>
+              )}
               {selectedRelease && (
                 <Button
                   variant="secondary"
@@ -493,6 +570,56 @@ export default function WebControlDeviceDetail() {
               {isSubmitting ? t('control.devices.dispatching') : actionType === 'INSTALL' ? t('control.devices.confirmInstall') : actionType === 'ROLLBACK' ? t('control.devices.confirmRollback') : t('control.devices.checkNow')}
             </Button>
           </Inline>
+        </Stack>
+      </Dialog>
+
+      {/* Edit Display Name Dialog */}
+      <Dialog
+        open={renameOpen}
+        onClose={() => setRenameOpen(false)}
+        title={t('control.devices.editDisplayNameTitle')}
+        closeLabel={t('common.close')}
+        footer={
+          <Inline gap="sm" style={{ justifyContent: 'flex-end' }}>
+            <Button variant="secondary" onClick={() => setRenameOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              busy={renameBusy}
+              disabled={!renameDisplayName.trim()}
+              onClick={handleSaveRename}
+            >
+              {t('common.save')}
+            </Button>
+          </Inline>
+        }
+      >
+        <Stack gap="md">
+          {renameError && <Alert tone="error">{renameError}</Alert>}
+          <Text size="label" tone="muted">
+            {t('control.devices.editDisplayNameHint')}
+          </Text>
+          <FormField label={t('control.devices.displayNameLabel')} required>
+            {(control) => (
+              <Input
+                {...control}
+                value={renameDisplayName}
+                onChange={(e) => setRenameDisplayName(e.target.value)}
+                placeholder={t('control.devices.displayNamePlaceholder')}
+              />
+            )}
+          </FormField>
+          <FormField label={t('control.devices.siteIdLabel')}>
+            {(control) => (
+              <Input
+                {...control}
+                value={renameSiteId}
+                onChange={(e) => setRenameSiteId(e.target.value)}
+                placeholder={t('control.devices.siteIdPlaceholder')}
+              />
+            )}
+          </FormField>
         </Stack>
       </Dialog>
     </PageLayout>

@@ -36,7 +36,9 @@ interface UserItem {
   allowedPages?: string[];
 }
 
-const PAGE_OPTIONS = [
+const CONTROL_APP = import.meta.env.VITE_CONTROL_APP === 'true';
+
+const PRINTOPS_PAGE_OPTIONS = [
   { path: '/', group: 'operations', labelKey: 'nav.dashboard' },
   { path: '/printers', group: 'operations', labelKey: 'nav.printers' },
   { path: '/jobs', group: 'operations', labelKey: 'nav.jobQueue' },
@@ -56,7 +58,21 @@ const PAGE_OPTIONS = [
   { path: '/settings', group: 'administration', labelKey: 'nav.settings' },
 ];
 
-const PAGE_GROUPS = ['operations', 'content', 'integrations', 'administration'] as const;
+const CONTROL_PAGE_OPTIONS = [
+  { path: '/control/devices', group: 'operations', labelKey: 'nav.controlDevices' },
+  { path: '/control/jobs', group: 'operations', labelKey: 'nav.controlJobs' },
+  { path: '/control/content', group: 'content', labelKey: 'nav.controlContent' },
+  { path: '/control/paper-profiles', group: 'content', labelKey: 'nav.controlProfiles' },
+  { path: '/control/templates', group: 'content', labelKey: 'nav.controlTemplates' },
+  { path: '/control/releases', group: 'administration', labelKey: 'nav.controlReleases' },
+  { path: '/control/users', group: 'administration', labelKey: 'nav.usersRoles' },
+];
+
+const PAGE_OPTIONS = CONTROL_APP ? CONTROL_PAGE_OPTIONS : PRINTOPS_PAGE_OPTIONS;
+
+const PAGE_GROUPS = (['operations', 'content', 'integrations', 'administration'] as const).filter(
+  (group) => PAGE_OPTIONS.some((page) => page.group === group),
+);
 
 const ROLE_LEVELS: Record<SessionUser['role'], number> = {
   VIEWER: 1,
@@ -183,7 +199,12 @@ export default function UsersRoles() {
             aria-haspopup="dialog"
             onClick={() => {
               setAccessUserId(user.id);
-              setSelectedPages(user.allowedPages ?? PAGE_OPTIONS.map(({ path }) => path));
+              const activePaths = new Set(PAGE_OPTIONS.map(({ path }) => path));
+              setSelectedPages(
+                user.allowedPages
+                  ? user.allowedPages.filter((path) => activePaths.has(path))
+                  : PAGE_OPTIONS.map(({ path }) => path),
+              );
               changeAccess.reset();
             }}
           >
@@ -312,7 +333,10 @@ export default function UsersRoles() {
             busyLabel={t('common.saving')}
             onClick={() => {
               if (!accessUser) return;
-              void changeAccess.run(accessUser.id, selectedPages).then((ok) => {
+              const activePaths = new Set(PAGE_OPTIONS.map(({ path }) => path));
+              const preservedPages = (accessUser.allowedPages ?? []).filter((path) => !activePaths.has(path));
+              const nextAllowedPages = [...new Set([...preservedPages, ...selectedPages.filter((path) => activePaths.has(path))])];
+              void changeAccess.run(accessUser.id, nextAllowedPages).then((ok) => {
                 if (ok) {
                   setAccessUserId(null);
                   void directory.refresh();

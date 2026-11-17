@@ -146,6 +146,35 @@ export interface DeviceEnrollmentResponse {
 
 // ─── Phase 2: Heartbeat & Registry ──────────────────────────────────────────
 
+export interface ControlSyncedJob {
+  id: string;
+  deviceId: string;
+  requestId?: string;
+  printerId: string;
+  printerCode?: string;
+  templateCode?: string;
+  resolvedTemplateCode?: string;
+  paperProfileId?: string;
+  sourceSystem?: string;
+  sourceReference?: string;
+  status: string;
+  copies: number;
+  priorityLabel?: string;
+  runnerId?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  payloadSnapshot?: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  completedAt?: string;
+  finishedAt?: string;
+  updatedAt?: string;
+  latencyMs?: number;
+  reprintOfJobId?: string;
+  reprintOfRequestId?: string;
+  reprintReason?: string;
+}
+
 export interface DeviceHeartbeatPayload {
   deviceId: string;
   installationId: string;
@@ -167,6 +196,7 @@ export interface DeviceHeartbeatPayload {
   osVersion?: string;
   ipAddresses?: string[];
   capabilities?: string[];
+  recentJobs?: ControlSyncedJob[];
 }
 
 // ─── Phase 3: Separate Management Command Plane ─────────────────────────────

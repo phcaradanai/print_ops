@@ -16,6 +16,7 @@ import {
   type JobVerdict,
 } from '../lib/jobVerdict.js';
 import { getErrorAdvice } from '../lib/jobErrorAdvice.js';
+import { extractJobPayload, payloadEntries } from '../lib/jobPayload.js';
 import { JobVerdictBand } from '../components/JobVerdict.js';
 import { ReprintDialog } from '../components/ReprintDialog.js';
 import {
@@ -223,6 +224,7 @@ interface Job {
     /** Render-time warnings captured at accept time. A job can be SUCCESS and
      *  still have printed with blank fields — the operator must see that. */
     renderWarnings?: string[];
+    [key: string]: unknown;
   };
   templateTiming?: {
     routeResolveMs?: number;
@@ -765,6 +767,8 @@ export function JobConfigurationPanel({ job, t, copied, onCopy }: JobConfigurati
     || payloadSnapshot !== undefined;
   const scenarioCount = sandboxInput?.scenarios?.length ?? metadata?.itemCount;
   const sandboxRecipe = buildSandboxRecipe(job);
+  const incomingEntries = payloadEntries(job);
+  const incomingPayloadObject = extractJobPayload(job);
 
   return (
     <Panel title={t('page.jobDetail.printConfiguration')}>
@@ -854,13 +858,27 @@ export function JobConfigurationPanel({ job, t, copied, onCopy }: JobConfigurati
           </Stack>
         )}
 
-        {!metadata?.sandbox && job.payloadSnapshot && (
-          <details>
-            <summary>{t('page.jobDetail.inputPayload')}</summary>
-            <CodeBlock label={t('page.jobDetail.inputPayload')}>
-              {job.payloadSnapshot}
-            </CodeBlock>
-          </details>
+        {!metadata?.sandbox && (incomingEntries.length > 0 || job.payloadSnapshot) && (
+          <Stack gap="sm">
+            {incomingEntries.length > 0 && (
+              <Stack gap="xs">
+                <Text weight="semibold">{t('page.jobQueue.incomingPayloadTitle')}</Text>
+                <CardDetail>
+                  {incomingEntries.map((entry) => (
+                    <CardDetailItem key={entry.key} label={entry.key}>
+                      <Mono wrap>{entry.value}</Mono>
+                    </CardDetailItem>
+                  ))}
+                </CardDetail>
+              </Stack>
+            )}
+            <details open={incomingEntries.length > 0}>
+              <summary>{t('page.jobDetail.inputPayload')}</summary>
+              <CodeBlock label={t('page.jobDetail.inputPayload')}>
+                {incomingEntries.length > 0 ? jsonSnapshot(incomingPayloadObject) : job.payloadSnapshot}
+              </CodeBlock>
+            </details>
+          </Stack>
         )}
       </Stack>
     </Panel>

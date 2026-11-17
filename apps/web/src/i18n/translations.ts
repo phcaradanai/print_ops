@@ -65,6 +65,7 @@ const en: TranslationDict = {
   'nav.export': 'Export',
   'nav.settings': 'Settings',
   'nav.controlDevices': 'Devices',
+  'nav.controlJobs': 'Incoming Jobs',
   'nav.controlContent': 'Distribute content',
   'nav.controlProfiles': 'Paper profiles',
   'nav.controlTemplates': 'Templates',
@@ -1565,6 +1566,7 @@ const en: TranslationDict = {
   'page.jobDetail.traceLoadFailed': 'Could not load the trace timeline',
   'page.jobDetail.deliveryLoadFailed': 'Could not load the result delivery status',
   'page.jobQueue.documentNumber': 'Document no.',
+  'page.jobQueue.incomingPayloadTitle': 'Incoming Payload Data',
 
   // Reprint confirmation dialog
   'page.jobQueue.reprintTitle': 'Confirm additional physical copy',
@@ -1618,6 +1620,14 @@ const en: TranslationDict = {
   'page.jobQueue.batchResultFailed': 'Not created: {error}',
   'page.jobQueue.shortJobId': '{id}…',
   'page.jobQueue.latencyValue': '{value} ms',
+  'page.jobQueue.keyFilterKey': 'Filter by payload key',
+  'page.jobQueue.keyFilterAllKeys': 'Select payload key…',
+  'page.jobQueue.keyFilterPickValue': 'Pick existing value ({count})…',
+  'page.jobQueue.keyFilterValue': 'Key value',
+  'page.jobQueue.keyFilterValuePlaceholder': 'Type value (e.g. 123456)…',
+  'page.jobQueue.keyFilterAdd': 'Add filter',
+  'page.jobQueue.keyFilterClear': 'Clear key filters',
+  'page.jobQueue.keyFilterActive': 'Active key filters',
 
   // FE-01.2 page conversions
   'page.routePolicies.invalidJson': 'This is not valid JSON.',
@@ -1810,6 +1820,7 @@ const th: TranslationDict = {
   'nav.export': 'ส่งออก',
   'nav.settings': 'การตั้งค่า',
   'nav.controlDevices': 'อุปกรณ์',
+  'nav.controlJobs': 'งานที่เข้ามา (PrintOps)',
   'nav.controlContent': 'กระจายข้อมูล',
   'nav.controlProfiles': 'โปรไฟล์กระดาษ',
   'nav.controlTemplates': 'เทมเพลต',
@@ -3303,6 +3314,7 @@ const th: TranslationDict = {
   'page.jobDetail.traceLoadFailed': 'โหลดไทม์ไลน์การติดตามไม่สำเร็จ',
   'page.jobDetail.deliveryLoadFailed': 'โหลดสถานะการส่งผลลัพธ์ไม่สำเร็จ',
   'page.jobQueue.documentNumber': 'เลขที่เอกสาร',
+  'page.jobQueue.incomingPayloadTitle': 'ข้อมูลที่ส่งเข้ามา (Payload)',
 
   // Reprint confirmation dialog
   'page.jobQueue.reprintTitle': 'ยืนยันการพิมพ์เอกสารเพิ่มอีกชุด',
@@ -3356,6 +3368,14 @@ const th: TranslationDict = {
   'page.jobQueue.batchResultFailed': 'ไม่ได้สร้างงาน: {error}',
   'page.jobQueue.shortJobId': '{id}…',
   'page.jobQueue.latencyValue': '{value} มิลลิวินาที',
+  'page.jobQueue.keyFilterKey': 'กรองตาม Key ข้อมูล',
+  'page.jobQueue.keyFilterAllKeys': 'เลือก Key จากข้อมูล…',
+  'page.jobQueue.keyFilterPickValue': 'เลือกค่าที่มีทั้งหมด ({count})…',
+  'page.jobQueue.keyFilterValue': 'ค่าของ Key',
+  'page.jobQueue.keyFilterValuePlaceholder': 'พิมพ์ค่าที่ต้องการ (เช่น 123456)…',
+  'page.jobQueue.keyFilterAdd': 'เพิ่มตัวกรอง',
+  'page.jobQueue.keyFilterClear': 'ล้างตัวกรอง Key',
+  'page.jobQueue.keyFilterActive': 'ตัวกรอง Key ที่ใช้งาน',
 
   // FE-01.2 page conversions
   'page.routePolicies.invalidJson': 'รูปแบบ JSON ไม่ถูกต้อง',

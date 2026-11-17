@@ -12,11 +12,19 @@ import { JobVerdictBand } from '../components/JobVerdict.js';
 import { ActionIcon } from '../components/ActionIcon.js';
 import { TransferIcon } from '../components/TransferIcon.js';
 import { formatCreatedAt } from '../lib/formatCreatedAt.js';
+import {
+  collectPayloadKeys,
+  collectPayloadValueCounts,
+  payloadEntries,
+  type JobKeyFilter,
+} from '../lib/jobPayload.js';
 import './jobQueue.css';
 import {
   Alert,
+  Badge,
   Button,
   Checkbox,
+  Chip,
   DataCell,
   DataHead,
   DataTable,
@@ -29,17 +37,20 @@ import {
   CardDetail,
   FormField,
   Freshness,
+  Grid,
   IconButton,
   Inline,
   Input,
   LoadingState,
   Mono,
   PageLayout,
+  Select,
   Stack,
   StatusBadge,
   TableEmpty,
   Text,
   Textarea,
+  Toolbar,
 } from '../components/ui/index.js';
 import {
   buildJobQueueView,
@@ -147,6 +158,9 @@ export default function JobQueue() {
     return JOB_STATUSES.includes(requested as JobStatus) ? (requested as JobStatus) : 'ALL';
   });
   const [searchQuery, setSearchQuery] = useState('');
+  const [keyFilters, setKeyFilters] = useState<JobKeyFilter[]>([]);
+  const [pendingKey, setPendingKey] = useState('');
+  const [pendingValue, setPendingValue] = useState('');
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchModal, setBatchModal] = useState<'reprint' | null>(null);
@@ -154,14 +168,80 @@ export default function JobQueue() {
   const [batchDuplicateRisk, setBatchDuplicateRisk] = useState(false);
   const [drawerJobId, setDrawerJobId] = useState<string | null>(null);
 
+  const availablePayloadKeys = useMemo(
+    () => collectPayloadKeys(jobs),
+    [jobs],
+  );
+
+  const jobsMatchingOtherFilters = useMemo(
+    () =>
+      buildJobQueueView(jobs, {
+        status: statusFilter,
+        search: searchQuery,
+        keyFilters: keyFilters.filter((kf) => kf.key !== pendingKey),
+        page: 1,
+        pageSize: Math.max(1, jobs.length),
+      }).rows,
+    [jobs, statusFilter, searchQuery, keyFilters, pendingKey],
+  );
+
+  const suggestedValueCounts = useMemo(
+    () => collectPayloadValueCounts(jobsMatchingOtherFilters, pendingKey),
+    [jobsMatchingOtherFilters, pendingKey],
+  );
+
+  const effectiveKeyFilters = useMemo(() => {
+    const trimmedKey = pendingKey.trim();
+    const trimmedVal = pendingValue.trim();
+    if (!trimmedKey || !trimmedVal) return keyFilters;
+    return [
+      ...keyFilters.filter((kf) => kf.key !== trimmedKey),
+      { key: trimmedKey, value: trimmedVal, exact: false },
+    ];
+  }, [keyFilters, pendingKey, pendingValue]);
+
+  const togglePayloadKeyFilter = (key: string, value: string, exact = true) => {
+    setPage(1);
+    setKeyFilters((prev) => {
+      const exists = prev.some(
+        (kf) =>
+          kf.key === key &&
+          kf.value.toLocaleLowerCase() === value.toLocaleLowerCase(),
+      );
+      if (exists) {
+        return prev.filter(
+          (kf) =>
+            !(
+              kf.key === key &&
+              kf.value.toLocaleLowerCase() === value.toLocaleLowerCase()
+            ),
+        );
+      }
+      return [...prev.filter((kf) => kf.key !== key), { key, value, exact }];
+    });
+  };
+
+  const handleAddKeyFilter = () => {
+    const key = pendingKey.trim();
+    const val = pendingValue.trim();
+    if (!key || !val) return;
+    setPage(1);
+    setKeyFilters((prev) => [
+      ...prev.filter((kf) => kf.key !== key),
+      { key, value: val, exact: false },
+    ]);
+    setPendingValue('');
+  };
+
   const view = useMemo(
     () => buildJobQueueView(jobs, {
       status: statusFilter,
       search: searchQuery,
+      keyFilters: effectiveKeyFilters,
       page,
       pageSize: QUEUE_PAGE_SIZE,
     }),
-    [jobs, page, searchQuery, statusFilter],
+    [jobs, page, searchQuery, statusFilter, effectiveKeyFilters],
   );
   const attentionCount = useMemo(
     () => jobs.reduce((count, job) => (jobNeedsAttention(job.status) ? count + 1 : count), 0),
@@ -421,6 +501,116 @@ export default function JobQueue() {
         onSearchChange={(next) => { setSearchQuery(next); setPage(1); }}
       />
 
+      {availablePayloadKeys.length > 0 && (
+        <Toolbar label={t('page.jobQueue.keyFilterKey')}>
+          <Stack gap="sm" style={{ width: '100%' }}>
+            <Grid columns={4} gap="md">
+              <FormField label={t('page.jobQueue.keyFilterKey')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value={pendingKey}
+                    onChange={(e) => {
+                      setPendingKey(e.target.value);
+                      setPendingValue('');
+                      setPage(1);
+                    }}
+                  >
+                    <option value="">{t('page.jobQueue.keyFilterAllKeys')}</option>
+                    {availablePayloadKeys.map((key) => (
+                      <option key={key} value={key}>{key}</option>
+                    ))}
+                  </Select>
+                )}
+              </FormField>
+              <FormField label={t('page.jobQueue.keyFilterValue')}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    value=""
+                    disabled={!pendingKey || suggestedValueCounts.length === 0}
+                    onChange={(e) => {
+                      const picked = e.target.value;
+                      if (!pendingKey || !picked) return;
+                      setPage(1);
+                      setKeyFilters((prev) => [
+                        ...prev.filter((kf) => kf.key !== pendingKey),
+                        { key: pendingKey, value: picked, exact: true },
+                      ]);
+                      setPendingValue('');
+                    }}
+                  >
+                    <option value="">
+                      {t('page.jobQueue.keyFilterPickValue').replace('{count}', String(suggestedValueCounts.length))}
+                    </option>
+                    {suggestedValueCounts.map((entry) => (
+                      <option key={entry.value} value={entry.value}>
+                        {entry.value} ({entry.count})
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </FormField>
+              <FormField label={t('page.jobQueue.keyFilterValue')}>
+                {(control) => (
+                  <Input
+                    {...control}
+                    value={pendingValue}
+                    placeholder={t('page.jobQueue.keyFilterValuePlaceholder')}
+                    disabled={!pendingKey}
+                    onChange={(e) => {
+                      setPendingValue(e.target.value);
+                      setPage(1);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddKeyFilter();
+                      }
+                    }}
+                  />
+                )}
+              </FormField>
+              <Inline gap="sm" style={{ alignItems: 'flex-end' }}>
+                <Button
+                  variant="secondary"
+                  disabled={!pendingKey || !pendingValue.trim()}
+                  onClick={handleAddKeyFilter}
+                >
+                  {t('page.jobQueue.keyFilterAdd')}
+                </Button>
+                {keyFilters.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setKeyFilters([]);
+                      setPendingValue('');
+                      setPage(1);
+                    }}
+                  >
+                    {t('page.jobQueue.keyFilterClear')}
+                  </Button>
+                )}
+              </Inline>
+            </Grid>
+            {keyFilters.length > 0 && (
+              <Inline gap="xs">
+                <Text size="label" tone="muted">{t('page.jobQueue.keyFilterActive')}:</Text>
+                {keyFilters.map((kf) => (
+                  <Chip
+                    key={kf.key}
+                    selected
+                    onClick={() => togglePayloadKeyFilter(kf.key, kf.value, kf.exact !== false)}
+                  >
+                    <Mono size="label">{kf.key}</Mono> = {kf.value} ×
+                  </Chip>
+                ))}
+              </Inline>
+            )}
+          </Stack>
+        </Toolbar>
+      )}
+
       {queue.loading && !queue.data ? (
         <LoadingState />
       ) : queue.error != null && !queue.data ? (
@@ -458,6 +648,9 @@ export default function JobQueue() {
                 view.rows.map((j) => {
                   const template = j.resolvedTemplateCode ?? j.templateCode;
                   const hint = payloadHint(j.payloadSnapshot);
+                  const entries = payloadEntries(j);
+                  const visibleEntries = entries.slice(0, 4);
+                  const hiddenEntryCount = entries.length - visibleEntries.length;
                   const isReprintable = offersReprint(getJobVerdict(j.status));
                   const isSelected = selectedIds.has(j.id);
                   return (
@@ -497,7 +690,34 @@ export default function JobQueue() {
                               {t('page.jobQueue.documentNumber')}: {j.sourceReference}
                             </Text>
                           )}
-                          {hint && <Text size="label" tone="muted" truncate title={hint}>{hint}</Text>}
+                          {entries.length > 0 ? (
+                            <Inline gap="xs">
+                              {visibleEntries.map((entry) => {
+                                const active = keyFilters.some(
+                                  (kf) =>
+                                    kf.key === entry.key &&
+                                    kf.value.toLocaleLowerCase() === entry.value.toLocaleLowerCase(),
+                                );
+                                return (
+                                  <Chip
+                                    key={entry.key}
+                                    selected={active}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      togglePayloadKeyFilter(entry.key, entry.value, true);
+                                    }}
+                                  >
+                                    <Mono>{entry.key}:</Mono> {entry.value}
+                                  </Chip>
+                                );
+                              })}
+                              {hiddenEntryCount > 0 && (
+                                <Badge tone="neutral">+{hiddenEntryCount}</Badge>
+                              )}
+                            </Inline>
+                          ) : (
+                            hint && <Text size="label" tone="muted" truncate title={hint}>{hint}</Text>
+                          )}
                           <Mono tone="muted" truncate title={j.id}>{j.id}</Mono>
                         </Stack>
                       </DataCell>
@@ -714,12 +934,24 @@ export default function JobQueue() {
                   {t('page.jobQueue.latencyValue').replace('{value}', String(drawerJob.latency.totalLatencyMs))}
                 </CardDetailItem>
               )}
-              {payloadHint(drawerJob.payloadSnapshot) && (
+              {payloadHint(drawerJob.payloadSnapshot) && payloadEntries(drawerJob).length === 0 && (
                 <CardDetailItem label={t('page.jobDetail.payloadFields')}>
                   {payloadHint(drawerJob.payloadSnapshot)}
                 </CardDetailItem>
               )}
             </CardDetail>
+            {payloadEntries(drawerJob).length > 0 && (
+              <Stack gap="sm">
+                <Text weight="semibold">{t('page.jobQueue.incomingPayloadTitle')}</Text>
+                <CardDetail>
+                  {payloadEntries(drawerJob).map((entry) => (
+                    <CardDetailItem key={entry.key} label={entry.key}>
+                      <Mono wrap>{entry.value}</Mono>
+                    </CardDetailItem>
+                  ))}
+                </CardDetail>
+              </Stack>
+            )}
             <Text as="p" size="label" tone="muted">
               {t('page.jobQueue.drawerSnapshotNote')}
             </Text>

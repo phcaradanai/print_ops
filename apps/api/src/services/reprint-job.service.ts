@@ -60,7 +60,14 @@ export class ReprintJobService {
 
     const transformOverrides = transformOverridesForJob(original);
     const renderedPrintPayload = await this.resolvePrintContent(original);
-    const { paperProfile, pageHeightMm } = original.metadata;
+    const {
+      paperProfile,
+      pageHeightMm,
+      payload,
+      mappedPayload,
+      intakePayload,
+      code_profile,
+    } = original.metadata;
     const requestId = `reprint-${generateId()}`;
     const created = await this.createJob.execute({
       printerId: input.printerId,
@@ -89,6 +96,10 @@ export class ReprintJobService {
       metadata: {
         ...(paperProfile !== undefined ? { paperProfile } : {}),
         ...(pageHeightMm !== undefined ? { pageHeightMm } : {}),
+        ...(payload !== undefined ? { payload } : {}),
+        ...(mappedPayload !== undefined ? { mappedPayload } : {}),
+        ...(intakePayload !== undefined ? { intakePayload } : {}),
+        ...(code_profile !== undefined ? { code_profile } : {}),
         reprintOfJobId: original.id,
         reprintOfRequestId: original.requestId,
         reprintReason: input.reason.trim(),

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, triggerDirectDownload } from '../api/client.js';
+import { useHasPermission } from '../api/session.js';
 import { useLocale } from '../i18n/index.js';
 import { formatRelativeTime } from '../lib/relativeTime.js';
 import { useApiResource } from '../hooks/useApiResource.js';
@@ -79,6 +80,7 @@ const DEVICES_POLL_MS = 10_000;
 export default function WebControlDevices() {
   const { t } = useLocale();
   const navigate = useNavigate();
+  const canManageControl = useHasPermission('control:manage');
 
   // Filters
   const [onlineFilter, setOnlineFilter] = useState<'all' | 'online' | 'offline'>('all');
@@ -100,6 +102,47 @@ export default function WebControlDevices() {
   const [customIp, setCustomIp] = useState('');
   const [isConnectingIp, setIsConnectingIp] = useState(false);
   const [ipError, setIpError] = useState<string | null>(null);
+
+  // Rename displayName state
+  const [renameTarget, setRenameTarget] = useState<DeviceListItem | null>(null);
+  const [renameDisplayName, setRenameDisplayName] = useState('');
+  const [renameSiteId, setRenameSiteId] = useState('');
+  const [renameBusy, setRenameBusy] = useState(false);
+
+  const handleSaveRename = async () => {
+    if (!renameTarget) return;
+    setRenameBusy(true);
+    try {
+      const updated = await apiFetch<{ displayName?: string }>(
+        `/v1/control/devices/${encodeURIComponent(renameTarget.deviceId)}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            displayName: renameDisplayName.trim(),
+            siteId: renameSiteId.trim() || undefined,
+          }),
+        },
+      );
+      setScanNotice(
+        t('control.devices.displayNameSaved').replace(
+          '{name}',
+          updated.displayName || renameDisplayName.trim() || renameTarget.deviceId,
+        ),
+      );
+      setRenameTarget(null);
+      devicesResource.refresh();
+    } catch (err) {
+      setScanNotice(
+        t('control.devices.displayNameSaveFailed').replace(
+          '{message}',
+          err instanceof Error ? err.message : String(err),
+        ),
+      );
+    } finally {
+      setRenameBusy(false);
+    }
+  };
 
   // Releases & Download state
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
@@ -235,26 +278,30 @@ export default function WebControlDevices() {
           >
             {t('control.devices.downloadApp')}{latestRelease ? ` (v${latestRelease.version})` : ''}
           </Button>
-          <Button
-            variant="secondary"
-            busy={isScanning}
-            busyLabel={t('control.devices.scanning')}
-            onClick={handleScanNetwork}
-          >
-            {t('control.devices.scanNetwork')}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setIpError(null);
-              setIpModalOpen(true);
-            }}
-          >
-            {t('control.devices.addByIp')}
-          </Button>
-          <Button variant="secondary" onClick={() => { setGeneratedToken(null); setTokenModalOpen(true); }}>
-            {t('control.devices.generateToken')}
-          </Button>
+          {canManageControl && (
+            <>
+              <Button
+                variant="secondary"
+                busy={isScanning}
+                busyLabel={t('control.devices.scanning')}
+                onClick={handleScanNetwork}
+              >
+                {t('control.devices.scanNetwork')}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setIpError(null);
+                  setIpModalOpen(true);
+                }}
+              >
+                {t('control.devices.addByIp')}
+              </Button>
+              <Button variant="secondary" onClick={() => { setGeneratedToken(null); setTokenModalOpen(true); }}>
+                {t('control.devices.generateToken')}
+              </Button>
+            </>
+          )}
           <Freshness
             lastSuccessAt={devicesResource.lastSuccessAt}
             stale={devicesResource.stale}
@@ -412,13 +459,37 @@ export default function WebControlDevices() {
                       </Text>
                     </DataCell>
                     <DataCell label={t('control.devices.colAction')}>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => navigate(`/control/devices/${dev.deviceId}`)}
-                      >
-                        {t('control.devices.detail')}
-                      </Button>
+                      <Inline gap="xs">
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={() =>
+                            navigate(`/control/jobs?deviceId=${encodeURIComponent(dev.deviceId)}`)
+                          }
+                        >
+                          {t('control.devices.viewJobs')}
+                        </Button>
+                        {canManageControl && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              setRenameTarget(dev);
+                              setRenameDisplayName(dev.displayName ?? dev.hostname ?? '');
+                              setRenameSiteId(dev.siteId ?? 'default');
+                            }}
+                          >
+                            {t('control.devices.editDisplayName')}
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => navigate(`/control/devices/${dev.deviceId}`)}
+                        >
+                          {t('control.devices.detail')}
+                        </Button>
+                      </Inline>
                     </DataCell>
                   </tr>
                 );
@@ -656,6 +727,55 @@ export default function WebControlDevices() {
               </Inline>
             </>
           )}
+        </Stack>
+      </Dialog>
+
+      {/* Edit Display Name Dialog */}
+      <Dialog
+        open={renameTarget !== null}
+        onClose={() => setRenameTarget(null)}
+        title={t('control.devices.editDisplayNameTitle')}
+        closeLabel={t('common.close')}
+        footer={
+          <Inline gap="sm" style={{ justifyContent: 'flex-end' }}>
+            <Button variant="secondary" onClick={() => setRenameTarget(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              busy={renameBusy}
+              disabled={!renameDisplayName.trim()}
+              onClick={handleSaveRename}
+            >
+              {t('common.save')}
+            </Button>
+          </Inline>
+        }
+      >
+        <Stack gap="md">
+          <Text size="label" tone="muted">
+            {t('control.devices.editDisplayNameHint')}
+          </Text>
+          <FormField label={t('control.devices.displayNameLabel')} required>
+            {(control) => (
+              <Input
+                {...control}
+                value={renameDisplayName}
+                onChange={(e) => setRenameDisplayName(e.target.value)}
+                placeholder={t('control.devices.displayNamePlaceholder')}
+              />
+            )}
+          </FormField>
+          <FormField label={t('control.devices.siteIdLabel')}>
+            {(control) => (
+              <Input
+                {...control}
+                value={renameSiteId}
+                onChange={(e) => setRenameSiteId(e.target.value)}
+                placeholder={t('control.devices.siteIdPlaceholder')}
+              />
+            )}
+          </FormField>
         </Stack>
       </Dialog>
     </PageLayout>

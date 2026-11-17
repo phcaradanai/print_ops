@@ -65,6 +65,29 @@ describe('user directory role visibility', () => {
     await app.close();
   });
 
+  it('accepts Web Control pages in user allowedPages', async () => {
+    const app = await buildTestApp();
+    const authorization = `Bearer ${app.jwt.sign({ sub: 'owner', role: 'OWNER', email: 'owner@example.test' })}`;
+    const controlPages = [
+      '/control/devices',
+      '/control/jobs',
+      '/control/content',
+      '/control/templates',
+      '/control/paper-profiles',
+      '/control/releases',
+      '/control/users',
+    ];
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/users/operator/access',
+      headers: { authorization },
+      payload: { allowedPages: controlPages },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ id: 'operator', allowedPages: controlPages });
+    await app.close();
+  });
+
   it('prevents self-service and upward access changes while OWNER remains immutable', async () => {
     const app = await buildTestApp();
     const operatorAuth = `Bearer ${app.jwt.sign({ sub: 'operator', role: 'OPERATOR', email: 'operator@example.test' })}`;

@@ -1102,6 +1102,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     deviceRegistry: controlDeviceRepo,
     enrollmentTokens: controlTokenRepo,
     audit: controlAuditRepo,
+    useSqlite,
     config: {
       natsUrl: process.env['PRINTOPS_CONTROL_PUBLIC_NATS_URL'] ?? process.env['PRINTOPS_CONTROL_NATS_URL'],
       natsStream: process.env['PRINTOPS_CONTROL_NATS_STREAM'],
@@ -1364,6 +1365,10 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       audit: controlAuditRepo,
       content: controlContentSyncService,
       storage: releaseStorageService,
+      jobs: jobRepo,
+      reprintJob,
+      localDeviceId: () => deviceIdentityStore.getIdentity().deviceId,
+      localInstallationId: () => deviceIdentityStore.getIdentity().installationId,
     });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 

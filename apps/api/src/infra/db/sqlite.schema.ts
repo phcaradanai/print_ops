@@ -157,6 +157,19 @@ function ensureOptionalControlExtensions(db: Database): void {
       updated_at TEXT NOT NULL
     )
   `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS control_device_jobs (
+      device_id TEXT NOT NULL,
+      job_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      job_json TEXT NOT NULL,
+      PRIMARY KEY (device_id, job_id)
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_control_device_jobs_created ON control_device_jobs(device_id, created_at DESC)');
 }
 
 /**

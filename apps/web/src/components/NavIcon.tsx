@@ -179,10 +179,18 @@ const ICON_PATHS: Record<string, ReactNode> = {
       <path d="m2.25 11 5.75 2.75L13.75 11" />
     </>
   ),
+  // Incoming jobs fleet explorer — tray with structured data rows.
+  '/control/jobs': (
+    <>
+      <rect x="2.25" y="2.5" width="11.5" height="11" rx="1.5" />
+      <path d="M4.75 6h6.5M4.75 8.5h4.5M4.75 11h5.5" />
+    </>
+  ),
 };
 // Web Control reuses the PrintOps library pages, so they share the same glyph.
 ICON_PATHS['/control/templates'] = ICON_PATHS['/templates'];
 ICON_PATHS['/control/paper-profiles'] = ICON_PATHS['/paper-profiles'];
+ICON_PATHS['/control/users'] = ICON_PATHS['/users'];
 
 /** Decorative by contract: the adjacent label carries the meaning. */
 export function NavIcon({ route }: { route: string }) {

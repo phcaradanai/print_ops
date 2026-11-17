@@ -82,3 +82,21 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   passed, including the six Linux diagnostics viewport/locale cases.
 - Remaining operational work: validate the installed Linux driver and physical
   G2000 output against the existing template/profile. No new styling debt.
+
+## 2026-11-17 — Incoming Job Payload Visibility & Web Control Incoming Jobs Hub
+
+- **Incoming payload visibility (`/jobs` & `/jobs/:id`)**:
+  - Added shared payload helper (`apps/web/src/lib/jobPayload.ts`) and indexed incoming payload keys/values in `buildJobQueueView` (`apps/web/src/lib/jobQueueView.ts`).
+  - `JobQueue` now displays up to 4 extracted incoming `key: value` `<Badge>`s (+ overflow) in the queue table and a full incoming `key: value` `CardDetail` block inside the quick-triage `Drawer`, falling back to `payloadHint` only when no key/value fields exist.
+  - `JobDetail` now displays incoming payload `CardDetail` fields and formatted JSON for non-sandbox jobs (`JobConfigurationPanel`), and `ReprintJobService` preserves `payload`, `mappedPayload`, `intakePayload`, and `code_profile` on reprints.
+- **Web Control Incoming Jobs Hub (`/control/jobs`) & Station Management**:
+  - New route/nav item `/control/jobs` (`WebControlJobs.tsx`) reusing existing `PageLayout`, `Panel`, `Grid`, `MetricGrid`/`MetricTile`, `DataTable`, `FormField`, `Chip`, `CardDetail`, `Drawer`, `Dialog`, `CodeBlock`, `Alert`, `EmptyState` primitives with zero custom CSS files or inline hex literals.
+  - Fleet overview shows 6 summary metrics, a fleet error breakdown panel with direct error drill-down, station filters, and station cards with custom `displayName` editing (`PATCH /api/v1/control/devices/:id`).
+  - Station drill-down supports free-text payload/metadata search, status filter (`ALL`, `NEEDS_ATTENTION`, `JOB_STATUSES`), date presets & custom date range, dynamic `key: value` filter builder with autocomplete values and clickable `Chip`s on job rows, grouping (`none | date | status | template | printer | source | key:<field>`), full payload `Drawer`, and single/batch remote re-print confirmation `Dialog` (`POST /api/v1/control/devices/:id/jobs/:jobId/reprint`).
+  - Added `View Jobs` and `Edit Display Name` actions on `WebControlDevices.tsx` and `WebControlDeviceDetail.tsx` with 100% EN/TH translation parity.
+- **Verification**:
+  - `npm run build -w packages/domain` passed.
+  - `npm run typecheck --workspaces` passed across all TypeScript workspaces (`@printerops/adapters`, `@printerops/domain`, `@printerops/shared`, `@printerops/api`, `@printerops/mcp`, `@printerops/web`); `typecheck:runner-go` skipped because `go` is not on the Windows shell PATH.
+  - `apps/api`: `control-jobs.test.ts` (3/3) and `control-api.test.ts` (19/19) passed; 80/83 test files (685/688 tests, 2 skipped) passed, with 1 pre-existing Windows-only path failure in `src/tests/retention.test.ts` (`/dev/null/impossible-archive`).
+  - `apps/web`: `jobPayload.test.ts` (5/5), `layoutContract.test.ts` (12/12), `i18n.test.ts` (55/55), `jobQueueFilter.test.tsx` (5/5), `jobDetailEvidence.test.tsx` passed (710/711 tests, 72/73 files); 1 pre-existing Windows backslash failure in `designTokens.test.ts` (`components\ui\ui.css`). Production web build (`npm run build -w apps/web`) passed.
+  - Playwright E2E could not launch on this host because Playwright Chromium executable (`headless_shell.exe`) is not installed.

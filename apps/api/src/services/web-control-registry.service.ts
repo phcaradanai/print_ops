@@ -1,4 +1,5 @@
 import type {
+  ControlSyncedJob,
   DeviceRecord,
   DeviceEnrollmentRequest,
   DeviceEnrollmentResponse,
@@ -12,10 +13,42 @@ import type {
 } from '@printerops/domain';
 import { AppError, ConflictError, NotFoundError, ValidationError, generateId } from '@printerops/shared';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { getDb } from '../infra/db/sqlite.js';
 import { DEFAULT_CONTROL_PLANE_STREAM } from '../infra/nats/control-plane-transport.js';
 import { hashDeviceToken, verifyControlMessage } from './control-message-auth.js';
 export { hashDeviceToken } from './control-message-auth.js';
 const AUTO_DISCOVERY_INTERVAL_MS = 30_000;
+const SENSITIVE_PAYLOAD_KEY_PATTERN = /secret|token|password|api_?key/i;
+
+function sanitizeSyncedPayload(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (SENSITIVE_PAYLOAD_KEY_PATTERN.test(key)) continue;
+    if (value === undefined) continue;
+    result[key] = value;
+  }
+  return result;
+}
+
+function normalizeSyncedJob(deviceId: string, raw: ControlSyncedJob): ControlSyncedJob | null {
+  if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string' || !raw.id.trim()) {
+    return null;
+  }
+  const createdAt = typeof raw.createdAt === 'string' && raw.createdAt
+    ? raw.createdAt
+    : new Date().toISOString();
+  return {
+    ...raw,
+    id: raw.id.trim(),
+    deviceId,
+    printerId: typeof raw.printerId === 'string' ? raw.printerId : '',
+    status: typeof raw.status === 'string' && raw.status ? raw.status : 'ACCEPTED',
+    copies: typeof raw.copies === 'number' && Number.isFinite(raw.copies) ? raw.copies : 1,
+    payload: sanitizeSyncedPayload(raw.payload),
+    createdAt,
+  };
+}
 
 function objectField(value: unknown, key: string): unknown {
   if (typeof value !== 'object' || value === null || Array.isArray(value) || !(key in value)) {
@@ -54,6 +87,7 @@ export interface WebControlRegistryDeps {
   enrollmentTokens: EnrollmentTokenRepositoryPort;
   audit?: ControlAuditRepositoryPort;
   config?: WebControlRegistryConfig;
+  useSqlite?: boolean;
 }
 
 export class WebControlRegistryService {
@@ -61,6 +95,8 @@ export class WebControlRegistryService {
   private readonly enrollmentTokens: EnrollmentTokenRepositoryPort;
   private readonly audit?: ControlAuditRepositoryPort;
   private readonly config: Required<WebControlRegistryConfig>;
+  private readonly useSqlite: boolean;
+  private readonly deviceJobs = new Map<string, Map<string, ControlSyncedJob>>();
   private lastAutoDiscoveryAt = 0;
   private automaticDiscoveryInFlight?: Promise<void>;
 
@@ -68,6 +104,7 @@ export class WebControlRegistryService {
     this.deviceRegistry = deps.deviceRegistry;
     this.enrollmentTokens = deps.enrollmentTokens;
     this.audit = deps.audit;
+    this.useSqlite = Boolean(deps.useSqlite);
     this.config = {
       natsUrl: deps.config?.natsUrl || process.env['PRINTOPS_CONTROL_NATS_URL'] || 'nats://127.0.0.1:4222',
       natsStream: deps.config?.natsStream || process.env['PRINTOPS_CONTROL_NATS_STREAM'] || DEFAULT_CONTROL_PLANE_STREAM,
@@ -221,13 +258,174 @@ export class WebControlRegistryService {
     if (!device) {
       throw new NotFoundError('Device', payload.deviceId);
     }
-    return this.deviceRegistry.recordHeartbeat(payload.deviceId, payload);
+    const updated = await this.deviceRegistry.recordHeartbeat(payload.deviceId, payload);
+    if (Array.isArray(payload.recentJobs) && payload.recentJobs.length > 0) {
+      await this.upsertDeviceJobs(payload.deviceId, payload.recentJobs);
+    }
+    return updated;
   }
 
   async getDevice(deviceId: string): Promise<DeviceRecord | undefined> {
     const device = await this.deviceRegistry.findById(deviceId);
     if (!device) return undefined;
     return this.applyDynamicConnectionState(device);
+  }
+
+  async updateDevice(
+    deviceId: string,
+    patch: { displayName?: string; siteId?: string },
+    actorId = 'system',
+  ): Promise<DeviceRecord> {
+    const existing = await this.deviceRegistry.findById(deviceId);
+    if (!existing) {
+      throw new NotFoundError('Device', deviceId);
+    }
+
+    const updatePatch: Partial<DeviceRecord> = {};
+    if ('displayName' in patch && patch.displayName !== undefined) {
+      if (typeof patch.displayName !== 'string') {
+        throw new ValidationError('displayName must be a string');
+      }
+      const trimmed = patch.displayName.trim();
+      if (trimmed.length > 128) {
+        throw new ValidationError('displayName must be 128 characters or fewer');
+      }
+      updatePatch.displayName = trimmed.length > 0 ? trimmed : existing.hostname;
+    }
+
+    if ('siteId' in patch && patch.siteId !== undefined) {
+      if (typeof patch.siteId !== 'string') {
+        throw new ValidationError('siteId must be a string');
+      }
+      const trimmed = patch.siteId.trim();
+      if (!trimmed || trimmed.length > 128) {
+        throw new ValidationError('siteId must be 1 to 128 characters');
+      }
+      updatePatch.siteId = trimmed;
+    }
+
+    const updated = await this.deviceRegistry.update(deviceId, updatePatch);
+    if (this.audit) {
+      await this.audit.record({
+        actor: actorId,
+        deviceId,
+        action: 'device.updated',
+        requestedAt: new Date(),
+        metadata: {
+          previousDisplayName: existing.displayName,
+          displayName: updated.displayName,
+          previousSiteId: existing.siteId,
+          siteId: updated.siteId,
+        },
+      });
+    }
+    return this.applyDynamicConnectionState(updated);
+  }
+
+  async upsertDeviceJobs(deviceId: string, jobs: ControlSyncedJob[]): Promise<void> {
+    if (!Array.isArray(jobs) || jobs.length === 0) return;
+
+    let bucket = this.deviceJobs.get(deviceId);
+    if (!bucket) {
+      bucket = new Map<string, ControlSyncedJob>();
+      this.deviceJobs.set(deviceId, bucket);
+    }
+
+    const normalizedList: ControlSyncedJob[] = [];
+    for (const rawJob of jobs) {
+      const normalized = normalizeSyncedJob(deviceId, rawJob);
+      if (!normalized) continue;
+      bucket.set(normalized.id, normalized);
+      normalizedList.push(normalized);
+    }
+
+    // Keep the in-memory ring bounded per station
+    if (bucket.size > 1000) {
+      const ordered = Array.from(bucket.values())
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .slice(0, 1000);
+      bucket = new Map(ordered.map((job) => [job.id, job]));
+      this.deviceJobs.set(deviceId, bucket);
+    }
+
+    if (this.useSqlite && normalizedList.length > 0) {
+      const db = getDb();
+      for (const job of normalizedList) {
+        db.run(
+          `INSERT OR REPLACE INTO control_device_jobs (
+            device_id, job_id, status, created_at, updated_at, job_json
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            deviceId,
+            job.id,
+            job.status,
+            job.createdAt,
+            job.updatedAt ?? job.completedAt ?? job.createdAt,
+            JSON.stringify(job),
+          ],
+        );
+      }
+    }
+  }
+
+  async getDeviceJobs(deviceId: string): Promise<ControlSyncedJob[]> {
+    if (this.useSqlite) {
+      const db = getDb();
+      const stmt = db.prepare(
+        'SELECT job_json FROM control_device_jobs WHERE device_id = ? ORDER BY created_at DESC LIMIT 1000',
+      );
+      stmt.bind([deviceId]);
+      const rows: ControlSyncedJob[] = [];
+      try {
+        while (stmt.step()) {
+          const row = stmt.getAsObject();
+          const rawJson = row['job_json'];
+          if (typeof rawJson === 'string') {
+            try {
+              const parsed = JSON.parse(rawJson) as ControlSyncedJob;
+              const normalized = normalizeSyncedJob(deviceId, parsed);
+              if (normalized) rows.push(normalized);
+            } catch {
+              // ignore malformed row
+            }
+          }
+        }
+      } finally {
+        stmt.free();
+      }
+      if (rows.length > 0) {
+        return rows.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+      }
+    }
+
+    const bucket = this.deviceJobs.get(deviceId);
+    if (!bucket) return [];
+    return Array.from(bucket.values()).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  }
+
+  async syncJobsFromReachableDevice(device: DeviceRecord): Promise<ControlSyncedJob[]> {
+    const hosts = (device.ipAddresses ?? []).map((ip) => ip.trim()).filter(Boolean);
+    for (const host of hosts) {
+      const baseUrl = host.startsWith('http://') || host.startsWith('https://')
+        ? host.replace(/\/+$/, '')
+        : `http://${host}:31415`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1500);
+      try {
+        const res = await fetch(`${baseUrl}/api/v1/control/local-jobs`, { signal: controller.signal });
+        if (!res.ok) continue;
+        const data = (await res.json()) as { jobs?: ControlSyncedJob[] };
+        if (Array.isArray(data?.jobs)) {
+          await this.upsertDeviceJobs(device.deviceId, data.jobs);
+          break;
+        }
+      } catch {
+        // unreachable or timeout; try next address
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+    return this.getDeviceJobs(device.deviceId);
   }
 
   async autoRegisterDevice(input: {
@@ -242,6 +440,7 @@ export class WebControlRegistryService {
     displayName?: string;
     ipAddresses?: string[];
     capabilities?: string[];
+    preserveDisplayName?: boolean;
   }): Promise<DeviceRecord> {
     const existing = await this.deviceRegistry.findByInstallationId(input.installationId.trim());
     const deviceId = existing?.deviceId || `dev_${input.installationId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 32)}`;
@@ -250,6 +449,12 @@ export class WebControlRegistryService {
     const siteId = input.siteId || existing?.siteId || 'default-site';
 
     if (existing) {
+      const hasCustomDisplayName = Boolean(
+        existing.displayName && !existing.displayName.endsWith(' (Auto-Discovered)'),
+      );
+      const nextDisplayName = input.preserveDisplayName && hasCustomDisplayName
+        ? existing.displayName
+        : input.displayName ?? existing.displayName;
       return this.deviceRegistry.update(existing.deviceId, {
         hostname: input.hostname,
         platform: input.platform,
@@ -257,7 +462,7 @@ export class WebControlRegistryService {
         appVersion: input.appVersion,
         schemaVersion: input.schemaVersion ?? existing.schemaVersion,
         runnerVersion: input.runnerVersion ?? existing.runnerVersion,
-        displayName: input.displayName ?? existing.displayName,
+        displayName: nextDisplayName,
         status: existing.status,
         connectionState: 'ONLINE',
         lastSeenAt: new Date(),
@@ -352,7 +557,24 @@ export class WebControlRegistryService {
             capabilities: stringArrayField(infoData, 'capabilities') ?? ['content-sync-v1', 'ota-v1'],
             ipAddresses: [parsedUrl.hostname],
             displayName: `${hostname} (Auto-Discovered)`,
+            preserveDisplayName: true,
           });
+
+          const jobsCtrl = new AbortController();
+          const jobsTimeout = setTimeout(() => jobsCtrl.abort(), 1500);
+          try {
+            const jobsRes = await fetch(`${url}/api/v1/control/local-jobs`, { signal: jobsCtrl.signal });
+            if (jobsRes.ok) {
+              const jobsPayload = (await jobsRes.json()) as { jobs?: ControlSyncedJob[] };
+              if (Array.isArray(jobsPayload?.jobs)) {
+                await this.upsertDeviceJobs(record.deviceId, jobsPayload.jobs);
+              }
+            }
+          } catch {
+            // Remote station may not expose local-jobs yet
+          } finally {
+            clearTimeout(jobsTimeout);
+          }
 
           discovered.push(record);
         } catch {

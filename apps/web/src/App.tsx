@@ -52,6 +52,7 @@ const LocationBindings = lazy(() => import('./pages/LocationBindings.js'));
 const PrintFlowBindings = lazy(() => import('./pages/PrintFlowBindings.js'));
 const WebControlDevices = lazy(() => import('./pages/WebControlDevices.js'));
 const WebControlDeviceDetail = lazy(() => import('./pages/WebControlDeviceDetail.js'));
+const WebControlJobs = lazy(() => import('./pages/WebControlJobs.js'));
 const WebControlReleases = lazy(() => import('./pages/WebControlReleases.js'));
 const WebControlContent = lazy(() => import('./pages/WebControlContent.js'));
 const AccountSecurity = lazy(() => import('./pages/AccountSecurity.js'));
@@ -412,6 +413,12 @@ const NAV_ITEMS: NavItem[] = [
     group: 'operations',
   },
   {
+    to: '/control/jobs',
+    key: 'nav.controlJobs',
+    roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
+    group: 'operations',
+  },
+  {
     to: '/control/content',
     key: 'nav.controlContent',
     roles: ['OWNER', 'ADMIN'],
@@ -433,6 +440,12 @@ const NAV_ITEMS: NavItem[] = [
     to: '/control/releases',
     key: 'nav.controlReleases',
     roles: ['OWNER', 'ADMIN', 'OPERATOR'],
+    group: 'admin',
+  },
+  {
+    to: '/control/users',
+    key: 'nav.usersRoles',
+    roles: ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'],
     group: 'admin',
   },
 
@@ -1242,8 +1255,15 @@ function AppTopbar({ user }: { user: SessionUser }) {
 function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
   const { t } = useLocale();
   const location = useLocation();
-  const pagePath = VISIBLE_NAV_ITEMS.find((item) => item.to === '/' ? location.pathname === '/' : location.pathname === item.to || location.pathname.startsWith(item.to + '/'))?.to;
-  const pageAllowed = user.role === 'OWNER' || !user.allowedPages || !pagePath || user.allowedPages.includes(pagePath);
+  const currentNavItem = VISIBLE_NAV_ITEMS.find((item) =>
+    item.to === '/' ? location.pathname === '/' : location.pathname === item.to || location.pathname.startsWith(item.to + '/'),
+  );
+  const pagePath = currentNavItem?.to;
+  const roleAllowed = !CONTROL_APP || !currentNavItem || currentNavItem.roles.includes(user.role);
+  const pageAllowed = roleAllowed && (user.role === 'OWNER' || !user.allowedPages || !pagePath || user.allowedPages.includes(pagePath));
+  const controlHomeRoute = VISIBLE_NAV_ITEMS.find(
+    (item) => item.roles.includes(user.role) && (user.role === 'OWNER' || !user.allowedPages || user.allowedPages.includes(item.to)),
+  )?.to ?? '/control/devices';
   return (
     <SessionProvider user={user}>
     <ClientControlStatusProvider>
@@ -1256,7 +1276,7 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
         {!pageAllowed ? <div className="not-authorized" role="alert"><h1>{t('auth.notAuthorized.title')}</h1><p>{t('auth.notAuthorized.message')}</p></div> : <Suspense fallback={<div className="loading-text" role="status">{t('common.loading')}</div>}>
           <Routes>
           <Route path="/account/security" element={<AccountSecurity />} />
-          <Route path="/" element={CONTROL_APP ? <Navigate to="/control/devices" replace /> : <Dashboard />} />
+          <Route path="/" element={CONTROL_APP ? <Navigate to={controlHomeRoute} replace /> : <Dashboard />} />
           {!CONTROL_APP && <>
           <Route path="/printers" element={<Printers />} />
           <Route path="/printers/:id" element={<PrinterDetail />} />
@@ -1288,12 +1308,43 @@ function AppShell({ user, onLogout }: { user: SessionUser; onLogout: () => void 
           {CONTROL_APP && <>
             <Route path="/control/devices" element={<WebControlDevices />} />
             <Route path="/control/devices/:id" element={<WebControlDeviceDetail />} />
-            <Route path="/control/content" element={<WebControlContent />} />
-            <Route path="/control/templates" element={<Templates />} />
-            <Route path="/control/paper-profiles" element={<PaperProfiles />} />
-            <Route path="/templates" element={<Templates />} />
-            <Route path="/paper-profiles" element={<PaperProfiles />} />
-            <Route path="/control/releases" element={<WebControlReleases />} />
+            <Route path="/control/jobs" element={<WebControlJobs />} />
+            <Route
+              path="/control/content"
+              element={
+                <RequireRoles user={user} roles={['OWNER', 'ADMIN']}>
+                  <WebControlContent />
+                </RequireRoles>
+              }
+            />
+            <Route
+              path="/control/templates"
+              element={
+                <RequireRoles user={user} roles={['OWNER', 'ADMIN']}>
+                  <Templates />
+                </RequireRoles>
+              }
+            />
+            <Route
+              path="/control/paper-profiles"
+              element={
+                <RequireRoles user={user} roles={['OWNER', 'ADMIN']}>
+                  <PaperProfiles />
+                </RequireRoles>
+              }
+            />
+            <Route path="/templates" element={<Navigate to="/control/templates" replace />} />
+            <Route path="/paper-profiles" element={<Navigate to="/control/paper-profiles" replace />} />
+            <Route
+              path="/control/releases"
+              element={
+                <RequireRoles user={user} roles={['OWNER', 'ADMIN', 'OPERATOR']}>
+                  <WebControlReleases />
+                </RequireRoles>
+              }
+            />
+            <Route path="/control/users" element={<UsersRoles />} />
+            <Route path="/users" element={<Navigate to="/control/users" replace />} />
           </>}
           </Routes>
         </Suspense>}

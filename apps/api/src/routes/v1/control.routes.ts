@@ -3,8 +3,11 @@ import type {
   ControlAuditRepositoryPort,
   ControlCommandType,
   ControlContentKind,
+  ControlSyncedJob,
   CreateReleaseCatalogInput,
   DeviceEnrollmentRequest,
+  DeviceRecord,
+  JobRepositoryPort,
   ReleaseCatalogRecord,
   ReleaseRecordStatus,
 } from '@printerops/domain';
@@ -13,8 +16,13 @@ import type { ControlCommandService } from '../../services/control-command.servi
 import type { ReleaseCatalogService } from '../../services/release-catalog.service.js';
 import type { ControlContentSyncService } from '../../services/control-content-sync.service.js';
 import type { ReleaseStorageService, MinioStorageConfig } from '../../services/release-storage.service.js';
-import { ValidationError } from '@printerops/shared';
+import type { ReprintJobService, ReprintJobInput } from '../../services/reprint-job.service.js';
+import { AppError, ValidationError, generateId } from '@printerops/shared';
 import { requirePermission, actor } from './permission-guard.js';
+import { jobToControlSyncedJob } from '../job-redaction.js';
+import { CURRENT_SCHEMA_VERSION } from '../../infra/db/sqlite.schema.js';
+import { LOCAL_CONTROL_CAPABILITIES } from '../../services/control-device-info.service.js';
+import os from 'node:os';
 import { randomUUID, createHash } from 'node:crypto';
 import { createReadStream, existsSync, statSync, mkdirSync, writeFileSync, readFileSync, renameSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -29,6 +37,10 @@ export interface ControlRoutesDeps {
   audit?: ControlAuditRepositoryPort;
   content?: ControlContentSyncService;
   storage?: ReleaseStorageService;
+  jobs?: JobRepositoryPort;
+  reprintJob?: ReprintJobService;
+  localDeviceId?: () => string;
+  localInstallationId?: () => string;
 }
 
 export async function controlRoutes(
@@ -174,6 +186,305 @@ export async function controlRoutes(
         })),
         hasUpdateAvailable: latestRelease !== null,
       });
+    },
+  );
+
+  app.patch(
+    '/control/devices/:id',
+    { onRequest: [requirePermission('control:manage')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { id } = req.params as { id: string };
+      const body = (req.body ?? {}) as { displayName?: string; siteId?: string };
+      try {
+        const updated = await deps.registry.updateDevice(id, body, actor(req));
+        const latestRelease = await deps.releases.findLatestCompatibleRelease(updated);
+        return reply.send({
+          ...updated,
+          latestCompatibleVersion: latestRelease?.version ?? null,
+          hasUpdateAvailable: latestRelease !== null,
+        });
+      } catch (err) {
+        if (err instanceof AppError) {
+          return reply.status(err.statusCode).send({ error: err.code, message: err.message });
+        }
+        throw err;
+      }
+    },
+  );
+
+  // ─── Station Jobs Sync & Fleet Jobs Hub ─────────────────────────────────────
+
+  app.get('/control/local-jobs', async (_req: FastifyRequest, reply: FastifyReply) => {
+    if (!deps.jobs) {
+      return reply.send({ jobs: [] });
+    }
+    const localId = deps.localDeviceId?.() ?? 'local-printops';
+    const jobs = await deps.jobs.findAll({ limit: 500 });
+    return reply.send({
+      deviceId: localId,
+      jobs: jobs.map((job) => jobToControlSyncedJob(job, localId)),
+    });
+  });
+
+  app.post('/control/local-jobs/:jobId/reprint', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!deps.jobs || !deps.reprintJob) {
+      return reply.status(503).send({ error: 'Local reprint service is unavailable' });
+    }
+    const { jobId } = req.params as { jobId: string };
+    const body = (req.body ?? {}) as Partial<ReprintJobInput> & { requestedBy?: string };
+    const existing = await deps.jobs.findById(jobId);
+    if (!existing) {
+      return reply.status(404).send({ error: `Job not found: ${jobId}` });
+    }
+    try {
+      const created = await deps.reprintJob.execute(
+        jobId,
+        {
+          printerId: body.printerId || existing.printerId,
+          copies: body.copies ?? (existing.copies || 1),
+          reason: body.reason ?? '',
+          confirmedDuplicateRisk: body.confirmedDuplicateRisk === true,
+          confirmedDestinationChange: true,
+        },
+        body.requestedBy || 'control-plane',
+      );
+      const localId = deps.localDeviceId?.() ?? 'local-printops';
+      return reply.status(201).send(jobToControlSyncedJob(created, localId));
+    } catch (err) {
+      if (err instanceof AppError) {
+        return reply.status(err.statusCode).send({ error: err.code, message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  app.post('/control/devices/:id/jobs', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { id } = req.params as { id: string };
+    const deviceToken = req.headers['x-device-token'];
+    if (typeof deviceToken === 'string' && deviceToken.trim().length > 0) {
+      const authenticated = await deps.registry.authenticateDevice(id, deviceToken.trim());
+      if (!authenticated) {
+        return reply.status(401).send({ error: 'Invalid device credentials' });
+      }
+    } else {
+      await requirePermission('control:manage')(req, reply);
+      if (reply.sent) return;
+    }
+
+    const device = await deps.registry.getDevice(id);
+    if (!device) {
+      return reply.status(404).send({ error: `Device not found: ${id}` });
+    }
+    const body = (req.body ?? {}) as { jobs?: ControlSyncedJob[] };
+    if (!Array.isArray(body.jobs)) {
+      return reply.status(400).send({ error: 'jobs array is required' });
+    }
+    await deps.registry.upsertDeviceJobs(id, body.jobs);
+    return reply.send({ syncedCount: body.jobs.length });
+  });
+
+  app.get(
+    '/control/jobs',
+    { onRequest: [requirePermission('control:read')] },
+    async (_req: FastifyRequest, reply: FastifyReply) => {
+      const payload = await buildFleetControlJobsPayload(deps);
+      return reply.send(payload);
+    },
+  );
+
+  app.post(
+    '/control/jobs/sync',
+    { onRequest: [requirePermission('control:read')] },
+    async (_req: FastifyRequest, reply: FastifyReply) => {
+      await deps.registry.discoverDevices();
+      const devices = await deps.registry.listDevices();
+      await Promise.all(
+        devices.map((device) => deps.registry.syncJobsFromReachableDevice(device)),
+      );
+      const payload = await buildFleetControlJobsPayload(deps);
+      return reply.send(payload);
+    },
+  );
+
+  app.post(
+    '/control/devices/:id/jobs/:jobId/reprint',
+    { onRequest: [requirePermission('job:retry')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { id, jobId } = req.params as { id: string; jobId: string };
+      const body = (req.body ?? {}) as {
+        printerId?: string;
+        copies?: number;
+        reason?: string;
+        confirmedDuplicateRisk?: boolean;
+      };
+
+      if (body.confirmedDuplicateRisk !== true) {
+        return reply.status(400).send({
+          error: 'VALIDATION_ERROR',
+          message: 'Duplicate-print risk acknowledgement is required',
+        });
+      }
+      if (typeof body.reason !== 'string' || body.reason.trim().length === 0) {
+        return reply.status(400).send({
+          error: 'VALIDATION_ERROR',
+          message: 'A reprint reason is required',
+        });
+      }
+      if (body.copies !== undefined && (!Number.isInteger(body.copies) || body.copies < 1)) {
+        return reply.status(400).send({
+          error: 'VALIDATION_ERROR',
+          message: 'Reprint copies must be a whole number of at least 1',
+        });
+      }
+
+      const device = await deps.registry.getDevice(id);
+      if (!device) {
+        return reply.status(404).send({ error: `Device not found: ${id}` });
+      }
+
+      const actorId = actor(req);
+      const trimmedReason = body.reason.trim();
+
+      // 1. Local PrintOps job execution when the job exists in this instance's repo
+      const localOriginal = deps.jobs ? await deps.jobs.findById(jobId) : undefined;
+      if (localOriginal && deps.reprintJob) {
+        try {
+          const created = await deps.reprintJob.execute(
+            jobId,
+            {
+              printerId: body.printerId || localOriginal.printerId,
+              copies: body.copies ?? (localOriginal.copies || 1),
+              reason: trimmedReason,
+              confirmedDuplicateRisk: true,
+              confirmedDestinationChange: true,
+            },
+            actorId,
+          );
+          const synced = jobToControlSyncedJob(created, id);
+          await deps.registry.upsertDeviceJobs(id, [synced]);
+          if (deps.audit) {
+            await deps.audit.record({
+              actor: actorId,
+              deviceId: id,
+              action: 'job.remote_reprint',
+              requestedAt: new Date(),
+              terminalState: synced.status,
+              metadata: {
+                originalJobId: jobId,
+                reprintJobId: synced.id,
+                copies: synced.copies,
+                reason: trimmedReason,
+                mode: 'local',
+              },
+            });
+          }
+          return reply.status(201).send(synced);
+        } catch (err) {
+          if (err instanceof AppError) {
+            return reply.status(err.statusCode).send({ error: err.code, message: err.message });
+          }
+          throw err;
+        }
+      }
+
+      // 2. Forward to reachable remote PrintOps station over HTTP if it has IP addresses
+      const hosts = (device.ipAddresses ?? []).map((ip) => ip.trim()).filter(Boolean);
+      for (const host of hosts) {
+        const baseUrl = host.startsWith('http://') || host.startsWith('https://')
+          ? host.replace(/\/+$/, '')
+          : `http://${host}:31415`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+        try {
+          const res = await fetch(
+            `${baseUrl}/api/v1/control/local-jobs/${encodeURIComponent(jobId)}/reprint`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                printerId: body.printerId,
+                copies: body.copies,
+                reason: trimmedReason,
+                confirmedDuplicateRisk: true,
+                requestedBy: actorId,
+              }),
+              signal: controller.signal,
+            },
+          );
+          if (res.ok) {
+            const remoteCreated = (await res.json()) as ControlSyncedJob;
+            const synced: ControlSyncedJob = { ...remoteCreated, deviceId: id };
+            await deps.registry.upsertDeviceJobs(id, [synced]);
+            if (deps.audit) {
+              await deps.audit.record({
+                actor: actorId,
+                deviceId: id,
+                action: 'job.remote_reprint',
+                requestedAt: new Date(),
+                terminalState: synced.status,
+                metadata: {
+                  originalJobId: jobId,
+                  reprintJobId: synced.id,
+                  copies: synced.copies,
+                  reason: trimmedReason,
+                  mode: 'remote-http',
+                },
+              });
+            }
+            return reply.status(201).send(synced);
+          }
+        } catch {
+          // Try next host or fall back to synced snapshot
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+
+      // 3. Fall back to synced job snapshot stored in Web Control
+      const syncedJobs = await deps.registry.getDeviceJobs(id);
+      const original = syncedJobs.find((job) => job.id === jobId);
+      if (!original) {
+        return reply.status(404).send({ error: `Job not found on device ${id}: ${jobId}` });
+      }
+
+      const nowIso = new Date().toISOString();
+      const created: ControlSyncedJob = {
+        ...original,
+        id: `job_reprint_${generateId()}`,
+        deviceId: id,
+        requestId: `reprint-${generateId()}`,
+        printerId: body.printerId || original.printerId,
+        status: 'QUEUED',
+        copies: body.copies ?? (original.copies || 1),
+        errorCode: undefined,
+        errorMessage: undefined,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        completedAt: undefined,
+        finishedAt: undefined,
+        latencyMs: undefined,
+        reprintOfJobId: original.id,
+        reprintOfRequestId: original.requestId,
+        reprintReason: trimmedReason,
+      };
+      await deps.registry.upsertDeviceJobs(id, [created]);
+      if (deps.audit) {
+        await deps.audit.record({
+          actor: actorId,
+          deviceId: id,
+          action: 'job.remote_reprint',
+          requestedAt: new Date(),
+          terminalState: created.status,
+          metadata: {
+            originalJobId: jobId,
+            reprintJobId: created.id,
+            copies: created.copies,
+            reason: trimmedReason,
+            mode: 'synced-queue',
+          },
+        });
+      }
+      return reply.status(201).send(created);
     },
   );
 
@@ -975,4 +1286,176 @@ async function serveReleaseArtifact(
   return reply.status(404).send({
     error: `Artifact file not found: ${release.artifactRef}`,
   });
+}
+
+const ACTIVE_QUEUE_STATUSES = new Set(['ACCEPTED', 'VALIDATED', 'QUEUED', 'DISPATCHED', 'PRINTING']);
+const ATTENTION_STATUSES = new Set(['UNVERIFIED', 'TIMEOUT']);
+
+async function buildFleetControlJobsPayload(deps: ControlRoutesDeps) {
+  let devices = await deps.registry.listDevices();
+
+  if (deps.jobs) {
+    const localJobs = await deps.jobs.findAll({ limit: 500 });
+    if (localJobs.length > 0) {
+      const localId = deps.localDeviceId?.();
+      const localInst = deps.localInstallationId?.() ?? 'local-printops';
+      let targetDevice: DeviceRecord | undefined = devices.find(
+        (d) => (localId && d.deviceId === localId) || d.installationId === localInst,
+      );
+      if (!targetDevice) {
+        targetDevice = await deps.registry.autoRegisterDevice({
+          installationId: localInst,
+          hostname: os.hostname(),
+          platform: process.platform === 'win32' ? 'windows-x64' : process.platform,
+          architecture: process.arch,
+          appVersion: process.env['PRINTOPS_APP_VERSION'] ?? '0.1.32',
+          schemaVersion: CURRENT_SCHEMA_VERSION,
+          capabilities: [...LOCAL_CONTROL_CAPABILITIES],
+          preserveDisplayName: true,
+        });
+        devices = await deps.registry.listDevices();
+      }
+      const syncedLocal = localJobs.map((job) => jobToControlSyncedJob(job, targetDevice!.deviceId));
+      await deps.registry.upsertDeviceJobs(targetDevice.deviceId, syncedLocal);
+    }
+  }
+
+  let totalJobs = 0;
+  let queuedJobs = 0;
+  let successJobs = 0;
+  let attentionJobs = 0;
+  let failedJobs = 0;
+  let onlineDevices = 0;
+  let offlineDevices = 0;
+
+  const errorMap = new Map<string, {
+    deviceId: string;
+    deviceName: string;
+    errorCode: string;
+    errorMessage?: string;
+    count: number;
+    latestAt: string;
+  }>();
+
+  const deviceEntries = await Promise.all(
+    devices.map(async (device) => {
+      if (device.connectionState === 'ONLINE') onlineDevices += 1;
+      else offlineDevices += 1;
+
+      const [latestRelease, jobs] = await Promise.all([
+        deps.releases.findLatestCompatibleRelease(device),
+        deps.registry.getDeviceJobs(device.deviceId),
+      ]);
+
+      let devQueued = 0;
+      let devSuccess = 0;
+      let devAttention = 0;
+      let devFailed = 0;
+      const payloadKeySet = new Set<string>();
+      let latestError: {
+        jobId: string;
+        status: string;
+        errorCode?: string;
+        errorMessage?: string;
+        occurredAt: string;
+      } | null = null;
+
+      for (const job of jobs) {
+        for (const key of Object.keys(job.payload ?? {})) {
+          payloadKeySet.add(key);
+        }
+
+        if (ACTIVE_QUEUE_STATUSES.has(job.status)) {
+          devQueued += 1;
+        } else if (job.status === 'SUCCESS') {
+          devSuccess += 1;
+        } else if (job.status === 'FAILED') {
+          devFailed += 1;
+        } else if (ATTENTION_STATUSES.has(job.status) || (job.status !== 'CANCELLED' && job.status !== 'DUPLICATE_RETURNED')) {
+          devAttention += 1;
+        }
+
+        const isErrorRow = job.status === 'FAILED'
+          || job.status === 'TIMEOUT'
+          || job.status === 'UNVERIFIED'
+          || Boolean(job.errorCode)
+          || Boolean(job.errorMessage);
+        if (isErrorRow) {
+          const occurredAt = job.finishedAt ?? job.completedAt ?? job.createdAt;
+          if (!latestError || Date.parse(occurredAt) > Date.parse(latestError.occurredAt)) {
+            latestError = {
+              jobId: job.id,
+              status: job.status,
+              ...(job.errorCode ? { errorCode: job.errorCode } : {}),
+              ...(job.errorMessage ? { errorMessage: job.errorMessage } : {}),
+              occurredAt,
+            };
+          }
+          const errCode = job.errorCode || job.status;
+          const mapKey = `${device.deviceId}::${errCode}`;
+          const prev = errorMap.get(mapKey);
+          const deviceName = device.displayName || device.hostname;
+          if (prev) {
+            prev.count += 1;
+            if (Date.parse(occurredAt) > Date.parse(prev.latestAt)) {
+              prev.latestAt = occurredAt;
+              if (job.errorMessage) prev.errorMessage = job.errorMessage;
+            }
+          } else {
+            errorMap.set(mapKey, {
+              deviceId: device.deviceId,
+              deviceName,
+              errorCode: errCode,
+              ...(job.errorMessage ? { errorMessage: job.errorMessage } : {}),
+              count: 1,
+              latestAt: occurredAt,
+            });
+          }
+        }
+      }
+
+      totalJobs += jobs.length;
+      queuedJobs += devQueued;
+      successJobs += devSuccess;
+      attentionJobs += devAttention;
+      failedJobs += devFailed;
+
+      return {
+        ...device,
+        latestCompatibleVersion: latestRelease?.version ?? null,
+        hasUpdateAvailable: latestRelease !== null,
+        stats: {
+          totalJobs: jobs.length,
+          queuedJobs: devQueued,
+          successJobs: devSuccess,
+          attentionJobs: devAttention,
+          failedJobs: devFailed,
+          lastJobAt: jobs[0]?.createdAt ?? null,
+          latestError,
+        },
+        payloadKeys: Array.from(payloadKeySet).sort((a, b) => a.localeCompare(b)),
+        jobs,
+      };
+    }),
+  );
+
+  const errorBreakdown = Array.from(errorMap.values()).sort(
+    (a, b) => Date.parse(b.latestAt) - Date.parse(a.latestAt),
+  );
+
+  return {
+    syncedAt: new Date().toISOString(),
+    summary: {
+      totalDevices: devices.length,
+      onlineDevices,
+      offlineDevices,
+      totalJobs,
+      queuedJobs,
+      successJobs,
+      attentionJobs,
+      failedJobs,
+      errorBreakdown,
+    },
+    devices: deviceEntries,
+  };
 }
