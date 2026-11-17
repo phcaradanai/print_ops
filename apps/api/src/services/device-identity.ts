@@ -350,13 +350,22 @@ export class DeviceIdentityStore {
     };
   }
 
-  recordEnrollment(deviceId: string, deviceToken: string, siteId?: string): void {
+  recordEnrollment(
+    deviceId: string,
+    deviceToken: string,
+    siteId?: string,
+    controlPlane?: StoredControlPlaneEndpoints,
+  ): void {
     this.identity = {
       ...this.identity,
       deviceId,
       deviceToken,
       siteId: siteId || this.identity.siteId,
       enrolledAt: new Date().toISOString(),
+      controlPlane: controlPlane ?? this.identity.controlPlane,
+      currentControlCommandId: undefined,
+      controlCommands: undefined,
+      controlEventOutbox: undefined,
     };
     this.save(this.identity);
   }
@@ -367,6 +376,10 @@ export class DeviceIdentityStore {
       deviceId: undefined,
       deviceToken: undefined,
       enrolledAt: undefined,
+      controlPlane: undefined,
+      currentControlCommandId: undefined,
+      controlCommands: undefined,
+      controlEventOutbox: undefined,
       hostname: os.hostname(),
       platform: process.platform,
       architecture: process.arch,

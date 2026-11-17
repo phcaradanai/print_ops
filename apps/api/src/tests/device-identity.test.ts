@@ -241,4 +241,48 @@ describe('DeviceIdentityStore', () => {
     expect(latestCommand?.lastAuthoritativeOtaState).toBeUndefined();
     expect(latestCommand?.lastAuthoritativeOtaAt).toBeUndefined();
   });
+
+  it('switches to a new control plane and drops stale commands/outbox events', () => {
+    const store = new DeviceIdentityStore({ storagePath: identityPath });
+    const installationId = store.getInstallationId();
+    store.recordEnrollment('dev_old', 'tok_old', 'old-site', {
+      natsUrl: 'nats://old-control.local:4222',
+      stream: 'OLD_STREAM',
+    });
+    store.persistControlTransitions([{
+      eventId: 'evt_old_1',
+      deviceId: 'dev_old',
+      commandId: 'cmd_old_1',
+      state: 'ACCEPTED',
+      currentVersion: '0.1.46',
+      timestamp: '2026-11-17T00:00:00.000Z',
+    }], { commandType: 'OTA_INSTALL' });
+
+    expect(store.getPendingControlEvents()).toHaveLength(1);
+    expect(store.getCurrentControlCommand()?.commandId).toBe('cmd_old_1');
+
+    // Re-enroll against a new Web Control server
+    store.recordEnrollment('dev_new', 'tok_new', 'new-site', {
+      natsUrl: 'nats://new-control.local:4222',
+      stream: 'PRINTOPS_CONTROL',
+    });
+
+    expect(store.getInstallationId()).toBe(installationId);
+    expect(store.getDeviceId()).toBe('dev_new');
+    expect(store.getDeviceToken()).toBe('tok_new');
+    expect(store.getSiteId()).toBe('new-site');
+    expect(store.getControlPlane()).toEqual({
+      natsUrl: 'nats://new-control.local:4222',
+      stream: 'PRINTOPS_CONTROL',
+    });
+    expect(store.getPendingControlEvents()).toEqual([]);
+    expect(store.getCurrentControlCommand()).toBeUndefined();
+    expect(store.getLatestControlCommand()).toBeUndefined();
+
+    // Clear enrollment also removes controlPlane endpoints
+    store.clearEnrollment();
+    expect(store.isEnrolled()).toBe(false);
+    expect(store.getControlPlane()).toBeUndefined();
+    expect(store.getInstallationId()).toBe(installationId);
+  });
 });

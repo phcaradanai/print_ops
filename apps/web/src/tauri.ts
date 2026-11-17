@@ -3,6 +3,8 @@
 // browser during development (where it does not). Guard every call so the
 // Settings page degrades gracefully to a clear message instead of crashing.
 
+import { apiFetch } from './api/client.js';
+
 let invokeFn: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null;
 
 async function getInvoke(): Promise<((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null> {
@@ -66,23 +68,35 @@ export interface ControlEnrollmentResult {
 }
 
 /**
- * Connects this workstation to a Web Control plane with a one-time enrollment
- * token issued there. Desktop-only: the command exchanges the token for device
- * credentials, records the broker endpoints the plane issued, and restarts the
- * bundled API server so its control agent starts from the new identity. It
- * throws with the control plane's own rejection message rather than returning a
- * half-applied result.
+ * Connects (or re-connects) this PrintOps installation to a Web Control plane
+ * using a one-time enrollment token. In Desktop mode it invokes the Tauri
+ * command to update `device-identity.json` and restart sidecars; in server /
+ * Docker / browser mode it uses the API endpoint directly.
  */
 export async function enrollControlDevice(
   controlPlaneUrl: string,
   enrollmentToken: string,
 ): Promise<ControlEnrollmentResult> {
   const invoke = await getInvoke();
-  if (!invoke) throw new Error('Web Control enrollment is only available in the desktop app');
-  return (await invoke('enroll_control_device', {
-    controlPlaneUrl,
-    enrollmentToken,
-  })) as ControlEnrollmentResult;
+  if (invoke) {
+    return (await invoke('enroll_control_device', {
+      controlPlaneUrl,
+      enrollmentToken,
+    })) as ControlEnrollmentResult;
+  }
+  return apiFetch<ControlEnrollmentResult>('/v1/control/client-enroll', {
+    method: 'POST',
+    body: JSON.stringify({ controlPlaneUrl, enrollmentToken }),
+  });
+}
+
+export async function disconnectControlDevice(): Promise<void> {
+  const invoke = await getInvoke();
+  if (invoke) {
+    await invoke('disconnect_control_device');
+    return;
+  }
+  await apiFetch('/v1/control/client-disconnect', { method: 'POST' });
 }
 
 function fileExtension(filename: string): string {

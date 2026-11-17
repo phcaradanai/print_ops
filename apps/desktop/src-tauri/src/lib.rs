@@ -707,8 +707,8 @@ fn read_installation_id(path: &Path) -> Result<String, String> {
 }
 
 /// Records the issued credentials and broker endpoints in the identity file.
-/// Only called while the API server is stopped, so nothing else writes the
-/// file, and a temp-file rename keeps a crash from truncating it.
+/// Only called while the API server and control agent are stopped, so nothing
+/// else writes the file, and a temp-file rename keeps a crash from truncating it.
 fn write_enrollment(path: &Path, response: &ControlEnrollmentResponse) -> Result<(), String> {
     let contents = fs::read_to_string(path)
         .map_err(|err| format!("Could not read the device identity at {}: {err}", path.display()))?;
@@ -733,17 +733,50 @@ fn write_enrollment(path: &Path, response: &ControlEnrollmentResponse) -> Result
             "stream": response.control_plane.stream,
         }),
     );
+    // Drop command/outbox state from any previous control plane so old events
+    // are never forwarded to the newly connected server.
+    object.remove("currentControlCommandId");
+    object.remove("controlCommands");
+    object.remove("controlEventOutbox");
     let json = serde_json::to_vec_pretty(&identity).map_err(|err| err.to_string())?;
     let temporary = path.with_extension("json.tmp");
     fs::write(&temporary, json).map_err(|err| err.to_string())?;
     fs::rename(&temporary, path).map_err(|err| err.to_string())
 }
 
-/// Connects this installation to a Web Control plane: exchanges the one-time
-/// enrollment token for device credentials, records the broker endpoints the
-/// plane issued, then restarts the API server so the control-agent supervisor
-/// starts the sidecar from the enrolled identity.
-#[tauri::command]
+fn clear_enrollment(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let contents = fs::read_to_string(path)
+        .map_err(|err| format!("Could not read the device identity at {}: {err}", path.display()))?;
+    let mut identity = serde_json::from_str::<serde_json::Value>(&contents)
+        .map_err(|err| format!("Device identity file is not valid JSON: {err}"))?;
+    let object = identity
+        .as_object_mut()
+        .ok_or_else(|| "Device identity file must contain a JSON object".to_string())?;
+    for key in [
+        "deviceId",
+        "deviceToken",
+        "enrolledAt",
+        "controlPlane",
+        "currentControlCommandId",
+        "controlCommands",
+        "controlEventOutbox",
+    ] {
+        object.remove(key);
+    }
+    let json = serde_json::to_vec_pretty(&identity).map_err(|err| err.to_string())?;
+    let temporary = path.with_extension("json.tmp");
+    fs::write(&temporary, json).map_err(|err| err.to_string())?;
+    fs::rename(&temporary, path).map_err(|err| err.to_string())
+}
+
+/// Connects (or re-connects) this installation to a Web Control plane:
+/// exchanges the one-time enrollment token for device credentials, records the
+/// broker endpoints the plane issued, then restarts the API server and control
+/// agent from the updated identity.
+#[tauri::command(async)]
 fn enroll_control_device(
     app: tauri::AppHandle,
     control_plane_url: String,
@@ -756,9 +789,6 @@ fn enroll_control_device(
     let token = enrollment_token.trim();
     if token.is_empty() {
         return Err("Enrollment token is required".to_string());
-    }
-    if device_identity_is_enrolled(&identity_path) {
-        return Err("This installation is already enrolled with a control plane".to_string());
     }
     let installation_id = read_installation_id(&identity_path)?;
     let hostname = std::env::var("COMPUTERNAME")
@@ -831,25 +861,44 @@ fn enroll_control_device(
     let data_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
     let nats_settings = load_nats_settings(&data_dir, &log);
 
-    // The API server holds the identity in memory and rewrites the file on its
-    // own schedule, so it is stopped before the file is touched: no second
-    // writer, no stale overwrite. The supervisor starts the control agent from
-    // the enrolled identity once the server is back.
-    kill_child(
-        &state.server_child,
-        &log,
-        "server (applying control-plane enrollment)",
-    );
-    let write_result = write_enrollment(&identity_path, &enrollment);
-    let child = spawn_child(
-        build_server_command(&state.paths, &nats_settings),
-        &log,
-        "server.exe",
-    );
-    let restarted = child.is_some();
-    if let Ok(mut guard) = state.server_child.lock() {
-        *guard = child;
-    }
+    // Hold both child locks while replacing the identity file so the
+    // supervisor thread cannot resurrect either process with stale credentials.
+    let (write_result, restarted) = {
+        let mut agent_guard = state
+            .control_agent_child
+            .lock()
+            .map_err(|_| "control agent process state is unavailable".to_string())?;
+        let mut server_guard = state
+            .server_child
+            .lock()
+            .map_err(|_| "server process state is unavailable".to_string())?;
+        if let Some(mut agent) = agent_guard.take() {
+            log_line(&log, "Stopping control agent (switching control-plane enrollment)...");
+            let _ = agent.kill();
+            let _ = agent.wait();
+        }
+        if let Some(mut server) = server_guard.take() {
+            log_line(&log, "Shutting down server (applying control-plane enrollment)...");
+            let _ = server.kill();
+            let _ = server.wait();
+        }
+        let write_result = write_enrollment(&identity_path, &enrollment);
+        let server_child = spawn_child(
+            build_server_command(&state.paths, &nats_settings),
+            &log,
+            "server.exe",
+        );
+        let restarted = server_child.is_some();
+        *server_guard = server_child;
+        if write_result.is_ok() && state.paths.res_dir.join(CONTROL_AGENT_BINARY_FILE).exists() {
+            *agent_guard = spawn_child(
+                build_control_agent_command(&state.paths),
+                &log,
+                CONTROL_AGENT_BINARY_FILE,
+            );
+        }
+        (write_result, restarted)
+    };
     // The server is back regardless of the write outcome, so a failed write is
     // reported afterwards instead of leaving the workstation without a local API.
     write_result?;
@@ -873,6 +922,55 @@ fn enroll_control_device(
         nats_url: enrollment.control_plane.nats_url,
         stream: enrollment.control_plane.stream,
     })
+}
+
+#[tauri::command(async)]
+fn disconnect_control_device(app: tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let log = state.paths.app_log.clone();
+    let identity_path = state.paths.device_identity_path.clone();
+    let data_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
+    let nats_settings = load_nats_settings(&data_dir, &log);
+
+    let (clear_result, restarted) = {
+        let mut agent_guard = state
+            .control_agent_child
+            .lock()
+            .map_err(|_| "control agent process state is unavailable".to_string())?;
+        let mut server_guard = state
+            .server_child
+            .lock()
+            .map_err(|_| "server process state is unavailable".to_string())?;
+        if let Some(mut agent) = agent_guard.take() {
+            log_line(&log, "Stopping control agent (disconnecting from Web Control)...");
+            let _ = agent.kill();
+            let _ = agent.wait();
+        }
+        if let Some(mut server) = server_guard.take() {
+            log_line(&log, "Shutting down server (clearing control-plane enrollment)...");
+            let _ = server.kill();
+            let _ = server.wait();
+        }
+        let clear_result = clear_enrollment(&identity_path);
+        let server_child = spawn_child(
+            build_server_command(&state.paths, &nats_settings),
+            &log,
+            "server.exe",
+        );
+        let restarted = server_child.is_some();
+        *server_guard = server_child;
+        (clear_result, restarted)
+    };
+
+    clear_result?;
+    if !restarted {
+        return Err("Control plane disconnected, but the API server could not be restarted".to_string());
+    }
+    if !wait_for_server_health(Duration::from_secs(20)) {
+        return Err("Control plane disconnected, but the API server did not become healthy in time".to_string());
+    }
+    log_line(&log, "Disconnected from Web Control");
+    Ok(())
 }
 
 struct AppState {
@@ -1484,7 +1582,8 @@ pub fn run() {
             get_nats_settings,
             save_nats_settings,
             write_export_file,
-            enroll_control_device
+            enroll_control_device,
+            disconnect_control_device
         ])
         // Do not use WindowEvent::Destroyed here. On Windows it runs after the
         // Tao event-loop state has started moving and can panic before the

@@ -1715,6 +1715,14 @@ const en: TranslationDict = {
   'settings.control.connecting': 'Connecting…',
   'settings.control.enrolled': 'This workstation is connected to the control plane.',
   'settings.control.failed': 'Could not connect to the control plane.',
+  'settings.control.switchButton': 'Switch Web Control',
+  'settings.control.switchConnect': 'Connect to new Web Control',
+  'settings.control.switchHint':
+    'Connecting to a new Web Control server replaces the current device credentials and switches heartbeat and command sync to the new server.',
+  'settings.control.disconnect': 'Disconnect',
+  'settings.control.disconnecting': 'Disconnecting…',
+  'settings.control.disconnected': 'Disconnected from Web Control.',
+  'settings.control.disconnectFailed': 'Could not disconnect from Web Control.',
   'settings.control.restartNotice':
     'The local server restarts once to apply the connection. The connection indicator turns green after the control plane receives the first heartbeat.',
   'settings.system.title': 'System status',
@@ -3463,6 +3471,14 @@ const th: TranslationDict = {
   'settings.control.connecting': 'กำลังเชื่อมต่อ…',
   'settings.control.enrolled': 'เครื่องนี้เชื่อมต่อกับ control plane แล้ว',
   'settings.control.failed': 'เชื่อมต่อ control plane ไม่สำเร็จ',
+  'settings.control.switchButton': 'เชื่อม Web Control ตัวใหม่',
+  'settings.control.switchConnect': 'เชื่อมต่อ Web Control ตัวใหม่',
+  'settings.control.switchHint':
+    'การเชื่อมต่อกับ Web Control ตัวใหม่จะแทนที่ข้อมูลยืนยันตัวตนเดิมและย้ายการเชื่อมต่อ heartbeat / คำสั่งไปยังเซิร์ฟเวอร์ใหม่ทันที',
+  'settings.control.disconnect': 'ยกเลิกการเชื่อมต่อ',
+  'settings.control.disconnecting': 'กำลังยกเลิกการเชื่อมต่อ…',
+  'settings.control.disconnected': 'ยกเลิกการเชื่อมต่อกับ Web Control เรียบร้อยแล้ว',
+  'settings.control.disconnectFailed': 'ยกเลิกการเชื่อมต่อไม่สำเร็จ',
   'settings.control.restartNotice':
     'เซิร์ฟเวอร์ในเครื่องจะเริ่มใหม่หนึ่งครั้งเพื่อใช้การเชื่อมต่อ สัญลักษณ์การเชื่อมต่อจะเปลี่ยนเป็นสีเขียวเมื่อ control plane ได้รับ heartbeat แรก',
   'settings.system.title': 'สถานะระบบ',

@@ -19,6 +19,7 @@ import {
   DEFAULT_NATS_SETTINGS,
   getNatsSettings,
   enrollControlDevice,
+  disconnectControlDevice,
   type ControlEnrollmentResult,
   saveNatsSettings,
   isTauriAvailable,
@@ -161,6 +162,7 @@ export default function Settings() {
   const [controlPlaneUrl, setControlPlaneUrl] = useState('');
   const [enrollmentToken, setEnrollmentToken] = useState('');
   const [enrollmentResult, setEnrollmentResult] = useState<ControlEnrollmentResult | null>(null);
+  const [switchControlOpen, setSwitchControlOpen] = useState(false);
 
   const readinessLabels: Record<string, string> = {
     desktopShell: t('settings.readiness.desktopShell'),
@@ -356,18 +358,21 @@ export default function Settings() {
 
   // ---- Web Control enrollment handlers ----
 
-  // Enrollment is desktop-only: the local server owns the device identity, and
-  // only the desktop shell may stop it, rewrite that identity with the broker
-  // endpoints the control plane issued, and start it again.
   const enroll = useApiAction(async (input: { controlPlaneUrl: string; enrollmentToken: string }) =>
     enrollControlDevice(input.controlPlaneUrl, input.enrollmentToken),
   );
+
+  const disconnect = useApiAction(async () => {
+    await disconnectControlDevice();
+    return true;
+  });
 
   const handleControlEnroll = useCallback(async () => {
     const result = await enroll.run({ controlPlaneUrl, enrollmentToken });
     if (result) {
       setEnrollmentResult(result);
       setEnrollmentToken('');
+      setSwitchControlOpen(false);
       setMessage({ text: t('settings.control.enrolled'), kind: 'success' });
     } else {
       setMessage({
@@ -377,6 +382,22 @@ export default function Settings() {
     }
     await refreshControlStatus();
   }, [controlPlaneUrl, enrollmentToken, enroll, refreshControlStatus, t]);
+
+  const handleControlDisconnect = useCallback(async () => {
+    const ok = await disconnect.run();
+    if (ok) {
+      setEnrollmentResult(null);
+      setEnrollmentToken('');
+      setSwitchControlOpen(false);
+      setMessage({ text: t('settings.control.disconnected'), kind: 'success' });
+    } else {
+      setMessage({
+        text: `${t('settings.control.disconnectFailed')} ${errorMessage(disconnect.getError())}`,
+        kind: 'error',
+      });
+    }
+    await refreshControlStatus();
+  }, [disconnect, refreshControlStatus, t]);
 
   const controlStateLabel = !controlStatus?.isEnrolled
     ? t('settings.control.state.notEnrolled')
@@ -756,77 +777,108 @@ export default function Settings() {
           )}
         </Panel>
 
-        {/* Web Control enrollment (desktop only) */}
+        {/* Web Control enrollment / re-enrollment */}
         <Panel title={t('settings.control.title')}>
-          {natsLoading && <LoadingState />}
+          <Stack gap="lg">
+            <Text as="p" tone="muted">{t('settings.control.description')}</Text>
 
-          {!natsLoading && !natsSupported && (
-            <Text as="p" tone="muted">{t('settings.control.desktopOnly')}</Text>
-          )}
+            {controlStatus && (
+              <CardDetail aria-label={t('settings.control.status')}>
+                <CardDetailItem label={t('settings.control.state')}>{controlStateLabel}</CardDetailItem>
+                <CardDetailItem label={t('settings.control.deviceId')}>
+                  {controlStatus.deviceId ?? enrollmentResult?.deviceId ?? t('common.noData')}
+                </CardDetailItem>
+                <CardDetailItem label={t('settings.control.broker')}>
+                  {enrollmentResult?.natsUrl ?? controlStatus.controlPlane?.natsUrl ?? t('common.noData')}
+                </CardDetailItem>
+                <CardDetailItem label={t('settings.control.stream')}>
+                  {enrollmentResult?.stream ?? controlStatus.controlPlane?.stream ?? t('common.noData')}
+                </CardDetailItem>
+              </CardDetail>
+            )}
 
-          {!natsLoading && natsSupported && (
-            <Stack gap="lg">
-              <Text as="p" tone="muted">{t('settings.control.description')}</Text>
+            {controlStatus?.isEnrolled && (
+              <Inline gap="sm">
+                <Button
+                  variant="secondary"
+                  disabled={enroll.pending || disconnect.pending}
+                  onClick={() => setSwitchControlOpen((prev) => !prev)}
+                >
+                  {t('settings.control.switchButton')}
+                </Button>
+                <Button
+                  variant="danger"
+                  disabled={enroll.pending || disconnect.pending}
+                  busy={disconnect.pending}
+                  busyLabel={t('settings.control.disconnecting')}
+                  onClick={() => void handleControlDisconnect()}
+                >
+                  {t('settings.control.disconnect')}
+                </Button>
+              </Inline>
+            )}
 
-              {controlStatus && (
-                <CardDetail aria-label={t('settings.control.status')}>
-                  <CardDetailItem label={t('settings.control.state')}>{controlStateLabel}</CardDetailItem>
-                  <CardDetailItem label={t('settings.control.deviceId')}>
-                    {controlStatus.deviceId ?? enrollmentResult?.deviceId ?? t('common.noData')}
-                  </CardDetailItem>
-                  <CardDetailItem label={t('settings.control.broker')}>
-                    {enrollmentResult?.natsUrl ?? controlStatus.controlPlane?.natsUrl ?? t('common.noData')}
-                  </CardDetailItem>
-                  <CardDetailItem label={t('settings.control.stream')}>
-                    {enrollmentResult?.stream ?? controlStatus.controlPlane?.stream ?? t('common.noData')}
-                  </CardDetailItem>
-                </CardDetail>
-              )}
+            {(!controlStatus?.isEnrolled || switchControlOpen) && (
+              <Stack gap="lg">
+                {controlStatus?.isEnrolled && (
+                  <Alert tone="info">{t('settings.control.switchHint')}</Alert>
+                )}
 
-              {!controlStatus?.isEnrolled && (
-                <Stack gap="lg">
-                  <FormField label={t('settings.control.address')} hint={t('settings.control.addressHint')}>
-                    {(control) => (
-                      <Input
-                        {...control}
-                        type="text"
-                        value={controlPlaneUrl}
-                        placeholder="https://control.example.com"
-                        onChange={(e) => setControlPlaneUrl(e.target.value)}
-                        disabled={enroll.pending}
-                      />
-                    )}
-                  </FormField>
+                <FormField label={t('settings.control.address')} hint={t('settings.control.addressHint')}>
+                  {(control) => (
+                    <Input
+                      {...control}
+                      type="text"
+                      value={controlPlaneUrl}
+                      placeholder="https://control.example.com"
+                      onChange={(e) => setControlPlaneUrl(e.target.value)}
+                      disabled={enroll.pending || disconnect.pending}
+                    />
+                  )}
+                </FormField>
 
-                  <FormField label={t('settings.control.token')} hint={t('settings.control.tokenHint')}>
-                    {(control) => (
-                      <Input
-                        {...control}
-                        type="password"
-                        autoComplete="off"
-                        value={enrollmentToken}
-                        onChange={(e) => setEnrollmentToken(e.target.value)}
-                        disabled={enroll.pending}
-                      />
-                    )}
-                  </FormField>
+                <FormField label={t('settings.control.token')} hint={t('settings.control.tokenHint')}>
+                  {(control) => (
+                    <Input
+                      {...control}
+                      type="password"
+                      autoComplete="off"
+                      value={enrollmentToken}
+                      onChange={(e) => setEnrollmentToken(e.target.value)}
+                      disabled={enroll.pending || disconnect.pending}
+                    />
+                  )}
+                </FormField>
 
-                  <Inline gap="sm">
+                <Inline gap="sm">
+                  <Button
+                    disabled={!controlPlaneUrl.trim() || !enrollmentToken.trim() || disconnect.pending}
+                    busy={enroll.pending}
+                    busyLabel={t('settings.control.connecting')}
+                    onClick={() => void handleControlEnroll()}
+                  >
+                    {controlStatus?.isEnrolled
+                      ? t('settings.control.switchConnect')
+                      : t('settings.control.connect')}
+                  </Button>
+                  {switchControlOpen && (
                     <Button
-                      disabled={!controlPlaneUrl.trim() || !enrollmentToken.trim()}
-                      busy={enroll.pending}
-                      busyLabel={t('settings.control.connecting')}
-                      onClick={() => handleControlEnroll()}
+                      variant="ghost"
+                      disabled={enroll.pending}
+                      onClick={() => {
+                        setSwitchControlOpen(false);
+                        setEnrollmentToken('');
+                      }}
                     >
-                      {t('settings.control.connect')}
+                      {t('common.cancel')}
                     </Button>
-                  </Inline>
-                </Stack>
-              )}
+                  )}
+                </Inline>
+              </Stack>
+            )}
 
-              <Text as="p" tone="muted">{t('settings.control.restartNotice')}</Text>
-            </Stack>
-          )}
+            <Text as="p" tone="muted">{t('settings.control.restartNotice')}</Text>
+          </Stack>
         </Panel>
 
         <ServiceAccountSettings />
