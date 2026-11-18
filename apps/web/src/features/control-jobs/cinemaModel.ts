@@ -27,6 +27,16 @@ import { extractJobPayload } from '../../lib/jobPayload.js';
 
 export const CINEMA_MINUTE_MS = 60_000;
 
+/**
+ * How many incoming values one cinema row may carry.
+ *
+ * It was three while the row could only hold three, which left wall displays with
+ * unused width the operator was not allowed to fill. The values now share the row
+ * and truncate individually, so the ceiling is generous and the operator decides
+ * what a particular screen can read.
+ */
+export const CINEMA_MAX_FIELDS = 8;
+
 /** The subset of a mirrored control-plane job the board reads. */
 export interface CinemaJob {
   id: string;
@@ -360,15 +370,15 @@ export function describeCinemaFields(jobs: readonly CinemaJob[]): CinemaFieldOpt
 }
 
 /**
- * The operator-facing label for one job: the chosen payload values joined with
- * a middot. Returns an empty string when the job carries none of them, so the
- * caller can fall back to the reference instead of showing a blank row.
+ * The operator-facing values for one job, one entry per chosen field, in the
+ * order the operator picked them. Empty string entries are dropped, so the caller
+ * can fall back to the reference instead of showing a blank row.
  *
  * Key matching is case-insensitive, mirroring the payload filters: an incoming
  * system may send `HN` and `hn` in the same feed.
  */
-export function cinemaJobLabel(job: CinemaJob, fields: readonly string[]): string {
-  if (fields.length === 0) return '';
+export function cinemaJobValues(job: CinemaJob, fields: readonly string[]): string[] {
+  if (fields.length === 0) return [];
   const payload = extractJobPayload(job);
   const lower = new Map(
     Object.entries(payload).map(([key, value]) => [key.toLocaleLowerCase(), value]),
@@ -380,5 +390,14 @@ export function cinemaJobLabel(job: CinemaJob, fields: readonly string[]): strin
     const text = value?.trim();
     if (text) values.push(text);
   }
-  return values.join(' · ');
+  return values;
+}
+
+/**
+ * The same values as one string, joined with a middot. Used where there is no
+ * room to lay them out - the ticker, the accessible summary - so a row and the
+ * ticker can never describe the same job differently.
+ */
+export function cinemaJobLabel(job: CinemaJob, fields: readonly string[]): string {
+  return cinemaJobValues(job, fields).join(' · ');
 }

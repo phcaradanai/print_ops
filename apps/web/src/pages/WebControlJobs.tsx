@@ -101,6 +101,7 @@ import {
 import { MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH } from '../features/control-jobs/JobTable.js';
 import { SelectionBar } from '../features/control-jobs/SelectionBar.js';
 import {
+  CINEMA_MAX_FIELDS,
   CINEMA_PANELS,
   describeCinemaFields,
   parseCinemaPanels,
@@ -198,8 +199,6 @@ const DATE_PRESETS: ReadonlyArray<{ value: JobDatePreset; key: string }> = [
 /** Keep the DOM small even when a station mirrors its full 1,000-job window. */
 const JOB_PAGE_SIZE = 50;
 
-/** Cinema rows stay readable on a wall display: three values is the ceiling. */
-const CINEMA_MAX_FIELDS = 3;
 
 /** Arrow-key step for the resize handles; the limits live with the table. */
 const COLUMN_WIDTH_STEP = 16;

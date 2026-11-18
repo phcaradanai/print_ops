@@ -247,10 +247,12 @@ intact by default.
   between Status and Actions, never in click order, so toggling cannot reshuffle
   the table.
 - **Incoming-value columns** keep the order they were added, sit after the job
-  fields and before Actions, and are capped at three: the table is not a payload
-  browser, and the drawer still shows every key. Each key is offered with a
-  sample value and the number of jobs that carry it, from the same
-  `extractJobPayload` projection the drawer uses.
+  fields and before Actions, and are capped at eight: the ceiling stops "select
+  everything", it does not ration width the table already has (it was three, and
+  a wide screen sat half empty). Each key is offered with a sample value and the
+  number of jobs that carry it, from the same `extractJobPayload` projection the
+  drawer uses. The reference column is optional too: only Status and Actions are
+  fixed, so a site that reads incoming values can drop the ID entirely.
 - **A key that leaves the scope stays selected** (rendering em dashes, listed
   first in the picker) instead of silently disappearing from the table.
 - **Station duplication.** When All stations shows the station under the printer

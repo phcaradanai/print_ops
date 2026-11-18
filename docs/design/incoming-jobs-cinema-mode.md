@@ -70,19 +70,28 @@ dialog listing the incoming keys the current scope actually carries, each with a
 sample value and the number of jobs behind it, in the same flattened payload the
 drawer and the payload filters read (`extractJobPayload`).
 
-- Choose up to three keys, in reading order. The limit is about wall legibility,
-  not storage; a fourth checkbox is disabled rather than silently ignored.
+- **Choose up to eight keys, in reading order (2026-11-18).** The ceiling used to
+  be three, on legibility grounds, and it left wall displays with width the
+  operator was not allowed to fill. Every chosen value now gets its own span and
+  they share the row equally, each truncating on its own with the full value in
+  the row's title, so a fourth or fifth value costs nothing but a narrower share.
+  The picker still disables the checkbox past the ceiling rather than ignoring a
+  click, so the state is never mysterious.
 - The selection lives in the URL (`?cinemaFields=hn,patient_name`), so a wall
   display can be opened at `/control/jobs?cinema=1&cinemaFields=hn,patient_name`
   with no interaction, and the choice survives a reload and a station switch.
-- A row shows the chosen values joined with ` · ` as its main label, and keeps
-  the job reference after them in smaller muted mono, so support can still find
-  the job. A job missing every chosen value falls back to the reference alone -
-  never a blank cell.
+- A row shows the chosen values as its main label, and keeps the job reference
+  after them in smaller muted mono, so support can still find the job. A job
+  missing every chosen value falls back to the reference alone - never a blank
+  cell.
+- **The reference is the operator's call (2026-11-18).** "Show job reference" no
+  longer depends on whether values are chosen: a site that never uses references
+  can hide them outright, and a site that shows values can still keep them. With
+  neither references nor values a row carries its time, station, printer and
+  status, and the reference stays in the row's title.
 - The feed header names the active keys (`hn · patient_name`), so the board is
   self-describing.
-- **Reference and width.** "Show job reference" drops the trailing reference when
-  a value is chosen (a job with no chosen value still shows its reference), and
+- **Reference and width.** "Show job reference" drops the reference entirely, and
   the value column can be Narrow, Balanced or Wide. Both are session state,
   applied to the board without persisting - the operator arranges the screen and
   sees the result.
@@ -278,7 +287,8 @@ npx playwright test apps/web/e2e/web-control-jobs.spec.ts
    cadence - the numbers cannot change between polls, so a one-second board
    timer only burned renders. The header clock keeps its own one-second timer,
    and both timers stop while the document is hidden.
-7. **The row label is operator data, not an identifier.** Up to three incoming
+7. **The row label is operator data, not an identifier.** Up to eight incoming
    keys replace the raw reference as the row's main label, with the reference
-   still on the row. The picker never invents a value and never hides a job: a
-   job without any chosen value shows its reference as before.
+   optionally still on the row. The picker never invents a value and never hides a
+   job: a job without any chosen value shows its reference, unless the operator
+   has hidden references altogether.

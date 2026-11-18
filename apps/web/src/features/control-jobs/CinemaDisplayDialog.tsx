@@ -11,10 +11,12 @@
 import { Button, Checkbox, Dialog, FormField, Mono, Select, Stack, Text } from '../../components/ui/index.js';
 import { useLocale } from '../../i18n/index.js';
 import { formatMessage } from '../../lib/formatMessage.js';
-import { CINEMA_PANELS, type CinemaFieldOption, type CinemaPanel } from './cinemaModel.js';
-
-/** Cinema rows stay readable from three metres: three values is the ceiling. */
-export const CINEMA_MAX_FIELDS = 3;
+import {
+  CINEMA_MAX_FIELDS,
+  CINEMA_PANELS,
+  type CinemaFieldOption,
+  type CinemaPanel,
+} from './cinemaModel.js';
 
 export type CinemaLabelWidth = 'narrow' | 'balanced' | 'wide';
 
@@ -106,11 +108,13 @@ export function CinemaDisplayDialog({
             })}
           </Stack>
         )}
+        {/* Independent of the value list: a site can hide references even when it
+            shows no incoming values at all, and one that shows values can still
+            keep the reference if support needs to find the job. */}
         <Checkbox
           label={t('control.cinema.showReference')}
           description={t('control.cinema.showReferenceHint')}
           checked={showReference}
-          disabled={fields.length === 0}
           onChange={(event) => onShowReferenceChange(event.target.checked)}
         />
         <FormField label={t('control.cinema.labelWidth')}>

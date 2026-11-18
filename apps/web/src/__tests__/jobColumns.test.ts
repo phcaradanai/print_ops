@@ -96,15 +96,18 @@ describe('job columns', () => {
     ]);
   });
 
-  it('caps incoming-value columns so the table stays a table', () => {
-    const selected = ['hn', 'patient_name', 'ward', 'room'].map(payloadColumnId);
+  it('caps incoming-value columns, generously enough for a wide screen', () => {
+    // The ceiling stops "select everything", not the fourth value an operator
+    // actually needs; past it the extra ids are dropped in click order.
+    const selected = Array.from({ length: MAX_PAYLOAD_COLUMNS + 2 }, (_, index) =>
+      payloadColumnId(`key-${index}`),
+    );
     const payloads = visibleJobColumns(selected).filter((column) => column.kind === 'payload');
     expect(payloads).toHaveLength(MAX_PAYLOAD_COLUMNS);
-    expect(payloads.map((column) => (column.kind === 'payload' ? column.key : ''))).toEqual([
-      'hn',
-      'patient_name',
-      'ward',
-    ]);
+    expect(payloads.map((column) => (column.kind === 'payload' ? column.key : ''))).toEqual(
+      Array.from({ length: MAX_PAYLOAD_COLUMNS }, (_, index) => `key-${index}`),
+    );
+    expect(MAX_PAYLOAD_COLUMNS).toBeGreaterThan(3);
   });
 
   it('round-trips payload column ids and rejects malformed ones', () => {

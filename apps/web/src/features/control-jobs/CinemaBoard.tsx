@@ -32,6 +32,7 @@ import {
   buildStationRows,
   buildThroughput,
   cinemaJobLabel,
+  cinemaJobValues,
   cinemaJobTone,
   CINEMA_PANELS,
   flowPeak,
@@ -624,23 +625,34 @@ export function CinemaBoard(props: CinemaBoardProps) {
                 const tone = toneOf(job);
                 const fresh = isNewArrival(job.createdAt, now);
                 const reference = job.requestId ?? job.id;
-                const label = cinemaJobLabel(job, displayFields);
-                const showId = !label || showReference;
+                const values = cinemaJobValues(job, displayFields);
+                // The reference is the operator's call on both surfaces: hide it
+                // when the incoming values already identify the row, and also when
+                // the site simply does not use references at all.
+                const showId = showReference;
+                const title = values.length > 0
+                  ? showId
+                    ? `${values.join(' · ')} · ${reference}`
+                    : values.join(' · ')
+                  : reference;
                 return (
                   <li key={job.id} className={`cinema-feed-row cinema-feed-row--${tone}${fresh ? ' is-new' : ''}`}>
                     <span className="cinema-feed-time">{formatClockTime(job.createdAt, locale)}</span>
-                    <span
-                      className="cinema-feed-ref"
-                      title={label ? (showId ? `${label} · ${reference}` : label) : reference}
-                    >
-                      {label ? (
+                    <span className="cinema-feed-ref" title={title}>
+                      {values.length > 0 ? (
                         <>
-                          <span className="cinema-feed-label">{label}</span>
+                          <span className="cinema-feed-label">
+                            {values.map((value, index) => (
+                              <span className="cinema-feed-value" key={`${job.id}-${index}`}>
+                                {value}
+                              </span>
+                            ))}
+                          </span>
                           {showId && <span className="cinema-feed-id">{reference}</span>}
                         </>
-                      ) : (
+                      ) : showId ? (
                         reference
-                      )}
+                      ) : null}
                     </span>
                     <span className="cinema-feed-where">
                       <span className="cinema-feed-station">

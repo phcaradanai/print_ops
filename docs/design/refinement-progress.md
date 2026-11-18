@@ -362,6 +362,31 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   Jobs Playwright tests (1 new: reviewed job leaves Needs review with its status
   intact), full suite 141 passed.
 
+## 2026-11-18 — Incoming Jobs: the caps that rationed space are gone
+
+The report: a wide screen sat half empty while the operator could not show the
+fourth value they needed, on either surface, and the ID could not be dropped
+everywhere.
+
+- **Cinema row values: three -> eight.** Each value is its own span inside a flex
+  row, so they share the width equally and truncate individually (full value in the
+  row title) instead of one joined string that clipped as a whole. A fourth value
+  now costs nothing but a narrower share.
+- **Incoming list columns: three -> eight.** Same reasoning: the ceiling exists to
+  stop "select everything", not to ration width the table already has.
+- **The cinema reference is now the operator's call.** "Show job reference" no
+  longer depends on having chosen values, so a site that never uses references can
+  hide them outright. Only the reference and Status/Actions stay optional/fixed on
+  the list as before, so the ID column can be removed on both surfaces.
+- **One overflow bug found by the new measured test:** with four values, the feed
+  header's unbreakable key list pushed the 390px board 30px sideways (then 338px
+  once the label change landed). `.cinema-card-meta` had no `min-width: 0`, so it
+  sized to content; it now shrinks and `.cinema-feed-fields` clips with an
+  ellipsis.
+- Verified: 812 web unit tests (2 new: five-value rows, the ceiling itself), 62/62
+  Incoming Jobs Playwright tests (3 new capability tests, 2 measured across
+  TH at 1440 and 390), typecheck, Control build.
+
 ## 2026-11-18 — Incoming Jobs: search explains itself (reported bug)
 
 Typing `do` returned rows whose references began `ab`, with nothing on them

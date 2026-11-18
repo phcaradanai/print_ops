@@ -84,8 +84,17 @@ export const DEFAULT_JOB_COLUMNS: readonly Exclude<JobColumnId, 'status' | 'acti
   'received',
 ];
 
-/** Incoming-value columns are a table, not a payload dump. */
-export const MAX_PAYLOAD_COLUMNS = 3;
+/**
+ * How many incoming-value columns a selection may hold.
+ *
+ * This used to be three, on the theory that a table is not a payload browser. In
+ * practice a wide screen sat half empty while the operator could not add the
+ * fourth value they needed, so the ceiling is now generous: it exists to stop an
+ * accidental "select everything", not to ration space the page already has.
+ * Nothing is persisted beyond this list either, so a large selection costs one
+ * localStorage string, not a schema change.
+ */
+export const MAX_PAYLOAD_COLUMNS = 8;
 
 export const JOB_COLUMNS_STORAGE_KEY = 'printops-control-jobs-columns';
 

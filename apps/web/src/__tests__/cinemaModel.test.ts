@@ -3,8 +3,10 @@ import {
   buildCinemaKpis,
   buildStationRows,
   buildThroughput,
+  CINEMA_MAX_FIELDS,
   cinemaJobLabel,
   cinemaJobTone,
+  cinemaJobValues,
   cinemaNeedsReview,
   cinemaTone,
   describeCinemaFields,
@@ -374,5 +376,23 @@ describe('cinemaJobLabel', () => {
 
   it('matches keys case-insensitively, like the payload filters', () => {
     expect(cinemaJobLabel(job({ id: 'upper', payload: { HN: '909090' } }), ['hn'])).toBe('909090');
+  });
+
+  it('carries more than three values, in order, so a wide screen can use its width', () => {
+    const rich = job({
+      id: 'rich',
+      payload: { hn: '1', patient_name: 'Somchai Dee', ward: 'OPD-3', room: 'B2', bed: '07' },
+    });
+    const fields = ['hn', 'patient_name', 'ward', 'room', 'bed'];
+    expect(cinemaJobValues(rich, fields)).toEqual(['1', 'Somchai Dee', 'OPD-3', 'B2', '07']);
+    expect(cinemaJobLabel(rich, fields)).toBe('1 · Somchai Dee · OPD-3 · B2 · 07');
+    expect(CINEMA_MAX_FIELDS).toBeGreaterThan(3);
+  });
+});
+
+describe('CINEMA_MAX_FIELDS', () => {
+  it('allows a selection larger than the old three-value ceiling', () => {
+    expect(CINEMA_MAX_FIELDS).toBeGreaterThan(3);
+    expect(CINEMA_MAX_FIELDS).toBeLessThanOrEqual(12);
   });
 });

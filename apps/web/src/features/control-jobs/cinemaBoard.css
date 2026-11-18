@@ -384,6 +384,9 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem 0.9rem;
+  /* A long active-key list must shrink and clip, not push the card wider than
+     the board: without this the meta box sizes to its content. */
+  min-width: 0;
   margin-left: auto;
   color: var(--cinema-muted);
   font-size: var(--cinema-text-xs);
@@ -692,6 +695,18 @@
 }
 
 .cinema-feed-label {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+/* One span per chosen value. They share the row's spare width equally instead of
+   the row showing empty space it cannot use, and each truncates on its own so a
+   long HN cannot push the patient name out of sight. */
+.cinema-feed-value {
+  flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
   color: var(--cinema-text);
@@ -700,6 +715,11 @@
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A single value keeps its natural width rather than stretching to fill. */
+.cinema-feed-value:only-child {
+  flex: 0 1 auto;
 }
 
 .cinema-feed-id {
@@ -711,9 +731,17 @@
   white-space: nowrap;
 }
 
+/* The active key list can be long once a site chooses many values, and the key
+   names are unbreakable. Clip it rather than let it widen the board: the feed
+   itself already shows every value, so the header is only a reminder. */
 .cinema-feed-fields {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   color: var(--cinema-accent);
   font-family: var(--font-mono-family);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cinema-feed-where {

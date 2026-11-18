@@ -1630,11 +1630,12 @@ test('K. display fields put incoming values on the cinema rows, reference stays'
   await expect(board.getByText('hn · patient_name', { exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
 
-  // Three values are allowed; a fourth cannot be added.
+  // A fourth value is allowed now: three left a wide screen with unused width.
   dialog = await openPicker();
   await dialog.getByRole('checkbox', { name: /^prescription/ }).check();
   await expect(page).toHaveURL(/cinemaFields=hn%2Cpatient_name%2Cprescription/);
-  await expect(dialog.getByRole('checkbox', { name: /^long_payload_key/ })).toBeDisabled();
+  await dialog.getByRole('checkbox', { name: /^long_payload_key/ }).check();
+  await expect(dialog.getByRole('checkbox', { name: /^long_payload_key/ })).toBeChecked();
   await page.keyboard.press('Escape');
 
   // A wall display can be configured entirely from the URL.
@@ -1733,14 +1734,16 @@ test('M. incoming payload keys can become list columns', async ({ page }) => {
     '123456',
   );
 
-  // Three incoming columns are allowed; a fourth is disabled.
+  // Four incoming columns are allowed: the ceiling is about stopping "select
+  // everything", not rationing the width the table already has.
   dialog = await openPicker();
   await dialog.getByRole('checkbox', { name: /^patient_name/ }).check();
   await dialog.getByRole('checkbox', { name: /^prescription/ }).check();
-  await expect(dialog.getByRole('checkbox', { name: /^long_payload_key/ })).toBeDisabled();
+  await dialog.getByRole('checkbox', { name: /^long_payload_key/ }).check();
   await page.keyboard.press('Escape');
   await expect(page.locator('thead tr').first()).toContainText('patient_name');
   await expect(page.locator('thead tr').first()).toContainText('prescription');
+  await expect(page.locator('thead tr').first()).toContainText('long_payload_key');
 });
 
 test('L. the two cinema controls read as one framed group, apart from page actions', async ({
@@ -1836,6 +1839,112 @@ test('N. cinema can hide the reference and widen the value column', async ({ pag
   await expect(row).not.toContainText('REQ-UNVERIFIED-0001');
   await expect(board.locator('.cinema-feed-list--wide')).toHaveCount(1);
 });
+
+test('N. cinema rows carry more than three incoming values and can drop the ID', async ({
+  page,
+}) => {
+  await loadJobs(page, { viewport: { width: 1440, height: 900 }, deviceId: 'dev-john' });
+  await waitForList(page);
+
+  await page.getByRole('button', { name: 'Display data', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Data shown in cinema mode' });
+  // Four values: the reported ceiling of three left the wide screen half empty.
+  for (const key of ['hn', 'prescription', 'patient_name', LONG_PAYLOAD_KEY]) {
+    await dialog.getByRole('checkbox', { name: new RegExp(`^${key}`) }).check();
+  }
+  await dialog.getByRole('checkbox', { name: /^Show job reference/ }).uncheck();
+  await page.keyboard.press('Escape');
+
+  const board = await openCinema(page);
+  const firstRow = board.getByRole('list', { name: 'Latest jobs' }).getByRole('listitem').first();
+  await expect(firstRow.locator('.cinema-feed-value')).toHaveCount(3);
+  await expect(firstRow).toContainText('123456');
+  await expect(firstRow).toContainText('Somchai Dee');
+  await expect(firstRow).toContainText('213456');
+  // No reference anywhere on the row.
+  await expect(firstRow.locator('.cinema-feed-id')).toHaveCount(0);
+  await expect(firstRow).not.toContainText('REQ-UNVERIFIED-0001');
+
+  // The values share the row instead of overflowing it.
+  const overflow = await firstRow.locator('.cinema-feed-ref').evaluate((element) => ({
+    horizontal: element.scrollWidth - element.clientWidth,
+  }));
+  expect(overflow.horizontal).toBeLessThanOrEqual(1);
+});
+
+test('N. cinema can hide the ID even when no incoming value is chosen', async ({ page }) => {
+  await loadJobs(page, { viewport: { width: 1440, height: 900 }, deviceId: 'dev-john' });
+  await waitForList(page);
+
+  await page.getByRole('button', { name: 'Display data', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Data shown in cinema mode' });
+  const referenceToggle = dialog.getByRole('checkbox', { name: /^Show job reference/ });
+  // The toggle no longer depends on the value list.
+  await expect(referenceToggle).toBeEnabled();
+  await referenceToggle.uncheck();
+  await page.keyboard.press('Escape');
+
+  const board = await openCinema(page);
+  const firstRow = board.getByRole('list', { name: 'Latest jobs' }).getByRole('listitem').first();
+  await expect(firstRow).not.toContainText('REQ-UNVERIFIED-0001');
+  await expect(firstRow).toContainText('UNVERIFIED');
+});
+
+test('N. the list keeps four incoming columns, not three', async ({ page }) => {
+  await loadJobs(page, { deviceId: 'dev-john' });
+  await waitForList(page);
+
+  await page.getByRole('button', { name: s('en').columnsButton, exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: s('en').columnsTitle });
+  for (const key of ['hn', 'prescription', 'patient_name', LONG_PAYLOAD_KEY]) {
+    await dialog.getByRole('checkbox', { name: new RegExp(`^${key}`) }).check();
+  }
+  await page.keyboard.press('Escape');
+
+  const headers = page.locator('thead tr').first();
+  for (const key of ['hn', 'prescription', 'patient_name', LONG_PAYLOAD_KEY]) {
+    await expect(headers).toContainText(key);
+  }
+});
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 390, height: 844 },
+] as const) {
+  test(`N. many cinema values still fit ${viewport.width}x${viewport.height} th`, async ({
+    page,
+  }) => {
+    await loadJobs(page, { locale: 'th', deviceId: 'dev-john', viewport });
+    await waitForList(page, 'th');
+
+    await page.getByRole('button', { name: s('th').fieldsButton, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: s('th').fieldsTitle });
+    for (const key of ['hn', 'prescription', 'patient_name', LONG_PAYLOAD_KEY]) {
+      await dialog.getByRole('checkbox', { name: new RegExp(`^${key}`) }).check();
+    }
+    await page.keyboard.press('Escape');
+
+    const board = await openCinema(page, 'th');
+    const firstRow = board.getByRole('list').getByRole('listitem').first();
+    await expect(firstRow.locator('.cinema-feed-value').first()).toBeVisible();
+
+    // The row, the board and the page all stay inside the viewport: extra values
+    // truncate, they never widen the wall display.
+    for (const [name, locator] of [
+      ['row', firstRow],
+      ['board', board],
+    ] as const) {
+      const overflow = await locator.evaluate((element) => ({
+        horizontal: element.scrollWidth - element.clientWidth,
+      }));
+      expect(overflow.horizontal, `${name} scrolls sideways`).toBeLessThanOrEqual(1);
+    }
+    const pageOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(pageOverflow, 'the page scrolls sideways').toBeLessThanOrEqual(1);
+  });
+}
 
 test('P. the reprint bar is pinned in the viewport as soon as rows are selected', async ({
   page,
