@@ -423,6 +423,9 @@ const STRINGS = {
     columnsButton: 'Columns',
     columnsTitle: 'List columns',
     columnsReset: 'Reset to default',
+    clearSelection: 'Clear selection',
+    reprintSelected: 'Re-print Selected',
+    reprintDialogGeneric: 'Reprint job',
     staleCopy: ['Fleet Errors & Warnings', 'Total incoming jobs', 'Select a PrintOps Station'],
   },
   th: {
@@ -489,6 +492,9 @@ const STRINGS = {
     columnsButton: 'คอลัมน์',
     columnsTitle: 'คอลัมน์ในรายการงาน',
     columnsReset: 'กลับค่าเริ่มต้น',
+    clearSelection: 'ยกเลิกการเลือก',
+    reprintSelected: 'สั่งพิมพ์ซ้ำที่เลือก',
+    reprintDialogGeneric: 'พิมพ์งานซ้ำ',
     staleCopy: ['สรุป Error ที่พบในระบบ', 'เลือกเครื่อง PrintOps เพื่อดูข้อมูล'],
   },
 } as const;
@@ -669,13 +675,14 @@ test('B. every row is reference + destination + status + received + one View job
   expect(await rowTexts(page)).toHaveLength(JOHN_JOBS.length);
 });
 
-test('B. All stations rows name the station and carry no selection checkbox', async ({ page }) => {
+test('B. All stations rows name the station and are selectable across stations', async ({ page }) => {
   await loadJobs(page);
   await waitForList(page);
 
   expect(await rows(page).count()).toBe(ALL_JOBS.length);
-  await expect(page.locator('thead input[type="checkbox"]')).toHaveCount(0);
-  await expect(page.locator('tbody input[type="checkbox"]')).toHaveCount(0);
+  // Cross-station batch reprint: every row is selectable and the head selects the page.
+  await expect(page.locator('thead input[type="checkbox"]')).toHaveCount(1);
+  await expect(page.locator('tbody input[type="checkbox"]')).toHaveCount(ALL_JOBS.length);
 
   // Station as a secondary destination line.
   const johnRow = rowFor(page, 'REQ-SUCCESS-0003');
@@ -1734,6 +1741,47 @@ test('N. cinema can hide the reference and widen the value column', async ({ pag
   await expect(row).toContainText('123456');
   await expect(row).not.toContainText('REQ-UNVERIFIED-0001');
   await expect(board.locator('.cinema-feed-list--wide')).toHaveCount(1);
+});
+
+test('P. the reprint bar is pinned in the viewport as soon as rows are selected', async ({
+  page,
+}) => {
+  await loadJobs(page, { viewport: { width: 1440, height: 900 } });
+  await waitForList(page);
+
+  // Cross-station selection: one JOHN job and one OPD-2 job.
+  await rowFor(page, 'REQ-UNVERIFIED-0001').getByRole('checkbox').check();
+  await rowFor(page, OPD2_JOB.requestId).getByRole('checkbox').check();
+
+  const bar = page.getByRole('region', { name: /2 jobs selected/ });
+  await expect(bar).toBeVisible();
+  expect(await bar.evaluate((element) => getComputedStyle(element).position)).toBe('fixed');
+
+  // Pinned near the bottom edge, fully inside the visual viewport.
+  const box = await bar.boundingBox();
+  expect(box, 'selection bar has no box').not.toBeNull();
+  expect(box!.y + box!.height).toBeLessThanOrEqual(900);
+  expect(box!.y).toBeGreaterThan(650);
+
+  // Scrolling the list keeps it on screen.
+  await page.mouse.wheel(0, 2400);
+  await expect(bar).toBeVisible();
+  const scrolled = await bar.boundingBox();
+  expect(scrolled!.y + scrolled!.height).toBeLessThanOrEqual(900);
+
+  // The action opens the cross-station dialog with both destinations.
+  await bar.getByRole('button', { name: new RegExp(s('en').reprintSelected) }).click();
+  const dialog = page.getByRole('dialog', { name: s('en').reprintDialogGeneric });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('JOHN');
+  await expect(dialog).toContainText(OPD2_STATION_NAME);
+  await dialog.getByRole('button', { name: s('en').cancel, exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+
+  // Clearing the selection removes the bar.
+  await bar.screenshot({ path: `${ARTIFACTS}/reprint-bar-en.png` });
+  await bar.getByRole('button', { name: s('en').clearSelection, exact: true }).click();
+  await expect(bar).toHaveCount(0);
 });
 
 // ---------------------------------------------------------------------------

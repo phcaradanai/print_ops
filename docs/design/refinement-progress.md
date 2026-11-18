@@ -330,6 +330,20 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   Playwright tests (2 new: hide-reference + drag/keyboard resize + session-only
   reset; cinema hide-reference/width), full suite 141 passed.
 
+## 2026-11-18 — Incoming Jobs: cross-station selection and a pinned reprint bar
+
+- Selection no longer requires a single-station scope: every row carries a
+  checkbox in All stations too, because each job carries its own device and the
+  batch submit already posts per job. The reprint dialog names the distinct
+  destinations.
+- The batch bar is fixed to the bottom of the viewport (rail offset, safe-area
+  padding, floating shadow, z-index under dialogs), with a spacer so it cannot
+  hide the last row. It appears the moment a row is checked and stays on screen
+  while the list scrolls.
+- Verified: 787 web unit tests, typecheck, Control build, 42/42 Incoming Jobs
+  Playwright tests (1 new: cross-station select, fixed position, scroll, dialog
+  destinations, clear), full suite 141 passed.
+
 ## Next, in order
 
 1. **Fold the paper-profile hotfix layers** (`paperProfilesLayoutHotfix`, `Closure`, `Completion`, `LibraryGeometryHotfix`) into `paperProfilesLibrary.css` / `paperProfilesEditor.css`, deleting `!important` as you go. Gate: `paper-profile-ux` and `paper-profile-layout-regression` e2e, which first need their pre-existing failures fixed so they can detect a regression. Then delete the entries from the hotfix list in `designTokens.test.ts`.

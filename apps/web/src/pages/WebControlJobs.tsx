@@ -664,8 +664,11 @@ export default function WebControlJobs() {
   );
 
   const visibleColumns = useMemo(() => visibleJobColumns(jobColumns), [jobColumns]);
-  /** Batch reprint needs one station and `job:retry`; the row checkbox follows it. */
-  const canSelectRows = canReprint && !isAllStations;
+  /**
+   * Batch reprint needs `job:retry`, in any scope. A job carries its own
+   * device, so an All-stations batch simply posts to several stations.
+   */
+  const canSelectRows = canReprint;
   /** All stations shows the station under the printer unless it has its own column. */
   const showStationInDestination = isAllStations && !jobColumns.includes('station');
 
@@ -1803,17 +1806,24 @@ export default function WebControlJobs() {
                   </Toolbar>
                 )}
 
-                {/* Batch bar: one station, job:retry, and a non-empty selection only. */}
+                {/*
+                  Batch bar: job:retry and a non-empty selection, in any scope.
+                  It is fixed to the viewport bottom so the reprint action is
+                  visible the moment a row is checked, even after scrolling.
+                */}
                 {canSelectRows && selectedCount > 0 && (
-                  <Toolbar
-                    label={formatMsg(t('control.jobs.selectedCount'), { count: selectedCount })}
-                    align="between"
+                  <div
+                    className="wcj-selection-bar"
+                    role="region"
+                    aria-label={formatMsg(t('control.jobs.selectedCount'), {
+                      count: selectedCount,
+                    })}
                   >
                     <Text weight="semibold">
                       {formatMsg(t('control.jobs.selectedCount'), { count: selectedCount })}
                     </Text>
                     <Inline gap="sm">
-                      <Button size="sm" variant="ghost" onClick={() => setSelectedJobIds([])}>
+                      <Button size="sm" variant="secondary" onClick={() => setSelectedJobIds([])}>
                         {t('control.jobs.clearSelection')}
                       </Button>
                       <Button
@@ -1824,7 +1834,7 @@ export default function WebControlJobs() {
                         {formatMsg(t('control.jobs.reprintSelected'), { count: selectedCount })}
                       </Button>
                     </Inline>
-                  </Toolbar>
+                  </div>
                 )}
 
                 {visibleJobs.length === 0 ? (
@@ -1908,6 +1918,9 @@ export default function WebControlJobs() {
               </>
             )}
           </>
+        )}
+        {canSelectRows && selectedCount > 0 && (
+          <div className="wcj-selection-spacer" aria-hidden="true" />
         )}
       </Stack>
 

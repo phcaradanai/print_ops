@@ -114,10 +114,16 @@ actions so the header stays one line of text.
    - Each payload filter: `filterKey({ key, value })`.
    - Remove label: `removeFilter({ filter })`; the chip's accessible name
      includes the condition, e.g. "Remove Search: 123456".
-7. **Selection bar.** Only in one-station view, only with `job:retry`, and only
-   while something is selected. Shows `selectedCount`, `clearSelection` and
-   `reprintSelected` (existing keys). Selection is limited to rows visible under
-   the current conditions; changing a filter prunes it.
+7. **Selection bar.** With `job:retry`, in any station scope, while something is
+   selected. A batch may span stations: each job carries its own device, so the
+   submit posts per job and the dialog names every distinct destination. The bar
+   is fixed to the bottom of the viewport (240px rail offset on desktop, viewport
+   edges below that, `env(safe-area-inset-bottom)`), with the floating shadow, so
+   it is on screen the moment a row is checked and stays there while the list
+   scrolls; a spacer reserves its height so it cannot hide the last row or the
+   pagination. Shows `selectedCount`, `clearSelection` and `reprintSelected`.
+   Selection is limited to rows visible under the current conditions; changing a
+   filter prunes it.
 8. **List.** One `DataTable` with `responsive`, inside a `Panel`
    `padding="none"`. Columns: Job, Destination, Status, Received, Actions.
    - Job: `requestId` or `id` in mono, wrapped, never truncated. No payload

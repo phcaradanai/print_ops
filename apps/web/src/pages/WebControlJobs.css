@@ -38,6 +38,39 @@
   background: color-mix(in srgb, var(--primary) 5%, var(--neutral-paper));
 }
 
+/* Batch reprint bar: pinned to the viewport bottom so a row selection is never
+   invisible. The shell's rail is 240px wide above 1024px; below that the rail is
+   a drawer, so the bar spans the viewport. */
+.wcj-selection-bar {
+  position: fixed;
+  right: 0.75rem;
+  bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  left: calc(240px + 0.75rem);
+  z-index: 110;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: 0.6rem 0.75rem 0.6rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--neutral-border));
+  border-radius: var(--rounded-lg);
+  background: var(--state-info-surface);
+  box-shadow: var(--shadow-floating);
+}
+
+/* Reserve the bar's height at the end of the list so it never hides the last
+   row or the pagination. */
+.wcj-selection-spacer {
+  height: 4.5rem;
+}
+
+@media (max-width: 1024px) {
+  .wcj-selection-bar {
+    right: 0.75rem;
+    left: 0.75rem;
+  }
+}
 /* Column resizing on the job table. Only the header owns the handle; the width
    itself moves into a <colgroup> when the operator starts dragging. */
 .wcj-jobs-table--fixed {
