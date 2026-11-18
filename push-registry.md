@@ -1,3 +1,40 @@
+# Web Control 1.0.23
+
+Published for `linux/amd64` from `09ded34` (2026-11-18), with the `1.0.23` version
+defaults in the accompanying release commit.
+
+- **Web Control**: the caps that rationed screen space are gone. A cinema row
+  carries up to **eight** incoming values (was three) and the list allows up to
+  **eight** incoming columns (was three); each cinema value is its own span, so
+  they share the row's width equally and truncate individually with the full value
+  in the row title. "Show job reference" no longer depends on having chosen values,
+  so the ID can be dropped on the cinema board as well as in the list (only Status
+  and Actions are fixed there).
+- **Layout fix found while testing it**: with four values the feed header's
+  unbreakable key list pushed a 390px board sideways; `.cinema-card-meta` now
+  shrinks and `.cinema-feed-fields` clips with an ellipsis.
+- **API**: rebuilt for version parity; its source is unchanged since 1.0.18.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.23` | `sha256:323f4966231988054d2fcaf36916de4f3140e3214ee4bc801f12fbc4d4d11609` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.23` | `sha256:724480bd3d1c6bc52eaa494b48b765120456bdd1cf90936ee5d7feacea7e2400` |
+
+`docker buildx imagetools inspect` returns those digests. The web image was checked
+from the inside: the entry bundle carries `1.0.23`, the page chunk carries
+`cinema-feed-value`, and its 63 asset names match a local Control build with
+`VITE_CONTROL_APP=true VITE_CONTROL_PLANE_VERSION=1.0.23` exactly.
+
+Deploy with `PRINTOPS_CONTROL_PLANE_VERSION=1.0.23`; the PrintOps app image stays
+`0.1.50`. Presentation limits only - no station update, database migration, or
+configuration change is involved.
+
+```powershell
+$env:PRINTOPS_IMAGE_PREFIX = "registry.pg.xenex.io/printops-control-plane"
+$env:PRINTOPS_CONTROL_PLANE_VERSION = "1.0.23"
+node scripts/publish-control-plane-images.mjs
+```
+
 # Web Control 1.0.22
 
 Published for `linux/amd64` from `7116b3e` (2026-11-18), with the `1.0.22` version
