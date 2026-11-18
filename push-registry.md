@@ -1,3 +1,39 @@
+# Web Control 1.0.22
+
+Published for `linux/amd64` from `7116b3e` (2026-11-18), with the `1.0.22` version
+defaults in the accompanying release commit.
+
+- **Web Control fix (reported bug)**: searching a short word returned rows that
+  appeared to have nothing to do with it. The filter was matching fields the table
+  does not show - `ab` is inside the template code `PATIENT_LABEL`, and `do` was
+  also matching payload keys such as `dob`. Two changes: an incoming key now has
+  to match the whole term (`dob` finds those jobs, `do` does not), and any row
+  whose match is not visible on it names the field that matched
+  (`Matched: Template · PATIENT_LABEL`) with a one-line count above the list.
+  Turning the relevant column on removes the explanation, because the row shows
+  the value itself then.
+- **API**: rebuilt for version parity; its source is unchanged since 1.0.18.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.22` | `sha256:07892809bc9b485a59e36f3cb11edaec1cc531dc0a7a2850c89fd4902dc3e699` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.22` | `sha256:1afc17b71f1f6978b8d9f6cc76b00a4b702bb1b943fe7a989881720751435ccd` |
+
+`docker buildx imagetools inspect` returns those digests. The web image was checked
+from the inside: the entry bundle carries `1.0.22` and the new `Matched: ` copy, and
+its 63 asset names match a local Control build with
+`VITE_CONTROL_APP=true VITE_CONTROL_PLANE_VERSION=1.0.22` exactly.
+
+Deploy with `PRINTOPS_CONTROL_PLANE_VERSION=1.0.22`; the PrintOps app image stays
+`0.1.50`. Search logic and one row hint only - no station update, database
+migration, or configuration change is involved.
+
+```powershell
+$env:PRINTOPS_IMAGE_PREFIX = "registry.pg.xenex.io/printops-control-plane"
+$env:PRINTOPS_CONTROL_PLANE_VERSION = "1.0.22"
+node scripts/publish-control-plane-images.mjs
+```
+
 # Web Control 1.0.21
 
 Published for `linux/amd64` from `5e243ea` (2026-11-18), with the `1.0.21` version
