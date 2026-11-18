@@ -19,6 +19,15 @@ Published for `linux/amd64` from commit `6b000a1` (2026-11-18).
 passed: health/version, SPA/assets/deep links, owner/login, SQLite persistence,
 runner binary, single API worker.
 
+Windows desktop installers, built with `npm run desktop:bundle`; release
+verification passed and the OTA manifest is
+`artifacts/prod-01/ota-manifest.json`:
+
+| Installer | Size | SHA-256 |
+| --- | --- | --- |
+| `PrintOps_0.1.50_x64_en-US.msi` | 48,615,424 B | `20379fee5ab1d02fa9a511136a5468f9111a7c2c7233e704bffa5d280e6c68d6` |
+| `PrintOps_0.1.50_x64-setup.exe` (NSIS) | 37,435,965 B | `ccbba4bd32ae7efe25a98e1096783c862c15906890659e5d4548dcaf3838559b` |
+
 Deploy with `PRINTOPS_APP_VERSION=0.1.50` and
 `PRINTOPS_CONTROL_PLANE_VERSION=1.0.13`. Both images include the retention
 changes; update stations if the station-local `control_device_jobs` mirror must
