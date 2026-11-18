@@ -59,8 +59,10 @@
   box-shadow: var(--shadow-floating);
 }
 
-/* Reserve the bar's height at the end of the list so it never hides the last
-   row or the pagination. */
+/* Reserve the bar's height at the end of the list so it never hides the last row
+   or the pagination. The page sets an inline height from the measured bar: with
+   four actions the bar wraps to four lines on a phone, and a fixed 4.5rem covered
+   the pagination there. This value is only the first-paint fallback. */
 .wcj-selection-spacer {
   height: 4.5rem;
 }

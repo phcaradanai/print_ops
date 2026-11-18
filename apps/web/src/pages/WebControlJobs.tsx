@@ -1268,6 +1268,29 @@ export default function WebControlJobs() {
     [selectedJobs],
   );
 
+  /**
+   * The selection bar is fixed, so the list has to reserve exactly the room the
+   * bar takes. With four actions the bar wraps to four lines on a phone and stays
+   * on one on a desktop, so the height is measured instead of guessed per
+   * breakpoint: the spacer used to be a flat 4.5rem and covered the pagination as
+   * soon as the bar wrapped.
+   */
+  const selectionBarRef = useRef<HTMLDivElement | null>(null);
+  const [selectionBarHeight, setSelectionBarHeight] = useState(0);
+  useEffect(() => {
+    const node = selectionBarRef.current;
+    if (!node) {
+      setSelectionBarHeight(0);
+      return;
+    }
+    const measure = () => setSelectionBarHeight(node.getBoundingClientRect().height);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [selectedCount]);
+
   const drawerJob = useMemo(
     () => (drawerJobId ? scopeJobs.find((job) => job.id === drawerJobId) ?? null : null),
     [drawerJobId, scopeJobs],
@@ -2048,6 +2071,7 @@ export default function WebControlJobs() {
                 */}
                 {canSelectRows && selectedCount > 0 && (
                   <div
+                    ref={selectionBarRef}
                     className="wcj-selection-bar"
                     role="region"
                     aria-label={formatMsg(t('control.jobs.selectedCount'), {
@@ -2179,7 +2203,17 @@ export default function WebControlJobs() {
           </>
         )}
         {canSelectRows && selectedCount > 0 && (
-          <div className="wcj-selection-spacer" aria-hidden="true" />
+          <div
+            className="wcj-selection-spacer"
+            aria-hidden="true"
+            // Measured, not tokenised: the bar's height is a runtime fact (how many
+            // actions wrapped), and this is the space it must not cover.
+            style={
+              selectionBarHeight > 0
+                ? { height: `${Math.ceil(selectionBarHeight + 8)}px` }
+                : undefined
+            }
+          />
         )}
       </Stack>
 

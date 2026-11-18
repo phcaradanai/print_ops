@@ -362,6 +362,17 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   Jobs Playwright tests (1 new: reviewed job leaves Needs review with its status
   intact), full suite 141 passed.
 
+## 2026-11-18 — Incoming Jobs: the selection bar no longer covers the list on a phone
+
+- Four actions (clear, mark, undo, reprint) wrap to four lines at 390px: the bar
+  measured 146px against a flat 72px spacer, so it sat on top of the pagination and
+  the last rows. The spacer now takes the measured bar height (ResizeObserver, plus
+  the 4.5rem fallback for first paint), and a new measured test holds the line:
+  bar inside the viewport, no sideways scroll, four reachable actions, spacer at
+  least as tall as the bar.
+
+Verified: 800 web unit tests, 49/49 Incoming Jobs Playwright tests (1 new).
+
 ## 2026-11-18 — Incoming Jobs: the acknowledgement, from the operator's side
 
 Five decisions taken by looking at who is actually standing in front of the page:

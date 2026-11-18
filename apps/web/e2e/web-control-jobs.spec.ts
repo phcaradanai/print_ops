@@ -1842,6 +1842,48 @@ test('P. the reprint bar is pinned in the viewport as soon as rows are selected'
   await expect(bar).toHaveCount(0);
 });
 
+test('P. the multi-action bar still fits a 390px screen', async ({ page }) => {
+  // The bar can carry four actions at once (clear, mark, undo, reprint) when the
+  // selection mixes acknowledged and open rows. A phone is where that wraps, so it
+  // is measured rather than assumed.
+  const fleet = fleetResponse();
+  await installHarness(page, {
+    locale: 'en',
+    role: 'OWNER',
+    api: async (url, route, method) => {
+      if (url.pathname === '/api/v1/control/jobs' && method === 'GET') {
+        const snapshot = JSON.parse(JSON.stringify(fleet)) as ReturnType<typeof fleetResponse>;
+        const acked = snapshot.devices[0]!.jobs.find((job) => job.requestId === 'REQ-FAILED-0002');
+        if (acked) acked.reviewedAt = '2026-11-18T09:31:00.000Z';
+        await route.fulfill({ json: snapshot });
+        return true;
+      }
+      return false;
+    },
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/control/jobs?deviceId=dev-john');
+  await waitForList(page);
+
+  await rowFor(page, 'REQ-UNVERIFIED-0001').getByRole('checkbox').check();
+  await rowFor(page, 'REQ-FAILED-0002').getByRole('checkbox').check();
+
+  const bar = page.getByRole('region', { name: /2 jobs selected/ });
+  const box = await bar.boundingBox();
+  expect(box, 'selection bar has no box').not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  const overflow = await bar.evaluate((element) => element.scrollWidth - element.clientWidth);
+  expect(overflow, 'the bar scrolls sideways on a phone').toBeLessThanOrEqual(1);
+
+  // Every action is reachable, and the space reserved at the end of the list is at
+  // least as tall as the bar, so it cannot cover the pagination.
+  await expect(bar.getByRole('button')).toHaveCount(4);
+  const spacer = await page.locator('.wcj-selection-spacer').boundingBox();
+  expect(spacer, 'no spacer reserved for the bar').not.toBeNull();
+  expect(spacer!.height).toBeGreaterThanOrEqual(box!.height);
+});
+
 test('Q. a reviewed UNVERIFIED job leaves Needs review and keeps its status', async ({ page }) => {
   let reviewed = false;
   const fleet = fleetResponse();
