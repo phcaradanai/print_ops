@@ -1,3 +1,45 @@
+# Web Control 1.0.18
+
+Published for `linux/amd64` from `343fad3` (2026-11-18), with the `1.0.18` version
+defaults in the accompanying release commit.
+
+- **Web Control**: the acknowledgement now works from both sides. The reviewed
+  filter moved out of the "filter by status" toolbar - acknowledgements cut across
+  the buckets - and sits with sort/search as **Reviewed only (N)**; the pinned
+  selection bar offers **Undo review (N)** for selected rows that already carry the
+  mark, so a mis-clicked batch no longer has to be repaired one drawer at a time;
+  and the reviewed-only view clears itself when the scope has no acknowledgements
+  left instead of filtering invisibly behind a hidden chip.
+- **Cinema**: Tab, the arrow keys, Home/End/PageUp/PageDown and a bare
+  Shift/Ctrl/Alt/Meta no longer close the board. They are the keys a screen reader
+  uses to read the summary, and the board used to close on the first arrow press.
+  Escape, any click and every other key still exit, so "press anything to get out"
+  holds for a person at the wall.
+- **API**: rebuilt for version parity with one image change - the build stage now
+  drops `apps/api/dist/tests`, so no compiled test code ships to the server. Its
+  runtime source is unchanged since 1.0.17.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.18` | `sha256:5c75edb4f89c46d2d5a37a500863e362341cbda6c4219ece48cffbe29c1c4050` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.18` | `sha256:0ac34edb937aa73c7bc28e31bbededf1d5cecd2832e7d789776404084bb0a776` |
+
+`docker buildx imagetools inspect` returns those digests. The web image was also
+checked from the inside: the entry bundle carries the `1.0.18` version and the
+`Reviewed only` / `Undo review` copy, and its 62 asset names match a local Control
+build with `VITE_CONTROL_APP=true VITE_CONTROL_PLANE_VERSION=1.0.18` exactly. The
+API image's `dist/tests` directory is absent and `dist/services/` is intact.
+
+Deploy with `PRINTOPS_CONTROL_PLANE_VERSION=1.0.18`; the PrintOps app image stays
+`0.1.50`. Web Control UI changes only - no station update, database migration, or
+configuration change is involved.
+
+```powershell
+$env:PRINTOPS_IMAGE_PREFIX = "registry.pg.xenex.io/printops-control-plane"
+$env:PRINTOPS_CONTROL_PLANE_VERSION = "1.0.18"
+node scripts/publish-control-plane-images.mjs
+```
+
 # Web Control 1.0.17
 
 Published for `linux/amd64` from `9aa6b5f` (2026-11-18), with the `1.0.17` version
