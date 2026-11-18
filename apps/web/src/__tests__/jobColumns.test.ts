@@ -32,8 +32,8 @@ function rendered(columns: JobTableColumn[]): string[] {
 }
 
 describe('job columns', () => {
-  it('ships destination + received by default, with job, status and actions fixed', () => {
-    expect([...DEFAULT_JOB_COLUMNS]).toEqual(['destination', 'received']);
+  it('ships reference + destination + received by default, with status and actions fixed', () => {
+    expect([...DEFAULT_JOB_COLUMNS]).toEqual(['job', 'destination', 'received']);
     expect(rendered(visibleJobColumns(DEFAULT_JOB_COLUMNS))).toEqual([
       'job',
       'destination',
@@ -43,9 +43,23 @@ describe('job columns', () => {
     ]);
   });
 
+  it('lets the reference column go, but never status or actions', () => {
+    expect(rendered(visibleJobColumns(['destination', 'received']))).toEqual([
+      'destination',
+      'status',
+      'received',
+      'actions',
+    ]);
+    expect(rendered(visibleJobColumns(['job', 'copies']))).toEqual([
+      'job',
+      'status',
+      'copies',
+      'actions',
+    ]);
+  });
+
   it('keeps the canonical order regardless of click order', () => {
     expect(rendered(visibleJobColumns(['error', 'copies', 'destination']))).toEqual([
-      'job',
       'destination',
       'status',
       'copies',
@@ -53,7 +67,6 @@ describe('job columns', () => {
       'actions',
     ]);
     expect(rendered(visibleJobColumns(['template', 'station']))).toEqual([
-      'job',
       'station',
       'status',
       'template',
@@ -62,13 +75,13 @@ describe('job columns', () => {
   });
 
   it('never lets the fixed columns be removed or duplicated', () => {
-    const all = visibleJobColumns(['job', 'status', 'actions', 'station', 'station']);
-    expect(rendered(all)).toEqual(['job', 'station', 'status', 'actions']);
-    expect(rendered(visibleJobColumns([]))).toEqual(['job', 'status', 'actions']);
+    const all = visibleJobColumns(['status', 'actions', 'station', 'station']);
+    expect(rendered(all)).toEqual(['station', 'status', 'actions']);
+    expect(rendered(visibleJobColumns([]))).toEqual(['status', 'actions']);
   });
 
   it('puts incoming-value columns after the job fields and before Actions, in click order', () => {
-    const columns = visibleJobColumns(['payload:patient_name', 'copies', 'payload:hn']);
+    const columns = visibleJobColumns(['payload:patient_name', 'copies', 'payload:hn', 'job']);
     expect(rendered(columns)).toEqual([
       'job',
       'status',

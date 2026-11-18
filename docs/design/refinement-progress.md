@@ -315,6 +315,21 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   Playwright tests (1 new check for the frame, radius, tint and group role), full
   suite 141 passed with the Control-only spec skipped.
 
+## 2026-11-18 — Incoming Jobs: removable reference and live column widths
+
+- The job reference is no longer a fixed column: the Columns picker can remove it
+  (Status and Actions stay). Column dividers are draggable, with arrow-key nudges
+  and double-click/Home resets; a column grows by taking width from its right
+  neighbour, so the table keeps its total width and never overflows. Widths are
+  session state and reset on reload, per the "arrange it live" rule; the column
+  choice stays a stored workstation preference.
+- Cinema rows gained "Show job reference" (drop the trailing reference when a
+  value is chosen) and a Narrow/Balanced/Wide value column. Both are session
+  state applied to the board, which stays passive.
+- Verified: 787 web unit tests, typecheck, Control build, 41/41 Incoming Jobs
+  Playwright tests (2 new: hide-reference + drag/keyboard resize + session-only
+  reset; cinema hide-reference/width), full suite 141 passed.
+
 ## Next, in order
 
 1. **Fold the paper-profile hotfix layers** (`paperProfilesLayoutHotfix`, `Closure`, `Completion`, `LibraryGeometryHotfix`) into `paperProfilesLibrary.css` / `paperProfilesEditor.css`, deleting `!important` as you go. Gate: `paper-profile-ux` and `paper-profile-layout-regression` e2e, which first need their pre-existing failures fixed so they can detect a regression. Then delete the entries from the hotfix list in `designTokens.test.ts`.

@@ -198,13 +198,15 @@ languages, at both target sizes.
 
 The five-column row above is the shipped default, not a hard constraint. A
 **Columns** control in the station bar opens a picker for the optional columns:
-Destination, Station, Received, Copies, Template, Source, Runner, Error code, and
-**any incoming payload key** in the current scope. Defaults stay Destination +
-Received, so the page looks unchanged until someone opts in, which also keeps the
-"no template column" decision above intact by default.
+the job reference, Destination, Station, Received, Copies, Template, Source,
+Runner, Error code, and **any incoming payload key** in the current scope.
+Defaults stay reference + Destination + Received, so the page looks unchanged
+until someone opts in, which also keeps the "no template column" decision above
+intact by default.
 
-- **Fixed columns.** Job, Status and Actions are not offered: a row without its
-  identity, its verdict, or a way into the drawer is not a row.
+- **Only Status and Actions are fixed.** A row without its verdict or a way into
+  the drawer is not a row. The job reference is optional: sites that do not need
+  it drop the column and read the incoming values instead.
 - **Canonical job-field order.** Optional job fields render in a fixed order
   between Status and Actions, never in click order, so toggling cannot reshuffle
   the table.
@@ -221,7 +223,13 @@ Received, so the page looks unchanged until someone opts in, which also keeps th
 - **Empty values.** An optional column with no value renders an em dash, not a
   blank cell; a long incoming value is clamped to two lines with the full value
   in the title.
-- **Persistence.** The choice is a workstation preference stored in
+- **Widths are arranged live.** Dragging a header divider grows one column and
+  takes the same width from its right neighbour, so the table keeps its total
+  width and never overflows. Arrow keys nudge by 16px, Home/Delete or a
+  double-click resets a column. Widths are session state and are never
+  persisted: the operator arranges the table and sees the result immediately.
+  Below 768px the table is a stack of record cards, so the handles disappear.
+- **Persistence.** Column visibility is a workstation preference stored in
   `localStorage` (`printops-control-jobs-columns`), like the locale. It is not a
   filter, so it never enters the URL; unreadable or unknown stored ids fall back
   to the shipped default, while valid payload column ids survive.

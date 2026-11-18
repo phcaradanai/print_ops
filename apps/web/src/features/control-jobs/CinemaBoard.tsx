@@ -175,6 +175,10 @@ export interface CinemaBoardProps {
    * row falls back to the job reference, which is the pre-picker behaviour.
    */
   displayFields?: readonly string[];
+  /** Keep the job reference after the chosen values. Default true. */
+  showReference?: boolean;
+  /** How much of the row the value label takes; the operator picks per screen. */
+  labelWidth?: 'narrow' | 'balanced' | 'wide';
   lastSuccessAt: number | null;
   /** True until the first feed response arrives; the board must not claim "Live". */
   loading: boolean;
@@ -198,6 +202,8 @@ export function CinemaBoard(props: CinemaBoardProps) {
     jobs,
     scopeLabel,
     displayFields = [],
+    showReference = true,
+    labelWidth = 'balanced',
     lastSuccessAt,
     loading,
     refreshing,
@@ -564,23 +570,27 @@ export function CinemaBoard(props: CinemaBoardProps) {
               {loading ? t('control.cinema.loading') : t('control.cinema.feedEmpty')}
             </p>
           ) : (
-            <ol className="cinema-feed-list" aria-label={t('control.cinema.feedTitle')}>
+            <ol
+              className={`cinema-feed-list cinema-feed-list--${labelWidth}`}
+              aria-label={t('control.cinema.feedTitle')}
+            >
               {feed.map((job) => {
                 const tone = toneOf(job);
                 const fresh = isNewArrival(job.createdAt, now);
                 const reference = job.requestId ?? job.id;
                 const label = cinemaJobLabel(job, displayFields);
+                const showId = !label || showReference;
                 return (
                   <li key={job.id} className={`cinema-feed-row cinema-feed-row--${tone}${fresh ? ' is-new' : ''}`}>
                     <span className="cinema-feed-time">{formatClockTime(job.createdAt, locale)}</span>
                     <span
                       className="cinema-feed-ref"
-                      title={label ? `${label} · ${reference}` : reference}
+                      title={label ? (showId ? `${label} · ${reference}` : label) : reference}
                     >
                       {label ? (
                         <>
                           <span className="cinema-feed-label">{label}</span>
-                          <span className="cinema-feed-id">{reference}</span>
+                          {showId && <span className="cinema-feed-id">{reference}</span>}
                         </>
                       ) : (
                         reference

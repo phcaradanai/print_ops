@@ -81,6 +81,11 @@ drawer and the payload filters read (`extractJobPayload`).
   never a blank cell.
 - The feed header names the active keys (`hn · patient_name`), so the board is
   self-describing.
+- **Reference and width.** "Show job reference" drops the trailing reference when
+  a value is chosen (a job with no chosen value still shows its reference), and
+  the value column can be Narrow, Balanced or Wide. Both are session state,
+  applied to the board without persisting - the operator arranges the screen and
+  sees the result.
 - No value is invented: keys are matched case-insensitively, blank values are
   skipped, and the picker only offers keys present in the loaded window.
 

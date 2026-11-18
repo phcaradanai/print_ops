@@ -1585,8 +1585,8 @@ test('L. the column picker adds, removes and remembers list columns', async ({ p
   // A default column can be turned off; the fixed ones cannot.
   dialog = await openPicker();
   await dialog.getByRole('checkbox', { name: 'Received', exact: true }).uncheck();
-  await expect(dialog.getByRole('checkbox', { name: 'Job', exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('checkbox', { name: 'Status', exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('checkbox', { name: 'Actions', exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(page.locator('thead tr').first()).not.toContainText('Received');
 
@@ -1668,6 +1668,72 @@ test('L. the two cinema controls read as one framed group, apart from page actio
   expect(styling.background, 'group has no tint').not.toBe('rgba(0, 0, 0, 0)');
 
   await group.screenshot({ path: `${ARTIFACTS}/cinema-group-en.png` });
+});
+
+test('N. the reference column can go and columns resize for this session only', async ({
+  page,
+}) => {
+  await loadJobs(page, { viewport: { width: 1440, height: 900 }, deviceId: 'dev-john' });
+  await waitForList(page);
+
+  // The job reference is no longer mandatory: operators who do not need it remove it.
+  await page.getByRole('button', { name: 'Columns', exact: true }).click();
+  const columns = page.getByRole('dialog', { name: 'List columns' });
+  await columns.getByRole('checkbox', { name: 'Job', exact: true }).uncheck();
+  await page.keyboard.press('Escape');
+  const head = page.locator('thead tr').first();
+  await expect(head).not.toContainText('Job');
+  await expect(rows(page).first().locator('td[data-label="Job"]')).toHaveCount(0);
+  await expect(head).toContainText('Status');
+
+  // Drag the Destination divider: it grows, its neighbour gives up the space.
+  const widthOf = (index: number) =>
+    head.locator('th').nth(index).evaluate((cell) => Math.round(cell.getBoundingClientRect().width));
+  const resizer = page.getByRole('separator', { name: 'Resize Destination column' });
+  const box = await resizer.boundingBox();
+  expect(box, 'destination resizer is missing').not.toBeNull();
+  const beforeDestination = await widthOf(1);
+  const beforeStatus = await widthOf(2);
+  await page.mouse.move(box!.x + 5, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + 85, box!.y + box!.height / 2, { steps: 6 });
+  await page.mouse.up();
+
+  const afterDestination = await widthOf(1);
+  const afterStatus = await widthOf(2);
+  expect(afterDestination - beforeDestination).toBeGreaterThan(40);
+  expect(beforeStatus - afterStatus).toBeGreaterThan(40);
+  await expect(page.locator('table.wcj-jobs-table')).toHaveClass(/wcj-jobs-table--fixed/);
+
+  // Keyboard resizing works too.
+  await resizer.focus();
+  await page.keyboard.press('ArrowLeft');
+  expect(await widthOf(1)).toBeLessThan(afterDestination);
+
+  // Widths are a live arrangement, not a saved preference: reload resets them.
+  await page.reload();
+  await waitForList(page);
+  await expect(page.locator('table.wcj-jobs-table')).not.toHaveClass(/wcj-jobs-table--fixed/);
+  // ... while the column choice still survives, as it is a workstation preference.
+  await expect(page.locator('thead tr').first()).not.toContainText('Job');
+});
+
+test('N. cinema can hide the reference and widen the value column', async ({ page }) => {
+  await loadJobs(page, { viewport: { width: 1440, height: 900 }, deviceId: 'dev-john' });
+  await waitForList(page);
+
+  await page.getByRole('button', { name: 'Display data', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Data shown in cinema mode' });
+  await dialog.getByRole('checkbox', { name: /^hn\b/ }).check();
+  await dialog.getByRole('checkbox', { name: /^Show job reference/ }).uncheck();
+  await dialog.getByLabel('Data column width').selectOption('wide');
+  await page.keyboard.press('Escape');
+
+  const board = await openCinema(page);
+  const row = board.getByRole('list', { name: 'Latest jobs' }).getByRole('listitem').first();
+  await expect(row).toContainText('123456');
+  await expect(row).not.toContainText('REQ-UNVERIFIED-0001');
+  await expect(board.locator('.cinema-feed-list--wide')).toHaveCount(1);
 });
 
 // ---------------------------------------------------------------------------

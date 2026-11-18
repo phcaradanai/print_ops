@@ -629,6 +629,14 @@
   animation: cinema-row-in 460ms ease-out both;
 }
 
+.cinema-feed-list--narrow .cinema-feed-row {
+  grid-template-columns: 6rem minmax(0, 0.9fr) minmax(0, 1.6fr) auto auto;
+}
+
+.cinema-feed-list--wide .cinema-feed-row {
+  grid-template-columns: 6rem minmax(0, 2.2fr) minmax(0, 1fr) auto auto;
+}
+
 .cinema-feed-row--printed {
   --tone: var(--cinema-ok);
 }

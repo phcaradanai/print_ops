@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../api/client.js';
 import { useHasPermission } from '../api/session.js';
@@ -178,6 +188,13 @@ const JOB_PAGE_SIZE = 50;
 /** Cinema rows stay readable on a wall display: three values is the ceiling. */
 const CINEMA_MAX_FIELDS = 3;
 
+/** Column resizing: the table keeps its total width, so a column can only grow
+ *  by taking space from its right neighbour. Session-only by design - the
+ *  operator arranges the table and sees the result immediately. */
+const MIN_COLUMN_WIDTH = 72;
+const MAX_COLUMN_WIDTH = 720;
+const COLUMN_WIDTH_STEP = 16;
+
 function formatMsg(template: string, vars: Record<string, string | number>): string {
   return Object.entries(vars).reduce(
     (acc, [key, value]) => acc.split(`{${key}}`).join(String(value)),
@@ -317,12 +334,29 @@ export default function WebControlJobs() {
   const [page, setPage] = useState(1);
   const [drawerJobId, setDrawerJobId] = useState<string | null>(null);
   const [fieldsOpen, setFieldsOpen] = useState(false);
+  /** Cinema row layout: session state, arranged live and not remembered. */
+  const [cinemaShowReference, setCinemaShowReference] = useState(true);
+  const [cinemaLabelWidth, setCinemaLabelWidth] = useState<'narrow' | 'balanced' | 'wide'>(
+    'balanced',
+  );
   const [columnsOpen, setColumnsOpen] = useState(false);
   /**
    * Which list columns to show. A workstation preference (like the locale), so
    * it lives in localStorage, not the URL - it is presentation, not a filter.
    */
   const [jobColumns, setJobColumns] = useState<string[]>(() => readStoredJobColumns());
+  /**
+   * Per-column pixel widths, keyed by column id. Deliberately not persisted:
+   * widths are a live arrangement, not a saved preference.
+   */
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const resizeRef = useRef<{
+    id: string;
+    nextId: string | null;
+    startX: number;
+    startWidth: number;
+    nextStartWidth: number;
+  } | null>(null);
   const [reprintTargets, setReprintTargets] = useState<ControlSyncedJobItem[]>([]);
   const [reprintCopies, setReprintCopies] = useState(1);
   const [reprintReason, setReprintReason] = useState('');
@@ -630,6 +664,8 @@ export default function WebControlJobs() {
   );
 
   const visibleColumns = useMemo(() => visibleJobColumns(jobColumns), [jobColumns]);
+  /** Batch reprint needs one station and `job:retry`; the row checkbox follows it. */
+  const canSelectRows = canReprint && !isAllStations;
   /** All stations shows the station under the printer unless it has its own column. */
   const showStationInDestination = isAllStations && !jobColumns.includes('station');
 
@@ -657,6 +693,120 @@ export default function WebControlJobs() {
     },
     [jobColumns, updateJobColumns],
   );
+
+  const resetColumnWidth = useCallback((id: string) => {
+    setColumnWidths((previous) => {
+      if (!(id in previous)) return previous;
+      const next = { ...previous };
+      delete next[id];
+      return next;
+    });
+  }, []);
+
+  /** Measure the header cells so a drag starts from what is actually on screen. */
+  const measureColumns = useCallback(
+    (table: HTMLTableElement | null): Record<string, number> => {
+      const measured: Record<string, number> = {};
+      const cells = Array.from(table?.querySelectorAll<HTMLElement>('thead th') ?? []);
+      const offset = canSelectRows ? 1 : 0;
+      visibleColumns.forEach((column, index) => {
+        const cell = cells[offset + index];
+        if (cell) measured[column.id] = Math.round(cell.getBoundingClientRect().width);
+      });
+      return measured;
+    },
+    [canSelectRows, visibleColumns],
+  );
+
+  /**
+   * Apply a width to one column and take the difference from its right
+   * neighbour, so the table keeps its total width instead of overflowing.
+   */
+  const applyColumnWidth = useCallback(
+    (
+      id: string,
+      nextId: string | null,
+      width: number,
+      startWidth: number,
+      startNextWidth: number,
+    ) => {
+      if (nextId === null) {
+        setColumnWidths((previous) => ({
+          ...previous,
+          [id]: Math.max(MIN_COLUMN_WIDTH, Math.min(MAX_COLUMN_WIDTH, Math.round(width))),
+        }));
+        return;
+      }
+      const maxWidth = Math.round(startWidth + startNextWidth - MIN_COLUMN_WIDTH);
+      const clamped = Math.max(
+        MIN_COLUMN_WIDTH,
+        Math.min(width, maxWidth, MAX_COLUMN_WIDTH),
+      );
+      const nextWidth = Math.round(startWidth + startNextWidth - clamped);
+      setColumnWidths((previous) => ({ ...previous, [id]: clamped, [nextId]: nextWidth }));
+    },
+    [],
+  );
+
+  const beginColumnResize = (event: ReactPointerEvent<HTMLSpanElement>, index: number) => {
+    const column = visibleColumns[index];
+    if (!column) return;
+    const seeded = measureColumns(event.currentTarget.closest('table'));
+    const nextColumn = visibleColumns[index + 1] ?? null;
+    resizeRef.current = {
+      id: column.id,
+      nextId: nextColumn?.id ?? null,
+      startX: event.clientX,
+      startWidth: seeded[column.id] ?? 120,
+      nextStartWidth: nextColumn ? seeded[nextColumn.id] ?? 120 : 0,
+    };
+    setColumnWidths(seeded);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+
+  const moveColumnResize = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    const state = resizeRef.current;
+    if (!state) return;
+    applyColumnWidth(
+      state.id,
+      state.nextId,
+      state.startWidth + (event.clientX - state.startX),
+      state.startWidth,
+      state.nextStartWidth,
+    );
+  };
+
+  const endColumnResize = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    resizeRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const nudgeColumn = (event: ReactKeyboardEvent<HTMLSpanElement>, index: number) => {
+    const column = visibleColumns[index];
+    if (!column) return;
+    if (event.key === 'Home' || event.key === 'Delete' || event.key === 'Backspace') {
+      event.preventDefault();
+      resetColumnWidth(column.id);
+      return;
+    }
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const seeded = measureColumns(event.currentTarget.closest('table'));
+    const current = seeded[column.id] ?? 120;
+    const nextColumn = visibleColumns[index + 1] ?? null;
+    const nextCurrent = nextColumn ? seeded[nextColumn.id] ?? 120 : 0;
+    setColumnWidths(seeded);
+    applyColumnWidth(
+      column.id,
+      nextColumn?.id ?? null,
+      current + (event.key === 'ArrowLeft' ? -COLUMN_WIDTH_STEP : COLUMN_WIDTH_STEP),
+      current,
+      nextCurrent,
+    );
+  };
 
   // `deviceId` is the only URL state, so reaching another station through the
   // browser's back/forward buttons has to reset the local filters too — a URL
@@ -909,7 +1059,6 @@ export default function WebControlJobs() {
   const removeLabel = (condition: string) =>
     formatMsg(t('control.jobs.removeFilter'), { filter: condition });
 
-  const canSelectRows = canReprint && !isAllStations;
   const selectedCount = selectedJobIds.length;
   const selectedJobs = useMemo(
     () => visibleJobs.filter((job) => selectedJobIds.includes(job.id)),
@@ -1095,6 +1244,25 @@ export default function WebControlJobs() {
     }
   };
 
+  const hasCustomWidths = Object.keys(columnWidths).length > 0;
+  const tableClassName = `wcj-jobs-table${hasCustomWidths ? ' wcj-jobs-table--fixed' : ''}`;
+
+  const renderColgroup = (): ReactNode => (
+    <colgroup>
+      {canSelectRows && <col style={{ width: '2.5rem' }} />}
+      {visibleColumns.map((column) => (
+        <col
+          key={column.id}
+          style={
+            columnWidths[column.id] !== undefined
+              ? { width: `${columnWidths[column.id]}px` }
+              : undefined
+          }
+        />
+      ))}
+    </colgroup>
+  );
+
   const renderJobRow = (job: ControlSyncedJobItem): ReactNode => {
     const isSelected = selectedJobIds.includes(job.id);
     const reference = job.requestId || job.id;
@@ -1138,15 +1306,36 @@ export default function WebControlJobs() {
               />
             </DataHead>
           )}
-          {visibleColumns.map((column) => (
-            <DataHead key={column.id}>
-              {column.kind === 'payload' ? (
-                <Mono size="label">{column.key}</Mono>
-              ) : (
-                jobColumnLabel(column.id)
-              )}
-            </DataHead>
-          ))}
+          {visibleColumns.map((column, index) => {
+            const label =
+              column.kind === 'payload' ? column.key : jobColumnLabel(column.id);
+            return (
+              <DataHead key={column.id}>
+                {column.kind === 'payload' ? <Mono size="label">{column.key}</Mono> : label}
+                {index < visibleColumns.length - 1 && (
+                  <span
+                    className="wcj-col-resizer"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label={formatMsg(t('control.jobs.resizeColumn'), { column: label })}
+                    aria-valuemin={MIN_COLUMN_WIDTH}
+                    aria-valuemax={MAX_COLUMN_WIDTH}
+                    {...(columnWidths[column.id] !== undefined
+                      ? { 'aria-valuenow': Math.round(columnWidths[column.id]) }
+                      : {})}
+                    title={t('control.jobs.resizeColumnHint')}
+                    tabIndex={0}
+                    onPointerDown={(event) => beginColumnResize(event, index)}
+                    onPointerMove={moveColumnResize}
+                    onPointerUp={endColumnResize}
+                    onPointerCancel={endColumnResize}
+                    onDoubleClick={() => resetColumnWidth(column.id)}
+                    onKeyDown={(event) => nudgeColumn(event, index)}
+                  />
+                )}
+              </DataHead>
+            );
+          })}
         </tr>
       </thead>
     );
@@ -1663,7 +1852,12 @@ export default function WebControlJobs() {
                 ) : groupBy === 'none' ? (
                   <Stack gap="sm">
                     <Panel padding="none">
-                      <DataTable label={t('control.jobs.tableLabel')} responsive>
+                      <DataTable
+                        label={t('control.jobs.tableLabel')}
+                        className={tableClassName}
+                        responsive
+                      >
+                        {renderColgroup()}
                         {renderTableHead(t('control.jobs.tableLabel'), pagedVisibleJobs)}
                         <tbody>{pagedVisibleJobs.map(renderJobRow)}</tbody>
                       </DataTable>
@@ -1697,7 +1891,12 @@ export default function WebControlJobs() {
                           </Text>
                         </Inline>
                         <Panel padding="none">
-                          <DataTable label={group.groupLabel} responsive>
+                          <DataTable
+                            label={group.groupLabel}
+                            className={tableClassName}
+                            responsive
+                          >
+                            {renderColgroup()}
                             {renderTableHead(group.groupLabel, group.jobs)}
                             <tbody>{group.jobs.map(renderJobRow)}</tbody>
                           </DataTable>
@@ -2166,6 +2365,28 @@ export default function WebControlJobs() {
               })}
             </Stack>
           )}
+          <Checkbox
+            label={t('control.cinema.showReference')}
+            description={t('control.cinema.showReferenceHint')}
+            checked={cinemaShowReference}
+            disabled={cinemaFields.length === 0}
+            onChange={(event) => setCinemaShowReference(event.target.checked)}
+          />
+          <FormField label={t('control.cinema.labelWidth')}>
+            {(control) => (
+              <Select
+                {...control}
+                value={cinemaLabelWidth}
+                onChange={(event) =>
+                  setCinemaLabelWidth(event.target.value as 'narrow' | 'balanced' | 'wide')
+                }
+              >
+                <option value="narrow">{t('control.cinema.widthNarrow')}</option>
+                <option value="balanced">{t('control.cinema.widthBalanced')}</option>
+                <option value="wide">{t('control.cinema.widthWide')}</option>
+              </Select>
+            )}
+          </FormField>
         </Stack>
       </Dialog>
 
@@ -2174,6 +2395,8 @@ export default function WebControlJobs() {
           stations={cinemaStations}
           jobs={scopeJobs}
           displayFields={cinemaFields}
+          showReference={cinemaShowReference}
+          labelWidth={cinemaLabelWidth}
           scopeLabel={
             selectedDevice ? stationTitle(selectedDevice) : t('control.jobs.allStations')
           }

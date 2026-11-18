@@ -9,9 +9,9 @@
  *
  * Rules that keep the list recognisable:
  *
- *   - **Job, Status and Actions are fixed.** A row without its identity, its
- *     verdict, or a way into the drawer is not a row; the picker never offers
- *     them and the render path always includes them.
+ *   - **Status and Actions are fixed.** A row without its verdict or a way into
+ *     the drawer is not a row. The job reference is optional: operators who do
+ *     not need it can drop the column and read the incoming values instead.
  *   - **Job fields keep a canonical order**, never click order, so toggling a
  *     built-in column cannot reshuffle the table.
  *   - **Incoming-value columns keep the order they were added**, sit after the
@@ -57,15 +57,16 @@ export const JOB_COLUMN_ORDER: readonly JobColumnId[] = [
 ];
 
 /** Always rendered, never offered in the picker. */
-export const FIXED_JOB_COLUMNS: readonly JobColumnId[] = ['job', 'status', 'actions'];
+export const FIXED_JOB_COLUMNS: readonly JobColumnId[] = ['status', 'actions'];
 
 export interface JobColumnOption {
-  id: Exclude<JobColumnId, 'job' | 'status' | 'actions'>;
+  id: Exclude<JobColumnId, 'status' | 'actions'>;
   /** i18n key for the picker label and the table header. */
   labelKey: string;
 }
 
 export const OPTIONAL_JOB_COLUMNS: readonly JobColumnOption[] = [
+  { id: 'job', labelKey: 'control.jobs.colJob' },
   { id: 'destination', labelKey: 'control.jobs.colDestination' },
   { id: 'station', labelKey: 'control.jobs.colStation' },
   { id: 'received', labelKey: 'control.jobs.colReceived' },
@@ -76,9 +77,12 @@ export const OPTIONAL_JOB_COLUMNS: readonly JobColumnOption[] = [
   { id: 'error', labelKey: 'control.jobs.detailErrorCode' },
 ];
 
-/** The shipped look: destination + received, matching the four-question redesign. */
-export const DEFAULT_JOB_COLUMNS: readonly Exclude<JobColumnId, 'job' | 'status' | 'actions'>[] =
-  ['destination', 'received'];
+/** The shipped look: reference + destination + received, matching the redesign. */
+export const DEFAULT_JOB_COLUMNS: readonly Exclude<JobColumnId, 'status' | 'actions'>[] = [
+  'job',
+  'destination',
+  'received',
+];
 
 /** Incoming-value columns are a table, not a payload dump. */
 export const MAX_PAYLOAD_COLUMNS = 3;
