@@ -9,8 +9,10 @@
  *   - counts come from `countStatusBuckets`, the same module the page's status
  *     chips use, so a cinema tile can never disagree with the chip above the
  *     list;
- *   - "needs review" is `jobNeedsAttention`, the single definition shared with
- *     the verdict table (never a second status list);
+ *   - "needs review" is `jobNeedsAttention` minus the operator's acknowledgement,
+ *     the single definition shared with the verdict table (never a second status
+ *     list), so a job the list has moved to "other" cannot still glow amber on
+ *     the wall;
  *   - only the time-window math (arrivals in the last N minutes, the 30-minute
  *     throughput ladder) is new here, and it is deliberately plain arithmetic
  *     with an explicit `now` so it stays testable without a clock.
@@ -38,6 +40,8 @@ export interface CinemaJob {
   payload?: Record<string, unknown>;
   payloadSnapshot?: string;
   metadata?: Record<string, unknown>;
+  /** Control-plane acknowledgement: an operator already checked this outcome. */
+  reviewedAt?: string;
 }
 
 /** One station as the board lists it. Station names are display strings. */
@@ -49,6 +53,31 @@ export interface CinemaStation {
 }
 
 export type CinemaTone = 'printed' | 'active' | 'attention' | 'other';
+
+/**
+ * The optional panels around the feed. The feed itself is never a choice: it is
+ * the reason the board exists, so a "no panels" board cannot be configured.
+ */
+export const CINEMA_PANELS = ['flow', 'stations', 'ticker'] as const;
+
+export type CinemaPanel = (typeof CINEMA_PANELS)[number];
+
+/**
+ * Read the `cinemaPanels` URL value. Missing, unknown or empty input keeps the
+ * full board rather than producing a stripped one, so a hand-typed or stale
+ * kiosk URL can never leave the wall showing less than the default.
+ */
+export function parseCinemaPanels(raw: string | null): CinemaPanel[] {
+  if (raw === null) return [...CINEMA_PANELS];
+  const wanted = new Set(
+    raw
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  );
+  const kept = CINEMA_PANELS.filter((panel) => wanted.has(panel));
+  return kept.length > 0 ? kept : [...CINEMA_PANELS];
+}
 
 /**
  * Four visual families, derived from the same buckets as the page:
@@ -72,6 +101,28 @@ export function cinemaTone(status: string): CinemaTone {
 
 export function isStationOnline(connectionState: string): boolean {
   return connectionState === 'ONLINE';
+}
+
+/**
+ * Whether the board should still ask a human about this job: the shared verdict
+ * *and* not yet acknowledged by an operator. Same rule as the NEEDS_REVIEW case
+ * in `matchesStatusBucket`, so the board's tile and the page's chip above the
+ * list can never count different rows.
+ */
+export function cinemaNeedsReview(job: CinemaJob): boolean {
+  return !job.reviewedAt && jobNeedsAttention(job.status);
+}
+
+/**
+ * The tone one job shows. An acknowledged outcome keeps the station's real
+ * status but leaves the attention family, because the list files it under
+ * "other" - the acknowledgement is a triage fact, not print evidence, so a board
+ * that still painted it amber would send someone to a printer that was already
+ * checked.
+ */
+export function cinemaJobTone(job: CinemaJob): CinemaTone {
+  if (job.reviewedAt && jobNeedsAttention(job.status)) return 'other';
+  return cinemaTone(job.status);
 }
 
 function toMs(createdAt: string): number | null {
@@ -114,7 +165,7 @@ export function buildCinemaKpis(
   stations: readonly CinemaStation[],
   now: number,
 ): CinemaKpis {
-  const counts = countStatusBuckets(jobs);
+  const counts = countStatusBuckets(jobs, { isAttention: cinemaNeedsReview });
   const tenMinutesAgo = now - 10 * CINEMA_MINUTE_MS;
   const hourAgo = now - 60 * CINEMA_MINUTE_MS;
 
@@ -183,7 +234,7 @@ export function buildThroughput(
     const bucket = buckets[index];
     if (!bucket) continue;
     bucket.total += 1;
-    bucket[cinemaTone(job.status)] += 1;
+    bucket[cinemaJobTone(job)] += 1;
   }
 
   return buckets;
@@ -213,7 +264,7 @@ export interface CinemaStationRow {
  */
 export function buildStationRows(stations: readonly CinemaStation[]): CinemaStationRow[] {
   const rows = stations.map((station) => {
-    const counts = countStatusBuckets(station.jobs);
+    const counts = countStatusBuckets(station.jobs, { isAttention: cinemaNeedsReview });
     const lastMs = latestJobMs(station.jobs);
     return {
       deviceId: station.deviceId,

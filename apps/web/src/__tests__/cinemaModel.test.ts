@@ -4,11 +4,14 @@ import {
   buildStationRows,
   buildThroughput,
   cinemaJobLabel,
+  cinemaJobTone,
+  cinemaNeedsReview,
   cinemaTone,
   describeCinemaFields,
   flowPeak,
   formatClockTime,
   isNewArrival,
+  parseCinemaPanels,
   recentJobs,
   type CinemaJob,
   type CinemaStation,
@@ -51,6 +54,42 @@ describe('cinemaTone', () => {
   });
 });
 
+describe('parseCinemaPanels', () => {
+  it('keeps the full board for a missing, empty or unknown value', () => {
+    expect(parseCinemaPanels(null)).toEqual(['flow', 'stations', 'ticker']);
+    expect(parseCinemaPanels('')).toEqual(['flow', 'stations', 'ticker']);
+    expect(parseCinemaPanels('nonsense')).toEqual(['flow', 'stations', 'ticker']);
+    expect(parseCinemaPanels(' , ')).toEqual(['flow', 'stations', 'ticker']);
+  });
+
+  it('keeps only the requested panels, in the canonical order', () => {
+    expect(parseCinemaPanels('ticker,flow')).toEqual(['flow', 'ticker']);
+    expect(parseCinemaPanels(' stations ')).toEqual(['stations']);
+    expect(parseCinemaPanels('flow,unknown')).toEqual(['flow']);
+  });
+});
+
+describe('cinemaNeedsReview and cinemaJobTone', () => {
+  it('drops an acknowledged outcome out of the attention family, like the list does', () => {
+    const reviewed = job({ id: 'ack', status: 'UNVERIFIED', reviewedAt: '2026-11-18T10:00:00.000Z' });
+    expect(cinemaNeedsReview(reviewed)).toBe(false);
+    expect(cinemaJobTone(reviewed)).toBe('other');
+  });
+
+  it('keeps an unacknowledged outcome in the attention family', () => {
+    const open = job({ id: 'open', status: 'UNVERIFIED' });
+    expect(cinemaNeedsReview(open)).toBe(true);
+    expect(cinemaJobTone(open)).toBe('attention');
+  });
+
+  it('leaves a non-attention status in its own family even when acknowledged', () => {
+    const reviewedAt = '2026-11-18T10:00:00.000Z';
+    expect(cinemaJobTone(job({ id: 'ok', status: 'SUCCESS', reviewedAt }))).toBe('printed');
+    expect(cinemaJobTone(job({ id: 'busy', status: 'PRINTING', reviewedAt }))).toBe('active');
+    expect(cinemaNeedsReview(job({ id: 'ok', status: 'SUCCESS', reviewedAt }))).toBe(false);
+  });
+});
+
 describe('buildCinemaKpis', () => {
   it('derives counts from the shared bucket module, never a second status list', () => {
     const jobs = [
@@ -67,6 +106,16 @@ describe('buildCinemaKpis', () => {
       printed: 1,
       other: 1,
     });
+  });
+
+  it('counts an acknowledged outcome as other, matching the page chips', () => {
+    const jobs = [
+      job({ id: 'open', status: 'UNVERIFIED' }),
+      job({ id: 'ack', status: 'UNVERIFIED', reviewedAt: '2026-11-18T10:00:00.000Z' }),
+      job({ id: 'ack-timeout', status: 'TIMEOUT', reviewedAt: '2026-11-18T10:00:00.000Z' }),
+    ];
+    const kpis = buildCinemaKpis(jobs, [], NOW);
+    expect(kpis).toMatchObject({ total: 3, needsReview: 1, other: 2, printed: 0 });
   });
 
   it('counts arrivals inside the ten-minute and one-hour windows only', () => {
@@ -139,6 +188,22 @@ describe('buildThroughput', () => {
     expect(flowPeak(buckets)).toBe(0);
   });
 
+  it('stacks an acknowledged outcome as other instead of attention', () => {
+    const buckets = buildThroughput(
+      [
+        job({
+          id: 'ack',
+          status: 'FAILED',
+          createdAt: new Date(NOW - 1_000).toISOString(),
+          reviewedAt: '2026-11-18T10:00:00.000Z',
+        }),
+      ],
+      NOW,
+      30,
+    );
+    expect(buckets[29]!).toMatchObject({ total: 1, attention: 0, other: 1 });
+  });
+
   it('reports the peak minute', () => {
     const jobs = [
       job({ id: 'a', createdAt: new Date(NOW - 3 * MINUTE).toISOString() }),
@@ -187,6 +252,19 @@ describe('buildStationRows', () => {
       }),
     ]);
     expect(rows[0]).toMatchObject({ needsReview: 2, inProgress: 1, total: 3, lastJobAt: newest });
+  });
+
+  it('drops acknowledged outcomes from the per-station review count', () => {
+    const rows = buildStationRows([
+      station({
+        deviceId: 'dev-a',
+        jobs: [
+          job({ id: '1', status: 'UNVERIFIED' }),
+          job({ id: '2', status: 'FAILED', reviewedAt: '2026-11-18T10:00:00.000Z' }),
+        ],
+      }),
+    ]);
+    expect(rows[0]).toMatchObject({ needsReview: 1, total: 2 });
   });
 });
 

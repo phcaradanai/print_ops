@@ -31,13 +31,15 @@ import {
   buildStationRows,
   buildThroughput,
   cinemaJobLabel,
-  cinemaTone,
+  cinemaJobTone,
+  CINEMA_PANELS,
   flowPeak,
   formatClockTime,
   isNewArrival,
   recentJobs,
   type CinemaFlowBucket,
   type CinemaJob,
+  type CinemaPanel,
   type CinemaStation,
   type CinemaTone,
 } from './cinemaModel.js';
@@ -179,6 +181,11 @@ export interface CinemaBoardProps {
   showReference?: boolean;
   /** How much of the row the value label takes; the operator picks per screen. */
   labelWidth?: 'narrow' | 'balanced' | 'wide';
+  /**
+   * Optional panels around the feed. Absent means the full board, so a caller
+   * that does not care gets the complete wall display.
+   */
+  panels?: readonly CinemaPanel[];
   lastSuccessAt: number | null;
   /** True until the first feed response arrives; the board must not claim "Live". */
   loading: boolean;
@@ -204,6 +211,7 @@ export function CinemaBoard(props: CinemaBoardProps) {
     displayFields = [],
     showReference = true,
     labelWidth = 'balanced',
+    panels = CINEMA_PANELS,
     lastSuccessAt,
     loading,
     refreshing,
@@ -343,8 +351,19 @@ export function CinemaBoard(props: CinemaBoardProps) {
   const hiddenStations = Math.max(0, stationRows.length - shownStations.length);
   // A one-station board is about that station: no fleet ladder, and its
   // connection moves into the header where the operator already looks.
-  const showStationsPanel = stationRows.length > 1;
   const singleStation = stationRows.length === 1 ? stationRows[0] : null;
+  // The panel choice is a floor, not an override: a fleet ladder with nothing to
+  // compare still hides itself, and the flow keeps the full top row either way.
+  const showFlowPanel = panels.includes('flow');
+  const showStationsPanel = panels.includes('stations') && stationRows.length > 1;
+  const showTicker = panels.includes('ticker');
+  const bodyClassName = [
+    'cinema-body',
+    showStationsPanel ? '' : 'cinema-body--single',
+    showFlowPanel ? '' : 'cinema-body--no-flow',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   const board = (
     <div
@@ -460,7 +479,8 @@ export function CinemaBoard(props: CinemaBoardProps) {
         </div>
       </section>
 
-      <div className={`cinema-body${showStationsPanel ? '' : ' cinema-body--single'}`}>
+      <div className={bodyClassName}>
+        {showFlowPanel && (
         <section className="cinema-card cinema-flow" aria-label={t('control.cinema.flowTitle')}>
           <div className="cinema-card-head">
             <h2 className="cinema-card-title">{t('control.cinema.flowTitle')}</h2>
@@ -500,6 +520,7 @@ export function CinemaBoard(props: CinemaBoardProps) {
             </span>
           </div>
         </section>
+        )}
 
         {showStationsPanel && (
         <section className="cinema-card cinema-stations" aria-label={t('control.cinema.stationsTitle')}>
@@ -615,20 +636,22 @@ export function CinemaBoard(props: CinemaBoardProps) {
         </section>
       </div>
 
-      <footer className="cinema-ticker" aria-hidden="true">
-        <div className="cinema-ticker-track">
-          {[...ticker, ...ticker].map((job, index) => (
-            <span className={`cinema-ticker-item cinema-ticker-item--${toneOf(job)}`} key={`${job.id}-${index}`}>
-              <span className="cinema-ticker-time">{formatClockTime(job.createdAt, locale)}</span>
-              <span className="cinema-ticker-ref">
-                {cinemaJobLabel(job, displayFields) || (job.requestId ?? job.id)}
+      {showTicker && (
+        <footer className="cinema-ticker" aria-hidden="true">
+          <div className="cinema-ticker-track">
+            {[...ticker, ...ticker].map((job, index) => (
+              <span className={`cinema-ticker-item cinema-ticker-item--${toneOf(job)}`} key={`${job.id}-${index}`}>
+                <span className="cinema-ticker-time">{formatClockTime(job.createdAt, locale)}</span>
+                <span className="cinema-ticker-ref">
+                  {cinemaJobLabel(job, displayFields) || (job.requestId ?? job.id)}
+                </span>
+                <span className="cinema-ticker-station">{stationNames.get(job.deviceId) ?? job.deviceId}</span>
+                <span className="cinema-ticker-status">{job.status}</span>
               </span>
-              <span className="cinema-ticker-station">{stationNames.get(job.deviceId) ?? job.deviceId}</span>
-              <span className="cinema-ticker-status">{job.status}</span>
-            </span>
-          ))}
-        </div>
-      </footer>
+            ))}
+          </div>
+        </footer>
+      )}
     </div>
   );
 
@@ -636,7 +659,7 @@ export function CinemaBoard(props: CinemaBoardProps) {
 }
 
 function toneOf(job: CinemaJob): CinemaTone {
-  return cinemaTone(job.status);
+  return cinemaJobTone(job);
 }
 
 function FlowColumn({ bucket, peak }: { bucket: CinemaFlowBucket; peak: number }) {
