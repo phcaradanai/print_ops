@@ -1,3 +1,29 @@
+# Web Control 1.0.13 / PrintOps App 0.1.50
+
+Published for `linux/amd64` from commit `6b000a1` (2026-11-18).
+
+- **App**: the API carries Web Control retention for `control_device_jobs`
+  (per-station cap), `control_audit_logs` retention and archive expiry; the
+  normal operator web bundle is unchanged. The Incoming Jobs pagination and
+  redesign are in the Web Control web bundle.
+- **Web Control**: API retention + Web UI (pagination, four-question Incoming
+  Jobs layout, bilingual copy).
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-app:0.1.50` | `sha256:9da005725de3ab45330f979fc0add1b4beef8ec3fe49a85dd3afd0241395d5b2` |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.13` | `sha256:935395686473587c76c8c4f259b3d6fa0539f5da11a68d1833dc5cb7a36488a9` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.13` | `sha256:356bc80b921363ab4ddf7f87bbbb0ebb1027f0928c189931d3181dc81d8ed09e` |
+
+`node scripts/smoke-app-image.mjs registry.pg.xenex.io/printops-app:0.1.50`
+passed: health/version, SPA/assets/deep links, owner/login, SQLite persistence,
+runner binary, single API worker.
+
+Deploy with `PRINTOPS_APP_VERSION=0.1.50` and
+`PRINTOPS_CONTROL_PLANE_VERSION=1.0.13`. Both images include the retention
+changes; update stations if the station-local `control_device_jobs` mirror must
+also be pruned.
+
 # Web Control 1.0.12
 
 Published for `linux/amd64` with `node scripts/publish-control-plane-images.mjs`
