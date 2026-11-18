@@ -33,12 +33,17 @@ import {
 } from '../lib/controlJobsView.js';
 import {
   DEFAULT_JOB_COLUMNS,
+  MAX_PAYLOAD_COLUMNS,
   OPTIONAL_JOB_COLUMNS,
+  isPayloadColumnId,
   normalizeJobColumns,
+  payloadColumnId,
+  payloadColumnKey,
   readStoredJobColumns,
   visibleJobColumns,
   writeStoredJobColumns,
   type JobColumnId,
+  type JobTableColumn,
 } from '../lib/jobColumns.js';
 import {
   Alert,
@@ -317,7 +322,7 @@ export default function WebControlJobs() {
    * Which list columns to show. A workstation preference (like the locale), so
    * it lives in localStorage, not the URL - it is presentation, not a filter.
    */
-  const [jobColumns, setJobColumns] = useState<JobColumnId[]>(() => readStoredJobColumns());
+  const [jobColumns, setJobColumns] = useState<string[]>(() => readStoredJobColumns());
   const [reprintTargets, setReprintTargets] = useState<ControlSyncedJobItem[]>([]);
   const [reprintCopies, setReprintCopies] = useState(1);
   const [reprintReason, setReprintReason] = useState('');
@@ -400,6 +405,22 @@ export default function WebControlJobs() {
     const rest = described.filter((option) => !cinemaFields.includes(option.key));
     return [...selected, ...rest];
   }, [scopeJobs, cinemaFields]);
+
+  /**
+   * Incoming payload keys offered as table columns. Selected keys stay first (and
+   * stay listed even when the current scope no longer carries them) so they can
+   * always be removed.
+   */
+  const incomingColumnChoices = useMemo(() => {
+    const described = describeCinemaFields(scopeJobs);
+    const chosen = jobColumns.filter((id) => isPayloadColumnId(id)).map(payloadColumnKey);
+    const byKey = new Map(described.map((option) => [option.key, option]));
+    const selected = chosen.map(
+      (key) => byKey.get(key) ?? { key, count: 0, sample: '' },
+    );
+    const rest = described.filter((option) => !chosen.includes(option.key));
+    return [...selected, ...rest];
+  }, [scopeJobs, jobColumns]);
 
   /**
    * Base set: station, search, dates and payload filters, with the status
@@ -612,19 +633,27 @@ export default function WebControlJobs() {
   /** All stations shows the station under the printer unless it has its own column. */
   const showStationInDestination = isAllStations && !jobColumns.includes('station');
 
-  const updateJobColumns = useCallback((next: JobColumnId[]) => {
+  const updateJobColumns = useCallback((next: string[]) => {
     const normalized = normalizeJobColumns(next);
     setJobColumns(normalized);
     writeStoredJobColumns(normalized);
   }, []);
 
   const toggleJobColumn = useCallback(
-    (id: JobColumnId) => {
-      updateJobColumns(
-        jobColumns.includes(id)
-          ? jobColumns.filter((entry) => entry !== id)
-          : [...jobColumns, id],
-      );
+    (id: string) => {
+      if (jobColumns.includes(id)) {
+        updateJobColumns(jobColumns.filter((entry) => entry !== id));
+        return;
+      }
+      // The payload-column cap is enforced here as well as in the dialog, so a
+      // stale checkbox state can never overfill the table.
+      if (
+        isPayloadColumnId(id) &&
+        jobColumns.filter((entry) => isPayloadColumnId(entry)).length >= MAX_PAYLOAD_COLUMNS
+      ) {
+        return;
+      }
+      updateJobColumns([...jobColumns, id]);
     },
     [jobColumns, updateJobColumns],
   );
@@ -961,8 +990,22 @@ export default function WebControlJobs() {
    * value can be blank; they render an em dash rather than an empty cell so a
    * column never looks broken.
    */
-  const renderJobCell = (job: ControlSyncedJobItem, column: JobColumnId): ReactNode => {
-    switch (column) {
+  const renderJobCell = (job: ControlSyncedJobItem, column: JobTableColumn): ReactNode => {
+    if (column.kind === 'payload') {
+      const payload = extractJobPayload(job);
+      const lower = column.key.toLocaleLowerCase();
+      const value =
+        payload[column.key] ??
+        Object.entries(payload).find(([key]) => key.toLocaleLowerCase() === lower)?.[1];
+      return value ? (
+        <Mono size="label" wrap className="wcj-payload-cell" title={value}>
+          {value}
+        </Mono>
+      ) : (
+        emptyCell
+      );
+    }
+    switch (column.id) {
       case 'job':
         return (
           <Mono size="label" weight="semibold" wrap title={job.requestId || job.id}>
@@ -1068,7 +1111,11 @@ export default function WebControlJobs() {
           </DataCell>
         )}
         {visibleColumns.map((column) => (
-          <DataCell key={column} label={jobColumnLabel(column)} actions={column === 'actions'}>
+          <DataCell
+            key={column.id}
+            label={column.kind === 'payload' ? column.key : jobColumnLabel(column.id)}
+            actions={column.kind === 'builtin' && column.id === 'actions'}
+          >
             {renderJobCell(job, column)}
           </DataCell>
         ))}
@@ -1092,7 +1139,13 @@ export default function WebControlJobs() {
             </DataHead>
           )}
           {visibleColumns.map((column) => (
-            <DataHead key={column}>{jobColumnLabel(column)}</DataHead>
+            <DataHead key={column.id}>
+              {column.kind === 'payload' ? (
+                <Mono size="label">{column.key}</Mono>
+              ) : (
+                jobColumnLabel(column.id)
+              )}
+            </DataHead>
           ))}
         </tr>
       </thead>
@@ -2009,6 +2062,40 @@ export default function WebControlJobs() {
                 label={t(option.labelKey)}
               />
             ))}
+          </Stack>
+          <Stack gap="xs">
+            <Text size="label" weight="semibold" tone="muted">
+              {t('control.jobs.columnsIncoming')}
+            </Text>
+            {incomingColumnChoices.length === 0 ? (
+              <Text size="label" tone="muted">
+                {t('control.jobs.columnsNoIncoming')}
+              </Text>
+            ) : (
+              incomingColumnChoices.map((option) => {
+                const id = payloadColumnId(option.key);
+                const checked = jobColumns.includes(id);
+                const atLimit =
+                  jobColumns.filter((entry) => isPayloadColumnId(entry)).length >=
+                  MAX_PAYLOAD_COLUMNS;
+                return (
+                  <Checkbox
+                    key={option.key}
+                    checked={checked}
+                    disabled={!checked && atLimit}
+                    onChange={() => toggleJobColumn(id)}
+                    label={<Mono size="label">{option.key}</Mono>}
+                    description={
+                      option.count === 0
+                        ? t('control.jobs.columnsNoValue')
+                        : `${option.sample} · ${formatMsg(t('control.jobs.columnsValueCount'), {
+                            count: option.count,
+                          })}`
+                    }
+                  />
+                );
+              })
+            )}
           </Stack>
         </Stack>
       </Dialog>

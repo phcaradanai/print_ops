@@ -2,12 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_JOB_COLUMNS,
   JOB_COLUMNS_STORAGE_KEY,
+  MAX_PAYLOAD_COLUMNS,
+  isPayloadColumnId,
   normalizeJobColumns,
   parseStoredJobColumns,
+  payloadColumnId,
+  payloadColumnKey,
   readStoredJobColumns,
   serializeJobColumns,
   visibleJobColumns,
   writeStoredJobColumns,
+  type JobTableColumn,
 } from '../lib/jobColumns.js';
 
 function memoryStorage(initial: Record<string, string> = {}) {
@@ -21,10 +26,15 @@ function memoryStorage(initial: Record<string, string> = {}) {
   };
 }
 
+/** Built-in ids and payload keys in render order, for readable assertions. */
+function rendered(columns: JobTableColumn[]): string[] {
+  return columns.map((column) => (column.kind === 'builtin' ? column.id : column.key));
+}
+
 describe('job columns', () => {
   it('ships destination + received by default, with job, status and actions fixed', () => {
     expect([...DEFAULT_JOB_COLUMNS]).toEqual(['destination', 'received']);
-    expect(visibleJobColumns(DEFAULT_JOB_COLUMNS)).toEqual([
+    expect(rendered(visibleJobColumns(DEFAULT_JOB_COLUMNS))).toEqual([
       'job',
       'destination',
       'status',
@@ -34,7 +44,7 @@ describe('job columns', () => {
   });
 
   it('keeps the canonical order regardless of click order', () => {
-    expect(visibleJobColumns(['error', 'copies', 'destination'])).toEqual([
+    expect(rendered(visibleJobColumns(['error', 'copies', 'destination']))).toEqual([
       'job',
       'destination',
       'status',
@@ -42,7 +52,7 @@ describe('job columns', () => {
       'error',
       'actions',
     ]);
-    expect(visibleJobColumns(['template', 'station'])).toEqual([
+    expect(rendered(visibleJobColumns(['template', 'station']))).toEqual([
       'job',
       'station',
       'status',
@@ -53,15 +63,54 @@ describe('job columns', () => {
 
   it('never lets the fixed columns be removed or duplicated', () => {
     const all = visibleJobColumns(['job', 'status', 'actions', 'station', 'station']);
-    expect(all).toEqual(['job', 'station', 'status', 'actions']);
-    expect(visibleJobColumns([])).toEqual(['job', 'status', 'actions']);
+    expect(rendered(all)).toEqual(['job', 'station', 'status', 'actions']);
+    expect(rendered(visibleJobColumns([]))).toEqual(['job', 'status', 'actions']);
   });
 
-  it('drops unknown ids and duplicates from stored input', () => {
+  it('puts incoming-value columns after the job fields and before Actions, in click order', () => {
+    const columns = visibleJobColumns(['payload:patient_name', 'copies', 'payload:hn']);
+    expect(rendered(columns)).toEqual([
+      'job',
+      'status',
+      'copies',
+      'patient_name',
+      'hn',
+      'actions',
+    ]);
+    expect(columns.filter((column) => column.kind === 'payload')).toEqual([
+      { kind: 'payload', id: 'payload:patient_name', key: 'patient_name' },
+      { kind: 'payload', id: 'payload:hn', key: 'hn' },
+    ]);
+  });
+
+  it('caps incoming-value columns so the table stays a table', () => {
+    const selected = ['hn', 'patient_name', 'ward', 'room'].map(payloadColumnId);
+    const payloads = visibleJobColumns(selected).filter((column) => column.kind === 'payload');
+    expect(payloads).toHaveLength(MAX_PAYLOAD_COLUMNS);
+    expect(payloads.map((column) => (column.kind === 'payload' ? column.key : ''))).toEqual([
+      'hn',
+      'patient_name',
+      'ward',
+    ]);
+  });
+
+  it('round-trips payload column ids and rejects malformed ones', () => {
+    expect(isPayloadColumnId('payload:hn')).toBe(true);
+    expect(isPayloadColumnId('payload:')).toBe(false);
+    expect(isPayloadColumnId('hn')).toBe(false);
+    expect(payloadColumnKey('payload:hn')).toBe('hn');
+
+    expect(normalizeJobColumns(['payload:', 'payload:hn', 'hn', 'legacy', 'payload:hn'])).toEqual([
+      'payload:hn',
+    ]);
+  });
+
+  it('drops unknown built-in ids but keeps valid payload ids from stored input', () => {
     expect(normalizeJobColumns(['copies', 'legacy_column', 'copies', 'source'])).toEqual([
       'copies',
       'source',
     ]);
+    expect(parseStoredJobColumns('["copies","payload:hn"]')).toEqual(['copies', 'payload:hn']);
   });
 
   it('falls back to the default for unreadable, non-array or foreign stored values', () => {
@@ -75,9 +124,9 @@ describe('job columns', () => {
 
   it('round-trips through storage', () => {
     const storage = memoryStorage();
-    writeStoredJobColumns(['runner', 'copies'], storage);
-    expect(storage.read(JOB_COLUMNS_STORAGE_KEY)).toBe('["copies","runner"]');
-    expect(readStoredJobColumns(storage)).toEqual(['copies', 'runner']);
+    writeStoredJobColumns(['runner', 'payload:hn', 'copies'], storage);
+    expect(storage.read(JOB_COLUMNS_STORAGE_KEY)).toBe('["copies","runner","payload:hn"]');
+    expect(readStoredJobColumns(storage)).toEqual(['copies', 'runner', 'payload:hn']);
   });
 
   it('reads the default when storage is missing or throws', () => {

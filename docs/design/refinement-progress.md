@@ -285,19 +285,23 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
 ## 2026-11-18 — Incoming Jobs list columns
 
 - The list's five columns were fixed. A **Columns** picker now toggles Destination,
-  Station, Received, Copies, Template, Source, Runner and Error code; Job, Status
-  and Actions stay fixed. Order is canonical (never click order), an empty value
-  renders an em dash, and adding the Station column stops the destination cell
-  from repeating the station.
-- New pure module `lib/jobColumns.ts` with 7 unit tests. The row and the head now
+  Station, Received, Copies, Template, Source, Runner, Error code **and any
+  incoming payload key** (up to three, in click order). Job, Status and Actions
+  stay fixed. Job fields keep a canonical order, an empty value renders an em
+  dash, and adding the Station column stops the destination cell from repeating
+  the station.
+- Incoming-value columns are offered by key with a sample value and job count from
+  the same `extractJobPayload` projection the drawer uses; a selected key that
+  leaves the scope stays listed and renders em dashes rather than disappearing.
+  Long values clamp to two lines with the full value in the title.
+- New pure module `lib/jobColumns.ts` with 10 unit tests. The row and the head now
   render from one column list, so the two cannot drift.
 - The choice is a workstation preference in `localStorage`
   (`printops-control-jobs-columns`), like the locale - not URL state, because it
   is presentation rather than a filter. Unreadable stored ids fall back to the
-  shipped default (Destination + Received).
-- Verified: 783 web unit tests, typecheck, Control build, 37/37 Incoming Jobs
-  Playwright tests (1 new column case: add, persist across reload, remove a
-  default, reset).
+  shipped default (Destination + Received); valid payload ids survive.
+- Verified: 786 web unit tests, typecheck, Control build, 38/38 Incoming Jobs
+  Playwright tests (2 new column cases: job fields and incoming payload keys).
 
 ## Next, in order
 

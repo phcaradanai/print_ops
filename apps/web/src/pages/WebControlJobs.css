@@ -12,3 +12,13 @@
     max-width: none;
   }
 }
+
+/* An incoming-value column can hold long JSON. Clamp the cell to two lines so
+   one row cannot grow without bound; the full value stays in the title. */
+.wcj-payload-cell {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}

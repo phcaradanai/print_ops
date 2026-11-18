@@ -196,24 +196,33 @@ languages, at both target sizes.
 
 The five-column row above is the shipped default, not a hard constraint. A
 **Columns** control in the station bar opens a picker for the optional columns:
-Destination, Station, Received, Copies, Template, Source, Runner and Error code.
-Defaults stay Destination + Received, so the page looks unchanged until someone
-opts in, which also keeps the "no template column" decision above intact by
-default.
+Destination, Station, Received, Copies, Template, Source, Runner, Error code, and
+**any incoming payload key** in the current scope. Defaults stay Destination +
+Received, so the page looks unchanged until someone opts in, which also keeps the
+"no template column" decision above intact by default.
 
 - **Fixed columns.** Job, Status and Actions are not offered: a row without its
   identity, its verdict, or a way into the drawer is not a row.
-- **Canonical order.** Optional columns render in a fixed order between Status
-  and Actions, never in click order, so toggling cannot reshuffle the table.
+- **Canonical job-field order.** Optional job fields render in a fixed order
+  between Status and Actions, never in click order, so toggling cannot reshuffle
+  the table.
+- **Incoming-value columns** keep the order they were added, sit after the job
+  fields and before Actions, and are capped at three: the table is not a payload
+  browser, and the drawer still shows every key. Each key is offered with a
+  sample value and the number of jobs that carry it, from the same
+  `extractJobPayload` projection the drawer uses.
+- **A key that leaves the scope stays selected** (rendering em dashes, listed
+  first in the picker) instead of silently disappearing from the table.
 - **Station duplication.** When All stations shows the station under the printer
   in the Destination cell, adding the Station column removes that second line
   instead of printing it twice.
 - **Empty values.** An optional column with no value renders an em dash, not a
-  blank cell.
+  blank cell; a long incoming value is clamped to two lines with the full value
+  in the title.
 - **Persistence.** The choice is a workstation preference stored in
   `localStorage` (`printops-control-jobs-columns`), like the locale. It is not a
   filter, so it never enters the URL; unreadable or unknown stored ids fall back
-  to the shipped default.
+  to the shipped default, while valid payload column ids survive.
 
 ### 3.2 390px
 

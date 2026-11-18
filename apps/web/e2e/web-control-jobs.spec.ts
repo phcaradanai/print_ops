@@ -1601,6 +1601,47 @@ test('L. the column picker adds, removes and remembers list columns', async ({ p
   await expect(restored).not.toContainText('Template');
 });
 
+test('M. incoming payload keys can become list columns', async ({ page }) => {
+  await loadJobs(page, { viewport: { width: 1440, height: 900 }, deviceId: 'dev-john' });
+  await waitForList(page);
+
+  const openPicker = async () => {
+    await page.getByRole('button', { name: s('en').columnsButton, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: s('en').columnsTitle });
+    await expect(dialog).toBeVisible();
+    return dialog;
+  };
+
+  let dialog = await openPicker();
+  // Incoming values are offered by key, with a sample and how many jobs carry it.
+  await expect(dialog.getByText('Incoming values', { exact: true })).toBeVisible();
+  await dialog.getByRole('checkbox', { name: /^hn\b/ }).check();
+  await page.keyboard.press('Escape');
+
+  const head = page.locator('thead tr').first();
+  await expect(head).toContainText('hn');
+  await expect(rowFor(page, 'REQ-UNVERIFIED-0001').locator('td[data-label="hn"]')).toHaveText(
+    '123456',
+  );
+
+  // A payload column is a workstation preference too.
+  await page.reload();
+  await waitForList(page);
+  await expect(page.locator('thead tr').first()).toContainText('hn');
+  await expect(rowFor(page, 'REQ-UNVERIFIED-0001').locator('td[data-label="hn"]')).toHaveText(
+    '123456',
+  );
+
+  // Three incoming columns are allowed; a fourth is disabled.
+  dialog = await openPicker();
+  await dialog.getByRole('checkbox', { name: /^patient_name/ }).check();
+  await dialog.getByRole('checkbox', { name: /^prescription/ }).check();
+  await expect(dialog.getByRole('checkbox', { name: /^long_payload_key/ })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('thead tr').first()).toContainText('patient_name');
+  await expect(page.locator('thead tr').first()).toContainText('prescription');
+});
+
 // ---------------------------------------------------------------------------
 // Screenshots + measured evidence
 // ---------------------------------------------------------------------------

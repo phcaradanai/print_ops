@@ -2,23 +2,25 @@
  * Which columns the Incoming Jobs list shows.
  *
  * The redesigned list settled on Job, Destination, Status, Received, Actions.
- * Operators still need a couple of extra facts on some sites (copies, template,
- * source, runner, error code), so those become opt-in columns behind a picker
- * instead of being forced into every row.
+ * Operators still need extra facts on some sites: job fields (copies, template,
+ * source, runner, error code) and, above all, the values that arrived in the
+ * incoming payload (`hn`, `patient_name`, ...). Both become opt-in columns
+ * behind one picker instead of being forced into every row.
  *
- * Two rules keep the list from becoming unrecognisable:
+ * Rules that keep the list recognisable:
  *
  *   - **Job, Status and Actions are fixed.** A row without its identity, its
  *     verdict, or a way into the drawer is not a row; the picker never offers
  *     them and the render path always includes them.
- *   - **The order is canonical, not click order.** Toggling a column must not
- *     reshuffle the table under the operator's cursor.
- *
- * The choice is a workstation preference (like the locale), stored in
- * localStorage rather than the URL: it is not a filter, and a URL must never
- * imply one. A stored value is validated on read, so a renamed or removed column
- * in a future build falls back to the shipped default instead of rendering an
- * unknown cell.
+ *   - **Job fields keep a canonical order**, never click order, so toggling a
+ *     built-in column cannot reshuffle the table.
+ *   - **Incoming-value columns keep the order they were added**, sit after the
+ *     job fields and before Actions, and are capped at three: a table is not a
+ *     payload browser, and the drawer already shows every key.
+ *   - **The selection is a workstation preference** (like the locale), stored in
+ *     localStorage rather than the URL: it is presentation, not a filter. Stored
+ *     values are validated on read, and a payload key that disappears from the
+ *     feed stays selected (rendering em dashes) until the operator removes it.
  */
 
 export type JobColumnId =
@@ -34,7 +36,12 @@ export type JobColumnId =
   | 'error'
   | 'actions';
 
-/** Render order, left to right. Optional columns sit between Status and Actions. */
+export const PAYLOAD_COLUMN_PREFIX = 'payload:';
+/** A dynamic column backed by one incoming payload key. */
+export type PayloadColumnId = `${typeof PAYLOAD_COLUMN_PREFIX}${string}`;
+export type JobColumnSelection = JobColumnId | PayloadColumnId;
+
+/** Render order of the built-in columns. */
 export const JOB_COLUMN_ORDER: readonly JobColumnId[] = [
   'job',
   'destination',
@@ -73,27 +80,79 @@ export const OPTIONAL_JOB_COLUMNS: readonly JobColumnOption[] = [
 export const DEFAULT_JOB_COLUMNS: readonly Exclude<JobColumnId, 'job' | 'status' | 'actions'>[] =
   ['destination', 'received'];
 
+/** Incoming-value columns are a table, not a payload dump. */
+export const MAX_PAYLOAD_COLUMNS = 3;
+
 export const JOB_COLUMNS_STORAGE_KEY = 'printops-control-jobs-columns';
 
 type OptionalColumnId = JobColumnOption['id'];
 
 const OPTIONAL_IDS: ReadonlySet<string> = new Set(OPTIONAL_JOB_COLUMNS.map((option) => option.id));
 
-/** Known ids only, deduplicated, canonical order. */
-export function normalizeJobColumns(input: readonly string[]): OptionalColumnId[] {
-  const wanted = new Set(input.filter((id) => OPTIONAL_IDS.has(id)));
-  return OPTIONAL_JOB_COLUMNS.map((option) => option.id).filter((id) => wanted.has(id));
+/** One rendered column: a built-in field or an incoming payload key. */
+export type JobTableColumn =
+  | { kind: 'builtin'; id: JobColumnId }
+  | { kind: 'payload'; id: PayloadColumnId; key: string };
+
+export function payloadColumnId(key: string): PayloadColumnId {
+  return `${PAYLOAD_COLUMN_PREFIX}${key}`;
 }
 
-/** The full render list for a selection: fixed columns plus the chosen ones. */
-export function visibleJobColumns(selected: readonly JobColumnId[]): JobColumnId[] {
-  const chosen = new Set(normalizeJobColumns(selected));
-  return JOB_COLUMN_ORDER.filter(
-    (id) => FIXED_JOB_COLUMNS.includes(id) || chosen.has(id as OptionalColumnId),
+export function isPayloadColumnId(id: string): id is PayloadColumnId {
+  return id.startsWith(PAYLOAD_COLUMN_PREFIX) && id.length > PAYLOAD_COLUMN_PREFIX.length;
+}
+
+export function payloadColumnKey(id: string): string {
+  return isPayloadColumnId(id) ? id.slice(PAYLOAD_COLUMN_PREFIX.length) : id;
+}
+
+/**
+ * Known built-in ids only (deduplicated, canonical order), followed by the
+ * payload columns in the order they were chosen. Fixed ids are never part of a
+ * selection: they are rendered unconditionally.
+ */
+export function normalizeJobColumns(input: readonly string[]): JobColumnSelection[] {
+  const wanted = new Set<string>();
+  const payloads: PayloadColumnId[] = [];
+
+  for (const raw of input) {
+    if (typeof raw !== 'string') continue;
+    if (isPayloadColumnId(raw)) {
+      if (!wanted.has(raw)) {
+        wanted.add(raw);
+        payloads.push(raw);
+      }
+      continue;
+    }
+    if (OPTIONAL_IDS.has(raw)) wanted.add(raw);
+  }
+
+  const builtins = OPTIONAL_JOB_COLUMNS.map((option) => option.id).filter((id) =>
+    wanted.has(id),
   );
+  return [...builtins, ...payloads];
 }
 
-export function parseStoredJobColumns(raw: string | null): OptionalColumnId[] {
+/** The full render list for a selection: fixed columns, chosen fields, payload, actions. */
+export function visibleJobColumns(selected: readonly string[]): JobTableColumn[] {
+  const normalized = normalizeJobColumns(selected);
+  const chosen = new Set(normalized.filter((id) => !isPayloadColumnId(id)));
+
+  const builtins: JobTableColumn[] = JOB_COLUMN_ORDER.filter(
+    (id) => FIXED_JOB_COLUMNS.includes(id) || chosen.has(id as OptionalColumnId),
+  ).map((id) => ({ kind: 'builtin', id }));
+
+  const payloads: JobTableColumn[] = normalized
+    .filter(isPayloadColumnId)
+    .slice(0, MAX_PAYLOAD_COLUMNS)
+    .map((id) => ({ kind: 'payload', id, key: payloadColumnKey(id) }));
+
+  const actionsIndex = builtins.findIndex((column) => column.id === 'actions');
+  if (actionsIndex < 0) return [...builtins, ...payloads];
+  return [...builtins.slice(0, actionsIndex), ...payloads, ...builtins.slice(actionsIndex)];
+}
+
+export function parseStoredJobColumns(raw: string | null): JobColumnSelection[] {
   if (raw === null || raw === '') return [...DEFAULT_JOB_COLUMNS];
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -104,7 +163,7 @@ export function parseStoredJobColumns(raw: string | null): OptionalColumnId[] {
   }
 }
 
-export function serializeJobColumns(columns: readonly JobColumnId[]): string {
+export function serializeJobColumns(columns: readonly string[]): string {
   return JSON.stringify(normalizeJobColumns(columns));
 }
 
@@ -119,7 +178,9 @@ function safeLocalStorage(): Storage | null {
   }
 }
 
-export function readStoredJobColumns(storage: ReadableStorage | null = safeLocalStorage()): OptionalColumnId[] {
+export function readStoredJobColumns(
+  storage: ReadableStorage | null = safeLocalStorage(),
+): JobColumnSelection[] {
   if (!storage) return [...DEFAULT_JOB_COLUMNS];
   try {
     return parseStoredJobColumns(storage.getItem(JOB_COLUMNS_STORAGE_KEY));
@@ -129,7 +190,7 @@ export function readStoredJobColumns(storage: ReadableStorage | null = safeLocal
 }
 
 export function writeStoredJobColumns(
-  columns: readonly JobColumnId[],
+  columns: readonly string[],
   storage: WritableStorage | null = safeLocalStorage(),
 ): void {
   if (!storage) return;
