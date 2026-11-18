@@ -36,6 +36,8 @@ services:
       JWT_SECRET: "${PRINTOPS_CONTROL_JWT_SECRET:?Set PRINTOPS_CONTROL_JWT_SECRET to a unique random secret}"
       DB_MODE: sqlite
       SQL_WASM_PATH: /app/node_modules/sql.js/dist/sql-wasm.wasm
+      PRINTOPS_RETENTION_DAYS: "${PRINTOPS_RETENTION_DAYS:-14}"
+      PRINTOPS_RETENTION_MAX_ROWS: "${PRINTOPS_RETENTION_MAX_ROWS:-1000}"
       PRINTOPS_DATA_DIR: /data
       PRINTOPS_DB_PATH: /data/printops.db
       PRINTOPS_DEVICE_IDENTITY_PATH: /data/device-identity.json
@@ -110,7 +112,7 @@ services:
   # 5. App Service: PrintOps App (UI + API)
   app:
     container_name: printops-app
-    image: registry.node1.ch3.local:80/printops-app:${PRINTOPS_APP_VERSION:-0.1.49}
+    image: registry.node1.ch3.local:80/printops-app:${PRINTOPS_APP_VERSION:-0.1.50}
     init: true
     environment:
       PRINTOPS_DEV_SEED: "true"
@@ -143,7 +145,7 @@ services:
   # 6. Runner Service: Go Runner สำหรับดึงงานพิมพ์จาก App ไปส่งออก CUPS
   runner:
     container_name: printops-runner
-    image: registry.node1.ch3.local:80/printops-app:${PRINTOPS_APP_VERSION:-0.1.49}
+    image: registry.node1.ch3.local:80/printops-app:${PRINTOPS_APP_VERSION:-0.1.50}
     command: ["/usr/local/bin/printops-runner", "run"]
     environment:
       PRINTOPS_API_BASE_URL: "http://app:3001"

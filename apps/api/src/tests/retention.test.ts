@@ -51,6 +51,24 @@ function insertAudit(id: string, occurredAt: string) {
   );
 }
 
+function insertControlJob(deviceId: string, jobId: string, status: string, createdAt: string) {
+  const db = getDb();
+  db.run(
+    `INSERT INTO control_device_jobs (device_id, job_id, status, created_at, updated_at, job_json)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [deviceId, jobId, status, createdAt, createdAt, JSON.stringify({ id: jobId, deviceId, status, createdAt })],
+  );
+}
+
+function insertControlAudit(id: string, requestedAt: string) {
+  const db = getDb();
+  db.run(
+    `INSERT INTO control_audit_logs (id, actor, device_id, action, requested_at, metadata_json)
+     VALUES (?, 'tester', 'dev-a', 'ota.command', ?, '{}')`,
+    [id, requestedAt],
+  );
+}
+
 const OLD_DATE = '2000-01-01T00:00:00.000Z';
 const RECENT_DATE = new Date().toISOString();
 
@@ -107,11 +125,88 @@ describe('pruneOldRecords — age-based cutoff', () => {
       tracesDeleted: 0,
       auditLogsDeleted: 0,
       callbackDeliveriesDeleted: 0,
+      controlJobsDeleted: 0,
+      controlAuditLogsDeleted: 0,
+      archivesDeleted: 0,
     });
     const db = getDb();
     const stmt = db.prepare('SELECT COUNT(*) as c FROM jobs');
     stmt.step();
     expect(stmt.getAsObject()['c']).toBe(1);
+    stmt.free();
+  });
+});
+
+describe('pruneOldRecords — Web Control job mirror', () => {
+  it('deletes terminal mirror rows older than the window, keeps in-flight and recent rows', () => {
+    insertControlJob('dev-a', 'old-success', 'SUCCESS', OLD_DATE);
+    insertControlJob('dev-a', 'old-duplicate', 'DUPLICATE_RETURNED', OLD_DATE);
+    insertControlJob('dev-a', 'old-printing', 'PRINTING', OLD_DATE);
+    insertControlJob('dev-a', 'recent-success', 'SUCCESS', RECENT_DATE);
+    insertControlJob('dev-b', 'old-failed', 'FAILED', OLD_DATE);
+
+    const result = pruneOldRecords(getDb(), { retentionDays: 7, maxRows: 0 });
+
+    expect(result.controlJobsDeleted).toBe(3);
+    const db = getDb();
+    const stmt = db.prepare('SELECT device_id, job_id FROM control_device_jobs ORDER BY device_id, job_id');
+    const remaining: string[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      remaining.push(`${row['device_id']}:${row['job_id']}`);
+    }
+    stmt.free();
+    expect(remaining).toEqual(['dev-a:old-printing', 'dev-a:recent-success']);
+  });
+
+  it('applies the row cap per station, not globally', () => {
+    for (const deviceId of ['dev-a', 'dev-b']) {
+      for (let i = 0; i < 5; i++) {
+        insertControlJob(
+          deviceId,
+          `job-${i}`,
+          'SUCCESS',
+          new Date(Date.now() - i * 1000).toISOString(),
+        );
+      }
+    }
+
+    const result = pruneOldRecords(getDb(), { retentionDays: 0, maxRows: 3 });
+
+    expect(result.controlJobsDeleted).toBe(4);
+    const db = getDb();
+    const stmt = db.prepare(
+      'SELECT device_id, COUNT(*) as c FROM control_device_jobs GROUP BY device_id ORDER BY device_id',
+    );
+    const counts: Array<{ deviceId: string; count: number }> = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      counts.push({ deviceId: String(row['device_id']), count: Number(row['c']) });
+    }
+    stmt.free();
+    expect(counts).toEqual([
+      { deviceId: 'dev-a', count: 3 },
+      { deviceId: 'dev-b', count: 3 },
+    ]);
+  });
+
+  it('prunes control audit logs by age and count', () => {
+    insertControlAudit('old-audit', OLD_DATE);
+    insertControlAudit('recent-audit', RECENT_DATE);
+
+    let result = pruneOldRecords(getDb(), { retentionDays: 7, maxRows: 0 });
+    expect(result.controlAuditLogsDeleted).toBe(1);
+
+    for (let i = 0; i < 3; i++) {
+      insertControlAudit(`recent-${i}`, new Date(Date.now() - i * 1000).toISOString());
+    }
+    result = pruneOldRecords(getDb(), { retentionDays: 0, maxRows: 2 });
+    expect(result.controlAuditLogsDeleted).toBe(2);
+
+    const db = getDb();
+    const stmt = db.prepare('SELECT COUNT(*) as c FROM control_audit_logs');
+    stmt.step();
+    expect(stmt.getAsObject()['c']).toBe(2);
     stmt.free();
   });
 });
@@ -185,18 +280,56 @@ describe('archive-before-prune', () => {
     try {
       insertJob('job-archived', 'SUCCESS', new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
       insertJob('job-kept', 'SUCCESS', new Date().toISOString());
+      insertControlJob(
+        'dev-archive',
+        'control-archived',
+        'SUCCESS',
+        new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
+      );
+      insertControlAudit(
+        'control-audit-archived',
+        new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
+      );
 
       const result = pruneOldRecords(getDb(), { retentionDays: 14, maxRows: 0, archiveDir });
       expect(result.jobsDeleted).toBe(1);
+      expect(result.controlJobsDeleted).toBe(1);
+      expect(result.controlAuditLogsDeleted).toBe(1);
 
       const files = (await readdir(archiveDir)).filter((f) => f.startsWith('retention-'));
       expect(files).toHaveLength(1);
       const payload = JSON.parse(await readFile(join(archiveDir, files[0]!), 'utf8')) as {
         type: string;
         jobs: Array<{ id: string }>;
+        controlDeviceJobs: Array<{ job_id: string }>;
+        controlAuditLogs: Array<{ id: string }>;
       };
       expect(payload.type).toBe('printops_retention_archive');
       expect(payload.jobs.map((j) => j.id)).toEqual(['job-archived']);
+      expect(payload.controlDeviceJobs.map((j) => j.job_id)).toEqual(['control-archived']);
+      expect(payload.controlAuditLogs.map((row) => row.id)).toEqual(['control-audit-archived']);
+    } finally {
+      await rm(archiveDir, { recursive: true, force: true });
+    }
+  });
+
+  it('deletes archive files older than the retention window', async () => {
+    const { mkdtemp, writeFile, utimes, readdir, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const archiveDir = await mkdtemp(join(tmpdir(), 'printops-retention-archive-age-'));
+    try {
+      const oldFile = join(archiveDir, 'retention-2000-01-01.json');
+      const freshFile = join(archiveDir, 'retention-keep.json');
+      await writeFile(oldFile, '{}');
+      await writeFile(freshFile, '{}');
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+      await utimes(oldFile, thirtyDaysAgo, thirtyDaysAgo);
+
+      const result = pruneOldRecords(getDb(), { retentionDays: 14, maxRows: 0, archiveDir });
+
+      expect(result.archivesDeleted).toBe(1);
+      expect((await readdir(archiveDir)).sort()).toEqual(['retention-keep.json']);
     } finally {
       await rm(archiveDir, { recursive: true, force: true });
     }
@@ -204,6 +337,12 @@ describe('archive-before-prune', () => {
 
   it('deletes nothing when the archive write fails', () => {
     insertJob('job-safe', 'SUCCESS', new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
+    insertControlJob(
+      'dev-safe',
+      'control-safe',
+      'SUCCESS',
+      new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
+    );
 
     // A path that cannot be created as a directory (parent is a file).
     const badDir = '/dev/null/impossible-archive';
@@ -214,5 +353,10 @@ describe('archive-before-prune', () => {
     stmt.step();
     expect(stmt.getAsObject()['c']).toBe(1);
     stmt.free();
+
+    const controlStmt = db.prepare("SELECT COUNT(*) as c FROM control_device_jobs WHERE job_id = 'control-safe'");
+    controlStmt.step();
+    expect(controlStmt.getAsObject()['c']).toBe(1);
+    controlStmt.free();
   });
 });

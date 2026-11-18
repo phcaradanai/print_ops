@@ -57,6 +57,8 @@ services:
       PRINTOPS_RELEASES_DIR: /data/releases
       PRINTOPS_DEVICE_IDENTITY_PATH: /data/device-identity.json
       PRINTOPS_DB_PATH: /data/printops.db
+      PRINTOPS_RETENTION_DAYS: "${PRINTOPS_RETENTION_DAYS:-14}"
+      PRINTOPS_RETENTION_MAX_ROWS: "${PRINTOPS_RETENTION_MAX_ROWS:-1000}"
       STORAGE_PROVIDER: minio
       MINIO_ENDPOINT: minio
       MINIO_PORT: '9000'

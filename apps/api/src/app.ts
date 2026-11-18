@@ -533,7 +533,13 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
           maxRows: retentionMaxRows,
           archiveDir: retentionArchiveDir,
         });
-        if (result.jobsDeleted > 0 || result.auditLogsDeleted > 0) {
+        if (
+          result.jobsDeleted > 0
+          || result.auditLogsDeleted > 0
+          || result.controlJobsDeleted > 0
+          || result.controlAuditLogsDeleted > 0
+          || result.archivesDeleted > 0
+        ) {
           app.log.info(
             { retentionDays, retentionMaxRows, retentionArchiveDir, ...result },
             'retention sweep: archived and pruned rows past the retention window',

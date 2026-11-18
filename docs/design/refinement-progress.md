@@ -1,5 +1,101 @@
 # Refinement progress
 
+## 2026-11-18 — Web Control job-mirror retention and paging
+
+The Incoming Jobs mirror (`control_device_jobs`) had no cleanup. The station's
+14-day history was pruned, but every copy the control plane received stayed in
+SQLite forever; the page only ever reads the newest 1,000 rows per station, so
+older rows were pure database growth (and every sql.js write rewrites the whole
+file).
+
+- Extended `pruneOldRecords` to prune **terminal** mirror rows by the same
+  `PRINTOPS_RETENTION_DAYS` window and, when `PRINTOPS_RETENTION_MAX_ROWS` is
+  positive, cap retention **per station** at that many rows. In-flight mirror
+  rows are kept, matching the core job rule. `DUPLICATE_RETURNED` is treated as
+  terminal for mirror rows.
+- The same sweep now prunes `control_audit_logs` (command/OTA audit) by the same
+  age/count rules, and removes `retention-*.json` archive files older than the
+  age window after a successful sweep, so the archive is a recovery window
+  rather than a permanent second database.
+- Pruned mirror/audit rows are included in the archive-before-delete JSON
+  (`controlDeviceJobs`, `controlAuditLogs`) and counted as
+  `controlJobsDeleted` / `controlAuditLogsDeleted` / `archivesDeleted` in the
+  sweep log.
+- Corrected the stale "7 days / 1000 rows" comments in `retention.ts` and
+  `CLAUDE.md` to the real defaults: 14 days, row cap disabled (0). Docker's
+  `docker-compose.app.stack.yml` overrides to 7 days / 1,000 rows; the
+  control-plane compose files set 14 days / 1,000 rows per station explicitly.
+- The Incoming Jobs list is paged at 50 rows per page (`Pagination`), so a full
+  1,000-row station window no longer creates a 1,000-row DOM at once. Filters
+  reset to page 1; a shrinking feed clamps an open page.
+- Tests: `apps/api/src/tests/retention.test.ts` covers age cleanup across
+  stations, per-station cap, control audit cleanup, archive content, archive
+  file expiry, and "no delete when archiving fails"; web unit tests cover the
+  page helpers.
+
+**Verification:** API and web typecheck; `npm run test -w apps/web` — 745
+passed; `npm run test -w apps/api` — 733 passed, 1 skipped (86 files);
+`npx playwright test apps/web/e2e/web-control-jobs.spec.ts` — 23 passed after a
+Web Control build; serial full Playwright — 141 passed, 23 skipped, 0 failed.
+
+**Remaining gap:** the 1,000-rows-per-station API limit is still a single
+payload for the list; paging only reduces the rendered DOM. Server-side list
+paging/summary is the next step if a station's full 1,000-job payload becomes
+the bottleneck.
+
+## 2026-11-17 (later) — Incoming Jobs: four questions, one compact list
+
+The Web Control `/control/jobs` page was a fleet dashboard followed by a payload
+explorer. An operator had to read metric tiles, station cards, a wide table and a
+wall of filters before answering what came in, where it went, whether it printed,
+and what to do next. Redesigned around those four questions:
+
+- **One list, not two modes.** All stations is the default and merges every
+  station's mirrored jobs; selecting a station filters the same list through
+  `?deviceId`. The metric tiles, fleet error table, station-directory cards and
+  per-row payload chips are gone.
+- **Compact station bar** with the station selector, device-condition summary,
+  version, freshness, Sync and Manage devices in one region. Status counts are
+  34px clickable chips (All, Needs review, In progress, Printed, Other) whose
+  numbers come from the same filtered set as the rows. Attention jobs sort first,
+  then newest.
+- **Rows show only** the job reference, destination printer (plus station in All
+  stations), literal status with a plain-language verdict for attention states,
+  received time and one `View job` action. Mobile uses the responsive table's
+  record cards; long references, station names, errors and payload values wrap.
+- **Search and date presets above the list**; custom dates, grouping and payload
+  key/value filters live behind `Advanced filters`. Every active condition is a
+  removable chip, with Clear all.
+- **Summary-first details drawer**: destination, status, received, copies; what
+  happened and the next step reuse the existing `jobVerdict` copy (SUCCESS reads
+  as reported-complete, never device-confirmed). Incoming data and technical
+  details (full IDs, error code/message, timestamps, raw JSON, mirrored error
+  log) are collapsed and copyable; `CodeBlock scroll={false}` keeps the drawer
+  body the only vertical scroller.
+- **Reprint safety preserved**: `job:retry` gates selection, the drawer action
+  and the dialog; the destination comes from each job's station; an unknown
+  outcome shows the "may already have printed / check the destination printer"
+  warning and the final action is danger. `control:manage` is no longer used on
+  this page — rename stays on Manage devices.
+- **New helpers/tests**: `apps/web/src/lib/controlJobsView.ts` (bucket matching,
+  counts, attention-first sort) with `controlJobsView.test.ts`; 67 new
+  `control.jobs.*` keys in both locales; `web-control-jobs.spec.ts` (23 rendered
+  tests, skips on the dashboard build because `/control/*` only exists when
+  `VITE_CONTROL_APP=true`).
+
+**Verification:** 745 web unit tests; web build; 23/23 control-build e2e; serial
+full Playwright 141 passed / 23 skipped (the new control spec, dashboard build);
+no horizontal overflow at 390px TH/EN; first row y 434 (1440) / 502 (1024) /
+683 (390); no nested table or raw-JSON scrollbar. Detailed evidence:
+`artifacts/browser/web-control-jobs/verification.md`.
+
+**Remaining gaps:** the mirrored control feed carries no job trace/log, so the
+drawer can show only an error log derived from `errorCode`/`errorMessage` and says
+when none is present. Batch reprint, unknown `?deviceId`, sync success/failure and
+background-refresh staleness are implemented but not exercised by the new e2e
+spec. The full suite is load-flaky with default parallel workers on this machine;
+serial is green.
+
 ## 2026-11-17 (release 0.1.48 / 1.0.11) — Runner terminate & delete
 
 The Runners page had no way to stop or remove a job receiver. Added:

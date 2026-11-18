@@ -54,8 +54,11 @@ object so nothing survives app exit, and generates per-installation secrets
 - **Persistence is SQLite via `sql.js`** (pure WASM, zero native dependencies),
   selected with `DB_MODE=sqlite` and always used by the packaged desktop. It has
   an exclusive process lock, atomic replace-on-save, versioned migrations, and a
-  retention sweep that archives before pruning. In-memory repositories remain for
-  tests and quick dev runs — the port interfaces keep the two modes honest.
+  retention sweep that archives before pruning. The sweep also prunes the Web
+  Control job mirror by age and per-station row cap, prunes the control-plane
+  audit table, and expires archive files; the page only reads the newest 1,000
+  rows per station. In-memory repositories remain for tests and quick dev
+  runs — the port interfaces keep the two modes honest.
 - **The job queue is in-memory, the jobs are not.** `QUEUED` rows are persisted
   and re-enqueued at boot; jobs that were mid-flight are closed as `UNVERIFIED`
   rather than replayed. Redis/BullMQ are not used.

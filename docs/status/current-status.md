@@ -135,7 +135,9 @@ the default for tests and quick dev runs.
 The store has an OS-owned exclusive process lock, atomic replace-on-save,
 versioned migration with a pre-migration backup, and a retention sweep
 (default 14-day hot window) that archives every pruned row to
-`<db dir>/archive` before deleting it.
+`<db dir>/archive` before deleting it. The same sweep prunes the Web Control
+job mirror by age and a per-station row cap, prunes the control-plane audit
+table, and removes archive files older than the window.
 
 `infra/migrations/` holds an unapplied PostgreSQL schema, and
 `infra/docker/docker-compose.yml` includes Postgres/Redis scaffolding that the

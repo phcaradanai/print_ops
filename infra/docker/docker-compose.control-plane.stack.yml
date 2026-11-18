@@ -46,6 +46,10 @@ services:
       SQL_WASM_PATH: /app/node_modules/sql.js/dist/sql-wasm.wasm
       PRINTOPS_DATA_DIR: /data
       PRINTOPS_DB_PATH: /data/printops.db
+      # Keep the mirrored job history short: the Incoming Jobs page only reads
+      # the newest 1,000 rows per station.
+      PRINTOPS_RETENTION_DAYS: "${PRINTOPS_RETENTION_DAYS:-14}"
+      PRINTOPS_RETENTION_MAX_ROWS: "${PRINTOPS_RETENTION_MAX_ROWS:-1000}"
       PRINTOPS_DEVICE_IDENTITY_PATH: /data/device-identity.json
       PRINTOPS_RELEASES_DIR: /data/releases
       PRINTOPS_CONTROL_PUBLIC_HTTP_URL: "${PRINTOPS_CONTROL_PUBLIC_HTTP_URL:-}"

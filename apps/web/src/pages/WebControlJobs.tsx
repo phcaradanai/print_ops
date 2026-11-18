@@ -1,34 +1,45 @@
-import { useCallback, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { JOB_STATUSES, type JobStatus } from '@printerops/domain';
 import { apiFetch } from '../api/client.js';
 import { useHasPermission } from '../api/session.js';
 import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { formatCreatedAt } from '../lib/formatCreatedAt.js';
-import { formatRelativeTime } from '../lib/relativeTime.js';
 import { jobNeedsAttention } from '../lib/jobQueueView.js';
+import {
+  getJobVerdict,
+  offersReprint,
+  REPORTED_COMPLETE_COPY,
+  reprintButtonVariant,
+  verdictDetailKey,
+  verdictHeadlineKey,
+} from '../lib/jobVerdict.js';
 import {
   collectPayloadKeys,
   collectPayloadValueCounts,
   extractJobPayload,
   filterAndGroupJobs,
-  payloadEntries,
   type FilterableJob,
   type JobDatePreset,
   type JobGroupBy,
   type JobKeyFilter,
 } from '../lib/jobPayload.js';
 import {
+  countStatusBuckets,
+  matchesStatusBucket,
+  sortAttentionFirst,
+  type StatusBucket,
+} from '../lib/controlJobsView.js';
+import {
   Alert,
-  Badge,
   Button,
   CardDetail,
   CardDetailItem,
   Checkbox,
   Chip,
   CodeBlock,
+  CollapsibleSection,
   DataCell,
   DataHead,
   DataTable,
@@ -43,16 +54,19 @@ import {
   Inline,
   Input,
   LoadingState,
-  MetricGrid,
-  MetricTile,
   Mono,
   PageLayout,
+  Pagination,
   Panel,
+  SearchField,
   Select,
+  SelectFilter,
   Stack,
   StatusBadge,
+  StatusIndicator,
   Text,
   Toolbar,
+  type StatusTone,
 } from '../components/ui/index.js';
 
 export interface ControlSyncedJobItem extends FilterableJob {
@@ -131,7 +145,17 @@ export interface ControlJobsFleetResponse {
   devices: ControlStationItem[];
 }
 
-type StationStateFilter = 'ALL' | 'ONLINE' | 'OFFLINE' | 'HAS_ERRORS';
+type NoticeTone = 'success' | 'error' | 'warning';
+
+const DATE_PRESETS: ReadonlyArray<{ value: JobDatePreset; key: string }> = [
+  { value: 'all', key: 'control.jobs.datePresetAll' },
+  { value: 'today', key: 'control.jobs.datePresetToday' },
+  { value: '7d', key: 'control.jobs.datePreset7d' },
+  { value: '30d', key: 'control.jobs.datePreset30d' },
+];
+
+/** Keep the DOM small even when a station mirrors its full 1,000-job window. */
+const JOB_PAGE_SIZE = 50;
 
 function formatMsg(template: string, vars: Record<string, string | number>): string {
   return Object.entries(vars).reduce(
@@ -144,15 +168,84 @@ function stationTitle(device: { displayName?: string; hostname: string; deviceId
   return device.displayName?.trim() || device.hostname || device.deviceId;
 }
 
+function statusBucketLabel(t: (key: string) => string, bucket: StatusBucket): string {
+  switch (bucket) {
+    case 'NEEDS_REVIEW':
+      return t('control.jobs.countNeedsReview');
+    case 'IN_PROGRESS':
+      return t('control.jobs.countInProgress');
+    case 'PRINTED':
+      return t('control.jobs.countPrinted');
+    case 'OTHER':
+      return t('control.jobs.countOther');
+    case 'ALL':
+    default:
+      return t('control.jobs.countAll');
+  }
+}
+
+/**
+ * `navigator.clipboard` with the textarea fallback the rest of the app uses.
+ * Resolves `false` instead of throwing so a copy can never break the drawer.
+ */
+async function copyTextToClipboard(value: string): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // Fall through to the legacy path: the API can exist but be denied.
+    }
+  }
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = value;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    return copied;
+  } catch {
+    return false;
+  }
+}
+
+interface CopyValueButtonProps {
+  value: string;
+  /** Human field name, used verbatim in the accessible name. */
+  label: string;
+  copied: boolean;
+  onCopy: (value: string) => void;
+}
+
+/** Copy affordance for one field. The confirmation is announced by the page. */
+function CopyValueButton({ value, label, copied, onCopy }: CopyValueButtonProps) {
+  const { t } = useLocale();
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      aria-label={formatMsg(t('control.jobs.detailCopyField'), { field: label })}
+      onClick={() => onCopy(value)}
+    >
+      {copied ? t('control.jobs.detailCopied') : t('control.jobs.detailCopy')}
+    </Button>
+  );
+}
+
 export default function WebControlJobs() {
   const { t } = useLocale();
   const navigate = useNavigate();
   const canReprint = useHasPermission('job:retry');
-  const canManageControl = useHasPermission('control:manage');
   const [searchParams, setSearchParams] = useSearchParams();
   const valueListId = useId();
+  const advancedPanelId = useId();
 
   const selectedDeviceId = searchParams.get('deviceId') || '';
+  const isAllStations = selectedDeviceId === '';
 
   const fetchFleet = useCallback(
     () => apiFetch<ControlJobsFleetResponse>('/v1/control/jobs'),
@@ -160,19 +253,14 @@ export default function WebControlJobs() {
   );
   const fleetResource = useApiResource(fetchFleet, { intervalMs: 5_000 });
   const fleet = fleetResource.data;
-  const devices = fleet?.devices ?? [];
-  const summary = fleet?.summary;
+  const devices = useMemo(() => fleet?.devices ?? [], [fleet]);
 
-  const [notice, setNotice] = useState<{ tone: 'success' | 'warning' | 'error'; message: string } | null>(null);
+  const [notice, setNotice] = useState<{ tone: NoticeTone; message: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
 
-  // Overview station card filters
-  const [stationSearch, setStationSearch] = useState('');
-  const [stationStateFilter, setStationStateFilter] = useState<StationStateFilter>('ALL');
-
-  // Station drill-down job filters & grouping
+  // Job filters and grouping. Only the station lives in the URL.
   const [jobSearch, setJobSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'NEEDS_ATTENTION' | JobStatus>('ALL');
+  const [statusBucket, setStatusBucket] = useState<StatusBucket>('ALL');
   const [datePreset, setDatePreset] = useState<JobDatePreset>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -180,119 +268,170 @@ export default function WebControlJobs() {
   const [keyFilters, setKeyFilters] = useState<JobKeyFilter[]>([]);
   const [pendingKey, setPendingKey] = useState('');
   const [pendingValue, setPendingValue] = useState('');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  // Selection, Drawer & Dialogs
+  // Selection, drawer and dialogs.
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
-  const [drawerJob, setDrawerJob] = useState<ControlSyncedJobItem | null>(null);
-
-  const [renameTarget, setRenameTarget] = useState<ControlStationItem | null>(null);
-  const [renameDisplayName, setRenameDisplayName] = useState('');
-  const [renameSiteId, setRenameSiteId] = useState('');
-  const [renameBusy, setRenameBusy] = useState(false);
-
+  const [page, setPage] = useState(1);
+  const [drawerJobId, setDrawerJobId] = useState<string | null>(null);
   const [reprintTargets, setReprintTargets] = useState<ControlSyncedJobItem[]>([]);
   const [reprintCopies, setReprintCopies] = useState(1);
   const [reprintReason, setReprintReason] = useState('');
   const [reprintConfirmed, setReprintConfirmed] = useState(false);
   const [reprintBusy, setReprintBusy] = useState(false);
 
+  // Copy feedback: one field at a time, cleared after two seconds.
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+    },
+    [],
+  );
+
   const selectedDevice = useMemo(
-    () => (selectedDeviceId ? devices.find((d) => d.deviceId === selectedDeviceId) : undefined),
+    () => (selectedDeviceId ? devices.find((device) => device.deviceId === selectedDeviceId) : undefined),
     [devices, selectedDeviceId],
   );
 
-  const filteredDevices = useMemo(() => {
-    const q = stationSearch.trim().toLocaleLowerCase();
-    return devices.filter((dev) => {
-      if (stationStateFilter === 'ONLINE' && dev.connectionState !== 'ONLINE') return false;
-      if (stationStateFilter === 'OFFLINE' && dev.connectionState === 'ONLINE') return false;
-      if (
-        stationStateFilter === 'HAS_ERRORS' &&
-        dev.stats.failedJobs === 0 &&
-        dev.stats.attentionJobs === 0
-      ) {
-        return false;
-      }
-      if (!q) return true;
-      const hay = [
-        dev.displayName,
-        dev.deviceId,
-        dev.hostname,
-        dev.siteId,
-        ...(dev.ipAddresses ?? []),
-        ...dev.payloadKeys,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLocaleLowerCase();
-      if (hay.includes(q)) return true;
-      return filterAndGroupJobs(dev.jobs, { status: 'ALL', search: stationSearch }).filteredJobs.length > 0;
-    });
-  }, [devices, stationSearch, stationStateFilter]);
+  const stationNameByDeviceId = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const device of devices) names.set(device.deviceId, stationTitle(device));
+    return names;
+  }, [devices]);
 
-  const stationJobs = selectedDevice?.jobs ?? [];
-
-  const availablePayloadKeys = useMemo(
-    () => collectPayloadKeys(stationJobs),
-    [stationJobs],
+  const stationNameFor = useCallback(
+    (deviceId: string) => stationNameByDeviceId.get(deviceId) ?? deviceId,
+    [stationNameByDeviceId],
   );
 
-  // Narrow available values for the currently selected key using all other active
-  // filters (except filters on pendingKey itself) so chained key filters like
-  // hn = 123456 -> prescription = 213456 show matching values immediately.
-  const jobsMatchingOtherFilters = useMemo(
+  /**
+   * All stations merges every device's feed and keeps each job's station in
+   * `deviceId`; one station is simply that device's slice. The merged rows are
+   * the only source for counts, filters and the drawer.
+   */
+  const scopeJobs = useMemo<ControlSyncedJobItem[]>(() => {
+    if (!isAllStations) return selectedDevice?.jobs ?? [];
+    return devices.flatMap((device) =>
+      device.jobs.map((job) =>
+        job.deviceId === device.deviceId ? job : { ...job, deviceId: device.deviceId },
+      ),
+    );
+  }, [devices, isAllStations, selectedDevice]);
+
+  const availablePayloadKeys = useMemo(() => collectPayloadKeys(scopeJobs), [scopeJobs]);
+
+  /**
+   * Base set: station, search, dates and payload filters, with the status
+   * bucket deliberately not applied. Counts and rows both derive from it, so a
+   * chip can never promise rows the list will not show.
+   */
+  const baseJobs = useMemo(
     () =>
-      filterAndGroupJobs(stationJobs, {
-        status: statusFilter,
+      filterAndGroupJobs(scopeJobs, {
+        status: 'ALL',
         search: jobSearch,
         datePreset,
         dateFrom,
         dateTo,
-        keyFilters: keyFilters.filter((kf) => kf.key !== pendingKey),
+        keyFilters,
       }).filteredJobs,
-    [stationJobs, statusFilter, jobSearch, datePreset, dateFrom, dateTo, keyFilters, pendingKey],
+    [scopeJobs, jobSearch, datePreset, dateFrom, dateTo, keyFilters],
+  );
+
+  const counts = useMemo(() => countStatusBuckets(baseJobs), [baseJobs]);
+
+  const bucketCounts = useMemo<Record<StatusBucket, number>>(
+    () => ({
+      ALL: counts.all,
+      NEEDS_REVIEW: counts.needsReview,
+      IN_PROGRESS: counts.inProgress,
+      PRINTED: counts.printed,
+      OTHER: counts.other,
+    }),
+    [counts],
+  );
+
+  const visibleJobs = useMemo(
+    () => baseJobs.filter((job) => matchesStatusBucket(job.status, statusBucket)),
+    [baseJobs, statusBucket],
+  );
+
+  const visibleJobIdSet = useMemo(
+    () => new Set(visibleJobs.map((job) => job.id)),
+    [visibleJobs],
+  );
+
+  const sortedVisibleJobs = useMemo(() => sortAttentionFirst(visibleJobs), [visibleJobs]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedVisibleJobs.length / JOB_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedVisibleJobs = useMemo(
+    () =>
+      sortedVisibleJobs.slice(
+        (currentPage - 1) * JOB_PAGE_SIZE,
+        currentPage * JOB_PAGE_SIZE,
+      ),
+    [sortedVisibleJobs, currentPage],
+  );
+
+  // A filter change starts a new result set; a shrinking feed clamps an
+  // already-open page instead of leaving it on a blank page.
+  useEffect(() => {
+    setPage(1);
+  }, [jobSearch, statusBucket, datePreset, dateFrom, dateTo, groupBy, keyFilters, selectedDeviceId]);
+
+  useEffect(() => {
+    setPage((previous) => Math.min(previous, totalPages));
+  }, [totalPages]);
+
+  const groupedJobs = useMemo(
+    () =>
+      filterAndGroupJobs(visibleJobs, {
+        status: 'ALL',
+        search: '',
+        datePreset: 'all',
+        dateFrom: '',
+        dateTo: '',
+        keyFilters: [],
+        groupBy,
+      }).groups.map((group) => ({ ...group, jobs: sortAttentionFirst(group.jobs) })),
+    [visibleJobs, groupBy],
+  );
+
+  // Jobs used to suggest payload values: everything except the filter on the
+  // key currently being edited, so chained key filters stay useful.
+  const jobsForValueSuggestions = useMemo(
+    () =>
+      filterAndGroupJobs(scopeJobs, {
+        status: 'ALL',
+        search: jobSearch,
+        datePreset,
+        dateFrom,
+        dateTo,
+        keyFilters: keyFilters.filter((filter) => filter.key !== pendingKey),
+      }).filteredJobs,
+    [scopeJobs, jobSearch, datePreset, dateFrom, dateTo, keyFilters, pendingKey],
   );
 
   const suggestedPayloadValueCounts = useMemo(
-    () => collectPayloadValueCounts(jobsMatchingOtherFilters, pendingKey),
-    [jobsMatchingOtherFilters, pendingKey],
+    () => collectPayloadValueCounts(jobsForValueSuggestions, pendingKey),
+    [jobsForValueSuggestions, pendingKey],
   );
 
-  const filteredValuePills = useMemo(() => {
-    const q = pendingValue.trim().toLocaleLowerCase();
-    if (!q) return suggestedPayloadValueCounts;
-    return suggestedPayloadValueCounts.filter((entry) =>
-      entry.value.toLocaleLowerCase().includes(q),
-    );
-  }, [suggestedPayloadValueCounts, pendingValue]);
+  // Selection is limited to what is currently visible.
+  useEffect(() => {
+    setSelectedJobIds((previous) => {
+      const next = previous.filter((id) => visibleJobIdSet.has(id));
+      return next.length === previous.length ? previous : next;
+    });
+  }, [visibleJobIdSet]);
 
-  const effectiveKeyFilters = useMemo(() => {
-    const trimmedKey = pendingKey.trim();
-    const trimmedVal = pendingValue.trim();
-    if (!trimmedKey || !trimmedVal) return keyFilters;
-    return [
-      ...keyFilters.filter((kf) => kf.key !== trimmedKey),
-      { key: trimmedKey, value: trimmedVal, exact: false },
-    ];
-  }, [keyFilters, pendingKey, pendingValue]);
-
-  const { filteredJobs, groups } = useMemo(
-    () =>
-      filterAndGroupJobs(stationJobs, {
-        status: statusFilter,
-        search: jobSearch,
-        datePreset,
-        dateFrom,
-        dateTo,
-        keyFilters: effectiveKeyFilters,
-        groupBy,
-      }),
-    [stationJobs, statusFilter, jobSearch, datePreset, dateFrom, dateTo, effectiveKeyFilters, groupBy],
-  );
-
-  const resetDrillDownState = useCallback(() => {
+  const resetLocalState = useCallback(() => {
     setJobSearch('');
-    setStatusFilter('ALL');
+    setStatusBucket('ALL');
     setDatePreset('all');
     setDateFrom('');
     setDateTo('');
@@ -301,24 +440,34 @@ export default function WebControlJobs() {
     setPendingKey('');
     setPendingValue('');
     setSelectedJobIds([]);
-    setDrawerJob(null);
+    setDrawerJobId(null);
+    setReprintTargets([]);
+    setReprintConfirmed(false);
+    setCopiedField(null);
   }, []);
 
   const openStation = useCallback(
-    (deviceId: string, initialStatus: 'ALL' | 'NEEDS_ATTENTION' = 'ALL') => {
-      resetDrillDownState();
-      if (initialStatus !== 'ALL') {
-        setStatusFilter(initialStatus);
-      }
-      setSearchParams({ deviceId });
+    (deviceId: string) => {
+      resetLocalState();
+      setSearchParams(deviceId ? { deviceId } : {});
     },
-    [resetDrillDownState, setSearchParams],
+    [resetLocalState, setSearchParams],
   );
 
   const goOverview = useCallback(() => {
-    resetDrillDownState();
+    resetLocalState();
     setSearchParams({});
-  }, [resetDrillDownState, setSearchParams]);
+  }, [resetLocalState, setSearchParams]);
+
+  // `deviceId` is the only URL state, so reaching another station through the
+  // browser's back/forward buttons has to reset the local filters too — a URL
+  // must never imply a hidden filter.
+  const previousDeviceIdRef = useRef(selectedDeviceId);
+  useEffect(() => {
+    if (previousDeviceIdRef.current === selectedDeviceId) return;
+    previousDeviceIdRef.current = selectedDeviceId;
+    resetLocalState();
+  }, [selectedDeviceId, resetLocalState]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -337,124 +486,129 @@ export default function WebControlJobs() {
     }
   };
 
-  const openRenameDialog = (dev: ControlStationItem) => {
-    setRenameTarget(dev);
-    setRenameDisplayName(dev.displayName ?? dev.hostname ?? '');
-    setRenameSiteId(dev.siteId ?? 'default');
-  };
+  const syncLabel = isAllStations ? t('control.jobs.syncAll') : t('control.jobs.syncStation');
 
-  const handleSaveRename = async () => {
-    if (!renameTarget) return;
-    setRenameBusy(true);
-    try {
-      const updated = await apiFetch<{ displayName?: string }>(
-        `/v1/control/devices/${encodeURIComponent(renameTarget.deviceId)}`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            displayName: renameDisplayName.trim(),
-            siteId: renameSiteId.trim() || undefined,
-          }),
-        },
-      );
-      setNotice({
-        tone: 'success',
-        message: formatMsg(t('control.devices.displayNameSaved'), {
-          name: updated.displayName || renameDisplayName.trim() || renameTarget.deviceId,
-        }),
-      });
-      setRenameTarget(null);
-      fleetResource.refresh();
-    } catch (err) {
-      setNotice({
-        tone: 'error',
-        message: formatMsg(t('control.devices.displayNameSaveFailed'), {
-          message: errorMessage(err),
-        }),
-      });
-    } finally {
-      setRenameBusy(false);
-    }
-  };
-
-  const toggleKeyFilter = (key: string, value: string, exact = true) => {
-    setKeyFilters((prev) => {
-      const exists = prev.some(
-        (kf) =>
-          kf.key === key &&
-          kf.value.toLocaleLowerCase() === value.toLocaleLowerCase(),
-      );
-      if (exists) {
-        return prev.filter(
-          (kf) =>
-            !(
-              kf.key === key &&
-              kf.value.toLocaleLowerCase() === value.toLocaleLowerCase()
-            ),
-        );
-      }
-      return [...prev.filter((kf) => kf.key !== key), { key, value, exact }];
-    });
+  const handleDatePreset = (next: JobDatePreset) => {
+    setDatePreset(next);
+    setDateFrom('');
+    setDateTo('');
   };
 
   const handleAddKeyFilter = () => {
     const key = pendingKey.trim();
-    const val = pendingValue.trim();
-    if (!key || !val) return;
-    setKeyFilters((prev) => [
-      ...prev.filter((kf) => kf.key !== key),
-      { key, value: val, exact: false },
+    const value = pendingValue.trim();
+    if (!key || !value) return;
+    setKeyFilters((previous) => [
+      ...previous.filter((filter) => filter.key !== key),
+      { key, value, exact: false },
     ]);
     setPendingValue('');
   };
 
+  const handlePickPayloadValue = (value: string) => {
+    const key = pendingKey.trim();
+    if (!key || !value) return;
+    setKeyFilters((previous) => [
+      ...previous.filter((filter) => filter.key !== key),
+      { key, value, exact: true },
+    ]);
+    setPendingValue('');
+  };
+
+  const clearAllFilters = useCallback(() => {
+    setJobSearch('');
+    setStatusBucket('ALL');
+    setDatePreset('all');
+    setDateFrom('');
+    setDateTo('');
+    setGroupBy('none');
+    setKeyFilters([]);
+    setPendingKey('');
+    setPendingValue('');
+  }, []);
+
   const toggleJobSelection = (jobId: string) => {
-    setSelectedJobIds((prev) =>
-      prev.includes(jobId) ? prev.filter((id) => id !== jobId) : [...prev, jobId],
+    setSelectedJobIds((previous) =>
+      previous.includes(jobId) ? previous.filter((id) => id !== jobId) : [...previous, jobId],
     );
   };
 
-  const toggleGroupSelection = (groupJobs: ControlSyncedJobItem[]) => {
-    const groupIds = groupJobs.map((j) => j.id);
-    const allSelected =
-      groupIds.length > 0 && groupIds.every((id) => selectedJobIds.includes(id));
-    setSelectedJobIds((prev) => {
-      if (allSelected) {
-        return prev.filter((id) => !groupIds.includes(id));
-      }
-      const next = new Set(prev);
-      for (const id of groupIds) next.add(id);
-      return Array.from(next);
+  /** Header checkbox: selects (or clears) exactly the rows passed in. */
+  const toggleSelectionFor = (jobs: ControlSyncedJobItem[]) => {
+    const ids = jobs.map((job) => job.id);
+    if (ids.length === 0) return;
+    setSelectedJobIds((previous) => {
+      const allSelected = ids.every((id) => previous.includes(id));
+      if (allSelected) return previous.filter((id) => !ids.includes(id));
+      return Array.from(new Set([...previous, ...ids]));
     });
   };
 
+  const handleCopy = useCallback(async (value: string, field: string) => {
+    const copied = await copyTextToClipboard(value);
+    if (!copied) return;
+    setCopiedField(field);
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = window.setTimeout(() => setCopiedField(null), 2_000);
+  }, []);
+
   const openReprintDialog = (jobs: ControlSyncedJobItem[]) => {
-    if (jobs.length === 0) return;
+    if (!canReprint || jobs.length === 0) return;
     setReprintTargets(jobs);
     setReprintCopies(jobs.length === 1 ? Math.max(1, jobs[0]?.copies ?? 1) : 1);
     setReprintReason(t('control.jobs.reprintReasonDefault'));
     setReprintConfirmed(false);
+    setNotice(null);
   };
 
-  const hasDuplicateRiskTargets = useMemo(
-    () =>
-      reprintTargets.some(
-        (job) => job.status === 'SUCCESS' || jobNeedsAttention(job.status),
-      ),
+  const hasUnknownOutcomeTarget = useMemo(
+    () => reprintTargets.some((job) => getJobVerdict(job.status).outcomeUnknown),
     [reprintTargets],
   );
 
+  const hasPrintedTarget = useMemo(
+    () => reprintTargets.some((job) => job.status === 'SUCCESS'),
+    [reprintTargets],
+  );
+
+  const reprintStationIds = useMemo(
+    () => Array.from(new Set(reprintTargets.map((job) => job.deviceId))),
+    [reprintTargets],
+  );
+
+  const reprintStationNames = useMemo(
+    () => reprintStationIds.map((deviceId) => stationNameFor(deviceId)),
+    [reprintStationIds, stationNameFor],
+  );
+
+  const reprintDestinations = useMemo(() => {
+    const seen = new Set<string>();
+    const destinations: string[] = [];
+    for (const job of reprintTargets) {
+      const destination = formatMsg(t('control.jobs.destinationOnStation'), {
+        printer: job.printerCode || job.printerId,
+        station: stationNameFor(job.deviceId),
+      });
+      if (!seen.has(destination)) {
+        seen.add(destination);
+        destinations.push(destination);
+      }
+    }
+    return destinations;
+  }, [reprintTargets, stationNameFor, t]);
+
   const handleSubmitReprint = async () => {
-    if (!selectedDevice || reprintTargets.length === 0 || !reprintConfirmed) return;
-    const reason = reprintReason.trim() || t('control.jobs.reprintReasonDefault');
-    const copies = Math.min(20, Math.max(1, Number(reprintCopies) || 1));
+    const reason = reprintReason.trim();
+    if (reprintTargets.length === 0 || !reprintConfirmed || !reason) return;
+    const copies = Math.min(20, Math.max(1, Math.round(Number(reprintCopies) || 1)));
 
     setReprintBusy(true);
     try {
       for (const job of reprintTargets) {
+        // The station comes from the job, not the current route: a batch in All
+        // stations can target several devices at once.
         await apiFetch(
-          `/v1/control/devices/${encodeURIComponent(selectedDevice.deviceId)}/jobs/${encodeURIComponent(job.id)}/reprint`,
+          `/v1/control/devices/${encodeURIComponent(job.deviceId)}/jobs/${encodeURIComponent(job.id)}/reprint`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -467,18 +621,18 @@ export default function WebControlJobs() {
           },
         );
       }
-      const stationName = stationTitle(selectedDevice);
+      const stations = reprintStationNames.join(', ');
       setNotice({
         tone: 'success',
         message:
           reprintTargets.length === 1
             ? formatMsg(t('control.jobs.reprintSuccessSingle'), {
-                id: reprintTargets[0].id.slice(0, 12),
-                station: stationName,
+                id: reprintTargets[0]?.id.slice(0, 12) ?? '',
+                station: stations,
               })
             : formatMsg(t('control.jobs.reprintSuccessBatch'), {
                 count: reprintTargets.length,
-                station: stationName,
+                station: stations,
               }),
       });
       setReprintTargets([]);
@@ -487,17 +641,15 @@ export default function WebControlJobs() {
     } catch (err) {
       setNotice({
         tone: 'error',
-        message: formatMsg(t('control.jobs.reprintFailed'), {
-          message: errorMessage(err),
-        }),
+        message: formatMsg(t('control.jobs.reprintFailed'), { message: errorMessage(err) }),
       });
     } finally {
       setReprintBusy(false);
     }
   };
 
-  const groupOptions = useMemo(() => {
-    const base: Array<{ value: JobGroupBy; label: string }> = [
+  const groupOptions = useMemo<Array<{ value: JobGroupBy; label: string }>>(() => {
+    const options: Array<{ value: JobGroupBy; label: string }> = [
       { value: 'none', label: t('control.jobs.groupNone') },
       { value: 'date', label: t('control.jobs.groupDate') },
       { value: 'status', label: t('control.jobs.groupStatus') },
@@ -506,60 +658,254 @@ export default function WebControlJobs() {
       { value: 'source', label: t('control.jobs.groupSource') },
     ];
     for (const key of availablePayloadKeys) {
-      base.push({
+      options.push({
         value: `key:${key}`,
         label: formatMsg(t('control.jobs.groupKeyPrefix'), { key }),
       });
     }
-    return base;
+    return options;
   }, [availablePayloadKeys, t]);
 
-  const pageTitle = selectedDevice
-    ? stationTitle(selectedDevice)
-    : t('control.jobs.title');
+  const groupByLabel = groupOptions.find((option) => option.value === groupBy)?.label ?? '';
+
+  const hasCustomDate = dateFrom !== '' || dateTo !== '';
+  const hasDateCondition = hasCustomDate || datePreset !== 'all';
+  const presetLabel = t(DATE_PRESETS.find((preset) => preset.value === datePreset)?.key ?? 'control.jobs.datePresetAll');
+  const dateConditionValue = hasCustomDate
+    ? formatMsg(t('control.jobs.filterDateRange'), {
+        from: dateFrom || '…',
+        to: dateTo || '…',
+      })
+    : presetLabel;
+
+  const advancedConditionCount =
+    (hasCustomDate ? 1 : 0) + (groupBy !== 'none' ? 1 : 0) + keyFilters.length;
+
+  const advancedToggleLabel = advancedOpen
+    ? t('control.jobs.hideAdvancedFilters')
+    : advancedConditionCount > 0
+      ? formatMsg(t('control.jobs.advancedFiltersWithCount'), { count: advancedConditionCount })
+      : t('control.jobs.advancedFilters');
+
+  const searchCondition = jobSearch.trim()
+    ? formatMsg(t('control.jobs.filterSearch'), { value: jobSearch.trim() })
+    : '';
+  const statusCondition =
+    statusBucket !== 'ALL'
+      ? formatMsg(t('control.jobs.filterStatus'), { value: statusBucketLabel(t, statusBucket) })
+      : '';
+  const dateCondition = hasDateCondition
+    ? formatMsg(t('control.jobs.filterDate'), { value: dateConditionValue })
+    : '';
+  const groupCondition =
+    groupBy !== 'none' ? formatMsg(t('control.jobs.filterGroup'), { value: groupByLabel }) : '';
+  const keyConditions = keyFilters.map((filter) => ({
+    key: filter.key,
+    value: filter.value,
+    label: formatMsg(t('control.jobs.filterKey'), { key: filter.key, value: filter.value }),
+  }));
+  const hasActiveConditions = Boolean(
+    searchCondition || statusCondition || dateCondition || groupCondition || keyConditions.length > 0,
+  );
+  const removeLabel = (condition: string) =>
+    formatMsg(t('control.jobs.removeFilter'), { filter: condition });
+
+  const canSelectRows = canReprint && !isAllStations;
+  const selectedCount = selectedJobIds.length;
+  const selectedJobs = useMemo(
+    () => visibleJobs.filter((job) => selectedJobIds.includes(job.id)),
+    [visibleJobs, selectedJobIds],
+  );
+
+  const drawerJob = useMemo(
+    () => (drawerJobId ? scopeJobs.find((job) => job.id === drawerJobId) ?? null : null),
+    [drawerJobId, scopeJobs],
+  );
+  const drawerPayload = useMemo(
+    () => (drawerJob ? extractJobPayload(drawerJob) : {}),
+    [drawerJob],
+  );
+  const drawerPayloadEntries = useMemo(() => Object.entries(drawerPayload), [drawerPayload]);
+  const drawerPayloadJson = useMemo(
+    () => JSON.stringify(drawerPayload, null, 2),
+    [drawerPayload],
+  );
+  const drawerLogText = useMemo(() => {
+    if (!drawerJob) return '';
+    return [drawerJob.errorCode, drawerJob.errorMessage]
+      .filter((part): part is string => typeof part === 'string' && part.trim() !== '')
+      .join('\n');
+  }, [drawerJob]);
+
+  const onlineDeviceCount = devices.filter((device) => device.connectionState === 'ONLINE').length;
+  const allStationsTone: StatusTone =
+    devices.length === 0
+      ? 'unknown'
+      : onlineDeviceCount === devices.length
+        ? 'ok'
+        : onlineDeviceCount === 0
+          ? 'down'
+          : 'busy';
+
+  const totalJobCount = devices.reduce((total, device) => total + device.jobs.length, 0);
+
   const pageDescription = selectedDevice
     ? formatMsg(t('control.jobs.stationSubtitle'), { name: stationTitle(selectedDevice) })
     : t('control.jobs.description');
 
-  const headerActions = (
-    <Inline gap="sm">
-      <Freshness
-        lastSuccessAt={fleetResource.lastSuccessAt}
-        stale={fleetResource.stale}
-        refreshing={fleetResource.refreshing}
-        paused={fleetResource.paused}
-        onRefresh={fleetResource.refresh}
-      />
-      {selectedDevice ? (
-        <Button variant="secondary" onClick={goOverview}>
-          {t('control.jobs.backToOverview')}
-        </Button>
-      ) : (
-        <Button variant="secondary" onClick={() => navigate('/control/devices')}>
-          {t('control.jobs.manageDevices')}
-        </Button>
-      )}
-      <Button variant="primary" busy={syncing} onClick={handleSync}>
-        {selectedDevice ? t('control.jobs.syncStation') : t('control.jobs.syncAll')}
-      </Button>
-    </Inline>
-  );
+  const renderJobRow = (job: ControlSyncedJobItem): ReactNode => {
+    const isSelected = selectedJobIds.includes(job.id);
+    const verdict = getJobVerdict(job.status);
+    const reference = job.requestId || job.id;
+    return (
+      <tr key={job.id} className={isSelected ? 'is-selected' : undefined}>
+        {canSelectRows && (
+          <DataCell label={t('control.jobs.colSelect')}>
+            <Checkbox
+              hideLabel
+              label={formatMsg(t('control.jobs.selectJobRow'), { id: reference })}
+              checked={isSelected}
+              onChange={() => toggleJobSelection(job.id)}
+            />
+          </DataCell>
+        )}
+        <DataCell label={t('control.jobs.colJob')}>
+          <Mono size="label" weight="semibold" wrap title={reference}>
+            {reference}
+          </Mono>
+        </DataCell>
+        <DataCell label={t('control.jobs.colDestination')}>
+          <Stack gap="xs">
+            <Mono size="label" wrap>
+              {job.printerCode || job.printerId}
+            </Mono>
+            {isAllStations && (
+              <Text size="label" tone="muted" wrap>
+                {stationNameFor(job.deviceId)}
+              </Text>
+            )}
+          </Stack>
+        </DataCell>
+        <DataCell label={t('control.jobs.colStatus')}>
+          <Stack gap="xs">
+            <StatusBadge status={job.status} size="sm" />
+            {jobNeedsAttention(job.status) && (
+              <Text size="label" tone="muted" wrap>
+                {t(verdictHeadlineKey(verdict))}
+              </Text>
+            )}
+          </Stack>
+        </DataCell>
+        <DataCell label={t('control.jobs.receivedLabel')}>
+          <Text size="label" tone="muted" title={job.createdAt}>
+            {formatCreatedAt(job.createdAt)}
+          </Text>
+        </DataCell>
+        <DataCell label={t('control.jobs.colActions')} actions>
+          <Button size="sm" variant="secondary" onClick={() => setDrawerJobId(job.id)}>
+            {t('control.jobs.viewJob')}
+          </Button>
+        </DataCell>
+      </tr>
+    );
+  };
+
+  const renderTableHead = (groupLabel: string, jobs: ControlSyncedJobItem[]): ReactNode => {
+    const allSelected = jobs.length > 0 && jobs.every((job) => selectedJobIds.includes(job.id));
+    return (
+      <thead>
+        <tr>
+          {canSelectRows && (
+            <DataHead>
+              <Checkbox
+                hideLabel
+                label={formatMsg(t('control.jobs.selectAllGroup'), { group: groupLabel })}
+                checked={allSelected}
+                onChange={() => toggleSelectionFor(jobs)}
+              />
+            </DataHead>
+          )}
+          <DataHead>{t('control.jobs.colJob')}</DataHead>
+          <DataHead>{t('control.jobs.colDestination')}</DataHead>
+          <DataHead>{t('control.jobs.colStatus')}</DataHead>
+          <DataHead>{t('control.jobs.colReceived')}</DataHead>
+          <DataHead>{t('control.jobs.colActions')}</DataHead>
+        </tr>
+      </thead>
+    );
+  };
+
+  const renderTechnicalField = (
+    fieldKey: string,
+    label: string,
+    value: string | undefined | null,
+    copyable = false,
+  ): ReactNode => {
+    if (value == null || value === '') return null;
+    return (
+      <Stack key={fieldKey} gap="xs">
+        <Text size="label" weight="semibold" tone="muted">
+          {label}
+        </Text>
+        <Inline gap="sm">
+          <Mono size="label" wrap style={{ flex: '1 1 14rem', minWidth: 0 }}>
+            {value}
+          </Mono>
+          {copyable && (
+            <CopyValueButton
+              value={value}
+              label={label}
+              copied={copiedField === fieldKey}
+              onCopy={(next) => void handleCopy(next, fieldKey)}
+            />
+          )}
+        </Inline>
+      </Stack>
+    );
+  };
+
+  const drawerVerdict = drawerJob ? getJobVerdict(drawerJob.status) : null;
+  const drawerHeadlineKey =
+    drawerJob?.status === 'SUCCESS'
+      ? REPORTED_COMPLETE_COPY.headline
+      : drawerVerdict
+        ? verdictHeadlineKey(drawerVerdict)
+        : '';
+  const drawerDetailKey =
+    drawerJob?.status === 'SUCCESS'
+      ? REPORTED_COMPLETE_COPY.detail
+      : drawerVerdict
+        ? verdictDetailKey(drawerVerdict)
+        : '';
+  const drawerHasTechnical = drawerJob
+    ? Boolean(
+        drawerJob.id ||
+          drawerJob.requestId ||
+          drawerJob.sourceSystem ||
+          drawerJob.templateCode ||
+          drawerJob.resolvedTemplateCode ||
+          drawerJob.paperProfileId ||
+          drawerJob.printerId ||
+          drawerJob.runnerId ||
+          drawerJob.errorCode ||
+          drawerJob.errorMessage ||
+          drawerJob.createdAt ||
+          drawerJob.finishedAt ||
+          drawerJob.completedAt ||
+          drawerJob.updatedAt,
+      )
+    : false;
 
   return (
     <PageLayout
       density="compact"
       width="full"
-      title={pageTitle}
+      title={t('control.jobs.title')}
       description={pageDescription}
-      actions={headerActions}
     >
       <Stack gap="lg">
         {notice && (
-          <Alert
-            tone={notice.tone}
-            onDismiss={() => setNotice(null)}
-            dismissLabel={t('common.close')}
-          >
+          <Alert tone={notice.tone} onDismiss={() => setNotice(null)} dismissLabel={t('common.close')}>
             {notice.message}
           </Alert>
         )}
@@ -585,1072 +931,722 @@ export default function WebControlJobs() {
               </Button>
             }
           />
-        ) : !selectedDevice ? (
-          /* ─── Mode A: Fleet Summary + PrintOps Station Cards ─────────────────── */
-          <Stack gap="lg">
-            {summary && (
-              <MetricGrid label={t('control.jobs.fleetMetricsLabel')}>
-                <MetricTile
-                  label={t('control.jobs.metricTotalJobs')}
-                  value={summary.totalJobs}
-                />
-                <MetricTile
-                  label={t('control.jobs.metricQueuedJobs')}
-                  value={summary.queuedJobs}
-                  tone="accent"
-                />
-                <MetricTile
-                  label={t('control.jobs.metricSuccessJobs')}
-                  value={summary.successJobs}
-                  tone="ok"
-                />
-                <MetricTile
-                  label={t('control.jobs.metricAttentionJobs')}
-                  value={summary.attentionJobs}
-                  tone={summary.attentionJobs > 0 ? 'attention' : 'neutral'}
-                />
-                <MetricTile
-                  label={t('control.jobs.metricFailedJobs')}
-                  value={summary.failedJobs}
-                  tone={summary.failedJobs > 0 ? 'critical' : 'neutral'}
-                />
-                <MetricTile
-                  label={t('control.jobs.metricOnlineStations')}
-                  value={`${summary.onlineDevices} / ${summary.totalDevices}`}
-                  detail={formatMsg(t('control.jobs.metricDevicesOnlineDetail'), {
-                    online: summary.onlineDevices,
-                    total: summary.totalDevices,
-                  })}
-                  tone={summary.offlineDevices > 0 ? 'attention' : 'ok'}
-                />
-              </MetricGrid>
-            )}
-
-            {summary && summary.errorBreakdown.length > 0 && (
-              <Panel
-                title={t('control.jobs.errorBreakdownTitle')}
-                description={t('control.jobs.errorBreakdownDesc')}
-              >
-                <DataTable label={t('control.jobs.errorBreakdownTitle')} responsive>
-                  <thead>
-                    <tr>
-                      <DataHead>{t('control.jobs.switchStation')}</DataHead>
-                      <DataHead>{t('control.jobs.colStatus')}</DataHead>
-                      <DataHead>{t('control.jobs.metricFailedJobs')}</DataHead>
-                      <DataHead>{t('control.jobs.statLastJob')}</DataHead>
-                      <DataHead>{t('control.jobs.colActions')}</DataHead>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {summary.errorBreakdown.slice(0, 8).map((errItem) => (
-                      <tr key={`${errItem.deviceId}-${errItem.errorCode}`}>
-                        <DataCell label={t('control.jobs.switchStation')}>
-                          <Stack gap="xs">
-                            <Text weight="semibold">{errItem.deviceName}</Text>
-                            <Mono size="label" tone="muted">
-                              {errItem.deviceId}
-                            </Mono>
-                          </Stack>
-                        </DataCell>
-                        <DataCell label={t('control.jobs.colStatus')}>
-                          <Stack gap="xs">
-                            <Badge tone="danger">
-                              <Mono>{errItem.errorCode}</Mono>
-                            </Badge>
-                            {errItem.errorMessage && (
-                              <Text size="label" tone="muted" wrap>
-                                {errItem.errorMessage}
-                              </Text>
-                            )}
-                          </Stack>
-                        </DataCell>
-                        <DataCell label={t('control.jobs.metricFailedJobs')}>
-                          <Text weight="semibold">{errItem.count}</Text>
-                        </DataCell>
-                        <DataCell label={t('control.jobs.statLastJob')}>
-                          <Text size="label" tone="muted">
-                            {formatCreatedAt(errItem.latestAt)}
-                          </Text>
-                        </DataCell>
-                        <DataCell label={t('control.jobs.colActions')}>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => openStation(errItem.deviceId, 'NEEDS_ATTENTION')}
-                          >
-                            {t('control.jobs.inspectErrors')}
-                          </Button>
-                        </DataCell>
-                      </tr>
-                    ))}
-                  </tbody>
-                </DataTable>
-              </Panel>
-            )}
-
-            <Panel
-              title={t('control.jobs.stationDirectoryTitle')}
-              description={t('control.jobs.stationDirectoryDesc')}
-            >
-              <Stack gap="md">
-                <Grid columns={2} gap="md">
-                  <FormField label={t('control.jobs.stationSearchLabel')}>
-                    {(control) => (
-                      <Input
-                        {...control}
-                        type="search"
-                        placeholder={t('control.jobs.stationSearchPlaceholder')}
-                        value={stationSearch}
-                        onChange={(e) => setStationSearch(e.target.value)}
-                      />
-                    )}
-                  </FormField>
-                  <FormField label={t('control.jobs.stationStateLabel')}>
-                    {(control) => (
-                      <Select
-                        {...control}
-                        value={stationStateFilter}
-                        onChange={(e) =>
-                          setStationStateFilter(e.target.value as StationStateFilter)
-                        }
-                      >
-                        <option value="ALL">{t('control.jobs.stationStateAll')}</option>
-                        <option value="ONLINE">{t('control.jobs.stationStateOnline')}</option>
-                        <option value="OFFLINE">{t('control.jobs.stationStateOffline')}</option>
-                        <option value="HAS_ERRORS">
-                          {t('control.jobs.stationStateHasErrors')}
-                        </option>
-                      </Select>
-                    )}
-                  </FormField>
-                </Grid>
-
-                {filteredDevices.length === 0 ? (
-                  <EmptyState
-                    title={t('control.jobs.noStations')}
-                    hint={t('control.jobs.noStationsHint')}
-                    action={
-                      <Button variant="primary" busy={syncing} onClick={handleSync}>
-                        {t('control.jobs.syncAll')}
-                      </Button>
-                    }
-                  />
-                ) : (
-                  <Grid columns={2} gap="md">
-                    {filteredDevices.map((dev) => {
-                      const online = dev.connectionState === 'ONLINE';
-                      const visibleKeys = dev.payloadKeys.slice(0, 6);
-                      const hiddenKeysCount = Math.max(0, dev.payloadKeys.length - 6);
-                      return (
-                        <Panel
-                          key={dev.deviceId}
-                          title={stationTitle(dev)}
-                          description={`${dev.deviceId} · ${dev.siteId}`}
-                          actions={
-                            <Inline gap="xs">
-                              <Badge tone={online ? 'success' : 'danger'}>
-                                {online ? t('control.jobs.online') : t('control.jobs.offline')}
-                              </Badge>
-                              <Badge tone="neutral">v{dev.appVersion}</Badge>
-                              {dev.hasUpdateAvailable && (
-                                <Badge
-                                  tone="warning"
-                                  title={`${t('control.devices.colLatestCompatible')}: v${dev.latestCompatibleVersion ?? ''}`}
-                                >
-                                  UPDATE
-                                </Badge>
-                              )}
-                              {canManageControl && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => openRenameDialog(dev)}
-                                >
-                                  {t('control.devices.editDisplayName')}
-                                </Button>
-                              )}
-                            </Inline>
-                          }
-                          footer={
-                            <Inline gap="sm" style={{ justifyContent: 'flex-end' }}>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() =>
-                                  navigate(`/control/devices/${encodeURIComponent(dev.deviceId)}`)
-                                }
-                              >
-                                {t('control.jobs.deviceSettings')}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="primary"
-                                onClick={() => openStation(dev.deviceId)}
-                              >
-                                {t('control.jobs.openJobs')}
-                              </Button>
-                            </Inline>
-                          }
-                        >
-                          <Stack gap="sm">
-                            <CardDetail columns={2}>
-                              <CardDetailItem label={t('control.jobs.metricTotalJobs')}>
-                                <Text weight="semibold">{dev.stats.totalJobs}</Text>
-                              </CardDetailItem>
-                              <CardDetailItem label={t('control.jobs.metricQueuedJobs')}>
-                                <Text weight="semibold" tone="primary">
-                                  {dev.stats.queuedJobs}
-                                </Text>
-                              </CardDetailItem>
-                              <CardDetailItem label={t('control.jobs.metricAttentionJobs')}>
-                                <Text
-                                  weight="semibold"
-                                  tone={dev.stats.attentionJobs > 0 ? 'warning' : 'default'}
-                                >
-                                  {dev.stats.attentionJobs}
-                                </Text>
-                              </CardDetailItem>
-                              <CardDetailItem label={t('control.jobs.metricFailedJobs')}>
-                                <Text
-                                  weight="semibold"
-                                  tone={dev.stats.failedJobs > 0 ? 'danger' : 'default'}
-                                >
-                                  {dev.stats.failedJobs}
-                                </Text>
-                              </CardDetailItem>
-                              <CardDetailItem label={t('control.jobs.statLastJob')}>
-                                <Text size="label" tone="muted">
-                                  {dev.stats.lastJobAt
-                                    ? formatRelativeTime(t, dev.stats.lastJobAt)
-                                    : '—'}
-                                </Text>
-                              </CardDetailItem>
-                            </CardDetail>
-
-                            <Stack gap="xs">
-                              <Text size="label" tone="muted">
-                                {t('control.jobs.payloadKeysPreview')}
-                              </Text>
-                              {visibleKeys.length > 0 ? (
-                                <Inline gap="xs">
-                                  {visibleKeys.map((key) => (
-                                    <Badge key={key} tone="info">
-                                      <Mono size="label">{key}</Mono>
-                                    </Badge>
-                                  ))}
-                                  {hiddenKeysCount > 0 && (
-                                    <Badge tone="neutral">
-                                      {formatMsg(t('control.jobs.moreKeys'), {
-                                        count: hiddenKeysCount,
-                                      })}
-                                    </Badge>
-                                  )}
-                                </Inline>
-                              ) : (
-                                <Text size="label" tone="muted">
-                                  {t('control.jobs.noPayloadKeysYet')}
-                                </Text>
-                              )}
-                            </Stack>
-
-                            {dev.stats.latestError && (
-                              <Alert
-                                tone={
-                                  dev.stats.latestError.status === 'FAILED'
-                                    ? 'error'
-                                    : 'warning'
-                                }
-                                title={t('control.jobs.latestError')}
-                              >
-                                <Inline gap="xs">
-                                  <Mono size="label">
-                                    {dev.stats.latestError.errorCode ||
-                                      dev.stats.latestError.status}
-                                  </Mono>
-                                  {dev.stats.latestError.errorMessage && (
-                                    <Text size="label" wrap>
-                                      — {dev.stats.latestError.errorMessage}
-                                    </Text>
-                                  )}
-                                </Inline>
-                              </Alert>
-                            )}
-                          </Stack>
-                        </Panel>
-                      );
-                    })}
-                  </Grid>
-                )}
-              </Stack>
-            </Panel>
-          </Stack>
         ) : (
-          /* ─── Mode B: Station Drill-Down: Filter, Group & Remote Re-print ───── */
-          <Stack gap="lg">
-            <Panel>
-              <Inline gap="md" style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                <Inline gap="md" style={{ alignItems: 'flex-end' }}>
-                  <FormField label={t('control.jobs.switchStation')}>
-                    {(control) => (
-                      <Select
-                        {...control}
-                        value={selectedDevice.deviceId}
-                        onChange={(e) => openStation(e.target.value)}
-                      >
-                        {devices.map((d) => (
-                          <option key={d.deviceId} value={d.deviceId}>
-                            {stationTitle(d)} ({d.stats.totalJobs})
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </FormField>
-                  {canManageControl && (
-                    <Button
-                      variant="secondary"
-                      onClick={() => openRenameDialog(selectedDevice)}
+          <>
+            {/* Station bar: the page's only action row. */}
+            <Panel padding="md" aria-label={t('control.jobs.stationBarLabel')}>
+              <Inline gap="md">
+                <SelectFilter
+                  label={t('control.jobs.stationBarLabel')}
+                  value={selectedDeviceId}
+                  onValueChange={openStation}
+                >
+                  <option value="">
+                    {formatMsg(t('control.jobs.allStationsWithCount'), { count: totalJobCount })}
+                  </option>
+                  {devices.map((device) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {formatMsg(t('control.jobs.stationOption'), {
+                        name: stationTitle(device),
+                        count: device.jobs.length,
+                      })}
+                    </option>
+                  ))}
+                </SelectFilter>
+
+                {selectedDevice ? (
+                  <>
+                    <StatusIndicator
+                      condition={selectedDevice.connectionState}
+                      tone={selectedDevice.connectionState === 'ONLINE' ? 'ok' : 'down'}
                     >
-                      {t('control.devices.editDisplayName')}
-                    </Button>
-                  )}
-                </Inline>
-                <Inline gap="xs">
-                  <Badge
-                    tone={selectedDevice.connectionState === 'ONLINE' ? 'success' : 'danger'}
-                  >
-                    {selectedDevice.connectionState === 'ONLINE'
-                      ? t('control.jobs.online')
-                      : t('control.jobs.offline')}
-                  </Badge>
-                  <Badge tone="neutral">v{selectedDevice.appVersion}</Badge>
-                  <Mono size="label" tone="muted">
-                    {selectedDevice.deviceId} · {selectedDevice.siteId}
-                  </Mono>
-                </Inline>
+                      {selectedDevice.connectionState === 'ONLINE'
+                        ? t('control.jobs.connectionOnline')
+                        : t('control.jobs.connectionOffline')}
+                    </StatusIndicator>
+                    {selectedDevice.appVersion && (
+                      <Mono size="label" tone="muted" wrap>
+                        v{selectedDevice.appVersion}
+                      </Mono>
+                    )}
+                  </>
+                ) : (
+                  <StatusIndicator condition="all-stations" tone={allStationsTone}>
+                    {formatMsg(t('control.jobs.stationSummary'), {
+                      online: onlineDeviceCount,
+                      total: devices.length,
+                    })}
+                  </StatusIndicator>
+                )}
+
+                <Freshness
+                  lastSuccessAt={fleetResource.lastSuccessAt}
+                  stale={fleetResource.stale}
+                  refreshing={fleetResource.refreshing}
+                  paused={fleetResource.paused}
+                  onRefresh={fleetResource.refresh}
+                />
+
+                <Button variant="primary" busy={syncing} onClick={handleSync}>
+                  {syncLabel}
+                </Button>
+                <Button variant="secondary" onClick={() => navigate('/control/devices')}>
+                  {t('control.jobs.manageDevices')}
+                </Button>
               </Inline>
             </Panel>
 
-            <MetricGrid label={t('control.jobs.stationMetricsLabel')}>
-              <MetricTile
-                label={t('control.jobs.metricTotalJobs')}
-                value={selectedDevice.stats.totalJobs}
-              />
-              <MetricTile
-                label={t('control.jobs.metricQueuedJobs')}
-                value={selectedDevice.stats.queuedJobs}
-                tone="accent"
-              />
-              <MetricTile
-                label={t('control.jobs.metricSuccessJobs')}
-                value={selectedDevice.stats.successJobs}
-                tone="ok"
-              />
-              <MetricTile
-                label={t('control.jobs.metricAttentionJobs')}
-                value={selectedDevice.stats.attentionJobs}
-                tone={selectedDevice.stats.attentionJobs > 0 ? 'attention' : 'neutral'}
-              />
-              <MetricTile
-                label={t('control.jobs.metricFailedJobs')}
-                value={selectedDevice.stats.failedJobs}
-                tone={selectedDevice.stats.failedJobs > 0 ? 'critical' : 'neutral'}
-              />
-            </MetricGrid>
-
-            <Panel
-              title={t('control.jobs.filtersTitle')}
-              actions={
-                <Inline gap="sm">
-                  <Text size="label" tone="muted">
-                    {formatMsg(t('control.jobs.matchingCount'), {
-                      shown: filteredJobs.length,
-                      total: stationJobs.length,
-                    })}
-                  </Text>
-                  <Button size="sm" variant="ghost" onClick={resetDrillDownState}>
-                    {t('control.jobs.clearFilters')}
-                  </Button>
-                </Inline>
-              }
-            >
-              <Stack gap="md">
-                <Grid columns={3} gap="md">
-                  <FormField label={t('control.jobs.searchLabel')}>
-                    {(control) => (
-                      <Input
-                        {...control}
-                        type="search"
-                        placeholder={t('control.jobs.searchPlaceholder')}
-                        value={jobSearch}
-                        onChange={(e) => setJobSearch(e.target.value)}
-                      />
-                    )}
-                  </FormField>
-                  <FormField label={t('control.jobs.statusLabel')}>
-                    {(control) => (
-                      <Select
-                        {...control}
-                        value={statusFilter}
-                        onChange={(e) =>
-                          setStatusFilter(
-                            e.target.value as 'ALL' | 'NEEDS_ATTENTION' | JobStatus,
-                          )
-                        }
-                      >
-                        <option value="ALL">{t('control.jobs.statusAll')}</option>
-                        <option value="NEEDS_ATTENTION">
-                          {t('control.jobs.statusNeedsAttention')}
-                        </option>
-                        {JOB_STATUSES.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </FormField>
-                  <FormField label={t('control.jobs.groupByLabel')}>
-                    {(control) => (
-                      <Select
-                        {...control}
-                        value={groupBy}
-                        onChange={(e) => setGroupBy(e.target.value as JobGroupBy)}
-                      >
-                        {groupOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </FormField>
-                </Grid>
-
-                <Grid columns={3} gap="md">
-                  <FormField label={t('control.jobs.datePresetLabel')}>
-                    {(control) => (
-                      <Select
-                        {...control}
-                        value={datePreset}
-                        onChange={(e) => {
-                          const next = e.target.value as JobDatePreset;
-                          setDatePreset(next);
-                          if (next !== 'all') {
-                            setDateFrom('');
-                            setDateTo('');
-                          }
-                        }}
-                      >
-                        <option value="all">{t('control.jobs.datePresetAll')}</option>
-                        <option value="today">{t('control.jobs.datePresetToday')}</option>
-                        <option value="7d">{t('control.jobs.datePreset7d')}</option>
-                        <option value="30d">{t('control.jobs.datePreset30d')}</option>
-                      </Select>
-                    )}
-                  </FormField>
-                  <FormField label={t('control.jobs.dateFromLabel')}>
-                    {(control) => (
-                      <Input
-                        {...control}
-                        type="date"
-                        value={dateFrom}
-                        onChange={(e) => {
-                          setDateFrom(e.target.value);
-                          if (e.target.value) setDatePreset('all');
-                        }}
-                      />
-                    )}
-                  </FormField>
-                  <FormField label={t('control.jobs.dateToLabel')}>
-                    {(control) => (
-                      <Input
-                        {...control}
-                        type="date"
-                        value={dateTo}
-                        onChange={(e) => {
-                          setDateTo(e.target.value);
-                          if (e.target.value) setDatePreset('all');
-                        }}
-                      />
-                    )}
-                  </FormField>
-                </Grid>
-
-                {availablePayloadKeys.length > 0 && (
-                  <Stack gap="sm">
-                    <Grid columns={4} gap="md">
-                      <FormField label={t('control.jobs.keyFilterKeyLabel')}>
-                        {(control) => (
-                          <Select
-                            {...control}
-                            value={pendingKey}
-                            onChange={(e) => {
-                              setPendingKey(e.target.value);
-                              setPendingValue('');
-                            }}
-                          >
-                            <option value="">
-                              {t('control.jobs.keyFilterKeyPlaceholder')}
-                            </option>
-                            {availablePayloadKeys.map((key) => (
-                              <option key={key} value={key}>
-                                {key}
-                              </option>
-                            ))}
-                          </Select>
-                        )}
-                      </FormField>
-                      <FormField label={t('control.jobs.keyFilterValueLabel')}>
-                        {(control) => (
-                          <Select
-                            {...control}
-                            value=""
-                            disabled={!pendingKey || suggestedPayloadValueCounts.length === 0}
-                            onChange={(e) => {
-                              const picked = e.target.value;
-                              if (!pendingKey || !picked) return;
-                              setKeyFilters((prev) => [
-                                ...prev.filter((kf) => kf.key !== pendingKey),
-                                { key: pendingKey, value: picked, exact: true },
-                              ]);
-                              setPendingValue('');
-                            }}
-                          >
-                            <option value="">
-                              {formatMsg(t('control.jobs.keyFilterPickValuePlaceholder'), {
-                                count: suggestedPayloadValueCounts.length,
-                              })}
-                            </option>
-                            {suggestedPayloadValueCounts.map((entry) => (
-                              <option key={entry.value} value={entry.value}>
-                                {entry.value} ({entry.count})
-                              </option>
-                            ))}
-                          </Select>
-                        )}
-                      </FormField>
-                      <FormField label={t('control.jobs.keyFilterValueLabel')}>
-                        {(control) => (
-                          <>
-                            <Input
-                              {...control}
-                              list={valueListId}
-                              placeholder={t('control.jobs.keyFilterValuePlaceholder')}
-                              value={pendingValue}
-                              onChange={(e) => setPendingValue(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  handleAddKeyFilter();
-                                }
-                              }}
-                              disabled={!pendingKey}
-                            />
-                            <datalist id={valueListId}>
-                              {suggestedPayloadValueCounts.map((entry) => (
-                                <option key={entry.value} value={entry.value} />
-                              ))}
-                            </datalist>
-                          </>
-                        )}
-                      </FormField>
-                      <Inline gap="sm" style={{ alignItems: 'flex-end' }}>
-                        <Button
-                          variant="secondary"
-                          disabled={!pendingKey || !pendingValue.trim()}
-                          onClick={handleAddKeyFilter}
-                        >
-                          {t('control.jobs.addKeyFilter')}
-                        </Button>
-                      </Inline>
-                    </Grid>
-
-                    {pendingKey && filteredValuePills.length > 0 && (
-                      <Inline gap="xs">
-                        <Text size="label" tone="muted">
-                          {formatMsg(t('control.jobs.keyFilterAvailableValues'), { key: pendingKey })}:
-                        </Text>
-                        {filteredValuePills.slice(0, 20).map((entry) => {
-                          const selected = keyFilters.some(
-                            (kf) =>
-                              kf.key === pendingKey &&
-                              kf.value.toLocaleLowerCase() === entry.value.toLocaleLowerCase(),
-                          );
-                          return (
-                            <Chip
-                              key={entry.value}
-                              selected={selected}
-                              onClick={() => {
-                                toggleKeyFilter(pendingKey, entry.value, true);
-                                setPendingValue('');
-                              }}
-                            >
-                              {entry.value} ({entry.count})
-                            </Chip>
-                          );
-                        })}
-                        {filteredValuePills.length > 20 && (
-                          <Badge tone="neutral">
-                            {formatMsg(t('control.jobs.moreKeys'), {
-                              count: filteredValuePills.length - 20,
-                            })}
-                          </Badge>
-                        )}
-                      </Inline>
-                    )}
-
-                    {keyFilters.length > 0 && (
-                      <Toolbar label={t('control.jobs.activeKeyFiltersLabel')}>
-                        <Inline gap="xs">
-                          <Text size="label" tone="muted">
-                            {t('control.jobs.activeKeyFiltersLabel')}:
-                          </Text>
-                          {keyFilters.map((kf) => (
-                            <Chip
-                              key={kf.key}
-                              selected
-                              onClick={() => toggleKeyFilter(kf.key, kf.value, kf.exact !== false)}
-                            >
-                              <Mono size="label">{kf.key}</Mono> = {kf.value} ×
-                            </Chip>
-                          ))}
-                        </Inline>
-                      </Toolbar>
-                    )}
-                  </Stack>
-                )}
-              </Stack>
-            </Panel>
-
-            {canReprint && selectedJobIds.length > 0 && (
-              <Toolbar label={t('control.jobs.selectedCount')}>
-                <Inline gap="md" style={{ justifyContent: 'space-between' }}>
-                  <Text weight="semibold">
-                    {formatMsg(t('control.jobs.selectedCount'), {
-                      count: selectedJobIds.length,
-                    })}
-                  </Text>
-                  <Inline gap="sm">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setSelectedJobIds([])}
-                    >
-                      {t('control.jobs.clearSelection')}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      onClick={() => {
-                        const chosen = stationJobs.filter((j) =>
-                          selectedJobIds.includes(j.id),
-                        );
-                        openReprintDialog(chosen);
-                      }}
-                    >
-                      {formatMsg(t('control.jobs.reprintSelected'), {
-                        count: selectedJobIds.length,
-                      })}
-                    </Button>
-                  </Inline>
-                </Inline>
-              </Toolbar>
-            )}
-
-            {filteredJobs.length === 0 ? (
+            {devices.length === 0 ? (
               <EmptyState
-                title={t('control.jobs.noJobs')}
-                hint={t('control.jobs.noJobsHint')}
+                title={t('control.jobs.noStations')}
+                hint={t('control.jobs.noStationsHint')}
                 action={
-                  <Button variant="secondary" onClick={resetDrillDownState}>
-                    {t('control.jobs.clearFilters')}
+                  <Button variant="primary" busy={syncing} onClick={handleSync}>
+                    {t('control.jobs.syncAll')}
                   </Button>
                 }
               />
             ) : (
-              <Stack gap="md">
-                {groups.map((group) => {
-                  const allGroupSelected =
-                    group.jobs.length > 0 &&
-                    group.jobs.every((job) => selectedJobIds.includes(job.id));
-                  return (
-                    <Panel
-                      key={group.groupKey}
-                      title={
-                        groupBy === 'none'
-                          ? t('control.jobs.tableLabel')
-                          : group.groupLabel
+              <>
+                {/* Status counts: the bucket is applied after the counts. */}
+                <Toolbar label={t('control.jobs.countsLabel')}>
+                  {(['ALL', 'NEEDS_REVIEW', 'IN_PROGRESS', 'PRINTED'] as StatusBucket[]).map(
+                    (bucket) => (
+                      <Chip
+                        key={bucket}
+                        selected={statusBucket === bucket}
+                        onClick={() =>
+                          setStatusBucket((previous) => (previous === bucket ? 'ALL' : bucket))
+                        }
+                      >
+                        {statusBucketLabel(t, bucket)} ({bucketCounts[bucket]})
+                      </Chip>
+                    ),
+                  )}
+                  {bucketCounts.OTHER > 0 && (
+                    <Chip
+                      selected={statusBucket === 'OTHER'}
+                      onClick={() =>
+                        setStatusBucket((previous) => (previous === 'OTHER' ? 'ALL' : 'OTHER'))
                       }
-                      actions={
-                        <Inline gap="xs">
-                          <Badge tone="neutral">
-                            {formatMsg(t('control.jobs.groupSummary'), {
-                              total: group.totalCount,
-                            })}
-                          </Badge>
-                          {group.failedCount > 0 && (
-                            <Badge tone="danger">{group.failedCount} failed</Badge>
-                          )}
-                          {group.attentionCount > 0 && (
-                            <Badge tone="warning">{group.attentionCount} attention</Badge>
-                          )}
-                        </Inline>
-                      }
-                      padding="none"
                     >
-                      <DataTable label={t('control.jobs.tableLabel')} responsive>
-                        <thead>
-                          <tr>
-                            {canReprint && (
-                              <DataHead>
-                                <Checkbox
-                                  hideLabel
-                                  label={formatMsg(t('control.jobs.selectAllGroup'), {
-                                    group: group.groupLabel,
-                                  })}
-                                  checked={allGroupSelected}
-                                  onChange={() => toggleGroupSelection(group.jobs)}
-                                />
-                              </DataHead>
-                            )}
-                            <DataHead>{t('control.jobs.colJobAndPayload')}</DataHead>
-                            <DataHead>{t('control.jobs.colTemplatePrinter')}</DataHead>
-                            <DataHead>{t('control.jobs.colStatus')}</DataHead>
-                            <DataHead>{t('control.jobs.colCreated')}</DataHead>
-                            <DataHead>{t('control.jobs.colActions')}</DataHead>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {group.jobs.map((job) => {
-                            const entries = payloadEntries(job);
-                            const previewEntries = entries.slice(0, 6);
-                            const overflowCount = Math.max(0, entries.length - 6);
-                            const isChecked = selectedJobIds.includes(job.id);
+                      {t('control.jobs.countOther')} ({bucketCounts.OTHER})
+                    </Chip>
+                  )}
+                  {counts.needsReview > 0 && groupBy === 'none' && statusBucket === 'ALL' && (
+                    <Text size="label" tone="muted">
+                      {t('control.jobs.needsReviewFirstHint')}
+                    </Text>
+                  )}
+                </Toolbar>
 
-                            return (
-                              <tr key={job.id} className={isChecked ? 'is-selected' : undefined}>
-                                {canReprint && (
-                                  <DataCell label={t('control.jobs.colSelect')}>
-                                    <Checkbox
-                                      hideLabel
-                                      label={formatMsg(t('control.jobs.selectJobRow'), {
-                                        id: job.id.slice(0, 10),
-                                      })}
-                                      checked={isChecked}
-                                      onChange={() => toggleJobSelection(job.id)}
-                                    />
-                                  </DataCell>
-                                )}
-                                <DataCell label={t('control.jobs.colJobAndPayload')}>
-                                  <Stack gap="xs">
-                                    <Inline gap="xs">
-                                      <Mono size="label" weight="semibold">
-                                        {job.requestId || job.id}
-                                      </Mono>
-                                      {job.copies > 1 && (
-                                        <Badge tone="neutral">×{job.copies}</Badge>
-                                      )}
-                                      {job.reprintOfJobId && (
-                                        <Badge tone="info">reprint</Badge>
-                                      )}
-                                    </Inline>
-                                    {previewEntries.length > 0 ? (
-                                      <Inline gap="xs">
-                                        {previewEntries.map(({ key, value }) => {
-                                          const active = keyFilters.some(
-                                            (kf) =>
-                                              kf.key === key &&
-                                              kf.value.toLocaleLowerCase() ===
-                                                value.toLocaleLowerCase(),
-                                          );
-                                          return (
-                                            <Chip
-                                              key={key}
-                                              selected={active}
-                                              onClick={() => toggleKeyFilter(key, value)}
-                                            >
-                                              <Mono size="label">{key}</Mono>: {value}
-                                            </Chip>
-                                          );
-                                        })}
-                                        {overflowCount > 0 && (
-                                          <Badge tone="neutral">+{overflowCount}</Badge>
-                                        )}
-                                      </Inline>
-                                    ) : (
-                                      <Text size="label" tone="muted">
-                                        {job.payloadSnapshot || '—'}
-                                      </Text>
-                                    )}
-                                  </Stack>
-                                </DataCell>
-                                <DataCell label={t('control.jobs.colTemplatePrinter')}>
-                                  <Stack gap="xs">
-                                    <Mono size="label">
-                                      {job.resolvedTemplateCode || job.templateCode || '—'}
-                                    </Mono>
-                                    <Text size="label" tone="muted">
-                                      {job.printerCode || job.printerId}
-                                      {job.sourceSystem ? ` · ${job.sourceSystem}` : ''}
-                                    </Text>
-                                  </Stack>
-                                </DataCell>
-                                <DataCell label={t('control.jobs.colStatus')}>
-                                  <Stack gap="xs">
-                                    <StatusBadge status={job.status} size="sm" />
-                                    {(job.errorCode || job.errorMessage) && (
-                                      <Text size="label" tone="danger" wrap>
-                                        {job.errorCode ? `${job.errorCode}: ` : ''}
-                                        {job.errorMessage ?? ''}
-                                      </Text>
-                                    )}
-                                  </Stack>
-                                </DataCell>
-                                <DataCell label={t('control.jobs.colCreated')}>
-                                  <Text size="label" tone="muted">
-                                    {formatCreatedAt(job.createdAt)}
-                                  </Text>
-                                </DataCell>
-                                <DataCell label={t('control.jobs.colActions')}>
-                                  <Inline gap="xs">
-                                    <Button
-                                      size="sm"
-                                      variant="secondary"
-                                      onClick={() => setDrawerJob(job)}
-                                    >
-                                      {t('control.jobs.viewPayload')}
-                                    </Button>
-                                    {canReprint && (
-                                      <Button
-                                        size="sm"
-                                        variant="primary"
-                                        onClick={() => openReprintDialog([job])}
-                                      >
-                                        {t('control.jobs.reprint')}
-                                      </Button>
-                                    )}
-                                  </Inline>
-                                </DataCell>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
+                {/* Search and common dates. */}
+                <Inline gap="sm">
+                  <div style={{ flex: '1 1 16rem', minWidth: 0 }}>
+                    <SearchField
+                      label={t('control.jobs.searchLabel')}
+                      placeholder={t('control.jobs.searchPlaceholder')}
+                      value={jobSearch}
+                      onValueChange={setJobSearch}
+                    />
+                  </div>
+                  {DATE_PRESETS.map((preset) => (
+                    <Chip
+                      key={preset.value}
+                      selected={
+                        !hasCustomDate &&
+                        (preset.value === 'all' ? datePreset === 'all' : datePreset === preset.value)
+                      }
+                      onClick={() => handleDatePreset(preset.value)}
+                    >
+                      {t(preset.key)}
+                    </Chip>
+                  ))}
+                  <Button
+                    variant="secondary"
+                    aria-expanded={advancedOpen}
+                    aria-controls={advancedPanelId}
+                    onClick={() => setAdvancedOpen((previous) => !previous)}
+                  >
+                    {advancedToggleLabel}
+                  </Button>
+                </Inline>
+
+                {/* Advanced panel: custom dates, grouping and payload filters live only here. */}
+                {advancedOpen && (
+                  <Panel
+                    id={advancedPanelId}
+                    tone="subtle"
+                    padding="md"
+                    title={t('control.jobs.advancedTitle')}
+                    description={t('control.jobs.advancedHint')}
+                  >
+                    <Stack gap="md">
+                      <Grid columns={3} gap="md">
+                        <FormField label={t('control.jobs.dateFromLabel')}>
+                          {(control) => (
+                            <Input
+                              {...control}
+                              type="date"
+                              value={dateFrom}
+                              onChange={(event) => {
+                                setDateFrom(event.target.value);
+                                if (event.target.value) setDatePreset('all');
+                              }}
+                            />
+                          )}
+                        </FormField>
+                        <FormField label={t('control.jobs.dateToLabel')}>
+                          {(control) => (
+                            <Input
+                              {...control}
+                              type="date"
+                              value={dateTo}
+                              onChange={(event) => {
+                                setDateTo(event.target.value);
+                                if (event.target.value) setDatePreset('all');
+                              }}
+                            />
+                          )}
+                        </FormField>
+                        <FormField label={t('control.jobs.groupByLabel')}>
+                          {(control) => (
+                            <Select
+                              {...control}
+                              value={groupBy}
+                              onChange={(event) => setGroupBy(event.target.value as JobGroupBy)}
+                            >
+                              {groupOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </Select>
+                          )}
+                        </FormField>
+                      </Grid>
+
+                      {availablePayloadKeys.length > 0 && (
+                        <Grid columns={3} gap="md">
+                          <FormField label={t('control.jobs.keyFilterKeyLabel')}>
+                            {(control) => (
+                              <Select
+                                {...control}
+                                value={pendingKey}
+                                onChange={(event) => {
+                                  setPendingKey(event.target.value);
+                                  setPendingValue('');
+                                }}
+                              >
+                                <option value="">{t('control.jobs.keyFilterKeyPlaceholder')}</option>
+                                {availablePayloadKeys.map((key) => (
+                                  <option key={key} value={key}>
+                                    {key}
+                                  </option>
+                                ))}
+                              </Select>
+                            )}
+                          </FormField>
+                          <FormField label={t('control.jobs.keyFilterValueLabel')}>
+                            {(control) => (
+                              <Select
+                                {...control}
+                                value=""
+                                disabled={!pendingKey || suggestedPayloadValueCounts.length === 0}
+                                onChange={(event) => handlePickPayloadValue(event.target.value)}
+                              >
+                                <option value="">
+                                  {formatMsg(t('control.jobs.keyFilterPickValuePlaceholder'), {
+                                    count: suggestedPayloadValueCounts.length,
+                                  })}
+                                </option>
+                                {suggestedPayloadValueCounts.map((entry) => (
+                                  <option key={entry.value} value={entry.value}>
+                                    {entry.value} ({entry.count})
+                                  </option>
+                                ))}
+                              </Select>
+                            )}
+                          </FormField>
+                          <FormField label={t('control.jobs.keyFilterValueLabel')}>
+                            {(control) => (
+                              <>
+                                <Input
+                                  {...control}
+                                  list={valueListId}
+                                  placeholder={t('control.jobs.keyFilterValuePlaceholder')}
+                                  value={pendingValue}
+                                  disabled={!pendingKey}
+                                  onChange={(event) => setPendingValue(event.target.value)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                      event.preventDefault();
+                                      handleAddKeyFilter();
+                                    }
+                                  }}
+                                />
+                                <datalist id={valueListId}>
+                                  {suggestedPayloadValueCounts.map((entry) => (
+                                    <option key={entry.value} value={entry.value} />
+                                  ))}
+                                </datalist>
+                              </>
+                            )}
+                          </FormField>
+                        </Grid>
+                      )}
+
+                      {availablePayloadKeys.length > 0 && (
+                        <Inline gap="sm">
+                          <Button
+                            variant="secondary"
+                            disabled={!pendingKey || !pendingValue.trim()}
+                            onClick={handleAddKeyFilter}
+                          >
+                            {t('control.jobs.addKeyFilter')}
+                          </Button>
+                        </Inline>
+                      )}
+                    </Stack>
+                  </Panel>
+                )}
+
+                {/* Every active condition is visible and removable on its own. */}
+                {hasActiveConditions && (
+                  <Toolbar label={t('control.jobs.activeFiltersLabel')}>
+                    <Text size="label" tone="muted">
+                      {t('control.jobs.activeFiltersLabel')}
+                    </Text>
+                    {searchCondition && (
+                      <Chip aria-label={removeLabel(searchCondition)} onClick={() => setJobSearch('')}>
+                        {searchCondition}
+                        <span aria-hidden="true">{' ×'}</span>
+                      </Chip>
+                    )}
+                    {statusCondition && (
+                      <Chip
+                        aria-label={removeLabel(statusCondition)}
+                        onClick={() => setStatusBucket('ALL')}
+                      >
+                        {statusCondition}
+                        <span aria-hidden="true">{' ×'}</span>
+                      </Chip>
+                    )}
+                    {dateCondition && (
+                      <Chip
+                        aria-label={removeLabel(dateCondition)}
+                        onClick={() => {
+                          setDatePreset('all');
+                          setDateFrom('');
+                          setDateTo('');
+                        }}
+                      >
+                        {dateCondition}
+                        <span aria-hidden="true">{' ×'}</span>
+                      </Chip>
+                    )}
+                    {groupCondition && (
+                      <Chip aria-label={removeLabel(groupCondition)} onClick={() => setGroupBy('none')}>
+                        {groupCondition}
+                        <span aria-hidden="true">{' ×'}</span>
+                      </Chip>
+                    )}
+                    {keyConditions.map((condition) => (
+                      <Chip
+                        key={`key:${condition.key}`}
+                        aria-label={removeLabel(condition.label)}
+                        onClick={() =>
+                          setKeyFilters((previous) =>
+                            previous.filter(
+                              (filter) =>
+                                !(
+                                  filter.key === condition.key &&
+                                  filter.value === condition.value
+                                ),
+                            ),
+                          )
+                        }
+                      >
+                        {condition.label}
+                        <span aria-hidden="true">{' ×'}</span>
+                      </Chip>
+                    ))}
+                    <Button size="sm" variant="ghost" onClick={clearAllFilters}>
+                      {t('control.jobs.clearAllFilters')}
+                    </Button>
+                  </Toolbar>
+                )}
+
+                {/* Batch bar: one station, job:retry, and a non-empty selection only. */}
+                {canSelectRows && selectedCount > 0 && (
+                  <Toolbar
+                    label={formatMsg(t('control.jobs.selectedCount'), { count: selectedCount })}
+                    align="between"
+                  >
+                    <Text weight="semibold">
+                      {formatMsg(t('control.jobs.selectedCount'), { count: selectedCount })}
+                    </Text>
+                    <Inline gap="sm">
+                      <Button size="sm" variant="ghost" onClick={() => setSelectedJobIds([])}>
+                        {t('control.jobs.clearSelection')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => openReprintDialog(selectedJobs)}
+                      >
+                        {formatMsg(t('control.jobs.reprintSelected'), { count: selectedCount })}
+                      </Button>
+                    </Inline>
+                  </Toolbar>
+                )}
+
+                {visibleJobs.length === 0 ? (
+                  scopeJobs.length === 0 ? (
+                    <EmptyState
+                      title={t('control.jobs.emptyNoJobsTitle')}
+                      hint={t('control.jobs.emptyNoJobsHint')}
+                      action={
+                        <Button variant="primary" busy={syncing} onClick={handleSync}>
+                          {syncLabel}
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <EmptyState
+                      title={t('control.jobs.emptyNoMatchTitle')}
+                      hint={t('control.jobs.emptyNoMatchHint')}
+                      action={
+                        <Button variant="secondary" onClick={clearAllFilters}>
+                          {t('control.jobs.clearAllFilters')}
+                        </Button>
+                      }
+                    />
+                  )
+                ) : groupBy === 'none' ? (
+                  <Stack gap="sm">
+                    <Panel padding="none">
+                      <DataTable label={t('control.jobs.tableLabel')} responsive>
+                        {renderTableHead(t('control.jobs.tableLabel'), pagedVisibleJobs)}
+                        <tbody>{pagedVisibleJobs.map(renderJobRow)}</tbody>
                       </DataTable>
                     </Panel>
-                  );
-                })}
-              </Stack>
+                    {totalPages > 1 && (
+                      <Pagination
+                        ariaLabel={t('page.jobQueue.pagination')}
+                        page={currentPage}
+                        totalPages={totalPages}
+                        previousLabel={t('page.jobQueue.previous')}
+                        nextLabel={t('page.jobQueue.next')}
+                        status={formatMsg(t('page.jobQueue.pageOf'), {
+                          page: currentPage,
+                          total: totalPages,
+                        })}
+                        onPrevious={() => setPage(Math.max(1, currentPage - 1))}
+                        onNext={() => setPage(Math.min(totalPages, currentPage + 1))}
+                      />
+                    )}
+                  </Stack>
+                ) : (
+                  <Stack gap="lg">
+                    {groupedJobs.map((group) => (
+                      <Stack key={group.groupKey} gap="xs">
+                        <Inline gap="sm">
+                          <Text weight="semibold" wrap>
+                            {group.groupLabel}
+                          </Text>
+                          <Text size="label" tone="muted">
+                            {formatMsg(t('control.jobs.groupSummary'), { total: group.totalCount })}
+                          </Text>
+                        </Inline>
+                        <Panel padding="none">
+                          <DataTable label={group.groupLabel} responsive>
+                            {renderTableHead(group.groupLabel, group.jobs)}
+                            <tbody>{group.jobs.map(renderJobRow)}</tbody>
+                          </DataTable>
+                        </Panel>
+                      </Stack>
+                    ))}
+                  </Stack>
+                )}
+              </>
             )}
-          </Stack>
+          </>
         )}
       </Stack>
 
-      {/* Incoming Payload Inspection Drawer */}
+      {/* Job summary drawer: short answer first, evidence collapsed. */}
       <Drawer
         open={drawerJob !== null}
-        onClose={() => setDrawerJob(null)}
-        title={t('control.jobs.drawerTitle')}
+        onClose={() => setDrawerJobId(null)}
+        title={t('control.jobs.detailTitle')}
         closeLabel={t('common.close')}
         footer={
-          drawerJob &&
-          selectedDevice && (
-            <Inline gap="sm" style={{ justifyContent: 'flex-end' }}>
-              <Button variant="secondary" onClick={() => setDrawerJob(null)}>
-                {t('common.close')}
+          <>
+            <Button variant="secondary" onClick={() => setDrawerJobId(null)}>
+              {t('common.close')}
+            </Button>
+            {drawerJob && canReprint && offersReprint(getJobVerdict(drawerJob.status)) && (
+              <Button
+                variant={reprintButtonVariant(getJobVerdict(drawerJob.status))}
+                onClick={() => {
+                  const target = drawerJob;
+                  setDrawerJobId(null);
+                  openReprintDialog([target]);
+                }}
+              >
+                {t('control.jobs.reprint')}
               </Button>
-              {canReprint && (
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    const target = drawerJob;
-                    setDrawerJob(null);
-                    openReprintDialog([target]);
-                  }}
-                >
-                  {formatMsg(t('control.jobs.drawerReprintButton'), {
-                    name: stationTitle(selectedDevice),
-                  })}
-                </Button>
-              )}
-            </Inline>
-          )
+            )}
+          </>
         }
       >
         {drawerJob && (
           <Stack gap="lg">
-            <Stack gap="xs">
-              <Text size="label" weight="semibold" tone="muted">
-                {t('control.jobs.drawerMetaTitle')}
-              </Text>
+            <Stack gap="sm">
+              <Inline gap="sm">
+                <Mono
+                  size="body"
+                  weight="semibold"
+                  wrap
+                  style={{ flex: '1 1 12rem', minWidth: 0 }}
+                >
+                  {drawerJob.requestId || drawerJob.id}
+                </Mono>
+                <CopyValueButton
+                  value={drawerJob.requestId || drawerJob.id}
+                  label={
+                    drawerJob.requestId
+                      ? t('control.jobs.detailRequestId')
+                      : t('control.jobs.detailJobId')
+                  }
+                  copied={copiedField === 'reference'}
+                  onCopy={(value) => void handleCopy(value, 'reference')}
+                />
+              </Inline>
               <CardDetail columns={2}>
-                <CardDetailItem label="Job ID">
-                  <Mono size="label">{drawerJob.id}</Mono>
-                </CardDetailItem>
-                <CardDetailItem label="Request ID">
-                  <Mono size="label">{drawerJob.requestId || '—'}</Mono>
+                <CardDetailItem label={t('control.jobs.detailDestination')}>
+                  <Text wrap>
+                    {formatMsg(t('control.jobs.destinationOnStation'), {
+                      printer: drawerJob.printerCode || drawerJob.printerId,
+                      station: stationNameFor(drawerJob.deviceId),
+                    })}
+                  </Text>
                 </CardDetailItem>
                 <CardDetailItem label={t('control.jobs.colStatus')}>
                   <StatusBadge status={drawerJob.status} size="sm" />
                 </CardDetailItem>
-                <CardDetailItem label={t('control.jobs.drawerCopies')}>
+                <CardDetailItem label={t('control.jobs.detailReceived')}>
+                  <Text title={drawerJob.createdAt}>{formatCreatedAt(drawerJob.createdAt)}</Text>
+                </CardDetailItem>
+                <CardDetailItem label={t('control.jobs.detailCopies')}>
                   <Text>{drawerJob.copies}</Text>
-                </CardDetailItem>
-                <CardDetailItem label={t('control.jobs.drawerSource')}>
-                  <Mono size="label">{drawerJob.sourceSystem || '—'}</Mono>
-                </CardDetailItem>
-                <CardDetailItem label={t('control.jobs.drawerTemplate')}>
-                  <Mono size="label">
-                    {drawerJob.resolvedTemplateCode || drawerJob.templateCode || '—'}
-                  </Mono>
-                </CardDetailItem>
-                <CardDetailItem label={t('control.jobs.drawerProfile')}>
-                  <Mono size="label">{drawerJob.paperProfileId || '—'}</Mono>
-                </CardDetailItem>
-                <CardDetailItem label={t('control.jobs.drawerPrinter')}>
-                  <Mono size="label">
-                    {drawerJob.printerCode || drawerJob.printerId}
-                  </Mono>
-                </CardDetailItem>
-                <CardDetailItem label={t('control.jobs.drawerCreated')}>
-                  <Text size="label">{formatCreatedAt(drawerJob.createdAt)}</Text>
                 </CardDetailItem>
               </CardDetail>
             </Stack>
 
-            {(drawerJob.errorCode || drawerJob.errorMessage) && (
-              <Alert tone="error" title={t('control.jobs.drawerError')}>
-                <Text wrap>
-                  {drawerJob.errorCode ? `${drawerJob.errorCode}: ` : ''}
-                  {drawerJob.errorMessage ?? ''}
-                </Text>
+            <Stack gap="xs">
+              <Text size="label" weight="semibold" tone="muted">
+                {t('control.jobs.detailWhatHappened')}
+              </Text>
+              <Text wrap>{t(drawerHeadlineKey)}</Text>
+            </Stack>
+
+            <Stack gap="xs">
+              <Text size="label" weight="semibold" tone="muted">
+                {t('control.jobs.detailNextStep')}
+              </Text>
+              <Text wrap tone="muted">
+                {t(drawerDetailKey)}
+              </Text>
+            </Stack>
+
+            {drawerVerdict?.outcomeUnknown && (
+              <Alert tone="warning" title={t('control.jobs.detailUnconfirmedTitle')}>
+                {t('control.jobs.detailUnconfirmedBody')}
               </Alert>
             )}
 
-            <Stack gap="xs">
-              <Text size="label" weight="semibold" tone="muted">
-                {t('control.jobs.drawerPayloadTitle')}
-              </Text>
-              {(() => {
-                const entries = payloadEntries(drawerJob);
-                if (entries.length === 0) {
-                  return (
-                    <Text size="label" tone="muted">
-                      {t('control.jobs.drawerNoPayload')}
-                    </Text>
-                  );
-                }
-                return (
-                  <CardDetail columns={1}>
-                    {entries.map(({ key, value }) => (
-                      <CardDetailItem key={key} label={<Mono size="label">{key}</Mono>}>
-                        <Inline gap="sm" style={{ justifyContent: 'space-between' }}>
-                          <Mono size="body" wrap>
-                            {value}
-                          </Mono>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              toggleKeyFilter(key, value);
-                              setDrawerJob(null);
-                            }}
-                          >
-                            {t('control.jobs.drawerFilterValue')}
-                          </Button>
-                        </Inline>
-                      </CardDetailItem>
-                    ))}
-                  </CardDetail>
-                );
-              })()}
-            </Stack>
+            <CollapsibleSection title={t('control.jobs.detailIncomingData')} defaultOpen={false}>
+              {drawerPayloadEntries.length === 0 ? (
+                <Text size="label" tone="muted">
+                  {t('control.jobs.detailNoIncoming')}
+                </Text>
+              ) : (
+                <Stack gap="md">
+                  {drawerPayloadEntries.map(([key, value]) => (
+                    <Stack key={key} gap="xs">
+                      <Mono size="label" tone="muted" wrap>
+                        {key}
+                      </Mono>
+                      <Inline gap="sm">
+                        <Mono size="label" wrap style={{ flex: '1 1 14rem', minWidth: 0 }}>
+                          {value}
+                        </Mono>
+                        <CopyValueButton
+                          value={value}
+                          label={key}
+                          copied={copiedField === `payload:${key}`}
+                          onCopy={(next) => void handleCopy(next, `payload:${key}`)}
+                        />
+                      </Inline>
+                    </Stack>
+                  ))}
+                </Stack>
+              )}
+            </CollapsibleSection>
 
-            <Stack gap="xs">
-              <Text size="label" weight="semibold" tone="muted">
-                {t('control.jobs.drawerRawJsonTitle')}
-              </Text>
-              <CodeBlock label={t('control.jobs.drawerRawJsonTitle')}>
-                {JSON.stringify(extractJobPayload(drawerJob), null, 2)}
-              </CodeBlock>
-            </Stack>
+            <CollapsibleSection title={t('control.jobs.detailTechnical')} defaultOpen={false}>
+              {drawerHasTechnical ? (
+                <Stack gap="md">
+                  {renderTechnicalField(
+                    'jobId',
+                    t('control.jobs.detailJobId'),
+                    drawerJob.id,
+                    true,
+                  )}
+                  {renderTechnicalField(
+                    'requestId',
+                    t('control.jobs.detailRequestId'),
+                    drawerJob.requestId,
+                    true,
+                  )}
+                  {renderTechnicalField(
+                    'source',
+                    t('control.jobs.detailSource'),
+                    drawerJob.sourceSystem,
+                  )}
+                  {renderTechnicalField(
+                    'template',
+                    t('control.jobs.detailTemplate'),
+                    drawerJob.resolvedTemplateCode ?? drawerJob.templateCode,
+                  )}
+                  {renderTechnicalField(
+                    'paperProfile',
+                    t('control.jobs.detailPaperProfile'),
+                    drawerJob.paperProfileId,
+                  )}
+                  {renderTechnicalField(
+                    'printer',
+                    t('control.jobs.detailPrinter'),
+                    drawerJob.printerCode || drawerJob.printerId,
+                  )}
+                  {renderTechnicalField(
+                    'runner',
+                    t('control.jobs.detailRunner'),
+                    drawerJob.runnerId,
+                  )}
+                  {renderTechnicalField(
+                    'errorCode',
+                    t('control.jobs.detailErrorCode'),
+                    drawerJob.errorCode,
+                    true,
+                  )}
+                  {renderTechnicalField(
+                    'errorMessage',
+                    t('control.jobs.detailErrorMessage'),
+                    drawerJob.errorMessage,
+                    true,
+                  )}
+                  {renderTechnicalField(
+                    'created',
+                    t('page.jobDetail.created'),
+                    drawerJob.createdAt,
+                  )}
+                  {renderTechnicalField(
+                    'finished',
+                    t('page.jobDetail.finished'),
+                    drawerJob.finishedAt ?? drawerJob.completedAt,
+                  )}
+                  {renderTechnicalField(
+                    'updated',
+                    t('page.jobDetail.updated'),
+                    drawerJob.updatedAt,
+                  )}
+
+                  <Stack gap="xs">
+                    <Inline gap="sm">
+                      <Text size="label" weight="semibold" tone="muted">
+                        {t('control.jobs.detailRawJson')}
+                      </Text>
+                      <CopyValueButton
+                        value={drawerPayloadJson}
+                        label={t('control.jobs.detailRawJson')}
+                        copied={copiedField === 'rawJson'}
+                        onCopy={(value) => void handleCopy(value, 'rawJson')}
+                      />
+                    </Inline>
+                    <CodeBlock label={t('control.jobs.detailRawJson')} scroll={false}>
+                      {drawerPayloadJson}
+                    </CodeBlock>
+                  </Stack>
+
+                  <Stack gap="xs">
+                    <Inline gap="sm">
+                      <Text size="label" weight="semibold" tone="muted">
+                        {t('control.jobs.detailLogs')}
+                      </Text>
+                      {drawerLogText && (
+                        <CopyValueButton
+                          value={drawerLogText}
+                          label={t('control.jobs.detailLogs')}
+                          copied={copiedField === 'logs'}
+                          onCopy={(value) => void handleCopy(value, 'logs')}
+                        />
+                      )}
+                    </Inline>
+                    {drawerLogText ? (
+                      <CodeBlock label={t('control.jobs.detailLogs')} scroll={false}>
+                        {drawerLogText}
+                      </CodeBlock>
+                    ) : (
+                      <Text size="label" tone="muted">
+                        {t('control.jobs.detailNoLogs')}
+                      </Text>
+                    )}
+                  </Stack>
+                </Stack>
+              ) : (
+                <Text size="label" tone="muted">
+                  {t('control.jobs.detailNoTechnical')}
+                </Text>
+              )}
+            </CollapsibleSection>
+
+            <span className="ui-visually-hidden" role="status" aria-live="polite">
+              {copiedField ? t('control.jobs.detailCopied') : ''}
+            </span>
           </Stack>
         )}
       </Drawer>
 
-      {/* Edit Display Name Dialog */}
+      {/* Reprint confirmation: never opened from a row, always explicit. */}
       <Dialog
-        open={renameTarget !== null}
-        onClose={() => setRenameTarget(null)}
-        title={t('control.devices.editDisplayNameTitle')}
-        closeLabel={t('common.close')}
-        footer={
-          <Inline gap="sm" style={{ justifyContent: 'flex-end' }}>
-            <Button variant="secondary" onClick={() => setRenameTarget(null)}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              variant="primary"
-              busy={renameBusy}
-              disabled={!renameDisplayName.trim()}
-              onClick={handleSaveRename}
-            >
-              {t('common.save')}
-            </Button>
-          </Inline>
-        }
-      >
-        <Stack gap="md">
-          <Text size="label" tone="muted">
-            {t('control.devices.editDisplayNameHint')}
-          </Text>
-          <FormField label={t('control.devices.displayNameLabel')} required>
-            {(control) => (
-              <Input
-                {...control}
-                value={renameDisplayName}
-                onChange={(e) => setRenameDisplayName(e.target.value)}
-                placeholder={t('control.devices.displayNamePlaceholder')}
-              />
-            )}
-          </FormField>
-          <FormField label={t('control.devices.siteIdLabel')}>
-            {(control) => (
-              <Input
-                {...control}
-                value={renameSiteId}
-                onChange={(e) => setRenameSiteId(e.target.value)}
-                placeholder={t('control.devices.siteIdPlaceholder')}
-              />
-            )}
-          </FormField>
-        </Stack>
-      </Dialog>
-
-      {/* Remote Re-print Confirmation Dialog */}
-      <Dialog
-        open={reprintTargets.length > 0 && selectedDevice !== undefined}
+        open={reprintTargets.length > 0}
         onClose={() => setReprintTargets([])}
         title={
-          selectedDevice
+          reprintStationIds.length === 1
             ? formatMsg(t('control.jobs.reprintDialogTitle'), {
-                name: stationTitle(selectedDevice),
+                name: reprintStationNames[0] ?? '',
               })
-            : ''
+            : t('control.jobs.reprintDialogTitleGeneric')
         }
         closeLabel={t('common.close')}
         warning={
-          hasDuplicateRiskTargets
-            ? t('control.jobs.reprintDuplicateWarning')
-            : undefined
+          hasUnknownOutcomeTarget
+            ? t('control.jobs.reprintUnconfirmedWarning')
+            : hasPrintedTarget
+              ? t('control.jobs.reprintDuplicateWarning')
+              : undefined
         }
         dismissOnBackdrop={false}
         footer={
-          <Inline gap="sm" style={{ justifyContent: 'flex-end' }}>
+          <>
             <Button variant="secondary" onClick={() => setReprintTargets([])}>
               {t('common.cancel')}
             </Button>
             <Button
-              variant="primary"
+              variant={hasUnknownOutcomeTarget || hasPrintedTarget ? 'danger' : 'primary'}
               busy={reprintBusy}
               busyLabel={t('control.jobs.reprintSubmitting')}
               disabled={!reprintConfirmed || !reprintReason.trim()}
@@ -1658,19 +1654,29 @@ export default function WebControlJobs() {
             >
               {t('control.jobs.reprintSubmit')}
             </Button>
-          </Inline>
+          </>
         }
       >
         <Stack gap="md">
           <Text size="body">
             {reprintTargets.length === 1
               ? formatMsg(t('control.jobs.reprintDialogSingleDesc'), {
-                  id: reprintTargets[0].id,
+                  id: reprintTargets[0]?.id ?? '',
                 })
               : formatMsg(t('control.jobs.reprintDialogBatchDesc'), {
                   count: reprintTargets.length,
                 })}
           </Text>
+          <Stack gap="xs">
+            <Text size="label" weight="semibold" tone="muted">
+              {t('control.jobs.detailDestination')}
+            </Text>
+            {reprintDestinations.map((destination) => (
+              <Text key={destination} wrap>
+                {destination}
+              </Text>
+            ))}
+          </Stack>
           <FormField label={t('control.jobs.reprintCopiesLabel')}>
             {(control) => (
               <Input
@@ -1679,7 +1685,7 @@ export default function WebControlJobs() {
                 min={1}
                 max={20}
                 value={reprintCopies}
-                onChange={(e) => setReprintCopies(Number(e.target.value) || 1)}
+                onChange={(event) => setReprintCopies(Number(event.target.value) || 1)}
               />
             )}
           </FormField>
@@ -1688,14 +1694,14 @@ export default function WebControlJobs() {
               <Input
                 {...control}
                 value={reprintReason}
-                onChange={(e) => setReprintReason(e.target.value)}
+                onChange={(event) => setReprintReason(event.target.value)}
               />
             )}
           </FormField>
           <Checkbox
             label={t('control.jobs.reprintConfirmDuplicateLabel')}
             checked={reprintConfirmed}
-            onChange={(e) => setReprintConfirmed(e.target.checked)}
+            onChange={(event) => setReprintConfirmed(event.target.checked)}
           />
         </Stack>
       </Dialog>
