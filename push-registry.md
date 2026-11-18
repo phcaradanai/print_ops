@@ -1,3 +1,37 @@
+# Web Control 1.0.19
+
+Published for `linux/amd64` from `390b5d5` (2026-11-18), with the `1.0.19` version
+defaults in the accompanying release commit.
+
+- **Web Control**: one layout fix, on the screen where it hurt. The pinned
+  selection bar carries up to four actions (clear, mark, undo, reprint); at 390px
+  they wrap to four lines, so the bar measured 146px against a fixed 72px spacer
+  and covered the pagination and the last rows. The spacer now takes the measured
+  bar height (`ResizeObserver`, 4.5rem fallback for first paint), so the list ends
+  where the bar begins on every width.
+- **API**: rebuilt for version parity; its source is unchanged since 1.0.18 (which
+  dropped the compiled tests from the image).
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.19` | `sha256:420f8c9593d745eca558cd529b33cf35f1cdc3d7325944cfef5bf218b8bfbb30` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.19` | `sha256:10c7eeb2f2157de725aad47f7d58bc8041de33aea417575baf59b39b7c80d4ea` |
+
+`docker buildx imagetools inspect` returns those digests. The web image was checked
+from the inside: the entry bundle carries `1.0.19`, the `Reviewed only` copy and
+`wcj-selection-spacer`, and its 62 asset names match a local Control build with
+`VITE_CONTROL_APP=true VITE_CONTROL_PLANE_VERSION=1.0.19` exactly.
+
+Deploy with `PRINTOPS_CONTROL_PLANE_VERSION=1.0.19`; the PrintOps app image stays
+`0.1.50`. CSS/layout only - no station update, database migration, or
+configuration change is involved.
+
+```powershell
+$env:PRINTOPS_IMAGE_PREFIX = "registry.pg.xenex.io/printops-control-plane"
+$env:PRINTOPS_CONTROL_PLANE_VERSION = "1.0.19"
+node scripts/publish-control-plane-images.mjs
+```
+
 # Web Control 1.0.18
 
 Published for `linux/amd64` from `343fad3` (2026-11-18), with the `1.0.18` version
