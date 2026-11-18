@@ -434,9 +434,11 @@ const STRINGS = {
     reviewedHint:
       'Marking this job reviewed clears it from Needs review. Its status and evidence stay exactly as the station reported them.',
     reviewedNotice: 'Marked this job as reviewed.',
-    countReviewed: 'Reviewed',
+    reviewedOnly: 'Reviewed only',
     reviewSelected: 'Mark',
     reviewSelectedNotice: 'Marked',
+    unreviewSelected: 'Undo review',
+    unreviewSelectedNotice: 'Removed the review mark',
     panelsTitle: 'Panels',
     panelFlow: 'Throughput chart',
     panelTicker: 'Scrolling ticker',
@@ -516,9 +518,11 @@ const STRINGS = {
     reviewedHint:
       'การทำเครื่องหมายว่าตรวจสอบแล้วจะเอาตัวนี้ออกจาก Need review โดยสถานะและหลักฐานของงานยังเป็นอย่างที่เครื่องรายงานไว้ทุกอย่าง',
     reviewedNotice: 'ทำเครื่องหมายว่าตรวจสอบแล้ว',
-    countReviewed: 'ตรวจแล้ว',
+    reviewedOnly: 'ตรวจแล้วเท่านั้น',
     reviewSelected: 'ทำเครื่องหมายว่าตรวจแล้ว',
     reviewSelectedNotice: 'ทำเครื่องหมายว่าตรวจแล้ว',
+    unreviewSelected: 'ยกเลิกเครื่องหมายตรวจสอบ',
+    unreviewSelectedNotice: 'ยกเลิกเครื่องหมายตรวจสอบแล้ว',
     panelsTitle: 'แผงข้อมูล',
     panelFlow: 'กราฟปริมาณงาน',
     panelTicker: 'แถบเลื่อนด้านล่าง',
@@ -1447,6 +1451,33 @@ test('J. any click exits, and ?cinema=1 opens the board without the button', asy
   await expect(board).toHaveCount(0);
 });
 
+test('J. reading keys do not close the board, every other key does', async ({ page }) => {
+  await loadJobs(page, { deviceId: 'dev-john' });
+  await waitForList(page);
+  await openCinema(page);
+  const board = page.getByRole('dialog', { name: s('en').cinemaLabel });
+
+  // A screen-reader user navigates with arrows, Tab and the page keys. Those must
+  // not tear the board down on the first press, or the summary can never be read.
+  for (const key of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Tab', 'PageDown', 'Home']) {
+    await page.keyboard.press(key);
+    await expect(board, `${key} closed the board`).toBeVisible();
+  }
+  // A modifier on its own is not a keypress either.
+  await page.keyboard.down('Shift');
+  await page.keyboard.up('Shift');
+  await expect(board).toBeVisible();
+
+  // Anything a person would actually mash still exits, Escape included.
+  await page.keyboard.press('Escape');
+  await expect(board).toHaveCount(0);
+
+  await page.goto('/control/jobs?deviceId=dev-john&cinema=1');
+  await expect(board).toBeVisible();
+  await page.keyboard.press('q');
+  await expect(board).toHaveCount(0);
+});
+
 test('J. a one-station board drops the fleet ladder and names its connection', async ({ page }) => {
   await loadJobs(page, { deviceId: 'dev-john' });
   await waitForList(page);
@@ -1910,8 +1941,11 @@ test('S. the Reviewed chip narrows the list to the acknowledged outcomes', async
   await waitForList(page);
 
   const counts = page.getByRole('toolbar', { name: s('en').countsLabel });
-  const reviewed = counts.getByRole('button', { name: new RegExp(s('en').countReviewed) });
+  // The reviewed view cuts across the status buckets, so it lives with the
+  // filters rather than inside the "filter by status" toolbar.
+  const reviewed = page.getByRole('button', { name: new RegExp(s('en').reviewedOnly) });
   await expect(reviewed).toContainText('2');
+  await expect(counts.getByRole('button', { name: new RegExp(s('en').reviewedOnly) })).toHaveCount(0);
 
   // Acknowledged rows no longer need a human, so the triage chip drops to one.
   await expect(counts.getByRole('button', { name: /Needs review/ })).toContainText('1');
@@ -1949,8 +1983,11 @@ test('S. the selection bar acknowledges several outcomes at once', async ({ page
       }
       const match = /\/api\/v1\/control\/devices\/[^/]+\/jobs\/([^/]+)\/review$/.exec(url.pathname);
       if (match && method === 'POST') {
-        reviewedIds.add(decodeURIComponent(match[1]!));
-        await route.fulfill({ json: { reviewed: true } });
+        const body = JSON.parse(route.request().postData() ?? '{}') as { reviewed?: boolean };
+        const id = decodeURIComponent(match[1]!);
+        if (body.reviewed === false) reviewedIds.delete(id);
+        else reviewedIds.add(id);
+        await route.fulfill({ json: { reviewed: body.reviewed === true } });
         return true;
       }
       return false;
@@ -1972,6 +2009,20 @@ test('S. the selection bar acknowledges several outcomes at once', async ({ page
   await expect(page.getByRole('button', { name: /Needs review/ })).toContainText('1');
   // The bulk action clears its own selection so the bar cannot linger.
   await expect(page.getByRole('region', { name: /jobs selected/ })).toHaveCount(0);
+
+  // The same bar takes it back: a mis-clicked batch is one click from undone.
+  await rowFor(page, 'REQ-UNVERIFIED-0001').getByRole('checkbox').check();
+  await rowFor(page, 'REQ-FAILED-0002').getByRole('checkbox').check();
+  const undo = page.getByRole('region', { name: /2 jobs selected/ }).getByRole('button', {
+    name: new RegExp(s('en').unreviewSelected),
+  });
+  await expect(undo).toContainText('2');
+  await undo.click();
+  await expect(page.getByText(/Removed the review mark from 2 jobs/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Needs review/ })).toContainText('3');
+  // With nothing acknowledged left, the reviewed-only view is gone rather than
+  // hidden-but-active.
+  await expect(page.getByRole('button', { name: new RegExp(s('en').reviewedOnly) })).toHaveCount(0);
 });
 
 test('T. cinema panels can be switched off, and the URL keeps the choice', async ({ page }) => {

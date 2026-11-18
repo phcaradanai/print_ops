@@ -287,7 +287,39 @@ export function CinemaBoard(props: CinemaBoardProps) {
 
     const exit = () => exitRef.current();
 
-    const onKeyDown = () => exit();
+    /**
+     * "Any key exits" is the contract - staff walk up to the wall, press
+     * something, and are back in the list. Two kinds of key are excluded, both
+     * for the operator rather than the keyboard:
+     *
+     *   - pure navigation keys (Tab and the arrows/Home/End/Page keys). Those are
+     *     exactly what a screen reader uses to read the board, and closing the
+     *     screen on the first arrow press would hide the summary from the people
+     *     who cannot see it;
+     *   - a bare modifier, because holding Ctrl or Shift is not "pressing a key"
+     *     and assistive tech chords start that way.
+     *
+     * Escape still exits, and so does any click.
+     */
+    const NON_EXIT_KEYS = new Set([
+      'Tab',
+      'ArrowUp',
+      'ArrowDown',
+      'ArrowLeft',
+      'ArrowRight',
+      'Home',
+      'End',
+      'PageUp',
+      'PageDown',
+      'Shift',
+      'Control',
+      'Alt',
+      'Meta',
+    ]);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (NON_EXIT_KEYS.has(event.key)) return;
+      exit();
+    };
 
     let press: { x: number; y: number } | null = null;
     const onPointerDown = (event: PointerEvent) => {

@@ -362,6 +362,31 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   Jobs Playwright tests (1 new: reviewed job leaves Needs review with its status
   intact), full suite 141 passed.
 
+## 2026-11-18 — Incoming Jobs: the acknowledgement, from the operator's side
+
+Five decisions taken by looking at who is actually standing in front of the page:
+
+- **The Reviewed chip moved out of the status toolbar.** Acknowledgements cut
+  across the status buckets, so a chip inside a toolbar labelled "Filter by
+  status" read as a fifth bucket. It now sits with sort/search/dates as
+  **Reviewed only (N)**.
+- **Bulk undo exists.** A mis-clicked batch used to have to be repaired one
+  drawer at a time; selecting acknowledged rows now offers **Undo review (N)** in
+  the same pinned bar, through the same sequential handler.
+- **The reviewed-only view cannot outlive its rows.** Undo the last
+  acknowledgement in scope and it switches itself off, instead of leaving an empty
+  list behind a hidden-but-active filter.
+- **Reading keys no longer close the cinema board.** Tab, arrows, Home/End/PageUp/
+  PageDown and a bare modifier are ignored; Escape, any click and every other key
+  still exit. "Press anything to get out" holds for a person at the wall, and a
+  screen-reader user can finally read the board instead of closing it on the first
+  arrow press.
+- **The API image no longer ships its compiled tests** (`rm -rf apps/api/dist/tests`
+  in the build stage): no test runner or test code belongs on the server.
+
+Verified: 800 web unit tests, 48/48 Incoming Jobs Playwright tests (1 new keyboard
+test, the bulk test now covers undo), typecheck, Control build.
+
 ## 2026-11-18 — Incoming Jobs: the cinema board honours the acknowledgement
 
 - The board derived its "Needs review" tile, the attention segment of the

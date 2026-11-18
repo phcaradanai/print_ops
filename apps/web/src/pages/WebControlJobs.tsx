@@ -546,6 +546,15 @@ export default function WebControlJobs() {
     [visibleJobs],
   );
 
+  /**
+   * The reviewed-only view cannot outlive the acknowledgements it filters on:
+   * undo the last one and the toggle would be hidden (its chip is gone) while
+   * still filtering, leaving an empty list with no visible cause.
+   */
+  useEffect(() => {
+    if (reviewedOnly && reviewedCount === 0) setReviewedOnly(false);
+  }, [reviewedOnly, reviewedCount]);
+
   const sortedVisibleJobs = useMemo(
     () => sortJobs(visibleJobs, jobSort, { isAttention: needsReview }),
     [visibleJobs, jobSort, needsReview],
@@ -1035,15 +1044,18 @@ export default function WebControlJobs() {
   };
 
   /**
-   * Acknowledge every selected row that still needs a human, one request each -
-   * the API acknowledges a single mirrored job. Sequential on purpose: an
-   * operator clearing a batch is never in a hurry so much that a status
-   * collision with a running refresh is worth it.
+   * Set the acknowledgement on every selected row that needs it, one request
+   * each - the API acknowledges a single mirrored job. Sequential on purpose: an
+   * operator clearing a batch is never in a hurry so much that racing a refresh
+   * is worth it.
+   *
+   * The same path marks and unmarks, so a mis-clicked batch can be undone from
+   * the same bar instead of opening every row's drawer.
    */
-  const handleBulkReview = async (jobs: ControlSyncedJobItem[]) => {
+  const handleBulkReview = async (jobs: ControlSyncedJobItem[], reviewed: boolean) => {
     if (jobs.length === 0) return;
     setBulkReviewBusy(true);
-    let acknowledged = 0;
+    let changed = 0;
     let failure: string | null = null;
     try {
       for (const job of jobs) {
@@ -1053,10 +1065,10 @@ export default function WebControlJobs() {
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ reviewed: true }),
+              body: JSON.stringify({ reviewed }),
             },
           );
-          acknowledged += 1;
+          changed += 1;
         } catch (err) {
           failure = errorMessage(err);
           break;
@@ -1067,7 +1079,10 @@ export default function WebControlJobs() {
         setSelectedJobIds([]);
         setNotice({
           tone: 'success',
-          message: formatMsg(t('control.jobs.reviewSelectedNotice'), { count: acknowledged }),
+          message: formatMsg(
+            t(reviewed ? 'control.jobs.reviewSelectedNotice' : 'control.jobs.unreviewSelectedNotice'),
+            { count: changed },
+          ),
         });
       } else {
         setNotice({
@@ -1242,6 +1257,15 @@ export default function WebControlJobs() {
   const reviewableSelectedJobs = useMemo(
     () => selectedJobs.filter(needsReview),
     [selectedJobs, needsReview],
+  );
+  /**
+   * The other half of the same bar: rows that carry an acknowledgement and can
+   * have it taken back. Selecting a batch and clearing it is the mistake this
+   * exists to make cheap to undo.
+   */
+  const acknowledgedSelectedJobs = useMemo(
+    () => selectedJobs.filter((job) => Boolean(job.reviewedAt)),
+    [selectedJobs],
   );
 
   const drawerJob = useMemo(
@@ -1743,14 +1767,6 @@ export default function WebControlJobs() {
                       {t('control.jobs.countOther')} ({bucketCounts.OTHER})
                     </Chip>
                   )}
-                  {reviewedCount > 0 && (
-                    <Chip
-                      selected={reviewedOnly}
-                      onClick={() => setReviewedOnly((previous) => !previous)}
-                    >
-                      {t('control.jobs.countReviewed')} ({reviewedCount})
-                    </Chip>
-                  )}
                   {counts.needsReview > 0 &&
                     groupBy === 'none' &&
                     statusBucket === 'ALL' &&
@@ -1793,6 +1809,15 @@ export default function WebControlJobs() {
                       {t(preset.key)}
                     </Chip>
                   ))}
+                  {/* Acknowledged outcomes cut across the status buckets, so this
+                      toggle lives with the filters, not in the "filter by status"
+                      toolbar where it would read as a fifth bucket. It only
+                      exists while the scope carries acknowledgements. */}
+                  {reviewedCount > 0 && (
+                    <Chip selected={reviewedOnly} onClick={() => setReviewedOnly((previous) => !previous)}>
+                      {formatMsg(t('control.jobs.reviewedOnly'), { count: reviewedCount })}
+                    </Chip>
+                  )}
                   <Button
                     variant="secondary"
                     aria-expanded={advancedOpen}
@@ -2041,10 +2066,22 @@ export default function WebControlJobs() {
                           size="sm"
                           variant="secondary"
                           busy={bulkReviewBusy}
-                          onClick={() => void handleBulkReview(reviewableSelectedJobs)}
+                          onClick={() => void handleBulkReview(reviewableSelectedJobs, true)}
                         >
                           {formatMsg(t('control.jobs.reviewSelected'), {
                             count: reviewableSelectedJobs.length,
+                          })}
+                        </Button>
+                      )}
+                      {acknowledgedSelectedJobs.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          busy={bulkReviewBusy}
+                          onClick={() => void handleBulkReview(acknowledgedSelectedJobs, false)}
+                        >
+                          {formatMsg(t('control.jobs.unreviewSelected'), {
+                            count: acknowledgedSelectedJobs.length,
                           })}
                         </Button>
                       )}

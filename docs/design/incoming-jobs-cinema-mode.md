@@ -196,6 +196,13 @@ requested. Nothing flashes, and no content depends on an animation to be read.
 - Text is at least 1rem; the display ladder is used only for KPI numerals.
 - The board is passive by design: there are no focusable controls inside it, and
   exiting needs no target hunting.
+- **"Any key exits" excludes reading keys.** Tab, the arrows, Home/End/PageUp/
+  PageDown and a bare Shift/Ctrl/Alt/Meta do not close the board, because those are
+  exactly the keys a screen reader uses to move through the summary - the previous
+  behaviour closed the screen on the first arrow press, which made the board
+  unreadable for the people it was least usable for. Escape still exits, any click
+  still exits, and every other key still exits, so "press anything when you want
+  out" holds for the person standing at the wall.
 
 ## 9. Copy deck (`control.cinema.*`, EN / TH)
 

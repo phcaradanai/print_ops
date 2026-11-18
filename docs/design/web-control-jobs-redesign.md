@@ -265,16 +265,22 @@ the timestamp.
   and the cinema board derives its tiles, throughput stack, station ladder and row
   tone from `cinemaNeedsReview` - so the wall display can never claim work the
   list has already cleared.
-- **Bulk acknowledge.** Selecting rows shows the pinned selection bar with
-  **Mark N as reviewed**, counting only the selected rows that still need a
-  human. Acknowledging a printed row would be a no-op that still wrote an audit
-  record, so those are not counted. The requests are sequential per job (the API
+- **Bulk acknowledge, and bulk undo.** Selecting rows shows the pinned selection
+  bar with **Mark N as reviewed**, counting only the selected rows that still need
+  a human; selecting rows that already carry the mark shows **Undo review (N)**
+  instead. Acknowledging a printed row would be a no-op that still wrote an audit
+  record, so those are not counted. Requests are sequential per job (the API
   acknowledges one job), the selection clears on success, and a failure stops the
-  run and reports the message.
-- **Reviewed chip.** A **Reviewed (N)** chip appears in the count toolbar once the
-  scope carries any acknowledgement, and narrows the list to exactly those rows -
-  otherwise an acknowledged job is indistinguishable from the rest of Other and
-  the operator could not audit their own triage. Clear all filters drops it too.
+  run and reports the message. The undo half exists because a mis-clicked batch
+  would otherwise have to be repaired one drawer at a time.
+- **Reviewed-only filter.** A **Reviewed only (N)** chip sits with the filters
+  (sort, search, dates), not in the "filter by status" toolbar: acknowledgements
+  cut across the status buckets, so a chip in that toolbar would read as a fifth
+  bucket. It appears once the scope carries acknowledgements and narrows the list
+  to exactly those rows, so an acknowledged job is not lost inside Other. Clear
+  all filters drops it, and it clears itself if the last acknowledgement in scope
+  is undone - a hidden-but-active filter would leave an empty list with no visible
+  cause.
 - **Audited.** `setJobReviewed` writes a `control/audit` record
   (`job.reviewed` / `job.unreviewed`) with the actor, the job id and the status
   the job carried, like every other mutation on the control plane.
