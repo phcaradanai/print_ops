@@ -2,6 +2,7 @@ import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import os from 'node:os';
+import { cupsServerSettings } from './infra/cups-server-settings.js';
 import { InMemoryPrinterRepository } from './infra/repos/in-memory-printer.repo.js';
 import { InMemoryJobRepository } from './infra/repos/in-memory-job.repo.js';
 import { InMemoryTraceRepository } from './infra/repos/in-memory-trace.repo.js';
@@ -568,9 +569,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const registry = new AdapterRegistry();
   registry.registerAdapter(new FakePrinterAdapter());
   registry.registerAdapter(new WindowsSpoolerAdapter());
-  if (process.env['PRINTOPS_RUNTIME_MODE'] === 'linux-server') {
-    registry.registerAdapter(new CupsPrinterAdapter());
-  }
+  const cupsSettings = process.env['PRINTOPS_RUNTIME_MODE'] === 'linux-server' ? cupsServerSettings() : undefined;
+  const cups = cupsSettings ? new CupsPrinterAdapter({ server: await cupsSettings.read() }) : undefined;
+  if (cups) registry.registerAdapter(cups);
 
   // Services
   const createPrinter = new CreatePrinterService(printerRepo, eventBus, auditRepo);
@@ -1312,7 +1313,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       users: userRepo,
       runnerBootstrapSecret: process.env['PRINTOPS_RUNNER_BOOTSTRAP_SECRET'],
     });
-    await printerRoutes(api, { printers: printerRepo, createPrinter, getPrinterStatus, registry });
+    await printerRoutes(api, { printers: printerRepo, createPrinter, getPrinterStatus, registry, cups, cupsSettings });
     await jobRoutes(api, { jobs: jobRepo, traces: traceRepo, createJob, executeJob, reprintJob });
     await runnerRoutes(api, { runners: runnerRepo, jobs: jobRepo, registerRunner, runnerHeartbeat, runnerLifecycle });
     await auditRoutes(api, { audit: auditRepo });

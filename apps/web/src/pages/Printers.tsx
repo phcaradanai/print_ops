@@ -1,11 +1,13 @@
 import { useCallback, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ActionIcon } from '../components/ActionIcon.js';
-import { apiFetch } from '../api/client.js';
+import { apiFetch, getRuntimeArchitecture } from '../api/client.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
+import { useApiAction } from '../hooks/useApiAction.js';
 import { printerHealth } from '../lib/deviceHealth.js';
 import {
+  Alert,
   Badge,
   Button,
   Inline,
@@ -13,14 +15,19 @@ import {
   DataCell,
   DataHead,
   DataTable,
+  Dialog,
   EmptyState,
   ErrorState,
   Freshness,
+  FormField,
+  Input,
   LoadingState,
   Mono,
   PageLayout,
   ResourceToolbar,
+  Select,
   SelectFilter,
+  Stack,
   StateBadge,
   StatusIndicator,
   TableEmpty,
@@ -34,6 +41,14 @@ interface Printer {
   allowedTemplates?: string[]; maxCopiesPerJob?: number;
 }
 
+interface CupsQueue {
+  name: string;
+  registered: boolean;
+}
+
+const fetchCupsQueues = () => apiFetch<CupsQueue[]>('/printers/cups-queues');
+const fetchCupsServer = () => apiFetch<{ server: string }>('/printers/cups-server');
+
 export default function Printers() {
   const { t } = useLocale();
   const fetchPrinters = useCallback(() => apiFetch<Printer[]>('/printers'), []);
@@ -41,6 +56,29 @@ export default function Printers() {
   const [search, setSearch] = useState('');
   const printersResource = useApiResource(fetchPrinters);
   const printers = printersResource.data ?? [];
+  const runtime = useApiResource(getRuntimeArchitecture);
+  const [cupsDialog, setCupsDialog] = useState<'closed' | 'connect' | 'help'>('closed');
+  const cupsOpen = cupsDialog !== 'closed';
+  const [queueName, setQueueName] = useState('');
+  const [serverDraft, setServerDraft] = useState<string | null>(null);
+  const cupsServer = useApiResource(fetchCupsServer, { enabled: cupsOpen });
+  const cupsQueues = useApiResource(fetchCupsQueues, { enabled: cupsOpen });
+  const availableQueues = (cupsQueues.data ?? []).filter((queue) => !queue.registered);
+  const serverValue = serverDraft ?? cupsServer.data?.server ?? '';
+  const serverChanged = serverDraft !== null && serverDraft.trim() !== cupsServer.data?.server;
+  const saveCupsServer = useApiAction(async (server: string) => {
+    await apiFetch('/printers/cups-server', { method: 'PUT', body: JSON.stringify({ server }) });
+    setQueueName('');
+    setServerDraft(null);
+    cupsServer.refresh();
+    cupsQueues.refresh();
+    return true;
+  });
+  const importCupsQueue = useApiAction(async (name: string) => {
+    await apiFetch<Printer>(`/printers/cups-queues/${encodeURIComponent(name)}`, { method: 'POST' });
+    printersResource.refresh();
+    setCupsDialog('closed');
+  });
 
   // Health buckets are mutually exclusive and share lib/deviceHealth with the
   // dashboard attention strip: "ready" here is exactly what the strip counts
@@ -77,6 +115,17 @@ export default function Printers() {
       density="compact"
       actions={
         <Inline gap="sm">
+          {runtime.data?.runtimeMode === 'linux-server' && (
+            <Button onClick={() => {
+              setQueueName('');
+              setServerDraft(null);
+              saveCupsServer.reset();
+              importCupsQueue.reset();
+              setCupsDialog('connect');
+            }}>
+              {t('page.printers.cupsImport')}
+            </Button>
+          )}
           <Button variant="secondary" onClick={() => navigate('/discovered-printers')}>
             <ActionIcon name="search" /> {t('page.printers.discover')}
           </Button>
@@ -89,6 +138,79 @@ export default function Printers() {
         </Inline>
       }
     >
+      {cupsDialog === 'connect' && (
+        <Dialog
+          open
+          title={t('page.printers.cupsImport')}
+          onClose={() => { if (!importCupsQueue.pending && !saveCupsServer.pending) setCupsDialog('closed'); }}
+          footer={
+            <Button
+              disabled={serverChanged || saveCupsServer.pending || !availableQueues.some((queue) => queue.name === queueName)}
+              busy={importCupsQueue.pending}
+              onClick={() => void importCupsQueue.run(queueName)}
+            >
+              {t('page.discovery.register')}
+            </Button>
+          }
+        >
+          <Stack gap="md">
+            <FormField label={t('page.printers.cupsServer')} hint={t('page.printers.cupsServerHint')}>
+              {(control) => (
+                <Input {...control} value={serverValue} placeholder="cups:631"
+                  disabled={saveCupsServer.pending || importCupsQueue.pending}
+                  onChange={(event) => {
+                    saveCupsServer.reset();
+                    setServerDraft(event.target.value);
+                  }}
+                />
+              )}
+            </FormField>
+            <Inline gap="sm">
+              <Button variant="secondary" disabled={!serverValue.trim() || serverValue.startsWith('/') || importCupsQueue.pending}
+                busy={saveCupsServer.pending} onClick={() => void saveCupsServer.run(serverValue)}>
+                {t('page.printers.cupsConnect')}
+              </Button>
+              <Button variant="ghost" disabled={saveCupsServer.pending || importCupsQueue.pending}
+                onClick={() => setCupsDialog('help')}>
+                {t('page.printers.cupsHelp')}
+              </Button>
+            </Inline>
+            {saveCupsServer.error != null && <ErrorState error={saveCupsServer.error} />}
+            {saveCupsServer.result && <Alert tone="success">{t('page.printers.cupsConnected')}</Alert>}
+            {cupsServer.error != null && <ErrorState error={cupsServer.error} onRetry={cupsServer.refresh} />}
+          {cupsQueues.loading && <LoadingState />}
+          {cupsQueues.error != null && <ErrorState error={cupsQueues.error} onRetry={cupsQueues.refresh} />}
+          {cupsQueues.data && cupsQueues.error == null && (availableQueues.length === 0 ? (
+            <Text>{t('page.printers.cupsEmpty')}</Text>
+          ) : (
+            <FormField label={t('page.printers.cupsQueue')}>
+              {(control) => (
+                <Select {...control} value={queueName} onChange={(event) => setQueueName(event.target.value)}>
+                  <option value="">{t('page.printers.cupsSelect')}</option>
+                  {availableQueues.map(({ name }) => <option key={name} value={name}>{name}</option>)}
+                </Select>
+              )}
+            </FormField>
+          ))}
+          {importCupsQueue.error != null && <ErrorState error={importCupsQueue.error} />}
+          </Stack>
+        </Dialog>
+      )}
+      {cupsDialog === 'help' && (
+        <Dialog
+          open
+          title={t('page.printers.cupsHelp')}
+          onClose={() => setCupsDialog('connect')}
+          footer={<Button onClick={() => setCupsDialog('connect')}>{t('page.printers.cupsHelpBack')}</Button>}
+        >
+          <Stack as="ol" gap="md">
+            <Text as="li" wrap>{t('page.printers.cupsHelpAdd')}</Text>
+            <Text as="li" wrap>{t('page.printers.cupsHelpShare')}</Text>
+            <Text as="li" wrap>{t('page.printers.cupsHelpAddress')}</Text>
+            <Text as="li" wrap>{t('page.printers.cupsHelpRegister')}</Text>
+          </Stack>
+        </Dialog>
+      )}
 
       {printersResource.loading && !printersResource.data ? (
         <LoadingState />

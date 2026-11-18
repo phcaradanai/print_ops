@@ -39,6 +39,119 @@ function harness(options: { submitError?: boolean; renderError?: boolean; respon
 }
 
 describe('CUPS Linux printing', () => {
+  it('submits a TCP queue with one IPP Print-Job and captures the CUPS job ID', async () => {
+    const calls: string[] = [];
+    const adapter = new CupsPrinterAdapter({
+      server: 'cups:631',
+      run: async (file, args) => {
+        calls.push(file);
+        if (file === 'lpstat') return 'printer POSTEK_G2000 is idle. enabled';
+        expect(file).toBe('ipptool');
+        expect(args).toContain('ipp://cups:631/printers/POSTEK_G2000');
+        expect(args).toContain('format=application/pdf');
+        const request = await readFile(args.at(-1) ?? '', 'utf8');
+        expect(request).toContain('OPERATION Print-Job');
+        expect(request).toContain('ATTR integer copies 2');
+        return '        job-id (integer) = 42\n';
+      },
+    });
+    const result = await adapter.executeCommand(command({
+      mimeType: 'application/pdf',
+      documentBase64: Buffer.from('%PDF-1.4\ntest document').toString('base64'),
+    }));
+    expect(calls).toEqual(['lpstat', 'ipptool', 'lpstat']);
+    expect(result).toMatchObject({
+      jobId: 'POSTEK_G2000-42',
+      errorCode: 'PRINT_NOT_VERIFIABLE',
+      raw: { spoolerAccepted: true, physicalDeliveryConfirmed: false },
+    });
+  });
+
+  it.each([
+    { outcome: 'device reports successful completion', reasons: ['completed-successfully'], impressions: 2, confirmed: true },
+    { outcome: 'device requires TLS for IPP job history', reasons: ['completed-successfully'], impressions: 2,
+      confirmed: true, requiresTls: true },
+    { outcome: 'device omits the impression count', reasons: ['completed-successfully'], impressions: undefined, confirmed: false },
+    { outcome: 'device reports an incomplete copy count', reasons: ['completed-successfully'], impressions: 1, confirmed: false },
+    { outcome: 'device reports completion with errors', reasons: ['job-completed-with-errors'], impressions: 2, confirmed: false },
+  ])('uses physical evidence when $outcome', async ({ reasons, impressions, confirmed, requiresTls }) => {
+    let title = '';
+    let submissions = 0;
+    const adapter = new CupsPrinterAdapter({
+      server: 'cups:631',
+      deviceVerifyTimeoutMs: 0,
+      run: async (file, args) => {
+        if (file === 'lpstat') {
+          return args[0] === '-v'
+            ? 'device for POSTEK_G2000: ipp://epson.local/ipp/print'
+            : 'printer POSTEK_G2000 is idle. enabled';
+        }
+        submissions++;
+        title = args.find((arg) => arg.startsWith('title='))?.slice('title='.length) ?? '';
+        return '        job-id (integer) = 42\n';
+      },
+      queryPrinterJobs: async (endpoint) => {
+        expect(endpoint.hostname).toBe('epson.local');
+        expect(title).toMatch(/^PrintOps:job-1:[0-9a-f-]{36}$/);
+        if (requiresTls && endpoint.transport === 'http:') {
+          return { ok: false, endpoint, jobs: [], error: 'IPP endpoint returned HTTP 426' };
+        }
+        return { ok: true, endpoint, statusCode: 0, jobs: [
+          { key: 'previous', id: 6, name: 'PrintOps:job-1', state: 9, stateReasons: ['completed-successfully'], impressionsCompleted: 10 },
+          { key: 'current', id: 7, name: title, state: 9, stateReasons: reasons, impressionsCompleted: impressions },
+        ] };
+      },
+    });
+    const result = await adapter.executeCommand(command({ mimeType: 'text/plain', renderedPrintPayload: 'PrintOps test' }));
+    expect(submissions).toBe(1);
+    expect(result).toMatchObject({
+      success: confirmed,
+      jobId: 'POSTEK_G2000-42',
+      raw: { spoolerAccepted: true, physicalDeliveryConfirmed: confirmed },
+    });
+    if (confirmed) expect(result.raw).toMatchObject({ ippJobId: 7, impressionsCompleted: 2 });
+    else expect(result.errorCode).toBe('PRINT_NOT_VERIFIABLE');
+  });
+
+  it('waits through a temporary IPP error and incomplete history without resubmitting the job', async () => {
+    let title = '';
+    let submissions = 0;
+    let checks = 0;
+    const adapter = new CupsPrinterAdapter({
+      server: 'cups:631',
+      run: async (file, args) => {
+        if (file === 'lpstat') {
+          return args[0] === '-v'
+            ? 'device for POSTEK_G2000: ipps://epson.local/ipp/print'
+            : 'printer POSTEK_G2000 is idle. enabled';
+        }
+        submissions++;
+        title = args.find((arg) => arg.startsWith('title='))?.slice('title='.length) ?? '';
+        return '        job-id (integer) = 42\n';
+      },
+      queryPrinterJobs: async (endpoint) => {
+        checks++;
+        if (checks === 1) return { ok: false, endpoint, jobs: [], error: 'Printer temporarily unavailable' };
+        return { ok: true, endpoint, statusCode: 0, jobs: [{
+          key: 'current',
+          id: 7,
+          name: title,
+          state: 9,
+          stateReasons: ['completed-successfully'],
+          impressionsCompleted: checks === 2 ? undefined : 2,
+        }] };
+      },
+    });
+    const result = await adapter.executeCommand(command({ mimeType: 'text/plain', renderedPrintPayload: 'PrintOps test' }));
+    expect(checks).toBe(3);
+    expect(submissions).toBe(1);
+    expect(result).toMatchObject({
+      success: true,
+      jobId: 'POSTEK_G2000-42',
+      raw: { physicalDeliveryConfirmed: true, ippJobId: 7, impressionsCompleted: 2 },
+    });
+  }, 10_000);
+
   it('renders the existing profile to PDF and submits exactly once with copies and no rescaling', async () => {
     const h = harness();
     const result = await h.adapter.executeCommand(command());

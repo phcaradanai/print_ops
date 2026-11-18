@@ -2,8 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import type { CreatePrinterService } from '../services/create-printer.service.js';
 import type { GetPrinterStatusService } from '../services/get-printer-status.service.js';
 import { evaluatePrinterReadiness, type PrinterRepositoryPort } from '@printerops/domain';
-import type { AdapterRegistry } from '@printerops/adapters';
-import { NotFoundError } from '@printerops/shared';
+import type { AdapterRegistry, CupsPrinterAdapter } from '@printerops/adapters';
+import { AppError, ConflictError, NotFoundError } from '@printerops/shared';
+import { normalizeCupsServer, type cupsServerSettings } from '../infra/cups-server-settings.js';
 import { requirePermission } from './v1/permission-guard.js';
 
 export async function printerRoutes(
@@ -13,6 +14,8 @@ export async function printerRoutes(
     createPrinter: CreatePrinterService;
     getPrinterStatus: GetPrinterStatusService;
     registry: AdapterRegistry;
+    cups?: CupsPrinterAdapter;
+    cupsSettings?: ReturnType<typeof cupsServerSettings>;
   }
 ): Promise<void> {
   // Previously guarded only by `app.authenticate` (any logged-in user, incl.
@@ -30,6 +33,62 @@ export async function printerRoutes(
     const actor = (req.user as { sub: string }).sub;
     const printer = await deps.createPrinter.execute(req.body as Parameters<typeof deps.createPrinter.execute>[0], actor);
     return reply.status(201).send(printer);
+  });
+
+  app.get('/printers/cups-server', read, async () => {
+    if (!deps.cups) throw new NotFoundError('CUPS', 'local adapter');
+    return { server: deps.cups.getServer() };
+  });
+
+  app.put<{ Body: { server: string } }>('/printers/cups-server', {
+    onRequest: [requirePermission('printer:update')],
+    schema: { body: {
+      type: 'object', required: ['server'], properties: { server: { type: 'string', maxLength: 260 } },
+    } },
+  }, async (req) => {
+    if (!deps.cups || !deps.cupsSettings) throw new NotFoundError('CUPS', 'local adapter');
+    const server = normalizeCupsServer(req.body.server);
+    try {
+      await deps.cups.assertServerReachable(server);
+    } catch {
+      throw new AppError('CUPS_UNREACHABLE', `Cannot connect to CUPS at ${server}`, 422);
+    }
+    await deps.cupsSettings.save(server);
+    deps.cups.setServer(server);
+    return { server };
+  });
+
+  app.get('/printers/cups-queues', read, async () => {
+    if (!deps.cups) throw new NotFoundError('CUPS', 'local adapter');
+    const [queues, printers] = await Promise.all([deps.cups.listPrinters(), deps.printers.findAll()]);
+    const registered = new Set(printers.filter((printer) => printer.protocol === 'cups').map((printer) => printer.connectionUri));
+    return queues.map((name) => ({ name, registered: registered.has(`cups://${name}`) }));
+  });
+
+  app.post<{ Params: { queue: string } }>('/printers/cups-queues/:queue', create, async (req, reply) => {
+    const { queue } = req.params;
+    if (!deps.cups || !(await deps.cups.listPrinters()).includes(queue)) {
+      throw new NotFoundError('CUPS queue', queue);
+    }
+    const connectionUri = `cups://${queue}`;
+    const existing = (await deps.printers.findAll()).find(
+      (printer) => printer.protocol === 'cups' && printer.connectionUri === connectionUri,
+    );
+    if (existing) return existing;
+
+    const code = `CUPS_${queue}`;
+    try {
+      const printer = await deps.createPrinter.execute(
+        { code, name: queue, protocol: 'cups', connectionUri, metadata: {} },
+        (req.user as { sub: string }).sub,
+      );
+      return reply.status(201).send(printer);
+    } catch (error) {
+      const registered = await deps.printers.findByCode(code);
+      if (registered?.protocol === 'cups' && registered.connectionUri === connectionUri) return registered;
+      if (registered) throw new ConflictError(`Printer code ${code} is already in use`);
+      throw error;
+    }
   });
 
   app.get('/printers/:id', read, async (req, reply) => {

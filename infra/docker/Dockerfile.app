@@ -27,7 +27,7 @@ LABEL org.opencontainers.image.title="PrintOps App" \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${SOURCE_REVISION}"
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates tzdata cups-client chromium fonts-noto-core poppler-utils \
+      ca-certificates tzdata cups-client cups-ipp-utils chromium fonts-noto-core poppler-utils \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system printops && useradd --system --create-home --gid printops printops \
     && mkdir -p /data/releases && chown -R printops:printops /data
