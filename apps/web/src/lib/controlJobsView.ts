@@ -160,3 +160,31 @@ export function sortAttentionFirst<T extends SortableJob>(
     return a.id < b.id ? -1 : 1;
   });
 }
+
+export type JobSortMode = 'attention' | 'newest' | 'oldest';
+
+/**
+ * The list order the operator chose.
+ *
+ * `attention` is the triage order above (what needs a human, then newest).
+ * `newest` and `oldest` are pure received-time orders, which an operator needs
+ * when they are reconciling one shift's output rather than triaging. Rows whose
+ * timestamp cannot be parsed stay in a stable tail instead of jumping around.
+ */
+export function sortJobs<T extends SortableJob>(
+  jobs: readonly T[],
+  mode: JobSortMode,
+  options: { isAttention?: (job: T) => boolean } = {},
+): T[] {
+  if (mode === 'attention') return sortAttentionFirst(jobs, options);
+  const direction = mode === 'newest' ? -1 : 1;
+  return [...jobs].sort((a, b) => {
+    const aMs = createdMs(a);
+    const bMs = createdMs(b);
+    if (aMs !== null && bMs !== null && aMs !== bMs) return (aMs - bMs) * direction;
+    if (aMs !== null && bMs === null) return -1;
+    if (aMs === null && bMs !== null) return 1;
+    if (a.id === b.id) return 0;
+    return a.id < b.id ? -1 : 1;
+  });
+}

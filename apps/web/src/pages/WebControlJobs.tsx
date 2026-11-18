@@ -38,7 +38,8 @@ import {
 import {
   countStatusBuckets,
   matchesStatusBucket,
-  sortAttentionFirst,
+  sortJobs,
+  type JobSortMode,
   type StatusBucket,
 } from '../lib/controlJobsView.js';
 import {
@@ -353,6 +354,8 @@ export default function WebControlJobs() {
    * widths are a live arrangement, not a saved preference.
    */
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  /** Triage order by default; the operator can switch to pure received time. */
+  const [jobSort, setJobSort] = useState<JobSortMode>('attention');
   const resizeRef = useRef<{
     id: string;
     nextId: string | null;
@@ -515,8 +518,8 @@ export default function WebControlJobs() {
   );
 
   const sortedVisibleJobs = useMemo(
-    () => sortAttentionFirst(visibleJobs, { isAttention: needsReview }),
-    [visibleJobs, needsReview],
+    () => sortJobs(visibleJobs, jobSort, { isAttention: needsReview }),
+    [visibleJobs, jobSort, needsReview],
   );
 
   const totalPages = Math.max(1, Math.ceil(sortedVisibleJobs.length / JOB_PAGE_SIZE));
@@ -552,9 +555,9 @@ export default function WebControlJobs() {
         groupBy,
       }).groups.map((group) => ({
         ...group,
-        jobs: sortAttentionFirst(group.jobs, { isAttention: needsReview }),
+        jobs: sortJobs(group.jobs, jobSort, { isAttention: needsReview }),
       })),
-    [visibleJobs, groupBy],
+    [visibleJobs, groupBy, jobSort, needsReview],
   );
 
   // Jobs used to suggest payload values: everything except the filter on the
@@ -1619,15 +1622,28 @@ export default function WebControlJobs() {
                       {t('control.jobs.countOther')} ({bucketCounts.OTHER})
                     </Chip>
                   )}
-                  {counts.needsReview > 0 && groupBy === 'none' && statusBucket === 'ALL' && (
+                  {counts.needsReview > 0 &&
+                    groupBy === 'none' &&
+                    statusBucket === 'ALL' &&
+                    jobSort === 'attention' && (
                     <Text size="label" tone="muted">
                       {t('control.jobs.needsReviewFirstHint')}
                     </Text>
                   )}
                 </Toolbar>
 
-                {/* Search and common dates. */}
+                {/* Sort, search and common dates. */}
                 <Inline gap="sm">
+                  <SelectFilter
+                    hideLabel
+                    label={t('control.jobs.sortLabel')}
+                    value={jobSort}
+                    onValueChange={(value) => setJobSort(value as JobSortMode)}
+                  >
+                    <option value="attention">{t('control.jobs.sortAttention')}</option>
+                    <option value="newest">{t('control.jobs.sortNewest')}</option>
+                    <option value="oldest">{t('control.jobs.sortOldest')}</option>
+                  </SelectFilter>
                   <div style={{ flex: '1 1 16rem', minWidth: 0 }}>
                     <SearchField
                       label={t('control.jobs.searchLabel')}

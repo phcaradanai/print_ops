@@ -13,6 +13,7 @@ import {
   countStatusBuckets,
   matchesStatusBucket,
   sortAttentionFirst,
+  sortJobs,
   type SortableJob,
   type StatusBucket,
   type StatusBucketCounts,
@@ -266,5 +267,41 @@ describe('review acknowledgement', () => {
       { isAttention },
     );
     expect(ordered.map((entry) => entry.id)).toEqual(['pending', 'reviewed']);
+  });
+});
+
+describe('sortJobs', () => {
+  const jobs = [
+    { id: 'new', status: 'SUCCESS', createdAt: '2026-11-18T10:00:00.000Z' },
+    { id: 'old', status: 'SUCCESS', createdAt: '2026-11-16T10:00:00.000Z' },
+    { id: 'mid', status: 'SUCCESS', createdAt: '2026-11-17T10:00:00.000Z' },
+    { id: 'broken', status: 'SUCCESS', createdAt: 'not-a-date' },
+  ];
+
+  it('orders pure received-time sorts and keeps unparseable rows in a stable tail', () => {
+    expect(sortJobs(jobs, 'newest').map((entry) => entry.id)).toEqual([
+      'new',
+      'mid',
+      'old',
+      'broken',
+    ]);
+    expect(sortJobs(jobs, 'oldest').map((entry) => entry.id)).toEqual([
+      'old',
+      'mid',
+      'new',
+      'broken',
+    ]);
+  });
+
+  it('keeps the triage order for attention mode', () => {
+    const mixed = [
+      { id: 'printed-new', status: 'SUCCESS', createdAt: '2026-11-18T10:00:00.000Z' },
+      { id: 'failed-old', status: 'FAILED', createdAt: '2026-11-15T10:00:00.000Z' },
+      { id: 'queued', status: 'QUEUED', createdAt: '2026-11-17T10:00:00.000Z' },
+    ];
+    const ordered = sortJobs(mixed, 'attention', {
+      isAttention: (entry) => entry.status === 'FAILED',
+    });
+    expect(ordered.map((entry) => entry.id)).toEqual(['failed-old', 'printed-new', 'queued']);
   });
 });

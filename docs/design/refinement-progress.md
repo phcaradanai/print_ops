@@ -362,6 +362,18 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   Jobs Playwright tests (1 new: reviewed job leaves Needs review with its status
   intact), full suite 141 passed.
 
+## 2026-11-18 — Incoming Jobs: sort by received time
+
+- Added a compact sort selector above the list: Needs review first (the existing
+  triage order, still the default), Newest first and Oldest first. The time sorts
+  are pure `createdAt` orders with a stable tail for unparseable timestamps and
+  the same `id` tie-break; group rows use the same order. Session state, like the
+  filters.
+- `needsReviewFirstHint` now only renders while the triage order is active, so the
+  page cannot claim an order it is not using.
+- Verified: 792 web unit tests (2 new for `sortJobs`), typecheck, Control build,
+  44/44 Incoming Jobs Playwright tests (1 new), full suite 141 passed.
+
 ## Next, in order
 
 1. **Fold the paper-profile hotfix layers** (`paperProfilesLayoutHotfix`, `Closure`, `Completion`, `LibraryGeometryHotfix`) into `paperProfilesLibrary.css` / `paperProfilesEditor.css`, deleting `!important` as you go. Gate: `paper-profile-ux` and `paper-profile-layout-regression` e2e, which first need their pre-existing failures fixed so they can detect a regression. Then delete the entries from the hotfix list in `designTokens.test.ts`.

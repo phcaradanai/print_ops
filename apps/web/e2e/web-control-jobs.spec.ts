@@ -429,6 +429,8 @@ const STRINGS = {
     reprintDialogGeneric: 'Reprint job',
     markReviewed: 'Mark as reviewed',
     unmarkReviewed: 'Undo review',
+    sortLabel: 'Sort',
+    needsReviewFirstHint: 'Jobs that need review are shown first.',
     reviewedHint:
       'Marking this job reviewed clears it from Needs review. Its status and evidence stay exactly as the station reported them.',
     reviewedNotice: 'Marked this job as reviewed.',
@@ -503,6 +505,8 @@ const STRINGS = {
     reprintDialogGeneric: 'พิมพ์งานซ้ำ',
     markReviewed: 'ทำเครื่องหมายว่าตรวจสอบแล้ว',
     unmarkReviewed: 'ยกเลิกเครื่องหมายตรวจสอบ',
+    sortLabel: 'เรียงลำดับ',
+    needsReviewFirstHint: 'งานที่ต้องตรวจสอบจะแสดงก่อน',
     reviewedHint:
       'การทำเครื่องหมายว่าตรวจสอบแล้วจะเอาตัวนี้ออกจาก Need review โดยสถานะและหลักฐานของงานยังเป็นอย่างที่เครื่องรายงานไว้ทุกอย่าง',
     reviewedNotice: 'ทำเครื่องหมายว่าตรวจสอบแล้ว',
@@ -1841,6 +1845,31 @@ test('Q. a reviewed UNVERIFIED job leaves Needs review and keeps its status', as
   await expect(row).toContainText('UNVERIFIED');
   await expect(row).toContainText('Reviewed');
   await expect(drawer.getByRole('button', { name: s('en').unmarkReviewed, exact: true })).toBeVisible();
+});
+
+test('R. the list sorts by received time when asked', async ({ page }) => {
+  await loadJobs(page, { deviceId: 'dev-john' });
+  await waitForList(page);
+
+  const sort = page.getByRole('combobox', { name: s('en').sortLabel });
+  await expect(sort).toHaveValue('attention');
+  await expect(page.getByText(s('en').needsReviewFirstHint)).toBeVisible();
+
+  // Oldest first: the cancelled job is the oldest of the six.
+  await sort.selectOption('oldest');
+  await expect(rows(page).first()).toContainText('REQ-CANCELLED-0005');
+  // The triage hint must not claim an order that is no longer in effect.
+  await expect(page.getByText(s('en').needsReviewFirstHint)).toHaveCount(0);
+
+  await sort.selectOption('newest');
+  await expect(rows(page).first()).toContainText('REQ-UNVERIFIED-0001');
+
+  // Back to triage: attention rows first, newest first inside that group.
+  await sort.selectOption('attention');
+  const ordered = await rowTexts(page);
+  expect(ordered[0]).toContain('REQ-UNVERIFIED-0001');
+  expect(ordered[2]).toContain('REQ-FAILED-0002');
+  await expect(page.getByText(s('en').needsReviewFirstHint)).toBeVisible();
 });
 
 // ---------------------------------------------------------------------------

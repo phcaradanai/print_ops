@@ -308,7 +308,15 @@ returns to All. Counts do not change when the bucket changes.
 **Sort order (flat list):** attention first, then received newest first, then
 `id` for a stable tie-break. In grouped mode, groups keep the order produced by
 `filterAndGroupJobs`; rows inside each group follow the same attention-first,
-newest-first rule. `needsReviewFirstHint` is shown only in the flat list.
+newest-first rule.
+
+**Sort control (2026-11-18).** A compact selector above the list switches the row
+order: **Needs review first** (the default triage order above), **Newest first**,
+or **Oldest first**. The time sorts are pure `createdAt` orders, for reconciling a
+shift rather than triaging; rows whose timestamp cannot be parsed stay in a stable
+tail. The selection is session state, like the filters. `needsReviewFirstHint` is
+shown only in the flat list while the triage order is active, so the page never
+claims an order it is not using.
 
 ## 5. Plain-language mapping
 
