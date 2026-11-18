@@ -117,6 +117,13 @@
   border-radius: var(--rounded-sm);
 }
 
+/* Why a row matched the search when the match is not in a visible column: a
+   second line inside the reference cell, quiet enough to ignore once seen. */
+.wcj-search-match {
+  display: block;
+  margin-top: var(--spacing-xs);
+}
+
 /* Below the responsive breakpoint the table becomes record cards: there is no
    column to resize, so the handles disappear with the table head. */
 @media (max-width: 768px) {

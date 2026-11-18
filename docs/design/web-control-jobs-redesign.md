@@ -89,6 +89,34 @@ actions so the header stays one line of text.
      `control.jobs.advancedFilters` when nothing advanced is active,
      `control.jobs.hideAdvancedFilters` when the panel is open, and
      `control.jobs.advancedFiltersWithCount` when advanced conditions are active.
+
+### 3.6 Search: what it matches, and why a row is here (2026-11-18)
+
+Search is free text with `key = value` support, and it matches more than the
+table shows: template code, source, runner, error code and message, incoming
+data, and the raw snapshot. That breadth is deliberate - an operator looking for
+"the label job" should not have to know which column a code lives in - but it
+produced the bug that made people distrust the box: typing `do` returned rows
+whose references began `ab`, with nothing visible connecting them to the query.
+
+Two rules fix it without weakening the search:
+
+- **An incoming key must match the whole term.** `dob` finds the jobs that carry
+  a `dob` key; `do` does not silently drag them in. Values still match anywhere
+  inside them, so a fragment of a patient name or HN keeps working, and the
+  advanced panel's `key = value` filter remains the way to browse by key.
+- **A row explains a match it cannot show.** When the words that matched live in
+  a field no visible column renders, the reference cell gains one muted second
+  line - `Matched: Template · PATIENT_LABEL` - and a single line above the list
+  says how many rows are in that state
+  (`control.jobs.searchHiddenHint`). The hint is derived from the *current*
+  columns: switch the Template column on and those hints disappear, because the
+  row now shows the value itself. One row never grows into two, and the hint sits
+  in the same cell on a phone's record card.
+
+`control.jobs.searchMatchLabel` ("Matched: {detail}") names the field, not just
+the value: "Matched: PATIENT_LABEL" would still leave the operator wondering
+where it came from.
 5. **Advanced panel.** When open, a compact `Panel` (`tone="subtle"`,
    `padding="md"`) sits above the active conditions. It contains only:
    - Custom `From` / `To` date inputs (`control.jobs.dateFromLabel`,

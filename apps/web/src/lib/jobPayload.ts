@@ -286,11 +286,148 @@ export function parseJobSearchQuery(raw: string): {
   return { keyQueries, textTerms };
 }
 
+/**
+ * Where a free-text search can hit. The value matters to the operator: a term
+ * that only matches `templateCode` is invisible on a row whose Template column is
+ * hidden, and a row that appears for no visible reason reads as a broken filter.
+ * `columnId` names the list column that shows the value, so a caller can tell
+ * "already on screen" from "hidden, explain it".
+ */
+export type JobSearchField =
+  | 'reference'
+  | 'status'
+  | 'destination'
+  | 'station'
+  | 'template'
+  | 'source'
+  | 'runner'
+  | 'error'
+  | 'incoming-key'
+  | 'incoming-value'
+  | 'technical';
+
+export interface JobSearchCandidate {
+  field: JobSearchField;
+  /** List column id that already shows this value, when one does. */
+  columnId?: string;
+  /** Incoming payload key, for the `incoming-*` fields. */
+  key?: string;
+  value: string;
+  /**
+   * Keys must equal the whole term; values may appear anywhere inside it.
+   * `dob` therefore finds the jobs that carry a `dob` key, while `do` does not
+   * silently drag them in - which is the phantom-row case that made typing a
+   * short word look broken.
+   */
+  match: 'substring' | 'exact';
+}
+
+/**
+ * Every string a search term may hit, with the column that shows it. One list,
+ * used by both the filter and the "why did this row match" explanation, so the
+ * two can never disagree about what matched.
+ */
+export function collectJobSearchCandidates(job: FilterableJob): JobSearchCandidate[] {
+  const candidates: JobSearchCandidate[] = [];
+  const push = (
+    field: JobSearchField,
+    value: string | undefined,
+    match: 'substring' | 'exact' = 'substring',
+    columnId?: string,
+    key?: string,
+  ) => {
+    if (value === undefined || value === '') return;
+    candidates.push({
+      field,
+      value,
+      match,
+      ...(columnId ? { columnId } : {}),
+      ...(key ? { key } : {}),
+    });
+  };
+
+  push('reference', job.requestId, 'substring', 'job');
+  push('reference', job.id, 'substring', 'job');
+  push('status', job.status, 'substring', 'status');
+  push('destination', job.printerCode, 'substring', 'destination');
+  push('destination', job.printerId, 'substring', 'destination');
+  push('template', job.resolvedTemplateCode, 'substring', 'template');
+  push('template', job.templateCode, 'substring', 'template');
+  push('source', job.sourceSystem, 'substring', 'source');
+  push('source', job.sourceReference, 'substring', 'source');
+  push('error', job.errorCode, 'substring', 'error');
+  push('error', job.errorMessage, 'substring', 'error');
+  // Nothing on this page renders the raw snapshot; a hit there is always hidden.
+  push('technical', job.payloadSnapshot, 'substring');
+
+  for (const [key, value] of Object.entries(extractJobPayload(job))) {
+    const columnId = `payload:${key}`;
+    push('incoming-key', key, 'exact', columnId, key);
+    push('incoming-value', value, 'substring', columnId, key);
+  }
+
+  return candidates;
+}
+
+/** True when one search term hits one candidate. */
+export function candidateMatchesTerm(candidate: JobSearchCandidate, term: string): boolean {
+  const value = candidate.value.toLocaleLowerCase();
+  return candidate.match === 'exact' ? value === term : value.includes(term);
+}
+
+export interface JobSearchMatch {
+  field: JobSearchField;
+  columnId?: string;
+  key?: string;
+  /** The value that matched, already trimmed to something a row can show. */
+  value: string;
+}
+
+/**
+ * Which fields of this job the search actually hit, one entry per field and key.
+ *
+ * Returns nothing when the query has no free-text terms (a `key = value` search
+ * is already spelled out in the filter chips, so repeating it per row would add
+ * noise without adding information).
+ */
+export function describeJobSearchMatches(job: FilterableJob, search: string): JobSearchMatch[] {
+  const { textTerms } = parseJobSearchQuery(search);
+  if (textTerms.length === 0) return [];
+
+  const seen = new Set<string>();
+  const matches: JobSearchMatch[] = [];
+  for (const candidate of collectJobSearchCandidates(job)) {
+    if (!textTerms.some((term) => candidateMatchesTerm(candidate, term))) continue;
+    const id = `${candidate.field}:${candidate.key ?? candidate.value}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    matches.push({
+      field: candidate.field,
+      value: candidate.value,
+      ...(candidate.columnId ? { columnId: candidate.columnId } : {}),
+      ...(candidate.key ? { key: candidate.key } : {}),
+    });
+  }
+  return matches;
+}
+
+/**
+ * The matches a row cannot show as it is currently laid out: no column displays
+ * them. These are the rows that look like a broken filter.
+ */
+export function hiddenSearchMatches(
+  matches: readonly JobSearchMatch[],
+  visibleColumnIds: ReadonlySet<string>,
+): JobSearchMatch[] {
+  return matches.filter(
+    (match) => match.columnId === undefined || !visibleColumnIds.has(match.columnId),
+  );
+}
+
 export function matchesKeyFilter(
   payload: Record<string, string>,
   kf: JobKeyFilter,
-): boolean {
-  const filterKeyLower = kf.key.trim().toLocaleLowerCase();
+): boolean {  const filterKeyLower = kf.key.trim().toLocaleLowerCase();
   const targetValue = kf.value.trim().toLocaleLowerCase();
   if (!filterKeyLower || !targetValue) return true;
 
@@ -393,25 +530,9 @@ export function filterAndGroupJobs<T extends FilterableJob>(
     }
 
     if (parsedSearch.textTerms.length > 0) {
-      const candidates: Array<string | undefined> = [
-        job.id,
-        job.status,
-        job.printerCode,
-        job.printerId,
-        job.sourceSystem,
-        job.sourceReference,
-        job.requestId,
-        job.templateCode,
-        job.resolvedTemplateCode,
-        job.errorCode,
-        job.errorMessage,
-        job.payloadSnapshot,
-      ];
-      for (const [k, v] of Object.entries(payload)) {
-        candidates.push(k, v);
-      }
+      const candidates = collectJobSearchCandidates(job);
       const allTermsMatch = parsedSearch.textTerms.every((term) =>
-        candidates.some((value) => value?.toLocaleLowerCase().includes(term)),
+        candidates.some((candidate) => candidateMatchesTerm(candidate, term)),
       );
       if (!allTermsMatch) {
         return false;

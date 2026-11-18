@@ -54,6 +54,15 @@ export interface JobTableProps<T extends JobTableRow> {
   onToggleAll: (rows: readonly T[]) => void;
   /** Cell contents for one column, decided by the page. */
   renderCell: (row: T, column: JobTableColumn) => ReactNode;
+  /**
+   * An optional second line under one cell, used to explain why a row is here at
+   * all (a search that matched data no column shows). It goes in `hintColumnId`
+   * rather than its own row so the table keeps one row per job, and it lands in
+   * the same place on the record cards a phone renders.
+   */
+  renderRowHint?: (row: T) => ReactNode;
+  /** Column that carries the hint; the first column when unset. */
+  hintColumnId?: string;
   resizer: JobTableResizer;
 }
 
@@ -67,6 +76,8 @@ export function JobTable<T extends JobTableRow>({
   onToggleRow,
   onToggleAll,
   renderCell,
+  renderRowHint,
+  hintColumnId,
   resizer,
 }: JobTableProps<T>) {
   const { t } = useLocale();
@@ -153,6 +164,11 @@ export function JobTable<T extends JobTableRow>({
                   actions={column.kind === 'builtin' && column.id === 'actions'}
                 >
                   {renderCell(row, column)}
+                  {/* The hint rides in one named cell: a cell of its own would
+                      break the one-row-per-job structure and the card layout. */}
+                  {renderRowHint && column.id === (hintColumnId ?? columns[0]?.id)
+                    ? renderRowHint(row)
+                    : null}
                 </DataCell>
               ))}
             </tr>

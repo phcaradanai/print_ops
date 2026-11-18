@@ -26,12 +26,15 @@ import {
 import {
   collectPayloadKeys,
   collectPayloadValueCounts,
+  describeJobSearchMatches,
   extractJobPayload,
   filterAndGroupJobs,
+  hiddenSearchMatches,
   type FilterableJob,
   type JobDatePreset,
   type JobGroupBy,
   type JobKeyFilter,
+  type JobSearchMatch,
 } from '../lib/jobPayload.js';
 import {
   countStatusBuckets,
@@ -712,6 +715,35 @@ export default function WebControlJobs() {
     [setSearchParams],
   );
   const visibleColumns = useMemo(() => visibleJobColumns(jobColumns), [jobColumns]);
+
+  /**
+   * Why a visible row is in the list.
+   *
+   * The search legitimately matches fields no column shows - a template code, an
+   * incoming key, an error message, the raw snapshot - so a row can match a term
+   * the operator cannot see anywhere on it. Those rows read as a broken filter;
+   * naming the field is the difference between a filter people trust and one they
+   * stop using. Only the hidden matches are kept: repeating what a visible cell
+   * already spells out would just add noise.
+   */
+  const visibleColumnIdSet = useMemo(
+    () => new Set<string>(visibleColumns.map((column) => column.id)),
+    [visibleColumns],
+  );
+
+  const searchHints = useMemo(() => {
+    const hints = new Map<string, JobSearchMatch[]>();
+    if (jobSearch.trim() === '') return hints;
+    for (const job of sortedVisibleJobs) {
+      const hidden = hiddenSearchMatches(
+        describeJobSearchMatches(job, jobSearch),
+        visibleColumnIdSet,
+      );
+      if (hidden.length > 0) hints.set(job.id, hidden);
+    }
+    return hints;
+  }, [sortedVisibleJobs, jobSearch, visibleColumnIdSet]);
+
   /**
    * Batch reprint needs `job:retry`, in any scope. A job carries its own
    * device, so an All-stations batch simply posts to several stations.
@@ -1270,6 +1302,58 @@ export default function WebControlJobs() {
     </Text>
   );
 
+  /** A matched value, short enough for a row: enough to recognise, not a dump. */
+  const shorten = (value: string, max = 48): string =>
+    value.length <= max ? value : `${value.slice(0, max - 1)}…`;
+
+  /** How one hidden search hit is named, e.g. "Template · PATIENT_LABEL". */
+  const formatSearchMatch = (match: JobSearchMatch): string => {
+    const value = shorten(match.value);
+    switch (match.field) {
+      case 'incoming-key':
+        return `${t('control.jobs.detailIncomingData')} · ${match.key ?? ''}`;
+      case 'incoming-value':
+        return `${t('control.jobs.detailIncomingData')} · ${match.key ?? ''} = ${value}`;
+      case 'technical':
+        return t('control.jobs.detailTechnical');
+      case 'reference':
+        return `${t('control.jobs.colJob')} · ${value}`;
+      case 'status':
+        return `${t('control.jobs.colStatus')} · ${value}`;
+      case 'destination':
+        return `${t('control.jobs.colDestination')} · ${value}`;
+      case 'template':
+        return `${t('control.jobs.detailTemplate')} · ${value}`;
+      case 'source':
+        return `${t('control.jobs.detailSource')} · ${value}`;
+      case 'runner':
+        return `${t('control.jobs.detailRunner')} · ${value}`;
+      case 'error':
+        return `${t('control.jobs.detailErrorCode')} · ${value}`;
+      case 'station':
+        return `${t('control.jobs.colStation')} · ${value}`;
+    }
+  };
+
+  /**
+   * The per-row explanation. Two hits is the useful maximum: the operator needs to
+   * recognise the match, not to read the whole list of fields it appeared in.
+   */
+  const renderRowHint = (job: ControlSyncedJobItem): ReactNode => {
+    const matches = searchHints.get(job.id);
+    if (!matches || matches.length === 0) return null;
+    return (
+      <Text size="label" tone="muted" wrap className="wcj-search-match">
+        {formatMsg(t('control.jobs.searchMatchLabel'), {
+          detail: matches.slice(0, 2).map(formatSearchMatch).join(' · '),
+        })}
+      </Text>
+    );
+  };
+
+  /** The hint rides with the reference when it is on screen, else the first column. */
+  const hintColumnId = visibleColumnIdSet.has('job') ? 'job' : visibleColumns[0]?.id;
+
   /**
    * One cell per visible column. The optional columns are the only place a job
    * value can be blank; they render an em dash rather than an empty cell so a
@@ -1629,6 +1713,14 @@ export default function WebControlJobs() {
                   )}
                 </Inline>
 
+                {/* A search can match data the table is not showing. Saying so once,
+                    above the rows, keeps every such row from looking like a bug. */}
+                {searchHints.size > 0 && (
+                  <Text size="label" tone="muted">
+                    {formatMsg(t('control.jobs.searchHiddenHint'), { count: searchHints.size })}
+                  </Text>
+                )}
+
                 {/* Advanced panel: custom dates, grouping and payload filters live only here. */}
                 {advancedOpen && (
                   <Panel
@@ -1893,6 +1985,8 @@ export default function WebControlJobs() {
                           onToggleRow={toggleJobSelection}
                           onToggleAll={toggleSelectionFor}
                           renderCell={renderJobCell}
+                          renderRowHint={renderRowHint}
+                          hintColumnId={hintColumnId}
                           resizer={resizer}
                         />
                       </DataTable>
@@ -1941,6 +2035,8 @@ export default function WebControlJobs() {
                             onToggleRow={toggleJobSelection}
                             onToggleAll={toggleSelectionFor}
                             renderCell={renderJobCell}
+                            renderRowHint={renderRowHint}
+                            hintColumnId={hintColumnId}
                             resizer={resizer}
                           />
                           </DataTable>

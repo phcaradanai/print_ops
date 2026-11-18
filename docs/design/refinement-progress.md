@@ -362,6 +362,27 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   Jobs Playwright tests (1 new: reviewed job leaves Needs review with its status
   intact), full suite 141 passed.
 
+## 2026-11-18 — Incoming Jobs: search explains itself (reported bug)
+
+Typing `do` returned rows whose references began `ab`, with nothing on them
+containing the query. The filter was working; it was matching fields the table
+does not show - `ab` is inside `PATIENT_LABEL` (template code), and a short term
+like `do` was also matching payload *keys* such as `dob`.
+
+- **Incoming keys now match the whole term** (`dob` finds them, `do` does not);
+  values still match anywhere inside them, and the advanced panel's `key = value`
+  filter is the way to browse by key. The phantom class is gone.
+- **Every row can say why it is there.** `collectJobSearchCandidates` /
+  `describeJobSearchMatches` / `hiddenSearchMatches` name the field that matched
+  and the column that would show it; the reference cell gains one muted line
+  (`Matched: Template · PATIENT_LABEL`) only for hits no visible column shows, and
+  one line above the list counts those rows. Turning the column on removes the
+  hint, because the row now shows the value.
+- The filter and the explanation read the same candidate list, so they cannot
+  disagree about what matched.
+- Verified: 810 web unit tests (10 new), 57/57 Incoming Jobs Playwright tests
+  (1 new behaviour test, 6 measured layout tests across EN/TH at 1440/1024/390).
+
 ## 2026-11-18 — Incoming Jobs: the page sheds its three biggest regions
 
 `WebControlJobs.tsx` had grown to 2.6k lines, one feature at a time. Three

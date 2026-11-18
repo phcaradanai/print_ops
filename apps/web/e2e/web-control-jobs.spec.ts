@@ -375,6 +375,7 @@ const STRINGS = {
     printed: 'Printed',
     allCount: 'All',
     searchLabel: 'Search jobs',
+    searchMatchLabel: 'Matched:',
     allDates: 'All dates',
     today: 'Today',
     advanced: 'Advanced filters',
@@ -459,6 +460,7 @@ const STRINGS = {
     printed: 'พิมพ์แล้ว',
     allCount: 'ทั้งหมด',
     searchLabel: 'ค้นหางาน',
+    searchMatchLabel: 'ตรงกับ:',
     allDates: 'ทั้งหมด',
     today: 'วันนี้',
     advanced: 'ตัวกรองขั้นสูง',
@@ -818,6 +820,40 @@ test('D. search filters to one row and its chip restores the list', async ({ pag
     .getByRole('button', { name: s('en').clearAll, exact: true })
     .click();
   await expect(rows(page)).toHaveCount(JOHN_JOBS.length);
+});
+
+test('D. a row that matched hidden data says which field matched', async ({ page }) => {
+  await loadJobs(page, { deviceId: 'dev-john' });
+  await waitForList(page);
+
+  const search = page.getByRole('searchbox', { name: s('en').searchLabel });
+
+  // "ab" lives inside the template code `PATIENT_LABEL`, which the default columns
+  // do not show. Before this, all six rows came back with nothing visibly "ab" on
+  // them - the reported "search does not filter" bug.
+  await search.fill('ab');
+  await expect(rows(page)).toHaveCount(JOHN_JOBS.length);
+  const hints = page.locator('.wcj-search-match');
+  await expect(hints).toHaveCount(JOHN_JOBS.length);
+  await expect(hints.first()).toContainText('Matched:');
+  await expect(hints.first()).toContainText('PATIENT_LABEL');
+  await expect(page.getByText(/matched data these columns do not show/)).toBeVisible();
+
+  // Turn the Template column on: the template value is on screen now, so the five
+  // rows that matched only through it need no explanation. The failed job keeps
+  // its hint because "ab" is also inside its error message ("cable"), which no
+  // column shows - the hint tracks what is actually on screen, not the query.
+  await page.getByRole('button', { name: s('en').columnsButton, exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: s('en').columnsTitle });
+  await dialog.getByRole('checkbox', { name: /Template/ }).check();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.wcj-search-match')).toHaveCount(1);
+  await expect(page.locator('.wcj-search-match').first()).toContainText('Error code');
+
+  // A term that no row carries really does filter everything out.
+  await search.fill('do');
+  await expect(rows(page)).toHaveCount(0);
+  await expect(page.getByText(s('en').noJobsMatch, { exact: true })).toBeVisible();
 });
 
 // ---------------------------------------------------------------------------
@@ -2306,3 +2342,63 @@ test('evidence: measured first-row y, page overflow, nested scrollbars', async (
 
   writeFileSync(`${ARTIFACTS}/measurements.json`, `${JSON.stringify(evidence, null, 2)}\n`);
 });
+
+test('TMP screenshot search hint th', async ({ page }) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await loadJobs(page, { locale: 'th', deviceId: 'dev-john', viewport });
+    await waitForList(page, 'th');
+    const search = page.getByRole('searchbox', { name: s('th').searchLabel });
+    await search.fill('ab');
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${ARTIFACTS}/tmp-hint-th-${viewport.width}.png`, fullPage: false });
+  }
+});
+
+for (const locale of ['en', 'th'] as const) {
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 1024, height: 768 },
+    { width: 390, height: 844 },
+  ] as const) {
+    test(`D. the search explanation fits ${viewport.width}x${viewport.height} ${locale}`, async ({
+      page,
+    }) => {
+      await loadJobs(page, { locale, deviceId: 'dev-john', viewport });
+      await waitForList(page, locale);
+      const copy = s(locale);
+
+      const search = page.getByRole('searchbox', { name: copy.searchLabel });
+      await search.fill('ab');
+
+      const hint = page.locator('.wcj-search-match').first();
+      await expect(hint).toContainText(copy.searchMatchLabel.split('{detail}')[0]!.trim());
+      // The hint names the field, not just the value: that is the whole point.
+      await expect(hint).toContainText('PATIENT_LABEL');
+
+      // Thai copy is longer than English; the line must wrap inside its cell
+      // instead of widening the table or the page. The type size is the app's own
+      // `label` rung (the muted secondary size every other cell value uses), read
+      // from the token rather than hard-coded here.
+      const fits = await hint.evaluate((element) => ({
+        overflowsCell: element.scrollWidth - element.clientWidth,
+        fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+        labelRung: Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue('--font-label-size'),
+        ),
+      }));
+      expect(fits.overflowsCell, 'the hint scrolls sideways').toBeLessThanOrEqual(1);
+      expect(fits.labelRung, 'the label token is missing').toBeGreaterThan(0);
+      expect(fits.fontSize, 'the hint is smaller than the label rung').toBeGreaterThanOrEqual(
+        Math.round(fits.labelRung * 16),
+      );
+
+      const pageOverflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(pageOverflow, 'the page scrolls sideways').toBeLessThanOrEqual(1);
+
+      // The row keeps its structure: still one row per job.
+      await expect(rows(page)).toHaveCount(JOHN_JOBS.length);
+    });
+  }
+}
