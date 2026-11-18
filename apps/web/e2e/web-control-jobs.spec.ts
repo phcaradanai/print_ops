@@ -381,6 +381,8 @@ const STRINGS = {
     advanced: 'Advanced filters',
     hideAdvanced: 'Hide advanced filters',
     activeFilters: 'Active filters',
+    searchTechnicalLabel: 'Search technical details too',
+    filterNoTechnical: 'Technical details excluded',
     clearAll: 'Clear all',
     addKeyFilter: 'Add Key Filter',
     groupBy: 'Group by',
@@ -466,6 +468,8 @@ const STRINGS = {
     advanced: 'ตัวกรองขั้นสูง',
     hideAdvanced: 'ซ่อนตัวกรองขั้นสูง',
     activeFilters: 'ตัวกรองที่ใช้อยู่',
+    searchTechnicalLabel: 'ค้นหาข้อมูลทางเทคนิคด้วย',
+    filterNoTechnical: 'ไม่รวมข้อมูลเทคนิค',
     clearAll: 'ล้างทั้งหมด',
     addKeyFilter: 'เพิ่มเงื่อนไข Key',
     groupBy: 'จัดกลุ่มตาม',
@@ -854,6 +858,45 @@ test('D. a row that matched hidden data says which field matched', async ({ page
   await search.fill('do');
   await expect(rows(page)).toHaveCount(0);
   await expect(page.getByText(s('en').noJobsMatch, { exact: true })).toBeVisible();
+});
+
+test('D. technical details can be left out of the search', async ({ page }) => {
+  await loadJobs(page, { deviceId: 'dev-john' });
+  await waitForList(page);
+
+  const search = page.getByRole('searchbox', { name: s('en').searchLabel });
+  // "cable" exists only inside the failed job's error message - a technical detail.
+  await search.fill('cable');
+  await expect(rows(page)).toHaveCount(1);
+  await expect(rows(page).first()).toContainText('REQ-FAILED-0002');
+
+  // Switch the technical fields off from the advanced panel.
+  await page.getByRole('button', { name: s('en').advanced, exact: true }).click();
+  const technical = page.getByRole('checkbox', { name: s('en').searchTechnicalLabel });
+  await expect(technical).toBeChecked();
+  await technical.uncheck();
+  await expect(technical).not.toBeChecked();
+
+  // The match was technical only, so nothing is left.
+  await expect(rows(page)).toHaveCount(0);
+  await expect(page.getByText(s('en').noJobsMatch, { exact: true })).toBeVisible();
+
+  // A primary field still works with the switch off: the template is not technical.
+  await search.fill('ab');
+  await expect(rows(page)).toHaveCount(JOHN_JOBS.length);
+  await expect(page.locator('.wcj-search-match').first()).toContainText('PATIENT_LABEL');
+
+  // The switch is a condition like any other: visible and removable in one click.
+  const active = page.getByRole('toolbar', { name: s('en').activeFilters });
+  const chip = active.getByRole('button', { name: `Remove ${s('en').filterNoTechnical}` });
+  await expect(chip).toBeVisible();
+  await chip.click();
+  await expect(technical).toBeChecked();
+
+  // And with it back on, the error message is searchable again.
+  await search.fill('cable');
+  await expect(rows(page)).toHaveCount(1);
+  await expect(rows(page).first()).toContainText('REQ-FAILED-0002');
 });
 
 // ---------------------------------------------------------------------------

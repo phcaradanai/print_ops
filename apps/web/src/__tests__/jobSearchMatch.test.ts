@@ -103,3 +103,70 @@ describe('search matching rules', () => {
     expect(search([job({ id: 'job-1' })], 'hn 999999')).toHaveLength(0);
   });
 });
+
+describe('technical-details switch', () => {
+  const failing = job({
+    id: '3f7a1c2e-91b4-4d6f-8a01-000000000002',
+    // No "ab" anywhere in the primary fields: the only "ab" lives in the two
+    // technical details below ("ext-ab-77" and "cable").
+    templateCode: 'XRAY_10x15',
+    errorCode: 'PRINTER_OFFLINE',
+    errorMessage: 'Printer not responding; check the cable.',
+    sourceReference: 'ext-ab-77',
+  });
+
+  function searchWith(jobs: FilterableJob[], term: string, searchTechnical: boolean) {
+    return filterAndGroupJobs(jobs, {
+      status: 'ALL',
+      search: term,
+      datePreset: 'all',
+      dateFrom: '',
+      dateTo: '',
+      keyFilters: [],
+      searchTechnical,
+    }).filteredJobs;
+  }
+
+  it("marks the drawer's technical fields as the technical tier", () => {
+    const candidates = collectJobSearchCandidates(failing);
+    const tiersOf = (field: string) =>
+      candidates.filter((candidate) => candidate.field === field).map((candidate) => candidate.tier);
+    expect(tiersOf('error')).toEqual(['technical', 'technical']);
+    expect(tiersOf('source')).toEqual(['technical']);
+    // The internal id is technical; the request reference the intake sent is not.
+    expect(tiersOf('reference')).toEqual(['technical']);
+    expect(tiersOf('status')).toEqual(['primary']);
+    expect(tiersOf('template')).toEqual(['primary']);
+  });
+
+  it('leaves the technical fields out when the switch is off', () => {
+    // "ab" exists only in the source reference and the error message.
+    expect(searchWith([failing], 'ab', true)).toHaveLength(1);
+    expect(searchWith([failing], 'ab', false)).toHaveLength(0);
+    expect(searchWith([failing], 'PRINTER_OFFLINE', true)).toHaveLength(1);
+    expect(searchWith([failing], 'PRINTER_OFFLINE', false)).toHaveLength(0);
+    // Ordinary fields keep working either way.
+    expect(searchWith([failing], 'UNVERIFIED', true)).toHaveLength(1);
+    expect(searchWith([failing], 'UNVERIFIED', false)).toHaveLength(1);
+    expect(searchWith([failing], '123456', false)).toHaveLength(1);
+  });
+
+  it('explains only the hits the current switch would allow', () => {
+    const withTechnical = describeJobSearchMatches(failing, 'ab', { includeTechnical: true });
+    expect(withTechnical.map((match) => match.field)).toEqual(
+      expect.arrayContaining(['error', 'source']),
+    );
+    expect(describeJobSearchMatches(failing, 'ab', { includeTechnical: false })).toEqual([]);
+  });
+
+  it('drops the technical candidates themselves when the switch is off', () => {
+    const fields = collectJobSearchCandidates(failing, { includeTechnical: false }).map(
+      (candidate) => candidate.field,
+    );
+    expect(fields).not.toContain('error');
+    expect(fields).not.toContain('source');
+    expect(fields).toContain('status');
+    expect(fields).toContain('template');
+    expect(fields).toContain('incoming-value');
+  });
+});

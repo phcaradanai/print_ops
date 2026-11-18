@@ -362,6 +362,25 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   Jobs Playwright tests (1 new: reviewed job leaves Needs review with its status
   intact), full suite 141 passed.
 
+## 2026-11-18 — Incoming Jobs: the technical details can leave the search
+
+Searching matched the fields the drawer keeps under "Technical details", which is
+how support finds a job from a log line but also why a short word can return rows
+that look unrelated. The fix is a switch, not a narrower search:
+
+- `collectJobSearchCandidates` now tags each candidate `primary` or `technical`
+  (internal job id, source reference, error code and message, raw snapshot). One
+  list, so the filter and the "Matched: ..." explanation drop them together.
+- A checkbox in the advanced panel (**Search technical details too**) turns them
+  off for the session; default stays on so nothing existing changes.
+- While it is off it behaves like any other condition: a removable
+  **Technical details excluded** chip in the active-filters row, and Clear all
+  restores it.
+- Verified: 816 web unit tests (4 new), 63/63 Incoming Jobs Playwright tests
+  (1 new: 'cable' finds the failed job, switching the details off empties the
+  list, a template hit still works, the chip restores it), typecheck, Control
+  build.
+
 ## 2026-11-18 — Incoming Jobs: the caps that rationed space are gone
 
 The report: a wide screen sat half empty while the operator could not show the

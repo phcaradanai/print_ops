@@ -117,6 +117,17 @@ Two rules fix it without weakening the search:
 `control.jobs.searchMatchLabel` ("Matched: {detail}") names the field, not just
 the value: "Matched: PATIENT_LABEL" would still leave the operator wondering
 where it came from.
+
+**The technical fields are switchable.** The ones the drawer keeps under
+"Technical details" - the internal job id, the source reference, the error code
+and message, and the raw snapshot - stay searchable by default, because that is
+how support finds a job from a log line. A session-level checkbox in the advanced
+panel ("Search technical details too", `control.jobs.searchTechnicalLabel`) turns
+them off for an operator who keeps getting rows that match a system string:
+their `tier` is `technical` in one shared candidate list, so the filter and the
+row explanation drop them together. While the switch is off it is an active
+condition like any other - **Technical details excluded**, removable in one
+click, and Clear all restores it.
 5. **Advanced panel.** When open, a compact `Panel` (`tone="subtle"`,
    `padding="md"`) sits above the active conditions. It contains only:
    - Custom `From` / `To` date inputs (`control.jobs.dateFromLabel`,

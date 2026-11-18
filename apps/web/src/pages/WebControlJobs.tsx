@@ -317,6 +317,13 @@ export default function WebControlJobs() {
    * so the operator could not audit their own triage.
    */
   const [reviewedOnly, setReviewedOnly] = useState(false);
+  /**
+   * Whether a search also looks inside the technical details (internal id, source
+   * reference, error code and message, raw snapshot). On by default - support
+   * finds jobs from log lines with it - and switchable per session because those
+   * strings are what make a short word match rows that look unrelated.
+   */
+  const [searchTechnical, setSearchTechnical] = useState(true);
   const [bulkReviewBusy, setBulkReviewBusy] = useState(false);
   const resizeRef = useRef<{
     id: string;
@@ -428,8 +435,9 @@ export default function WebControlJobs() {
         dateFrom,
         dateTo,
         keyFilters,
+        searchTechnical,
       }).filteredJobs,
-    [scopeJobs, jobSearch, datePreset, dateFrom, dateTo, keyFilters],
+    [scopeJobs, jobSearch, datePreset, dateFrom, dateTo, keyFilters, searchTechnical],
   );
 
   /**
@@ -571,6 +579,7 @@ export default function WebControlJobs() {
         dateFrom,
         dateTo,
         keyFilters: keyFilters.filter((filter) => filter.key !== pendingKey),
+        searchTechnical,
       }).filteredJobs,
     [scopeJobs, jobSearch, datePreset, dateFrom, dateTo, keyFilters, pendingKey],
   );
@@ -602,6 +611,7 @@ export default function WebControlJobs() {
     setDrawerJobId(null);
     setReprintTargets([]);
     setReprintConfirmed(false);
+    setSearchTechnical(true);
   }, []);
 
   /** Station changes rebuild the URL, but the cinema display fields are config, not a filter. */
@@ -735,13 +745,13 @@ export default function WebControlJobs() {
     if (jobSearch.trim() === '') return hints;
     for (const job of sortedVisibleJobs) {
       const hidden = hiddenSearchMatches(
-        describeJobSearchMatches(job, jobSearch),
+        describeJobSearchMatches(job, jobSearch, { includeTechnical: searchTechnical }),
         visibleColumnIdSet,
       );
       if (hidden.length > 0) hints.set(job.id, hidden);
     }
     return hints;
-  }, [sortedVisibleJobs, jobSearch, visibleColumnIdSet]);
+  }, [sortedVisibleJobs, jobSearch, visibleColumnIdSet, searchTechnical]);
 
   /**
    * Batch reprint needs `job:retry`, in any scope. A job carries its own
@@ -948,6 +958,7 @@ export default function WebControlJobs() {
 
   const clearAllFilters = useCallback(() => {
     setJobSearch('');
+    setSearchTechnical(true);
     setStatusBucket('ALL');
     setReviewedOnly(false);
     setDatePreset('all');
@@ -1209,8 +1220,18 @@ export default function WebControlJobs() {
     value: filter.value,
     label: formatMsg(t('control.jobs.filterKey'), { key: filter.key, value: filter.value }),
   }));
+  /**
+   * Excluding the technical fields changes what a search means, so it is a
+   * condition like any other: visible while it is on, removable in one click.
+   */
+  const technicalCondition = searchTechnical ? '' : t('control.jobs.filterNoTechnical');
   const hasActiveConditions = Boolean(
-    searchCondition || statusCondition || dateCondition || groupCondition || keyConditions.length > 0,
+    searchCondition ||
+      statusCondition ||
+      dateCondition ||
+      groupCondition ||
+      technicalCondition ||
+      keyConditions.length > 0,
   );
   const removeLabel = (condition: string) =>
     formatMsg(t('control.jobs.removeFilter'), { filter: condition });
@@ -1774,6 +1795,16 @@ export default function WebControlJobs() {
                         </FormField>
                       </Grid>
 
+                      {/* The technical fields are worth searching for support, but they
+                          are also what makes a short word match rows that look
+                          unrelated, so the operator decides. */}
+                      <Checkbox
+                        label={t('control.jobs.searchTechnicalLabel')}
+                        description={t('control.jobs.searchTechnicalHint')}
+                        checked={searchTechnical}
+                        onChange={(event) => setSearchTechnical(event.target.checked)}
+                      />
+
                       {availablePayloadKeys.length > 0 && (
                         <Grid columns={3} gap="md">
                           <FormField label={t('control.jobs.keyFilterKeyLabel')}>
@@ -1896,6 +1927,15 @@ export default function WebControlJobs() {
                     {groupCondition && (
                       <Chip aria-label={removeLabel(groupCondition)} onClick={() => setGroupBy('none')}>
                         {groupCondition}
+                        <span aria-hidden="true">{' ×'}</span>
+                      </Chip>
+                    )}
+                    {technicalCondition && (
+                      <Chip
+                        aria-label={removeLabel(technicalCondition)}
+                        onClick={() => setSearchTechnical(true)}
+                      >
+                        {technicalCondition}
                         <span aria-hidden="true">{' ×'}</span>
                       </Chip>
                     )}

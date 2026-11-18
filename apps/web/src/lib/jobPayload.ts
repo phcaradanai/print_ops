@@ -53,6 +53,12 @@ export interface JobExplorerFilterOptions {
   dateTo?: string;
   keyFilters?: JobKeyFilter[];
   groupBy?: JobGroupBy;
+  /**
+   * Whether the free-text search also looks inside the fields the drawer keeps
+   * under "Technical details". Defaults to true; the page offers a switch, and
+   * the rows explain which field matched either way.
+   */
+  searchTechnical?: boolean;
   now?: Date;
 }
 
@@ -308,6 +314,14 @@ export type JobSearchField =
 
 export interface JobSearchCandidate {
   field: JobSearchField;
+  /**
+   * `technical` marks the machine details the drawer keeps under "Technical
+   * details": the internal id, the source reference, the diagnostics and the raw
+   * snapshot. They stay searchable by default - that is how support finds a job
+   * from a log line - but an operator can leave them out, because a diagnostic
+   * string matching a short word is rarely what they were looking for.
+   */
+  tier: 'primary' | 'technical';
   /** List column id that already shows this value, when one does. */
   columnId?: string;
   /** Incoming payload key, for the `incoming-*` fields. */
@@ -322,12 +336,25 @@ export interface JobSearchCandidate {
   match: 'substring' | 'exact';
 }
 
+export interface JobSearchScopeOptions {
+  /**
+   * Include the technical-details fields. Defaults to true: the drawer shows
+   * them, so search must be able to find them; a site that finds them noisy can
+   * switch them off for its own session.
+   */
+  includeTechnical?: boolean;
+}
+
 /**
  * Every string a search term may hit, with the column that shows it. One list,
  * used by both the filter and the "why did this row match" explanation, so the
  * two can never disagree about what matched.
  */
-export function collectJobSearchCandidates(job: FilterableJob): JobSearchCandidate[] {
+export function collectJobSearchCandidates(
+  job: FilterableJob,
+  options: JobSearchScopeOptions = {},
+): JobSearchCandidate[] {
+  const includeTechnical = options.includeTechnical ?? true;
   const candidates: JobSearchCandidate[] = [];
   const push = (
     field: JobSearchField,
@@ -335,10 +362,13 @@ export function collectJobSearchCandidates(job: FilterableJob): JobSearchCandida
     match: 'substring' | 'exact' = 'substring',
     columnId?: string,
     key?: string,
+    tier: 'primary' | 'technical' = 'primary',
   ) => {
     if (value === undefined || value === '') return;
+    if (!includeTechnical && tier === 'technical') return;
     candidates.push({
       field,
+      tier,
       value,
       match,
       ...(columnId ? { columnId } : {}),
@@ -347,18 +377,20 @@ export function collectJobSearchCandidates(job: FilterableJob): JobSearchCandida
   };
 
   push('reference', job.requestId, 'substring', 'job');
-  push('reference', job.id, 'substring', 'job');
+  // The internal id is a database detail, not something the intake said.
+  push('reference', job.id, 'substring', 'job', undefined, 'technical');
   push('status', job.status, 'substring', 'status');
   push('destination', job.printerCode, 'substring', 'destination');
   push('destination', job.printerId, 'substring', 'destination');
   push('template', job.resolvedTemplateCode, 'substring', 'template');
   push('template', job.templateCode, 'substring', 'template');
   push('source', job.sourceSystem, 'substring', 'source');
-  push('source', job.sourceReference, 'substring', 'source');
-  push('error', job.errorCode, 'substring', 'error');
-  push('error', job.errorMessage, 'substring', 'error');
+  // The caller's own reference belongs to the source system, not to this row.
+  push('source', job.sourceReference, 'substring', 'source', undefined, 'technical');
+  push('error', job.errorCode, 'substring', 'error', undefined, 'technical');
+  push('error', job.errorMessage, 'substring', 'error', undefined, 'technical');
   // Nothing on this page renders the raw snapshot; a hit there is always hidden.
-  push('technical', job.payloadSnapshot, 'substring');
+  push('technical', job.payloadSnapshot, 'substring', undefined, undefined, 'technical');
 
   for (const [key, value] of Object.entries(extractJobPayload(job))) {
     const columnId = `payload:${key}`;
@@ -390,13 +422,17 @@ export interface JobSearchMatch {
  * is already spelled out in the filter chips, so repeating it per row would add
  * noise without adding information).
  */
-export function describeJobSearchMatches(job: FilterableJob, search: string): JobSearchMatch[] {
+export function describeJobSearchMatches(
+  job: FilterableJob,
+  search: string,
+  options: JobSearchScopeOptions = {},
+): JobSearchMatch[] {
   const { textTerms } = parseJobSearchQuery(search);
   if (textTerms.length === 0) return [];
 
   const seen = new Set<string>();
   const matches: JobSearchMatch[] = [];
-  for (const candidate of collectJobSearchCandidates(job)) {
+  for (const candidate of collectJobSearchCandidates(job, options)) {
     if (!textTerms.some((term) => candidateMatchesTerm(candidate, term))) continue;
     const id = `${candidate.field}:${candidate.key ?? candidate.value}`;
     if (seen.has(id)) continue;
@@ -530,7 +566,9 @@ export function filterAndGroupJobs<T extends FilterableJob>(
     }
 
     if (parsedSearch.textTerms.length > 0) {
-      const candidates = collectJobSearchCandidates(job);
+      const candidates = collectJobSearchCandidates(job, {
+        includeTechnical: options.searchTechnical ?? true,
+      });
       const allTermsMatch = parsedSearch.textTerms.every((term) =>
         candidates.some((candidate) => candidateMatchesTerm(candidate, term)),
       );
