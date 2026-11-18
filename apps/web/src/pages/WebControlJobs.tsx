@@ -70,6 +70,7 @@ import {
 } from '../components/ui/index.js';
 
 import './WebControlJobs.css';
+import { CinemaBoard } from '../features/control-jobs/CinemaBoard.js';
 
 export interface ControlSyncedJobItem extends FilterableJob {
   deviceId: string;
@@ -248,6 +249,12 @@ export default function WebControlJobs() {
 
   const selectedDeviceId = searchParams.get('deviceId') || '';
   const isAllStations = selectedDeviceId === '';
+  /**
+   * Cinema mode lives in the URL so a wall display can be opened once and left
+   * running (`/control/jobs?deviceId=…&cinema=1`); the station scope it shows is
+   * the same `deviceId` the page uses. It is a presentation flag, not a filter.
+   */
+  const cinemaOpen = searchParams.get('cinema') === '1';
 
   const fetchFleet = useCallback(
     () => apiFetch<ControlJobsFleetResponse>('/v1/control/jobs'),
@@ -324,6 +331,25 @@ export default function WebControlJobs() {
   }, [devices, isAllStations, selectedDevice]);
 
   const availablePayloadKeys = useMemo(() => collectPayloadKeys(scopeJobs), [scopeJobs]);
+
+  /**
+   * The cinema board lists stations by display name, same rule as the selector,
+   * and stays inside the current scope: a one-station board must not show a
+   * fleet ladder next to that station's job totals, or the numbers read as one
+   * mixed scope.
+   */
+  const cinemaStations = useMemo(
+    () =>
+      devices
+        .filter((device) => isAllStations || device.deviceId === selectedDeviceId)
+        .map((device) => ({
+          deviceId: device.deviceId,
+          name: stationTitle(device),
+          connectionState: device.connectionState,
+          jobs: device.jobs,
+        })),
+    [devices, isAllStations, selectedDeviceId],
+  );
 
   /**
    * Base set: station, search, dates and payload filters, with the status
@@ -460,6 +486,24 @@ export default function WebControlJobs() {
     resetLocalState();
     setSearchParams({});
   }, [resetLocalState, setSearchParams]);
+
+  const setCinemaOpen = useCallback(
+    (open: boolean) => {
+      setSearchParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+          if (open) next.set('cinema', '1');
+          else next.delete('cinema');
+          return next;
+        },
+        { replace: !open },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const openCinema = useCallback(() => setCinemaOpen(true), [setCinemaOpen]);
+  const closeCinema = useCallback(() => setCinemaOpen(false), [setCinemaOpen]);
 
   // `deviceId` is the only URL state, so reaching another station through the
   // browser's back/forward buttons has to reset the local filters too — a URL
@@ -994,6 +1038,9 @@ export default function WebControlJobs() {
                 </Button>
                 <Button variant="secondary" onClick={() => navigate('/control/devices')}>
                   {t('control.jobs.manageDevices')}
+                </Button>
+                <Button variant="secondary" onClick={openCinema}>
+                  {t('control.cinema.enter')}
                 </Button>
               </Inline>
             </Panel>
@@ -1708,6 +1755,22 @@ export default function WebControlJobs() {
           />
         </Stack>
       </Dialog>
+
+      {cinemaOpen && !(selectedDeviceId && !selectedDevice) && (
+        <CinemaBoard
+          stations={cinemaStations}
+          jobs={scopeJobs}
+          scopeLabel={
+            selectedDevice ? stationTitle(selectedDevice) : t('control.jobs.allStations')
+          }
+          lastSuccessAt={fleetResource.lastSuccessAt}
+          loading={fleetResource.loading && fleet == null}
+          refreshing={fleetResource.refreshing}
+          stale={fleetResource.stale}
+          failed={fleetResource.error != null}
+          onExit={closeCinema}
+        />
+      )}
     </PageLayout>
   );
 }

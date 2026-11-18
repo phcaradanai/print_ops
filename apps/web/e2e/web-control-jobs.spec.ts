@@ -409,6 +409,15 @@ const STRINGS = {
     unconfirmedWarning: 'Print output is unconfirmed. A copy may have already come out.',
     successNotice: 'Submitted remote re-print command',
     reprintDialogTitle: 'Remote Re-print to JOHN',
+    cinemaEnter: 'Cinema mode',
+    cinemaLabel: 'Cinema board',
+    cinemaExitHint: 'Press any key or click to exit',
+    cinemaLive: 'Live',
+    cinemaTotal: 'Total jobs',
+    cinemaStations: 'PrintOps stations',
+    cinemaStationsOnline: 'Stations online',
+    cinemaFeed: 'Latest jobs',
+    connectionOnline: 'Online',
     staleCopy: ['Fleet Errors & Warnings', 'Total incoming jobs', 'Select a PrintOps Station'],
   },
   th: {
@@ -461,6 +470,15 @@ const STRINGS = {
     unconfirmedWarning: 'ยังไม่ยืนยันผลการพิมพ์ อาจมีสติกเกอร์ออกมาแล้ว',
     successNotice: 'ส่งคำสั่งพิมพ์ซ้ำสำหรับงาน',
     reprintDialogTitle: 'ยืนยันสั่งพิมพ์ซ้ำไปยัง JOHN',
+    cinemaEnter: 'โหมดจอใหญ่',
+    cinemaLabel: 'บอร์ดจอใหญ่',
+    cinemaExitHint: 'กดปุ่มใดก็ได้ หรือคลิกเพื่อออก',
+    cinemaLive: 'สด',
+    cinemaTotal: 'งานทั้งหมด',
+    cinemaStations: 'เครื่อง PrintOps',
+    cinemaStationsOnline: 'เครื่องออนไลน์',
+    cinemaFeed: 'งานล่าสุด',
+    connectionOnline: 'ออนไลน์',
     staleCopy: ['สรุป Error ที่พบในระบบ', 'เลือกเครื่อง PrintOps เพื่อดูข้อมูล'],
   },
 } as const;
@@ -1310,6 +1328,162 @@ test('I. tab order reaches the controls and the advanced toggle reports its stat
 });
 
 // ---------------------------------------------------------------------------
+// J. Cinema mode
+// ---------------------------------------------------------------------------
+
+async function openCinema(page: Page, locale: Locale = 'en') {
+  await page.getByRole('button', { name: s(locale).cinemaEnter, exact: true }).click();
+  const board = page.getByRole('dialog', { name: s(locale).cinemaLabel });
+  await expect(board).toBeVisible();
+  return board;
+}
+
+test('J. cinema mode covers the shell, reports live totals, and any key exits', async ({ page }) => {
+  await loadJobs(page, { viewport: { width: 1440, height: 900 }, deviceId: 'dev-john' });
+  await waitForList(page);
+  const board = await openCinema(page);
+
+  // Full viewport, no rail, no page frame: the board is the only surface.
+  const box = await board.boundingBox();
+  expect(box, 'cinema board has no box').not.toBeNull();
+  expect(Math.round(box!.x)).toBe(0);
+  expect(Math.round(box!.y)).toBe(0);
+  expect(Math.round(box!.width)).toBe(1440);
+  expect(Math.round(box!.height)).toBe(900);
+  expect(
+    await page.evaluate(() => document.getElementById('root')?.hasAttribute('inert') ?? false),
+  ).toBe(true);
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+  await expect(page).toHaveURL(/cinema=1/);
+
+  // Totals agree with the page's own buckets: six JOHN jobs, three to review.
+  const copy = s('en');
+  await expect(board.getByRole('group', { name: copy.cinemaTotal })).toContainText('6');
+  await expect(board.getByRole('group', { name: copy.needsReview })).toContainText('3');
+  await expect(board.getByRole('group', { name: copy.inProgress })).toContainText('1');
+  await expect(board.getByRole('group', { name: copy.printed })).toContainText('1');
+
+  // The realtime indicator and the newest job are always visible.
+  await expect(board.getByText(copy.cinemaLive, { exact: true })).toBeVisible();
+  await expect(board.getByText(copy.cinemaExitHint, { exact: true })).toBeVisible();
+  const feed = board.getByRole('list', { name: copy.cinemaFeed });
+  await expect(feed.getByRole('listitem').first()).toContainText('REQ-UNVERIFIED-0001');
+  expect(await board.locator('.cinema-flow-col').count()).toBe(30);
+
+  // Any key exits, the URL flag is cleared, the shell is usable again, and
+  // focus returns to the control that opened the board.
+  await page.keyboard.press('a');
+  await expect(page.getByRole('dialog', { name: s('en').cinemaLabel })).toHaveCount(0);
+  await expect(page).not.toHaveURL(/cinema=1/);
+  expect(
+    await page.evaluate(() => document.getElementById('root')?.hasAttribute('inert') ?? false),
+  ).toBe(false);
+  expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
+  expect(await page.evaluate(() => (document.activeElement?.textContent ?? '').trim())).toBe(
+    s('en').cinemaEnter,
+  );
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+});
+
+test('J. any click exits, and ?cinema=1 opens the board without the button', async ({ page }) => {
+  await loadJobs(page, { deviceId: 'dev-john' });
+  await waitForList(page);
+  await openCinema(page);
+
+  await page.mouse.click(720, 450);
+  await expect(page.getByRole('dialog', { name: s('en').cinemaLabel })).toHaveCount(0);
+  await expect(page).not.toHaveURL(/cinema=1/);
+
+  // Reload-safe wall display: the flag is the mode.
+  await page.goto('/control/jobs?deviceId=dev-john&cinema=1');
+  const board = page.getByRole('dialog', { name: s('en').cinemaLabel });
+  await expect(board).toBeVisible();
+  await expect(board.getByRole('group', { name: s('en').cinemaTotal })).toContainText('6');
+  await page.keyboard.press('Escape');
+  await expect(board).toHaveCount(0);
+});
+
+test('J. a one-station board drops the fleet ladder and names its connection', async ({ page }) => {
+  await loadJobs(page, { deviceId: 'dev-john' });
+  await waitForList(page);
+  await page.goto('/control/jobs?deviceId=dev-john&cinema=1');
+  const board = page.getByRole('dialog', { name: s('en').cinemaLabel });
+  await expect(board).toBeVisible();
+  await expect(board.getByRole('region', { name: s('en').cinemaStations })).toHaveCount(0);
+  await expect(board.getByText(s('en').connectionOnline, { exact: true })).toBeVisible();
+  await expect(board.getByRole('group', { name: s('en').cinemaStationsOnline })).toContainText('1/1');
+
+  await page.keyboard.press('Escape');
+  await page.goto('/control/jobs?cinema=1');
+  await expect(page.getByRole('dialog', { name: s('en').cinemaLabel })).toBeVisible();
+  await expect(
+    page.getByRole('dialog').getByRole('region', { name: s('en').cinemaStations }),
+  ).toBeVisible();
+});
+
+for (const locale of ['en', 'th'] as const) {
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 1024, height: 768 },
+    { width: 390, height: 844 },
+  ] as const) {
+    test(`J. cinema board ${viewport.width}x${viewport.height} ${locale} fits and exits cleanly`, async ({
+      page,
+    }) => {
+      await loadJobs(page, { locale, viewport });
+      await waitForList(page, locale);
+      const board = await openCinema(page, locale);
+
+      // Both languages stay inside the viewport. The body is scroll-locked and
+      // the board is fixed, so the document-level check would pass even if the
+      // board overflowed: measure the board's own scroll width and its regions.
+      const copy = s(locale);
+      const boardOverflow = await board.evaluate((element) => ({
+        horizontal: element.scrollWidth - element.clientWidth,
+      }));
+      expect(boardOverflow.horizontal, 'cinema board scrolls sideways').toBeLessThanOrEqual(1);
+      for (const region of ['.cinema-head', '.cinema-body']) {
+        const overflow = await board.locator(region).evaluate((element) => ({
+          horizontal: element.scrollWidth - element.clientWidth,
+        }));
+        expect(overflow.horizontal, `${region} scrolls sideways`).toBeLessThanOrEqual(1);
+      }
+      // The ticker is a clipped marquee: its track is intentionally wider than
+      // the board, and the container owns the clip.
+      const tickerOverflow = await board
+        .locator('.cinema-ticker')
+        .evaluate((element) => getComputedStyle(element).overflowX);
+      expect(['hidden', 'clip']).toContain(tickerOverflow);
+
+      // Every KPI is readable, and so are the three regions.
+      for (const name of [
+        copy.cinemaTotal,
+        copy.needsReview,
+        copy.inProgress,
+        copy.printed,
+        copy.cinemaStationsOnline,
+      ]) {
+        await expect(board.getByRole('group', { name })).toBeVisible();
+      }
+      await expect(board.getByText(copy.cinemaLive, { exact: true })).toBeVisible();
+      await expect(board.getByText(copy.cinemaFeed, { exact: true })).toBeVisible();
+      await expect(board.getByText(copy.cinemaStations, { exact: true })).toBeVisible();
+
+      // The feed row stays inside the board at every width.
+      const rowOverflow = await board
+        .getByRole('list', { name: copy.cinemaFeed })
+        .getByRole('listitem')
+        .first()
+        .evaluate((element) => element.scrollWidth - element.clientWidth);
+      expect(rowOverflow, 'feed row overflows').toBeLessThanOrEqual(1);
+
+      await page.keyboard.press('q');
+      await expect(page.getByRole('dialog', { name: s(locale).cinemaLabel })).toHaveCount(0);
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Screenshots + measured evidence
 // ---------------------------------------------------------------------------
 
@@ -1357,6 +1531,37 @@ for (const locale of ['en', 'th'] as const) {
     );
     await expect(drawer.getByText(copy.outputUnconfirmed, { exact: true })).toBeVisible();
     await shot(page, `details-390-${locale}`);
+  });
+}
+
+for (const locale of ['en', 'th'] as const) {
+  test(`evidence ${locale}: cinema board screenshots`, async ({ page }) => {
+    await loadJobs(page, { locale, viewport: { width: 1440, height: 900 } });
+    await waitForList(page, locale);
+    const board = await openCinema(page, locale);
+    // Wait for the real data, not a stopwatch: the KPI text only settles at its
+    // final value after the count-up, so this also settles the screenshot.
+    await expect(board.getByRole('group', { name: s(locale).cinemaTotal })).toContainText('7');
+    await shot(page, `cinema-1440-${locale}`);
+    await page.keyboard.press('Escape');
+
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.goto('/control/jobs?cinema=1');
+    await expect(page.getByRole('dialog', { name: s(locale).cinemaLabel })).toBeVisible();
+    await expect(
+      page.getByRole('dialog').getByRole('group', { name: s(locale).cinemaTotal }),
+    ).toContainText('7');
+    await shot(page, `cinema-1024-${locale}`);
+    await page.keyboard.press('Escape');
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/control/jobs?deviceId=dev-john&cinema=1');
+    await expect(page.getByRole('dialog', { name: s(locale).cinemaLabel })).toBeVisible();
+    await expect(
+      page.getByRole('dialog').getByRole('group', { name: s(locale).cinemaTotal }),
+    ).toContainText('6');
+    await shot(page, `cinema-390-${locale}`);
+    await page.keyboard.press('Escape');
   });
 }
 

@@ -17,6 +17,7 @@ The authoritative list of shared components, grouped as atoms / molecules / comp
 | Overlays | `Dialog`, `Drawer`, `ReprintDialog` | `styles.css`, `components/dialogClose.css` | — |
 | Evidence Canvas | `EditorCanvas` / workspace | `components/ui/workspace.css` | — |
 | Feature-owned | Paper profiles, Templates, Webhooks workspaces | `paperProfiles*.css`, `templates*.css`, `features/webhooks/*.css` | Paper profiles: 4 hotfix layers over `paperProfilesLibrary/Editor.css` |
+| Feature-owned | Incoming Jobs cinema board (`CinemaBoard`) | `features/control-jobs/cinemaBoard.css` | — (dark presentation surface, scoped to `.cinema`) |
 
 Run the ownership scan in `apps/web/src/__tests__/designTokens.test.ts` (it prints the full list on failure) to get the current split set.
 

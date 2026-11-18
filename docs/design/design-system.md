@@ -14,7 +14,7 @@
 | Depth | `--shadow-subtle`, `--shadow-floating`, popover, drawer | Flat at rest. Shadows only for things that leave the page. |
 | Layout | `--page-content-standard` 72rem · `--page-content-wide` 96rem · `--page-region-gap` · `--page-section-gap` | One `PageScaffold` skeleton per route. |
 | Breakpoints | 1024 (primary) · 760 · 520 (+1100/860 for editors) | Don't add a fifth for one surface. |
-| Motion | short state feedback only; global reduced-motion fallback | No entrance animations. |
+| Motion | short state feedback only; global reduced-motion fallback | No entrance animations. Exception: the Incoming Jobs cinema board, a presentation mode with scoped motion and its own reduced-motion fallback (`cinemaBoard.css`). |
 
 ## Component contracts
 

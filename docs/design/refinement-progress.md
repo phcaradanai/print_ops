@@ -229,6 +229,40 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
 - Unit tests: 677 web tests passed; production web build passed. The full Playwright suite passed 130 tests, including registration, newer searches from another operator, invalid inputs, status retry, permissions, and restored terminal states.
 - Remaining verification: actual VPN/printer access and native Windows packaging. No additional styling debt introduced.
 
+## 2026-11-18 — Incoming Jobs cinema mode
+
+- Added a fullscreen presentation mode to `/control/jobs`: `CinemaBoard`
+  (`apps/web/src/features/control-jobs/`), a scoped `cinemaBoard.css`, and a
+  pure `cinemaModel.ts` with 16 unit tests plus 5 server-rendered board
+  contracts. Entry is a station-bar button plus `?cinema=1`; exit is any key, a
+  tap/click that did not drag, or leaving fullscreen.
+- The board projects the feed the page already reads: counts come from
+  `countStatusBuckets` (no second status list), plus a 30-minute flow ladder, a
+  station ladder, a newest-first feed and a ticker, and a live indicator that
+  states the age of the last successful poll.
+- Design delta, recorded in `DESIGN.md` ("Cinema mode") and
+  `docs/design/incoming-jobs-cinema-mode.md`: the board borrows the Evidence
+  Canvas shades, adds a display type ladder and scoped motion. All three are
+  confined to `.cinema`; every other surface stays light and still. Motion stops
+  under `prefers-reduced-motion`.
+- Verified: 766 web unit tests pass, typecheck passes, Control build passes,
+  35/35 Incoming Jobs Playwright tests pass (9 cinema cases + 6 screenshots at
+  1440/1024/390 in EN/TH), and an in-browser contrast audit found no text role
+  below 4.5:1 on the board. The dashboard build then ran the full suite:
+  141 passed, 34 skipped (the Control-only spec), 0 failed.
+- No new API, no token renamed, no shared component restyled. Remaining work:
+  a real wall-display check on the target screen and an operator pass on the
+  copy in Thai.
+- Independent review (design/a11y, React correctness, tests/i18n) found four
+  majors and six minors. Fixed before landing: fullscreen ownership under React
+  StrictMode (the board closed itself on entry in dev), the pulsing "New" label
+  dropping below AA mid-animation, pointer-down exit blocking touch scrolling,
+  flow-ladder columns remounting every second, a cold start claiming "Live",
+  colour-only offline state, a vacuous document-scroll assertion, and
+  non-discriminating test fixtures. Kept deliberately: the single-line reference
+  on the board (full value in the title attribute and on the page behind it),
+  and "any key exits" including Tab (the owner's exit requirement).
+
 ## Next, in order
 
 1. **Fold the paper-profile hotfix layers** (`paperProfilesLayoutHotfix`, `Closure`, `Completion`, `LibraryGeometryHotfix`) into `paperProfilesLibrary.css` / `paperProfilesEditor.css`, deleting `!important` as you go. Gate: `paper-profile-ux` and `paper-profile-layout-regression` e2e, which first need their pre-existing failures fixed so they can detect a regression. Then delete the entries from the hotfix list in `designTokens.test.ts`.

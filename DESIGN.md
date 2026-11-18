@@ -526,6 +526,16 @@ The dark, line-numbered editor shared by the Templates workspace and the Webhook
 
 Use it only for content the operator authors or inspects literally — template bodies, JSON payloads. Read-only evidence that is merely displayed uses `CodeBlock`, which stays light: Warm Subtle Gray, 6px corners, wrapping, and an optional 22rem scroll cap.
 
+### Cinema mode (Incoming Jobs)
+
+A presentation mode, not a second application shell. `/control/jobs` can hand the whole viewport to a live board for a screen that stays on (reception desk, control room, wall TV): no nav rail, no page header, no filters, no tabs. It is the one sanctioned exception to three rules here, and only while it is open:
+
+- **Surface.** It reads the Evidence Canvas shades (Canvas Gutter/Ink/Edge/Line/Text/Caret) and derives every lighter tone with `color-mix()`. It adds no hex.
+- **Type.** Display sizes above the seven-rung scale exist only here (`--cinema-*` in `cinemaBoard.css`); the page around it keeps the scale.
+- **Motion.** Count-up figures, a breathing live dot, a new-row entrance, a 30-minute throughput ladder and a ticker. All of it is scoped to the board, all of it stops under `prefers-reduced-motion: reduce`, and none of it carries meaning the text does not also state.
+
+Entry is a labelled button in the station bar plus the `?cinema=1` URL flag, so a wall display survives a reload and can be opened at `/control/jobs?deviceId=<id>&cinema=1`. Exit is any key, a tap or click that did not drag, or leaving fullscreen (a drag is a scroll, so the narrow layouts stay scrollable). The board portals to `document.body` and makes `#root` inert while it is up, so the shell behind it is unreachable by focus and screen reader. Job status keeps its literal server string and its status colour family, lifted in lightness for the dark surface; the text roles were contrast-audited against it.
+
 ### Navigation
 
 - **Style:** Deep Navy fixed rail with Lavender text, 16px line icons, and grouped sections. Group headings are full-strength Lavender at 700 with a hairline rule running out to the rail edge — a header, not a caption. The collapsible admin group rotates its chevron 90°.
@@ -572,8 +582,8 @@ Sign-in uses a focused white panel on a flat page-gray canvas, with no decorativ
 - **Don't** write a literal hex, rem, or shadow value into a stylesheet when a token expresses it. `#1e66f5` is `var(--primary)`.
 - **Don't** add another global override stylesheet to correct a page. Fix the shared component, or scope the fix to the feature that owns it.
 - **Don't** invent a competing page frame, a fifth breakpoint for one surface, or a one-off font size.
-- **Don't** use color gradients, decorative glows, oversized display type, or animation as decoration. Authentication and recovery use the same flat visual language.
-- **Don't** extend the Evidence Canvas beyond authored code and payload editing. Application chrome, dashboards, tables, and forms stay light.
+- **Don't** use color gradients, decorative glows, oversized display type, or animation as decoration. Authentication and recovery use the same flat visual language. The Incoming Jobs cinema board is the scoped exception (see *Cinema mode* above); nowhere else.
+- **Don't** extend the Evidence Canvas beyond authored code and payload editing. Application chrome, dashboards, tables, and forms stay light. The cinema board borrows the same shades for a presentation-only surface; it does not lighten or darken any other page.
 - **Don't** create terminal-dense dashboards or expose expert payload controls as the default operator workflow.
 - **Don't** uppercase or letter-space anything that can hold localized copy — table headers, field labels, legends, nav headings, or badge text.
 - **Don't** use color as the only communicator, or lower contrast for secondary operational text.
