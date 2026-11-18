@@ -13,6 +13,11 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // The editor/agent hosts write through atomic *.tmpdir scratch folders on
+    // Windows. Watching them makes chokidar throw EBUSY and kills `vite dev`.
+    watch: {
+      ignored: ['**/*.tmpdir', '**/*.tmpdir/**', '**/*.tmp'],
+    },
     proxy: {
       '/api': {
         target: apiTarget,
