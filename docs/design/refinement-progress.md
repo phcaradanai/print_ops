@@ -253,6 +253,9 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
 - No new API, no token renamed, no shared component restyled. Remaining work:
   a real wall-display check on the target screen and an operator pass on the
   copy in Thai.
+- Interval budget kept small: the board ticks at the feed cadence (5 s) instead
+  of every second, only the header clock keeps its own 1 s timer, and both
+  timers pause while the tab is hidden.
 - Independent review (design/a11y, React correctness, tests/i18n) found four
   majors and six minors. Fixed before landing: fullscreen ownership under React
   StrictMode (the board closed itself on entry in dev), the pulsing "New" label

@@ -201,3 +201,7 @@ npx playwright test apps/web/e2e/web-control-jobs.spec.ts
    fleet KPI still covers all of them.
 5. **Dark only in this mode.** The page, dialogs and drawer keep the light
    surfaces; leaving cinema mode restores the shell exactly.
+6. **Timers follow the data.** The board re-renders at the feed's five-second
+   cadence - the numbers cannot change between polls, so a one-second board
+   timer only burned renders. The header clock keeps its own one-second timer,
+   and both timers stop while the document is hidden.

@@ -58,14 +58,66 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-/** A one-second clock for the header, relative ages and the "new" pulse window. */
-function useNow(intervalMs = 1_000): number {
+/**
+ * A coarse "now" for the board's derived data.
+ *
+ * Interval budget, deliberately split:
+ *   - the board ticks at `BOARD_TICK_MS`, the same cadence as the control feed.
+ *     Ticking faster cannot produce new numbers: they only change when a poll
+ *     lands, so a one-second board timer would re-render ~100 nodes for nothing.
+ *   - the header clock keeps its own one-second timer inside `CinemaClock`, so
+ *     the seconds stay exact without dragging the whole board along.
+ *   - both stop while the document is hidden, so a backgrounded tab does not
+ *     keep timers alive for a screen nobody is looking at.
+ */
+function useNow(intervalMs: number): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), intervalMs);
-    return () => window.clearInterval(timer);
+    let timer: number | null = null;
+    const stop = () => {
+      if (timer !== null) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+    };
+    const start = () => {
+      stop();
+      setNow(Date.now());
+      timer = window.setInterval(() => setNow(Date.now()), intervalMs);
+    };
+
+    start();
+    const onVisibilityChange = () => {
+      if (document.hidden) stop();
+      else start();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      stop();
+    };
   }, [intervalMs]);
   return now;
+}
+
+/** The feed cadence, mirrored here so the board's clock follows it. */
+const BOARD_TICK_MS = 5_000;
+
+/** Header clock: the only part of the board that needs a one-second timer. */
+function CinemaClock({ locale, localeTag }: { locale: 'en' | 'th'; localeTag: string }) {
+  const now = useNow(1_000);
+  const calendar = new Date(now).toLocaleDateString(localeTag, {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+  });
+  return (
+    <div className="cinema-clock">
+      <span className="cinema-clock-time">{formatClockTime(now, locale, false)}</span>
+      <span className="cinema-clock-date">{calendar}</span>
+    </div>
+  );
 }
 
 /**
@@ -138,7 +190,7 @@ export function CinemaBoard(props: CinemaBoardProps) {
   const { stations, jobs, scopeLabel, lastSuccessAt, loading, refreshing, stale, failed, onExit } =
     props;
 
-  const now = useNow(1_000);
+  const now = useNow(BOARD_TICK_MS);
   const rootRef = useRef<HTMLDivElement | null>(null);
   /** Whether this mounted board is the one that put the document in fullscreen. */
   const ownsFullscreen = useRef(false);
@@ -176,12 +228,6 @@ export function CinemaBoard(props: CinemaBoardProps) {
           : { tone: 'live', label: t('control.cinema.live') };
 
   const localeTag = locale === 'th' ? 'th-TH' : 'en-GB';
-  const clock = formatClockTime(now, locale, false);
-  const calendar = new Date(now).toLocaleDateString(localeTag, {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-  });
   const lastUpdate = lastSuccessAt === null ? t('status.never') : formatRelativeTime(t, lastSuccessAt, now);
 
   /**
@@ -317,10 +363,7 @@ export function CinemaBoard(props: CinemaBoardProps) {
           )}
         </div>
 
-        <div className="cinema-clock">
-          <span className="cinema-clock-time">{clock}</span>
-          <span className="cinema-clock-date">{calendar}</span>
-        </div>
+        <CinemaClock locale={locale} localeTag={localeTag} />
 
         <div className="cinema-live">
           <span className={`cinema-live-dot cinema-live-dot--${health.tone}`} aria-hidden="true" />
