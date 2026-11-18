@@ -508,6 +508,11 @@ export class WebControlRegistryService {
    * Acknowledge (or un-acknowledge) one mirrored job. Returns false when the
    * job is not in the mirror, so the route can answer 404 instead of pretending
    * the acknowledgement landed.
+   *
+   * The acknowledgement is a triage decision an operator made about physical
+   * output, so it is audited like every other mutation here: when someone asks
+   * later who cleared an UNVERIFIED job and when, `control/audit` has the answer
+   * instead of only the current `reviewed_by` column.
    */
   async setJobReviewed(
     deviceId: string,
@@ -516,8 +521,8 @@ export class WebControlRegistryService {
     reviewedBy: string,
   ): Promise<boolean> {
     const key = this.reviewKey(deviceId, jobId);
-    const inMemory = this.deviceJobs.get(deviceId)?.has(jobId) ?? false;
-    let found = inMemory;
+    const job = this.deviceJobs.get(deviceId)?.get(jobId);
+    let found = job != null;
 
     if (this.useSqlite) {
       const db = getDb();
@@ -539,7 +544,47 @@ export class WebControlRegistryService {
 
     if (reviewed) this.reviewedJobs.set(key, { reviewedAt: new Date().toISOString(), reviewedBy });
     else this.reviewedJobs.delete(key);
+
+    if (this.audit) {
+      await this.audit.record({
+        actor: reviewedBy,
+        deviceId,
+        action: reviewed ? 'job.reviewed' : 'job.unreviewed',
+        requestedAt: new Date(),
+        metadata: { jobId, status: this.auditStatusFor(deviceId, jobId, job) },
+      });
+    }
     return true;
+  }
+
+  /**
+   * The status the audited job carried, for the audit metadata. The in-memory
+   * mirror is authoritative while the process is warm; after a restart it is
+   * empty until something reads the mirror, so fall back to the row itself
+   * rather than writing `null` into a record someone may have to explain.
+   */
+  private auditStatusFor(
+    deviceId: string,
+    jobId: string,
+    inMemory: ControlSyncedJob | undefined,
+  ): string | null {
+    if (inMemory) return inMemory.status;
+    if (!this.useSqlite) return null;
+    const stmt = getDb().prepare(
+      'SELECT job_json FROM control_device_jobs WHERE device_id = ? AND job_id = ?',
+    );
+    stmt.bind([deviceId, jobId]);
+    try {
+      if (!stmt.step()) return null;
+      const rawJson = stmt.getAsObject()['job_json'];
+      if (typeof rawJson !== 'string') return null;
+      const parsed = JSON.parse(rawJson) as { status?: unknown };
+      return typeof parsed.status === 'string' ? parsed.status : null;
+    } catch {
+      return null;
+    } finally {
+      stmt.free();
+    }
   }
 
   private withReview(deviceId: string, job: ControlSyncedJob): ControlSyncedJob {

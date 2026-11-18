@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ControlSyncedJob } from '@printerops/domain';
 import {
+  InMemoryControlAuditRepository,
   InMemoryDeviceRegistryRepository,
   InMemoryEnrollmentTokenRepository,
 } from '../infra/repos/in-memory-control.repo.js';
@@ -18,12 +19,13 @@ function job(overrides: Partial<ControlSyncedJob> & { id: string }): ControlSync
   };
 }
 
-function registry(): WebControlRegistryService {
+function registry(audit?: InMemoryControlAuditRepository): WebControlRegistryService {
   return new WebControlRegistryService({
     deviceRegistry: new InMemoryDeviceRegistryRepository(),
     enrollmentTokens: new InMemoryEnrollmentTokenRepository(),
     useSqlite: false,
     logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
+    ...(audit ? { audit } : {}),
   });
 }
 
@@ -73,5 +75,32 @@ describe('control job review acknowledgement', () => {
   it('refuses to acknowledge a job it has never seen', async () => {
     const service = registry();
     expect(await service.setJobReviewed('dev-1', 'missing-job', true, 'operator')).toBe(false);
+  });
+
+  it('audits who acknowledged the outcome, and who reopened it', async () => {
+    const audit = new InMemoryControlAuditRepository();
+    const service = registry(audit);
+    await service.upsertDeviceJobs('dev-1', [job({ id: 'job-1', status: 'UNVERIFIED' })]);
+
+    await service.setJobReviewed('dev-1', 'job-1', true, 'operator@example.invalid');
+    await service.setJobReviewed('dev-1', 'job-1', false, 'supervisor@example.invalid');
+
+    const records = await audit.findByDeviceId('dev-1');
+    expect(records).toHaveLength(2);
+    const acknowledged = records.find((record) => record.action === 'job.reviewed');
+    const reopened = records.find((record) => record.action === 'job.unreviewed');
+    expect(acknowledged).toMatchObject({
+      actor: 'operator@example.invalid',
+      deviceId: 'dev-1',
+      metadata: { jobId: 'job-1', status: 'UNVERIFIED' },
+    });
+    expect(reopened!.actor).toBe('supervisor@example.invalid');
+  });
+
+  it('does not audit an acknowledgement it refused', async () => {
+    const audit = new InMemoryControlAuditRepository();
+    const service = registry(audit);
+    await service.setJobReviewed('dev-1', 'missing-job', true, 'operator');
+    expect(await audit.findByDeviceId('dev-1')).toHaveLength(0);
   });
 });
