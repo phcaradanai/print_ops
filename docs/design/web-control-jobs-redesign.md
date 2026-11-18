@@ -241,6 +241,60 @@ intact by default.
   `localStorage` (`printops-control-jobs-columns`), like the locale. It is not a
   filter, so it never enters the URL; unreadable or unknown stored ids fall back
   to the shipped default, while valid payload column ids survive.
+- **Reset widths.** Once any column has been dragged, a **Reset widths** button
+  appears next to Advanced filters and clears every width back to the automatic
+  layout. It is hidden while the table is untouched, so it never adds noise.
+
+### 3.4 Acknowledged outcomes (2026-11-18)
+
+`UNVERIFIED`, `TIMEOUT` and `FAILED` mean the operator cannot tell whether paper
+moved. That is a question for a human, but once someone has physically checked
+the printer the row should stop shouting. The acknowledgement is therefore a
+**triage fact, not print evidence**: it never rewrites the status, the payload or
+the timestamp.
+
+- **`reviewedAt` / `reviewedBy`** live on the mirrored job
+  (`control_device_jobs`, additive columns, no schema-version bump). The station
+  keeps reporting whatever it reports; PrintOps only records that a person looked.
+- **It moves the bucket, not the row.** A reviewed attention job leaves Needs
+  review and lands in Other, next to the outcomes that are already closed. The
+  status chip still reads `UNVERIFIED` and a small **Reviewed** mark explains why
+  it is no longer in the triage queue. The verdict text in the drawer still says
+  the output is unconfirmed.
+- **Every surface uses one predicate.** `matchesStatusBucket` takes `reviewed`,
+  and the cinema board derives its tiles, throughput stack, station ladder and row
+  tone from `cinemaNeedsReview` - so the wall display can never claim work the
+  list has already cleared.
+- **Bulk acknowledge.** Selecting rows shows the pinned selection bar with
+  **Mark N as reviewed**, counting only the selected rows that still need a
+  human. Acknowledging a printed row would be a no-op that still wrote an audit
+  record, so those are not counted. The requests are sequential per job (the API
+  acknowledges one job), the selection clears on success, and a failure stops the
+  run and reports the message.
+- **Reviewed chip.** A **Reviewed (N)** chip appears in the count toolbar once the
+  scope carries any acknowledgement, and narrows the list to exactly those rows -
+  otherwise an acknowledged job is indistinguishable from the rest of Other and
+  the operator could not audit their own triage. Clear all filters drops it too.
+- **Audited.** `setJobReviewed` writes a `control/audit` record
+  (`job.reviewed` / `job.unreviewed`) with the actor, the job id and the status
+  the job carried, like every other mutation on the control plane.
+
+### 3.5 Cinema panels (2026-11-18)
+
+The wall display used to be one fixed arrangement. The **Display data** dialog now
+also chooses which optional panels the board carries:
+
+- **Throughput chart**, **Station list**, **Scrolling ticker**. The job list is not
+  a choice - a board without it is not a cinema board.
+- Stored in the URL as `cinemaPanels=flow,stations` next to `cinemaFields`, for the
+  same reason: a wall display is opened from a saved link and the person who set
+  it up is not standing at that screen.
+- Missing, empty or unknown values keep the full board, and the last remaining
+  panel cannot be unchecked, so a stale or hand-typed kiosk URL can never leave
+  the wall with less than the default.
+- The layout reflows rather than leaving holes: without the station list the flow
+  takes the full top row, without the flow the station list does, and with neither
+  the job list owns the board.
 
 ### 3.2 390px
 

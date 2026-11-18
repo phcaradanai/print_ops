@@ -362,6 +362,54 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   Jobs Playwright tests (1 new: reviewed job leaves Needs review with its status
   intact), full suite 141 passed.
 
+## 2026-11-18 — Incoming Jobs: the cinema board honours the acknowledgement
+
+- The board derived its "Needs review" tile, the attention segment of the
+  throughput stack, the per-station review count and the row tone from the raw
+  status, so an acknowledged job still glowed amber on the wall while the list had
+  already filed it under Other. `cinemaNeedsReview` / `cinemaJobTone` in
+  `cinemaModel.ts` now apply the same `reviewedAt` rule as `matchesStatusBucket`,
+  and `CinemaJob` carries `reviewedAt`.
+- Verified: 32 `cinemaModel` tests (6 new covering tiles, throughput, station rows
+  and both tone helpers), 7 cinema board tests.
+
+## 2026-11-18 — Control plane: acknowledge is audited
+
+- `setJobReviewed` was the only mutation in `WebControlRegistryService` that wrote
+  no `control/audit` record, so "who cleared this UNVERIFIED job, and when?" had
+  no answer beyond the current `reviewed_by` column. It now records
+  `job.reviewed` / `job.unreviewed` with the actor, the job id and the status the
+  job carried (read from the mirror, falling back to the row after a restart).
+- Verified: 5 API tests (2 new: the audited pair, and that a refused
+  acknowledgement writes nothing).
+
+## 2026-11-18 — Incoming Jobs: find what was acknowledged, and clear it in bulk
+
+- Added a **Reviewed (N)** chip to the count toolbar (only when the scope carries
+  acknowledgements) that narrows the list to those rows; Clear all filters drops
+  it. Without it an acknowledged job was indistinguishable from the rest of Other.
+- Added **Mark N as reviewed** to the pinned selection bar, counting only the
+  selected rows that still need a human; sequential requests, selection cleared on
+  success, first failure reported and the run stopped.
+- Added **Reset widths**, which appears next to Advanced filters only once a column
+  has been dragged.
+- Changing the sort order now returns to page 1, like any other filter change.
+- Verified: 800 web unit tests, 47/47 Incoming Jobs Playwright tests (3 new).
+
+## 2026-11-18 — Incoming Jobs: cinema panels, and the page starts shedding weight
+
+- The **Display data** dialog now also chooses which optional panels the board
+  carries - throughput chart, station list, scrolling ticker - stored in the URL as
+  `cinemaPanels`. The job list is never optional; missing, empty or unknown values
+  keep the full board, the last panel cannot be unchecked, and the layout reflows
+  (flow full width without the ladder, the ladder full width without the flow, the
+  feed owning the board when neither is on).
+- Extracted `JobColumnsDialog` and `CinemaDisplayDialog` into
+  `features/control-jobs/`, and the `{name}` interpolation into
+  `lib/formatMessage.ts`. `WebControlJobs.tsx` is still large (~2.5k lines): the
+  job table, the station bar and the drawer are the next extraction, deferred so
+  this round could ship.
+
 ## 2026-11-18 — Incoming Jobs: sort by received time
 
 - Added a compact sort selector above the list: Needs review first (the existing

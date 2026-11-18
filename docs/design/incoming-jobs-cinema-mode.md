@@ -89,6 +89,35 @@ drawer and the payload filters read (`extractJobPayload`).
 - No value is invented: keys are matched case-insensitively, blank values are
   skipped, and the picker only offers keys present in the loaded window.
 
+### 3.2 Optional panels (2026-11-18)
+
+The same dialog chooses which optional panels the board carries, for walls that
+are narrower or quieter than the reference one:
+
+- **Throughput chart**, **station list**, **scrolling ticker** - each can be
+  switched off. The job list is never offered: a board without it is not this
+  board.
+- Stored in the URL as `?cinemaPanels=flow,stations`, so a kiosk link defines the
+  exact board it opens with. Missing, empty or unknown values keep the full board,
+  and the last remaining panel cannot be unchecked - neither a hand-typed URL nor
+  a stale bookmark can strip the wall display down to nothing.
+- The layout reflows instead of leaving holes: without the ladder the flow takes
+  the full top row, without the flow the ladder does, and with neither the job list
+  owns the board.
+- The station list still hides itself on a one-station scope regardless of the
+  choice; the panel switch can only remove panels, never add one the scope does not
+  justify.
+
+### 3.3 Acknowledged outcomes (2026-11-18)
+
+An operator can acknowledge an `UNVERIFIED` / `FAILED` / `TIMEOUT` outcome on the
+list ("checked at the printer"). The board follows the same rule as the list's
+buckets: such a job leaves the **Needs review** tile, leaves the attention segment
+of the throughput stack, drops out of its station's review count, and renders in
+the "other" tone in the feed and the ticker. Its status word never changes - the
+acknowledgement is a triage fact, and a board that kept painting it amber would
+send someone to a printer they already checked.
+
 ## 4. Numbers, and where they come from
 
 | Tile / element | Definition | Source |

@@ -351,6 +351,20 @@
   grid-column: 1 / -1;
 }
 
+/* The flow panel is optional too: without it the ladder takes the whole top row,
+   and with neither panel the feed owns the board instead of leaving a gap. */
+.cinema-body--no-flow .cinema-stations {
+  grid-column: 1 / -1;
+}
+
+.cinema-body--no-flow.cinema-body--single {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.cinema-body--no-flow.cinema-body--single .cinema-feed {
+  grid-row: 1;
+}
+
 .cinema-card-head {
   display: flex;
   flex-wrap: wrap;

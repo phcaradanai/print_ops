@@ -434,6 +434,12 @@ const STRINGS = {
     reviewedHint:
       'Marking this job reviewed clears it from Needs review. Its status and evidence stay exactly as the station reported them.',
     reviewedNotice: 'Marked this job as reviewed.',
+    countReviewed: 'Reviewed',
+    reviewSelected: 'Mark',
+    reviewSelectedNotice: 'Marked',
+    panelsTitle: 'Panels',
+    panelFlow: 'Throughput chart',
+    panelTicker: 'Scrolling ticker',
     staleCopy: ['Fleet Errors & Warnings', 'Total incoming jobs', 'Select a PrintOps Station'],
   },
   th: {
@@ -510,6 +516,12 @@ const STRINGS = {
     reviewedHint:
       'การทำเครื่องหมายว่าตรวจสอบแล้วจะเอาตัวนี้ออกจาก Need review โดยสถานะและหลักฐานของงานยังเป็นอย่างที่เครื่องรายงานไว้ทุกอย่าง',
     reviewedNotice: 'ทำเครื่องหมายว่าตรวจสอบแล้ว',
+    countReviewed: 'ตรวจแล้ว',
+    reviewSelected: 'ทำเครื่องหมายว่าตรวจแล้ว',
+    reviewSelectedNotice: 'ทำเครื่องหมายว่าตรวจแล้ว',
+    panelsTitle: 'แผงข้อมูล',
+    panelFlow: 'กราฟปริมาณงาน',
+    panelTicker: 'แถบเลื่อนด้านล่าง',
     staleCopy: ['สรุป Error ที่พบในระบบ', 'เลือกเครื่อง PrintOps เพื่อดูข้อมูล'],
   },
 } as const;
@@ -1872,10 +1884,132 @@ test('R. the list sorts by received time when asked', async ({ page }) => {
   await expect(page.getByText(s('en').needsReviewFirstHint)).toBeVisible();
 });
 
+test('S. the Reviewed chip narrows the list to the acknowledged outcomes', async ({ page }) => {
+  const fleet = fleetResponse();
+  // Two outcomes an operator has already checked, on the JOHN station. Marked on
+  // the response body, never on the shared fixture - `fleetResponse()` hands back
+  // the same job arrays every test uses.
+  const acknowledged = new Set(['REQ-UNVERIFIED-0001', 'REQ-FAILED-0002']);
+
+  await installHarness(page, {
+    locale: 'en',
+    role: 'OWNER',
+    api: async (url, route, method) => {
+      if (url.pathname === '/api/v1/control/jobs' && method === 'GET') {
+        const snapshot = JSON.parse(JSON.stringify(fleet)) as ReturnType<typeof fleetResponse>;
+        for (const job of snapshot.devices[0]!.jobs) {
+          if (acknowledged.has(job.requestId)) job.reviewedAt = '2026-11-18T09:31:00.000Z';
+        }
+        await route.fulfill({ json: snapshot });
+        return true;
+      }
+      return false;
+    },
+  });
+  await page.goto('/control/jobs?deviceId=dev-john');
+  await waitForList(page);
+
+  const counts = page.getByRole('toolbar', { name: s('en').countsLabel });
+  const reviewed = counts.getByRole('button', { name: new RegExp(s('en').countReviewed) });
+  await expect(reviewed).toContainText('2');
+
+  // Acknowledged rows no longer need a human, so the triage chip drops to one.
+  await expect(counts.getByRole('button', { name: /Needs review/ })).toContainText('1');
+
+  await reviewed.click();
+  await expect(reviewed).toHaveAttribute('aria-pressed', 'true');
+  const texts = await rowTexts(page);
+  expect(texts).toHaveLength(2);
+  expect(texts.join(' ')).toContain('REQ-UNVERIFIED-0001');
+  expect(texts.join(' ')).toContain('REQ-FAILED-0002');
+  // The status is still the station's own word, not a rewrite.
+  expect(texts.join(' ')).toContain('UNVERIFIED');
+
+  // Turning the chip off restores the whole list.
+  await reviewed.click();
+  await expect(reviewed).toHaveAttribute('aria-pressed', 'false');
+  expect((await rowTexts(page)).length).toBeGreaterThan(2);
+});
+
+test('S. the selection bar acknowledges several outcomes at once', async ({ page }) => {
+  const reviewedIds = new Set<string>();
+  const fleet = fleetResponse();
+
+  await installHarness(page, {
+    locale: 'en',
+    role: 'OWNER',
+    api: async (url, route, method) => {
+      if (url.pathname === '/api/v1/control/jobs' && method === 'GET') {
+        const snapshot = JSON.parse(JSON.stringify(fleet)) as ReturnType<typeof fleetResponse>;
+        for (const job of snapshot.devices[0]!.jobs) {
+          if (reviewedIds.has(job.id)) job.reviewedAt = '2026-11-18T09:31:00.000Z';
+        }
+        await route.fulfill({ json: snapshot });
+        return true;
+      }
+      const match = /\/api\/v1\/control\/devices\/[^/]+\/jobs\/([^/]+)\/review$/.exec(url.pathname);
+      if (match && method === 'POST') {
+        reviewedIds.add(decodeURIComponent(match[1]!));
+        await route.fulfill({ json: { reviewed: true } });
+        return true;
+      }
+      return false;
+    },
+  });
+  await page.goto('/control/jobs?deviceId=dev-john');
+  await waitForList(page);
+
+  // Select the two attention rows: the unverified job and the failed one.
+  await rowFor(page, 'REQ-UNVERIFIED-0001').getByRole('checkbox').check();
+  await rowFor(page, 'REQ-FAILED-0002').getByRole('checkbox').check();
+
+  const bar = page.getByRole('region', { name: /2 jobs selected/ });
+  const bulk = bar.getByRole('button', { name: new RegExp(s('en').reviewSelected) });
+  await expect(bulk).toContainText('2');
+  await bulk.click();
+
+  await expect(page.getByText(/Marked 2 jobs as reviewed/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Needs review/ })).toContainText('1');
+  // The bulk action clears its own selection so the bar cannot linger.
+  await expect(page.getByRole('region', { name: /jobs selected/ })).toHaveCount(0);
+});
+
+test('T. cinema panels can be switched off, and the URL keeps the choice', async ({ page }) => {
+  await loadJobs(page, { deviceId: null });
+  await waitForList(page);
+
+  await page.getByRole('button', { name: s('en').fieldsButton }).click();
+  const dialog = page.getByRole('dialog', { name: s('en').fieldsTitle });
+  await expect(dialog.getByRole('checkbox', { name: s('en').panelFlow })).toBeVisible();
+
+  // The fleet ladder and the ticker are on for a multi-station board.
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: s('en').cinemaEnter }).click();
+  const board = page.getByRole('dialog', { name: s('en').cinemaLabel });
+  await expect(board.getByText(s('en').cinemaStations)).toBeVisible();
+  await expect(board.locator('.cinema-ticker')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(board).toHaveCount(0);
+
+  // Turn both off in the dialog: the board keeps the flow chart and the feed.
+  await page.getByRole('button', { name: s('en').fieldsButton }).click();
+  await dialog.getByRole('checkbox', { name: s('en').panelTicker }).uncheck();
+  await expect(page).toHaveURL(/cinemaPanels=flow(%2C|,)stations/);
+  await dialog.getByRole('checkbox', { name: s('en').panelFlow }).uncheck();
+  await expect(page).toHaveURL(/cinemaPanels=stations/);
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('button', { name: s('en').cinemaEnter }).click();
+  await expect(board.getByText(s('en').cinemaStations)).toBeVisible();
+  await expect(board.locator('.cinema-ticker')).toHaveCount(0);
+  await expect(board.locator('.cinema-flow')).toHaveCount(0);
+  // The feed is never optional.
+  await expect(board.getByText(s('en').cinemaFeed)).toBeVisible();
+});
+
 // ---------------------------------------------------------------------------
 // Screenshots + measured evidence
 // ---------------------------------------------------------------------------
-
 for (const locale of ['en', 'th'] as const) {
   test(`evidence ${locale}: list and details screenshots`, async ({ page }) => {
     const copy = s(locale);

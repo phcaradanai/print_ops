@@ -16,6 +16,7 @@ import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { formatCreatedAt } from '../lib/formatCreatedAt.js';
+import { formatMessage } from '../lib/formatMessage.js';
 import { jobNeedsAttention } from '../lib/jobQueueView.js';
 import {
   getJobVerdict,
@@ -45,10 +46,8 @@ import {
 import {
   DEFAULT_JOB_COLUMNS,
   MAX_PAYLOAD_COLUMNS,
-  OPTIONAL_JOB_COLUMNS,
   isPayloadColumnId,
   normalizeJobColumns,
-  payloadColumnId,
   payloadColumnKey,
   readStoredJobColumns,
   visibleJobColumns,
@@ -96,7 +95,14 @@ import {
 
 import './WebControlJobs.css';
 import { CinemaBoard } from '../features/control-jobs/CinemaBoard.js';
-import { describeCinemaFields } from '../features/control-jobs/cinemaModel.js';
+import { CinemaDisplayDialog } from '../features/control-jobs/CinemaDisplayDialog.js';
+import { JobColumnsDialog } from '../features/control-jobs/JobColumnsDialog.js';
+import {
+  CINEMA_PANELS,
+  describeCinemaFields,
+  parseCinemaPanels,
+  type CinemaPanel,
+} from '../features/control-jobs/cinemaModel.js';
 
 export interface ControlSyncedJobItem extends FilterableJob {
   deviceId: string;
@@ -200,10 +206,7 @@ const MAX_COLUMN_WIDTH = 720;
 const COLUMN_WIDTH_STEP = 16;
 
 function formatMsg(template: string, vars: Record<string, string | number>): string {
-  return Object.entries(vars).reduce(
-    (acc, [key, value]) => acc.split(`{${key}}`).join(String(value)),
-    template,
-  );
+  return formatMessage(template, vars);
 }
 
 function stationTitle(device: { displayName?: string; hostname: string; deviceId: string }): string {
@@ -310,6 +313,16 @@ export default function WebControlJobs() {
     [searchParams],
   );
 
+  /**
+   * Which panels the board carries. In the URL for the same reason as the field
+   * list: a wall display is opened from a saved link, and the person who set it
+   * up is not standing at that screen.
+   */
+  const cinemaPanels = useMemo(
+    () => parseCinemaPanels(searchParams.get('cinemaPanels')),
+    [searchParams],
+  );
+
   const fetchFleet = useCallback(
     () => apiFetch<ControlJobsFleetResponse>('/v1/control/jobs'),
     [],
@@ -356,6 +369,13 @@ export default function WebControlJobs() {
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   /** Triage order by default; the operator can switch to pure received time. */
   const [jobSort, setJobSort] = useState<JobSortMode>('attention');
+  /**
+   * Show only the outcomes somebody already acknowledged. Without it a reviewed
+   * job is indistinguishable from the rest of "Other" once its chip is gone,
+   * so the operator could not audit their own triage.
+   */
+  const [reviewedOnly, setReviewedOnly] = useState(false);
+  const [bulkReviewBusy, setBulkReviewBusy] = useState(false);
   const resizeRef = useRef<{
     id: string;
     nextId: string | null;
@@ -496,6 +516,12 @@ export default function WebControlJobs() {
     [baseJobs, needsReview],
   );
 
+  /** How many rows in scope carry an acknowledgement, for the toggle's count. */
+  const reviewedCount = useMemo(
+    () => baseJobs.reduce((total, job) => (job.reviewedAt ? total + 1 : total), 0),
+    [baseJobs],
+  );
+
   const bucketCounts = useMemo<Record<StatusBucket, number>>(
     () => ({
       ALL: counts.all,
@@ -508,8 +534,11 @@ export default function WebControlJobs() {
   );
 
   const visibleJobs = useMemo(
-    () => baseJobs.filter((job) => matchesStatusBucket(job.status, statusBucket, Boolean(job.reviewedAt))),
-    [baseJobs, statusBucket],
+    () =>
+      baseJobs
+        .filter((job) => matchesStatusBucket(job.status, statusBucket, Boolean(job.reviewedAt)))
+        .filter((job) => !reviewedOnly || Boolean(job.reviewedAt)),
+    [baseJobs, statusBucket, reviewedOnly],
   );
 
   const visibleJobIdSet = useMemo(
@@ -533,11 +562,22 @@ export default function WebControlJobs() {
     [sortedVisibleJobs, currentPage],
   );
 
-  // A filter change starts a new result set; a shrinking feed clamps an
+  // A filter or order change starts a new result set; a shrinking feed clamps an
   // already-open page instead of leaving it on a blank page.
   useEffect(() => {
     setPage(1);
-  }, [jobSearch, statusBucket, datePreset, dateFrom, dateTo, groupBy, keyFilters, selectedDeviceId]);
+  }, [
+    jobSearch,
+    statusBucket,
+    datePreset,
+    dateFrom,
+    dateTo,
+    groupBy,
+    keyFilters,
+    selectedDeviceId,
+    jobSort,
+    reviewedOnly,
+  ]);
 
   useEffect(() => {
     setPage((previous) => Math.min(previous, totalPages));
@@ -610,9 +650,10 @@ export default function WebControlJobs() {
     (deviceId: string): Record<string, string> => {
       const next: Record<string, string> = deviceId ? { deviceId } : {};
       if (cinemaFields.length > 0) next.cinemaFields = cinemaFields.join(',');
+      if (cinemaPanels.length < CINEMA_PANELS.length) next.cinemaPanels = cinemaPanels.join(',');
       return next;
     },
-    [cinemaFields],
+    [cinemaFields, cinemaPanels],
   );
 
   const openStation = useCallback(
@@ -689,6 +730,30 @@ export default function WebControlJobs() {
     [setSearchParams],
   );
 
+  /**
+   * Turn one optional panel on or off. The last remaining panel cannot be
+   * removed: an empty list reads as "the default board" (see
+   * `parseCinemaPanels`), so unchecking it would silently re-check itself.
+   */
+  const toggleCinemaPanel = useCallback(
+    (panel: CinemaPanel) => {
+      setSearchParams(
+        (previous) => {
+          const params = new URLSearchParams(previous);
+          const current = parseCinemaPanels(params.get('cinemaPanels'));
+          if (current.includes(panel) && current.length === 1) return params;
+          const next = current.includes(panel)
+            ? current.filter((entry) => entry !== panel)
+            : CINEMA_PANELS.filter((entry) => entry === panel || current.includes(entry));
+          if (next.length < CINEMA_PANELS.length) params.set('cinemaPanels', next.join(','));
+          else params.delete('cinemaPanels');
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
   const visibleColumns = useMemo(() => visibleJobColumns(jobColumns), [jobColumns]);
   /**
    * Batch reprint needs `job:retry`, in any scope. A job carries its own
@@ -896,6 +961,7 @@ export default function WebControlJobs() {
   const clearAllFilters = useCallback(() => {
     setJobSearch('');
     setStatusBucket('ALL');
+    setReviewedOnly(false);
     setDatePreset('all');
     setDateFrom('');
     setDateTo('');
@@ -965,6 +1031,52 @@ export default function WebControlJobs() {
       });
     } finally {
       setReviewBusyJobId(null);
+    }
+  };
+
+  /**
+   * Acknowledge every selected row that still needs a human, one request each -
+   * the API acknowledges a single mirrored job. Sequential on purpose: an
+   * operator clearing a batch is never in a hurry so much that a status
+   * collision with a running refresh is worth it.
+   */
+  const handleBulkReview = async (jobs: ControlSyncedJobItem[]) => {
+    if (jobs.length === 0) return;
+    setBulkReviewBusy(true);
+    let acknowledged = 0;
+    let failure: string | null = null;
+    try {
+      for (const job of jobs) {
+        try {
+          await apiFetch(
+            `/v1/control/devices/${encodeURIComponent(job.deviceId)}/jobs/${encodeURIComponent(job.id)}/review`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reviewed: true }),
+            },
+          );
+          acknowledged += 1;
+        } catch (err) {
+          failure = errorMessage(err);
+          break;
+        }
+      }
+      fleetResource.refresh();
+      if (failure === null) {
+        setSelectedJobIds([]);
+        setNotice({
+          tone: 'success',
+          message: formatMsg(t('control.jobs.reviewSelectedNotice'), { count: acknowledged }),
+        });
+      } else {
+        setNotice({
+          tone: 'error',
+          message: formatMsg(t('control.jobs.reviewFailed'), { message: failure }),
+        });
+      }
+    } finally {
+      setBulkReviewBusy(false);
     }
   };
 
@@ -1121,6 +1233,15 @@ export default function WebControlJobs() {
   const selectedJobs = useMemo(
     () => visibleJobs.filter((job) => selectedJobIds.includes(job.id)),
     [visibleJobs, selectedJobIds],
+  );
+  /**
+   * Only the selected rows that still need a human. Selecting a printed row and
+   * acknowledging it would be a no-op that still wrote an audit record, so the
+   * bulk action counts what it can actually clear.
+   */
+  const reviewableSelectedJobs = useMemo(
+    () => selectedJobs.filter(needsReview),
+    [selectedJobs, needsReview],
   );
 
   const drawerJob = useMemo(
@@ -1622,6 +1743,14 @@ export default function WebControlJobs() {
                       {t('control.jobs.countOther')} ({bucketCounts.OTHER})
                     </Chip>
                   )}
+                  {reviewedCount > 0 && (
+                    <Chip
+                      selected={reviewedOnly}
+                      onClick={() => setReviewedOnly((previous) => !previous)}
+                    >
+                      {t('control.jobs.countReviewed')} ({reviewedCount})
+                    </Chip>
+                  )}
                   {counts.needsReview > 0 &&
                     groupBy === 'none' &&
                     statusBucket === 'ALL' &&
@@ -1672,6 +1801,14 @@ export default function WebControlJobs() {
                   >
                     {advancedToggleLabel}
                   </Button>
+                  {/* Widths are per-visit, so the only way back from a mangled
+                      table is this button or a reload. It appears once the
+                      operator has actually resized something. */}
+                  {hasCustomWidths && (
+                    <Button variant="ghost" onClick={() => setColumnWidths({})}>
+                      {t('control.jobs.widthsReset')}
+                    </Button>
+                  )}
                 </Inline>
 
                 {/* Advanced panel: custom dates, grouping and payload filters live only here. */}
@@ -1899,6 +2036,18 @@ export default function WebControlJobs() {
                       <Button size="sm" variant="secondary" onClick={() => setSelectedJobIds([])}>
                         {t('control.jobs.clearSelection')}
                       </Button>
+                      {reviewableSelectedJobs.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          busy={bulkReviewBusy}
+                          onClick={() => void handleBulkReview(reviewableSelectedJobs)}
+                        >
+                          {formatMsg(t('control.jobs.reviewSelected'), {
+                            count: reviewableSelectedJobs.length,
+                          })}
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="primary"
@@ -2350,152 +2499,30 @@ export default function WebControlJobs() {
         </Stack>
       </Dialog>
 
-      <Dialog
+      <JobColumnsDialog
         open={columnsOpen}
         onClose={() => setColumnsOpen(false)}
-        title={t('control.jobs.columnsTitle')}
-        closeLabel={t('common.close')}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => updateJobColumns([...DEFAULT_JOB_COLUMNS])}>
-              {t('control.jobs.columnsReset')}
-            </Button>
-            <Button variant="primary" onClick={() => setColumnsOpen(false)}>
-              {t('common.close')}
-            </Button>
-          </>
-        }
-      >
-        <Stack gap="md">
-          <Text size="body" tone="muted">
-            {t('control.jobs.columnsHint')}
-          </Text>
-          <Stack gap="xs">
-            {OPTIONAL_JOB_COLUMNS.map((option) => (
-              <Checkbox
-                key={option.id}
-                checked={jobColumns.includes(option.id)}
-                onChange={() => toggleJobColumn(option.id)}
-                label={t(option.labelKey)}
-              />
-            ))}
-          </Stack>
-          <Stack gap="xs">
-            <Text size="label" weight="semibold" tone="muted">
-              {t('control.jobs.columnsIncoming')}
-            </Text>
-            {incomingColumnChoices.length === 0 ? (
-              <Text size="label" tone="muted">
-                {t('control.jobs.columnsNoIncoming')}
-              </Text>
-            ) : (
-              incomingColumnChoices.map((option) => {
-                const id = payloadColumnId(option.key);
-                const checked = jobColumns.includes(id);
-                const atLimit =
-                  jobColumns.filter((entry) => isPayloadColumnId(entry)).length >=
-                  MAX_PAYLOAD_COLUMNS;
-                return (
-                  <Checkbox
-                    key={option.key}
-                    checked={checked}
-                    disabled={!checked && atLimit}
-                    onChange={() => toggleJobColumn(id)}
-                    label={<Mono size="label">{option.key}</Mono>}
-                    description={
-                      option.count === 0
-                        ? t('control.jobs.columnsNoValue')
-                        : `${option.sample} · ${formatMsg(t('control.jobs.columnsValueCount'), {
-                            count: option.count,
-                          })}`
-                    }
-                  />
-                );
-              })
-            )}
-          </Stack>
-        </Stack>
-      </Dialog>
+        columns={jobColumns}
+        incomingChoices={incomingColumnChoices}
+        onToggle={toggleJobColumn}
+        onReset={() => updateJobColumns([...DEFAULT_JOB_COLUMNS])}
+      />
 
-      <Dialog
+      <CinemaDisplayDialog
         open={fieldsOpen}
         onClose={() => setFieldsOpen(false)}
-        title={t('control.cinema.fieldsTitle')}
-        closeLabel={t('common.close')}
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => setCinemaFields([])}
-              disabled={cinemaFields.length === 0}
-            >
-              {t('control.cinema.fieldsClear')}
-            </Button>
-            <Button variant="primary" onClick={() => setFieldsOpen(false)}>
-              {t('common.close')}
-            </Button>
-          </>
-        }
-      >
-        <Stack gap="md">
-          <Text size="body" tone="muted">
-            {formatMsg(t('control.cinema.fieldsHint'), { max: CINEMA_MAX_FIELDS })}
-          </Text>
-          <Text size="label" weight="semibold" tone="muted">
-            {formatMsg(t('control.cinema.fieldsLimit'), {
-              count: cinemaFields.length,
-              max: CINEMA_MAX_FIELDS,
-            })}
-          </Text>
-          {cinemaFieldChoices.length === 0 ? (
-            <Text tone="muted">{t('control.cinema.fieldsEmpty')}</Text>
-          ) : (
-            <Stack gap="xs">
-              {cinemaFieldChoices.map((option) => {
-                const checked = cinemaFields.includes(option.key);
-                return (
-                  <Checkbox
-                    key={option.key}
-                    checked={checked}
-                    disabled={!checked && cinemaFields.length >= CINEMA_MAX_FIELDS}
-                    onChange={() => toggleCinemaField(option.key)}
-                    label={<Mono size="label">{option.key}</Mono>}
-                    description={
-                      option.count === 0
-                        ? t('control.cinema.fieldsMissing')
-                        : `${option.sample} · ${formatMsg(t('control.cinema.fieldsCount'), {
-                            count: option.count,
-                          })}`
-                    }
-                  />
-                );
-              })}
-            </Stack>
-          )}
-          <Checkbox
-            label={t('control.cinema.showReference')}
-            description={t('control.cinema.showReferenceHint')}
-            checked={cinemaShowReference}
-            disabled={cinemaFields.length === 0}
-            onChange={(event) => setCinemaShowReference(event.target.checked)}
-          />
-          <FormField label={t('control.cinema.labelWidth')}>
-            {(control) => (
-              <Select
-                {...control}
-                value={cinemaLabelWidth}
-                onChange={(event) =>
-                  setCinemaLabelWidth(event.target.value as 'narrow' | 'balanced' | 'wide')
-                }
-              >
-                <option value="narrow">{t('control.cinema.widthNarrow')}</option>
-                <option value="balanced">{t('control.cinema.widthBalanced')}</option>
-                <option value="wide">{t('control.cinema.widthWide')}</option>
-              </Select>
-            )}
-          </FormField>
-        </Stack>
-      </Dialog>
+        fields={cinemaFields}
+        fieldChoices={cinemaFieldChoices}
+        showReference={cinemaShowReference}
+        onShowReferenceChange={setCinemaShowReference}
+        labelWidth={cinemaLabelWidth}
+        onLabelWidthChange={setCinemaLabelWidth}
+        panels={cinemaPanels}
+        onToggleField={toggleCinemaField}
+        onClearFields={() => setCinemaFields([])}
+        onTogglePanel={toggleCinemaPanel}
+        maxFields={CINEMA_MAX_FIELDS}
+      />
 
       {cinemaOpen && !(selectedDeviceId && !selectedDevice) && (
         <CinemaBoard
@@ -2508,6 +2535,7 @@ export default function WebControlJobs() {
             selectedDevice ? stationTitle(selectedDevice) : t('control.jobs.allStations')
           }
           lastSuccessAt={fleetResource.lastSuccessAt}
+          panels={cinemaPanels}
           loading={fleetResource.loading && fleet == null}
           refreshing={fleetResource.refreshing}
           stale={fleetResource.stale}
