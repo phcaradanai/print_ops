@@ -1,3 +1,50 @@
+# Web Control 1.0.25
+
+Published for `linux/amd64` from `c6cab54` (2026-11-18), with the `1.0.25` version
+defaults in the accompanying release commit. This is the first tag that carries
+both the confirmed-outcome work and the finished CUPS/IPP work.
+
+- **Web Control**: an UNVERIFIED outcome can be confirmed as *it printed* / *it did
+  not print* (`reviewed_outcome`, additive column). The row shows the move
+  (`UNVERIFIED → it printed`) instead of relabelling the job, the "unconfirmed"
+  warning stops once an outcome is recorded, and undo clears both. Two new
+  filters: **Exact status** (any single server status) and **Confirmed outcome**,
+  both applied to the base set and both removable as conditions.
+- **Job Queue**: fixed the reported layout - the key-filter row now insets
+  `0.75rem 1rem` like the search row above it (it was flush against the card edge),
+  its fields and buttons share one line at 1440 and 1024 instead of the buttons
+  dropping below when the four-column grid collapsed, and the freshness refresh
+  button matches the page-action height so every header row reads as one line.
+- **Printers / API**: the finished CUPS/IPP work - remote CUPS server setting
+  (`PRINTOPS_CUPS_SERVER`), queue listing and remote queue submission with device
+  delivery confirmation, wired into the Printers page with bilingual copy.
+- **API**: `POST /control/devices/:id/jobs/:jobId/review` accepts an optional
+  `outcome` (`PRINTED` / `NOT_PRINTED`), audits it, and reads it back in the fleet
+  payload.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.25` | `sha256:efa0492b8c70ffefdb8277dea46ccc48ede7ec0f8f4b51df36d3baaa6e090995` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.25` | `sha256:d0c9ec02ecb7b209dd0eaa0af843b307f6c16a6427d9c7d9ee9acaf0b8d29ede` |
+
+`docker buildx imagetools inspect` returns those digests. Checked from the inside:
+the web entry bundle carries `1.0.25`, the queue stylesheet carries
+`job-queue-keyfilters`, its 63 asset names match a local Control build with
+`VITE_CONTROL_APP=true VITE_CONTROL_PLANE_VERSION=1.0.25` exactly, and the API
+image carries `reviewed_outcome` (registry service) and
+`infra/cups-server-settings.js`.
+
+Deploy with `PRINTOPS_CONTROL_PLANE_VERSION=1.0.25`; the PrintOps app image stays
+`0.1.50`. The control-plane mirrors a station's jobs, so the CUPS work only reaches
+a station when the app image is rebuilt - it ships here because both halves are
+built from the same source tree.
+
+```powershell
+$env:PRINTOPS_IMAGE_PREFIX = "registry.pg.xenex.io/printops-control-plane"
+$env:PRINTOPS_CONTROL_PLANE_VERSION = "1.0.25"
+node scripts/publish-control-plane-images.mjs
+```
+
 # Web Control 1.0.24
 
 Published for `linux/amd64` from `eae831a` (2026-11-18), with the `1.0.24` version
