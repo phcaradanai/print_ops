@@ -1,3 +1,35 @@
+# Web Control 1.0.14
+
+Published for `linux/amd64` from `65fa810` (2026-11-18), with the `1.0.14` version
+defaults in the accompanying release commit.
+
+- **Web Control**: Incoming Jobs gains **cinema mode** - a fullscreen wall board
+  with live totals, a 30-minute inflow ladder, station health, the newest jobs and
+  a ticker. Entry is the station-bar button or `?cinema=1`; exit is any key, a tap
+  that did not drag, or leaving fullscreen. No API contract change.
+- **API**: rebuilt for version parity; its source is unchanged since 1.0.13
+  (retention and control routes are identical).
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.14` | `sha256:bce37ba9a9ddbbd6682661f75e33efd45ae9ff411b1c980d4f952c5ee669d23f` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.14` | `sha256:7e9d257a254b0bda6117441d7038e10acd206f3c01bc83a5b729a8e0b9090c4d` |
+
+`docker buildx imagetools inspect` returns those digests. The web image was also
+checked from the inside: `/usr/share/nginx/html` carries `Cinema board` in the
+entry bundle and `cinema-kpi` in the Web Control stylesheet, so the tag really
+does contain the feature.
+
+Deploy with `PRINTOPS_CONTROL_PLANE_VERSION=1.0.14`; the PrintOps app image stays
+`0.1.50`. Cinema mode is a Web Control UI feature - no station update, database
+migration, or configuration change is involved.
+
+```powershell
+$env:PRINTOPS_IMAGE_PREFIX = "registry.pg.xenex.io/printops-control-plane"
+$env:PRINTOPS_CONTROL_PLANE_VERSION = "1.0.14"
+node scripts/publish-control-plane-images.mjs
+```
+
 # Web Control 1.0.13 / PrintOps App 0.1.50
 
 Published for `linux/amd64` from commit `6b000a1` (2026-11-18).
