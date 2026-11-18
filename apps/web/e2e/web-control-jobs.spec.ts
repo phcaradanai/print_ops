@@ -418,6 +418,8 @@ const STRINGS = {
     cinemaStationsOnline: 'Stations online',
     cinemaFeed: 'Latest jobs',
     connectionOnline: 'Online',
+    fieldsButton: 'Display data',
+    fieldsTitle: 'Data shown in cinema mode',
     staleCopy: ['Fleet Errors & Warnings', 'Total incoming jobs', 'Select a PrintOps Station'],
   },
   th: {
@@ -479,6 +481,8 @@ const STRINGS = {
     cinemaStationsOnline: 'เครื่องออนไลน์',
     cinemaFeed: 'งานล่าสุด',
     connectionOnline: 'ออนไลน์',
+    fieldsButton: 'ข้อมูลที่แสดง',
+    fieldsTitle: 'ข้อมูลที่แสดงในโหมดจอใหญ่',
     staleCopy: ['สรุป Error ที่พบในระบบ', 'เลือกเครื่อง PrintOps เพื่อดูข้อมูล'],
   },
 } as const;
@@ -1484,6 +1488,58 @@ for (const locale of ['en', 'th'] as const) {
 }
 
 // ---------------------------------------------------------------------------
+// K. Cinema display fields
+// ---------------------------------------------------------------------------
+
+test('K. display fields put incoming values on the cinema rows, reference stays', async ({ page }) => {
+  await loadJobs(page, { viewport: { width: 1440, height: 900 }, deviceId: 'dev-john' });
+  await waitForList(page);
+
+  const openPicker = async () => {
+    await page.getByRole('button', { name: s('en').fieldsButton, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: s('en').fieldsTitle });
+    await expect(dialog).toBeVisible();
+    return dialog;
+  };
+
+  let dialog = await openPicker();
+  await dialog.getByRole('checkbox', { name: /^hn\b/ }).check();
+  await dialog.getByRole('checkbox', { name: /^patient_name/ }).check();
+  await expect(page).toHaveURL(/cinemaFields=hn%2Cpatient_name/);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+
+  const board = await openCinema(page);
+  const firstRow = board
+    .getByRole('list', { name: s('en').cinemaFeed })
+    .getByRole('listitem')
+    .first();
+  // The incoming values the operator recognises, in the order they chose them.
+  await expect(firstRow).toContainText('123456');
+  await expect(firstRow).toContainText('Somchai Dee');
+  // The reference is still on the row, quieter, so support can find the job.
+  await expect(firstRow).toContainText('REQ-UNVERIFIED-0001');
+  // The feed header states which values are on the board.
+  await expect(board.getByText('hn · patient_name', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // Three values are allowed; a fourth cannot be added.
+  dialog = await openPicker();
+  await dialog.getByRole('checkbox', { name: /^prescription/ }).check();
+  await expect(page).toHaveURL(/cinemaFields=hn%2Cpatient_name%2Cprescription/);
+  await expect(dialog.getByRole('checkbox', { name: /^long_payload_key/ })).toBeDisabled();
+  await page.keyboard.press('Escape');
+
+  // A wall display can be configured entirely from the URL.
+  await page.goto('/control/jobs?deviceId=dev-john&cinema=1&cinemaFields=patient_name');
+  const deepBoard = page.getByRole('dialog', { name: s('en').cinemaLabel });
+  await expect(deepBoard).toBeVisible();
+  await expect(
+    deepBoard.getByRole('list', { name: s('en').cinemaFeed }).getByRole('listitem').first(),
+  ).toContainText('Somchai Dee');
+});
+
+// ---------------------------------------------------------------------------
 // Screenshots + measured evidence
 // ---------------------------------------------------------------------------
 
@@ -1562,6 +1618,19 @@ for (const locale of ['en', 'th'] as const) {
     ).toContainText('6');
     await shot(page, `cinema-390-${locale}`);
     await page.keyboard.press('Escape');
+
+    // The row label with display fields chosen (EN only: the values are data).
+    if (locale === 'en') {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto('/control/jobs?deviceId=dev-john&cinema=1&cinemaFields=patient_name,hn');
+      const labelled = page.getByRole('dialog', { name: s('en').cinemaLabel });
+      await expect(labelled).toBeVisible();
+      await expect(
+        labelled.getByRole('list', { name: s('en').cinemaFeed }).getByRole('listitem').first(),
+      ).toContainText('Somchai Dee');
+      await shot(page, 'cinema-1440-fields-en');
+      await page.keyboard.press('Escape');
+    }
   });
 }
 

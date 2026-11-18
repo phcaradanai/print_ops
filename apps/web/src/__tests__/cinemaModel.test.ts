@@ -3,7 +3,9 @@ import {
   buildCinemaKpis,
   buildStationRows,
   buildThroughput,
+  cinemaJobLabel,
   cinemaTone,
+  describeCinemaFields,
   flowPeak,
   formatClockTime,
   isNewArrival,
@@ -225,5 +227,74 @@ describe('formatClockTime', () => {
     expect(formatClockTime(NOW, 'en')).toMatch(/^\d{2}:\d{2}:\d{2}$/);
     expect(formatClockTime(NOW, 'th', false)).toMatch(/^\d{2}:\d{2}$/);
     expect(formatClockTime('not-a-date', 'en')).toBe('—');
+  });
+});
+
+describe('describeCinemaFields', () => {
+  it('counts the jobs carrying each incoming value and keeps a sample', () => {
+    const jobs = [
+      job({ id: 'a', payload: { hn: '123456', patient_name: 'Somchai Dee' } }),
+      job({ id: 'b', payload: { hn: '998877', patient_name: 'Suda Jaidee' } }),
+      job({ id: 'c', payload: { hn: '112233' } }),
+    ];
+    const options = describeCinemaFields(jobs);
+    expect(options).toEqual([
+      { key: 'hn', count: 3, sample: '123456' },
+      { key: 'patient_name', count: 2, sample: 'Somchai Dee' },
+    ]);
+  });
+
+  it('ignores blank values and keeps the first non-empty one as the sample', () => {
+    const jobs = [
+      job({ id: 'a', payload: { hn: '   ', patient_name: '' } }),
+      job({ id: 'b', payload: { hn: '777888', patient_name: 'Late Name' } }),
+    ];
+    expect(describeCinemaFields(jobs)).toEqual([
+      { key: 'hn', count: 1, sample: '777888' },
+      { key: 'patient_name', count: 1, sample: 'Late Name' },
+    ]);
+  });
+
+  it('reads the same flattened payload as the drawer, including the snapshot', () => {
+    const snapshot = job({
+      id: 'snapshot',
+      payloadSnapshot: JSON.stringify({ hn: '555666', ward: 'OPD-2' }),
+    });
+    expect(describeCinemaFields([snapshot])).toEqual([
+      { key: 'hn', count: 1, sample: '555666' },
+      { key: 'ward', count: 1, sample: 'OPD-2' },
+    ]);
+  });
+
+  it('returns nothing for a feed with no incoming data', () => {
+    expect(describeCinemaFields([job({ id: 'bare' })])).toEqual([]);
+    expect(describeCinemaFields([])).toEqual([]);
+  });
+});
+
+describe('cinemaJobLabel', () => {
+  const labelled = job({
+    id: 'a',
+    payload: { hn: '123456', patient_name: 'Somchai Dee', prescription: '213456' },
+  });
+
+  it('joins the chosen values in the operator’s order', () => {
+    expect(cinemaJobLabel(labelled, ['patient_name', 'hn'])).toBe('Somchai Dee · 123456');
+    expect(cinemaJobLabel(labelled, ['hn'])).toBe('123456');
+  });
+
+  it('falls back to nothing when no field is chosen or nothing matches', () => {
+    expect(cinemaJobLabel(labelled, [])).toBe('');
+    expect(cinemaJobLabel(labelled, ['missing_key'])).toBe('');
+    expect(cinemaJobLabel(job({ id: 'bare' }), ['hn'])).toBe('');
+  });
+
+  it('skips a blank value instead of leaving a dangling separator', () => {
+    expect(cinemaJobLabel(labelled, ['prescription', 'missing_key', 'hn'])).toBe('213456 · 123456');
+    expect(cinemaJobLabel(job({ id: 'blank', payload: { hn: '  ' } }), ['hn'])).toBe('');
+  });
+
+  it('matches keys case-insensitively, like the payload filters', () => {
+    expect(cinemaJobLabel(job({ id: 'upper', payload: { HN: '909090' } }), ['hn'])).toBe('909090');
   });
 });

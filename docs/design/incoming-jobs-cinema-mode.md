@@ -62,6 +62,28 @@ viewport as a fixed overlay.
 - **Ticker** repeats the twelve newest jobs. It is `aria-hidden`; the feed
   already carries the same information for assistive tech.
 
+### 3.1 Display fields (the row label)
+
+A reference such as `REQ-UNVERIFIED-0001` means nothing to the person watching
+the screen; the incoming value does. **Display data** in the station bar opens a
+dialog listing the incoming keys the current scope actually carries, each with a
+sample value and the number of jobs behind it, in the same flattened payload the
+drawer and the payload filters read (`extractJobPayload`).
+
+- Choose up to three keys, in reading order. The limit is about wall legibility,
+  not storage; a fourth checkbox is disabled rather than silently ignored.
+- The selection lives in the URL (`?cinemaFields=hn,patient_name`), so a wall
+  display can be opened at `/control/jobs?cinema=1&cinemaFields=hn,patient_name`
+  with no interaction, and the choice survives a reload and a station switch.
+- A row shows the chosen values joined with ` · ` as its main label, and keeps
+  the job reference after them in smaller muted mono, so support can still find
+  the job. A job missing every chosen value falls back to the reference alone -
+  never a blank cell.
+- The feed header names the active keys (`hn · patient_name`), so the board is
+  self-describing.
+- No value is invented: keys are matched case-insensitively, blank values are
+  skipped, and the picker only offers keys present in the loaded window.
+
 ## 4. Numbers, and where they come from
 
 | Tile / element | Definition | Source |
@@ -162,6 +184,14 @@ requested. Nothing flashes, and no content depends on an animation to be read.
 | `stationAttention` / `stationNoJobs` | "{count} to review" / No jobs yet | "ต้องตรวจ {count}" / ยังไม่มีงาน |
 | `feedTitle` / `feedHint` / `feedEmpty` | Latest jobs / Newest first / Waiting for the first job | งานล่าสุด / ใหม่ที่สุดก่อน / กำลังรองานแรก |
 | `newBadge` | New | ใหม่ |
+| `fieldsButton` | Display data | ข้อมูลที่แสดง |
+| `fieldsTitle` | Data shown in cinema mode | ข้อมูลที่แสดงในโหมดจอใหญ่ |
+| `fieldsHint` | Pick up to {max} incoming values to use as the main label in cinema mode. The job reference stays on the row in smaller text. | เลือกได้สูงสุด {max} ค่าจากข้อมูลที่ส่งเข้ามา เพื่อใช้เป็นชื่อหลักในโหมดจอใหญ่ โดยรหัสงานยังแสดงอยู่บนแถวด้วยตัวอักษรเล็ก |
+| `fieldsLimit` | {count} of {max} selected | เลือกแล้ว {count} จาก {max} |
+| `fieldsEmpty` | No incoming data to choose from yet. Cinema mode will show job references. | ยังไม่มีข้อมูลที่ส่งเข้ามาให้เลือก โหมดจอใหญ่จะแสดงรหัสงานแทน |
+| `fieldsClear` | Clear selection | ล้างที่เลือก |
+| `fieldsCount` | {count} jobs | {count} งาน |
+| `fieldsMissing` | No value in this scope | ไม่มีค่าในขอบเขตนี้ |
 | `summary` | Cinema board: {total} jobs, {review} to review, {active} in progress, {printed} printed, and {online} of {stations} stations online. | บอร์ดจอใหญ่: งานทั้งหมด {total} รายการ ต้องตรวจ {review} กำลังดำเนินการ {active} พิมพ์แล้ว {printed} และออนไลน์ {online} จาก {stations} เครื่อง |
 
 Other strings are reused verbatim: `control.jobs.countPrinted`,
@@ -178,13 +208,15 @@ $env:VITE_CONTROL_APP='true'; npm run build -w apps/web
 npx playwright test apps/web/e2e/web-control-jobs.spec.ts
 ```
 
-- 766 web unit tests pass (16 cinema-model tests and 5 server-rendered board
-  contracts: scope branches, the four-station cap, the offline label, the
-  loading state and the named KPI groups).
-- 35 Playwright tests in the Incoming Jobs suite pass, including nine cinema
+- 776 web unit tests pass (24 cinema-model tests, including the display-field
+  projection, and 7 server-rendered board contracts: scope branches, the
+  four-station cap, the offline label, the loading state, the named KPI groups
+  and the field label/fallback).
+- 36 Playwright tests in the Incoming Jobs suite pass, including ten cinema
   cases (shell coverage, live totals, any-key/click exit, deep link, no fleet
-  ladder in one-station scope, three widths x two locales) and six screenshots.
-  The evidence screenshots wait for the real KPI value, not a stopwatch.
+  ladder in one-station scope, display fields, three widths x two locales) and
+  six screenshots. The evidence screenshots wait for the real KPI value, not a
+  stopwatch.
 - Measured at 1440x900: header 56px, KPI band 111px, flow 287px, stations 287px,
   feed 330px; board scroll width equals client width in both languages.
 
@@ -205,3 +237,7 @@ npx playwright test apps/web/e2e/web-control-jobs.spec.ts
    cadence - the numbers cannot change between polls, so a one-second board
    timer only burned renders. The header clock keeps its own one-second timer,
    and both timers stop while the document is hidden.
+7. **The row label is operator data, not an identifier.** Up to three incoming
+   keys replace the raw reference as the row's main label, with the reference
+   still on the row. The picker never invents a value and never hides a job: a
+   job without any chosen value shows its reference as before.

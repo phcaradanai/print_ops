@@ -30,13 +30,15 @@ function station(deviceId: string, jobs: number, connectionState = 'ONLINE'): Ci
       deviceId,
       printerId: `${deviceId}-printer`,
       printerCode: 'ZEBRA_OPD_01',
+      requestId: `REQ-${deviceId.toUpperCase()}-${index}`,
+      payload: { hn: `12345${index}`, patient_name: `Patient ${index}` },
     })),
   };
 }
 
 function render(
   stations: CinemaStation[],
-  options: { loading?: boolean; failed?: boolean } = {},
+  options: { loading?: boolean; failed?: boolean; displayFields?: string[] } = {},
 ): string {
   return renderToStaticMarkup(
     <LocaleProvider>
@@ -44,6 +46,7 @@ function render(
         stations={stations}
         jobs={stations.flatMap((entry) => entry.jobs)}
         scopeLabel="JOHN"
+        displayFields={options.displayFields}
         lastSuccessAt={null}
         loading={options.loading ?? false}
         refreshing={false}
@@ -104,5 +107,21 @@ describe('CinemaBoard', () => {
       expect(html, key).toContain(`aria-label="${label(key)}"`);
     }
     expect(html.match(/role="group"/g) ?? []).toHaveLength(5);
+  });
+
+  it('shows the chosen incoming values and keeps the reference on the row', () => {
+    const html = render([station('dev-a', 1)], { displayFields: ['patient_name', 'hn'] });
+    expect(html).toContain('Patient 0 · 123450');
+    // The reference stays available, one step quieter.
+    expect(html).toContain('cinema-feed-id');
+    expect(html).toContain('REQ-DEV-A-0');
+    // The feed header says which values are on the board.
+    expect(html).toContain('patient_name · hn');
+  });
+
+  it('falls back to the reference when no value is chosen', () => {
+    const plain = render([station('dev-a', 1)]);
+    expect(plain).toContain('REQ-DEV-A-0');
+    expect(plain).not.toContain('cinema-feed-label');
   });
 });

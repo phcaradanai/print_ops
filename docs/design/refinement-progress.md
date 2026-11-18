@@ -266,6 +266,22 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   on the board (full value in the title attribute and on the page behind it),
   and "any key exits" including Tab (the owner's exit requirement).
 
+## 2026-11-18 — Incoming Jobs cinema: choose the row label
+
+- The cinema feed used the job reference as its only row label, and operators do
+  not recognise `REQ-...`. Added a **Display data** dialog in the station bar that
+  projects up to three incoming payload keys onto the board, in the order chosen,
+  with a sample value and a job count behind each key.
+- The choice lives in `?cinemaFields=hn,patient_name`, so a wall display can be
+  configured once and survive a reload. Rows show the values as the main label and
+  keep the reference in muted mono, falling back to the reference when a job has
+  none of the chosen values.
+- Reused `extractJobPayload`, so the picker can only offer keys the drawer and the
+  payload filters already show. New model functions `describeCinemaFields` and
+  `cinemaJobLabel`; no new stylesheet.
+- Verified: 776 web unit tests (10 new), typecheck, Control build, 36/36 Incoming
+  Jobs Playwright tests (1 new display-field case).
+
 ## Next, in order
 
 1. **Fold the paper-profile hotfix layers** (`paperProfilesLayoutHotfix`, `Closure`, `Completion`, `LibraryGeometryHotfix`) into `paperProfilesLibrary.css` / `paperProfilesEditor.css`, deleting `!important` as you go. Gate: `paper-profile-ux` and `paper-profile-layout-regression` e2e, which first need their pre-existing failures fixed so they can detect a regression. Then delete the entries from the hotfix list in `designTokens.test.ts`.

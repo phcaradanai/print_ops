@@ -6,7 +6,9 @@ Lead, and this document records it and the copy deck.
 **Evidence:** `artifacts/browser/web-control-jobs/verification.md`.
 **Cinema mode:** the page also has a fullscreen presentation mode, documented
 separately in `incoming-jobs-cinema-mode.md` (it does not change this page's
-light layout or its filters).
+light layout or its filters). It adds two secondary controls to the station bar:
+**Display data** (which incoming values the cinema rows show) and **Cinema
+mode**.
 **Scope of this change:** this document plus `control.jobs.*` strings in
 `apps/web/src/i18n/controlTranslations.ts`. Page code, tests, styles and E2E
 specs are changed separately.

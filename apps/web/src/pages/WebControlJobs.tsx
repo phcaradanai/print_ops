@@ -71,6 +71,7 @@ import {
 
 import './WebControlJobs.css';
 import { CinemaBoard } from '../features/control-jobs/CinemaBoard.js';
+import { describeCinemaFields } from '../features/control-jobs/cinemaModel.js';
 
 export interface ControlSyncedJobItem extends FilterableJob {
   deviceId: string;
@@ -159,6 +160,9 @@ const DATE_PRESETS: ReadonlyArray<{ value: JobDatePreset; key: string }> = [
 
 /** Keep the DOM small even when a station mirrors its full 1,000-job window. */
 const JOB_PAGE_SIZE = 50;
+
+/** Cinema rows stay readable on a wall display: three values is the ceiling. */
+const CINEMA_MAX_FIELDS = 3;
 
 function formatMsg(template: string, vars: Record<string, string | number>): string {
   return Object.entries(vars).reduce(
@@ -255,6 +259,21 @@ export default function WebControlJobs() {
    * the same `deviceId` the page uses. It is a presentation flag, not a filter.
    */
   const cinemaOpen = searchParams.get('cinema') === '1';
+  /**
+   * Which incoming values the cinema rows show instead of the raw job
+   * reference. Kept in the URL like the mode itself, so a wall display can be
+   * opened with `/control/jobs?cinema=1&cinemaFields=hn,patient_name` and the
+   * picker survives a reload.
+   */
+  const cinemaFields = useMemo(
+    () =>
+      (searchParams.get('cinemaFields') ?? '')
+        .split(',')
+        .map((key) => key.trim())
+        .filter(Boolean)
+        .slice(0, CINEMA_MAX_FIELDS),
+    [searchParams],
+  );
 
   const fetchFleet = useCallback(
     () => apiFetch<ControlJobsFleetResponse>('/v1/control/jobs'),
@@ -283,6 +302,7 @@ export default function WebControlJobs() {
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [drawerJobId, setDrawerJobId] = useState<string | null>(null);
+  const [fieldsOpen, setFieldsOpen] = useState(false);
   const [reprintTargets, setReprintTargets] = useState<ControlSyncedJobItem[]>([]);
   const [reprintCopies, setReprintCopies] = useState(1);
   const [reprintReason, setReprintReason] = useState('');
@@ -350,6 +370,21 @@ export default function WebControlJobs() {
         })),
     [devices, isAllStations, selectedDeviceId],
   );
+
+  /**
+   * The display-field picker offers the incoming keys the current scope actually
+   * carries, with the selected ones first so a key that disappeared with a scope
+   * change can still be removed.
+   */
+  const cinemaFieldChoices = useMemo(() => {
+    const described = describeCinemaFields(scopeJobs);
+    const byKey = new Map(described.map((option) => [option.key, option]));
+    const selected = cinemaFields.map(
+      (key) => byKey.get(key) ?? { key, count: 0, sample: '' },
+    );
+    const rest = described.filter((option) => !cinemaFields.includes(option.key));
+    return [...selected, ...rest];
+  }, [scopeJobs, cinemaFields]);
 
   /**
    * Base set: station, search, dates and payload filters, with the status
@@ -474,18 +509,28 @@ export default function WebControlJobs() {
     setCopiedField(null);
   }, []);
 
+  /** Station changes rebuild the URL, but the cinema display fields are config, not a filter. */
+  const retainedParams = useCallback(
+    (deviceId: string): Record<string, string> => {
+      const next: Record<string, string> = deviceId ? { deviceId } : {};
+      if (cinemaFields.length > 0) next.cinemaFields = cinemaFields.join(',');
+      return next;
+    },
+    [cinemaFields],
+  );
+
   const openStation = useCallback(
     (deviceId: string) => {
       resetLocalState();
-      setSearchParams(deviceId ? { deviceId } : {});
+      setSearchParams(retainedParams(deviceId));
     },
-    [resetLocalState, setSearchParams],
+    [resetLocalState, retainedParams, setSearchParams],
   );
 
   const goOverview = useCallback(() => {
     resetLocalState();
-    setSearchParams({});
-  }, [resetLocalState, setSearchParams]);
+    setSearchParams(retainedParams(''));
+  }, [resetLocalState, retainedParams, setSearchParams]);
 
   const setCinemaOpen = useCallback(
     (open: boolean) => {
@@ -504,6 +549,49 @@ export default function WebControlJobs() {
 
   const openCinema = useCallback(() => setCinemaOpen(true), [setCinemaOpen]);
   const closeCinema = useCallback(() => setCinemaOpen(false), [setCinemaOpen]);
+
+  const setCinemaFields = useCallback(
+    (next: string[]) => {
+      setSearchParams(
+        (previous) => {
+          const params = new URLSearchParams(previous);
+          if (next.length > 0) params.set('cinemaFields', next.join(','));
+          else params.delete('cinemaFields');
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  /**
+   * The toggle reads the URL inside the updater rather than the render closure:
+   * two checkbox clicks in the same tick must not each start from the old list.
+   */
+  const toggleCinemaField = useCallback(
+    (key: string) => {
+      setSearchParams(
+        (previous) => {
+          const params = new URLSearchParams(previous);
+          const current = (params.get('cinemaFields') ?? '')
+            .split(',')
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          const next = current.includes(key)
+            ? current.filter((entry) => entry !== key)
+            : current.length < CINEMA_MAX_FIELDS
+              ? [...current, key]
+              : current;
+          if (next.length > 0) params.set('cinemaFields', next.join(','));
+          else params.delete('cinemaFields');
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
   // `deviceId` is the only URL state, so reaching another station through the
   // browser's back/forward buttons has to reset the local filters too — a URL
@@ -1038,6 +1126,9 @@ export default function WebControlJobs() {
                 </Button>
                 <Button variant="secondary" onClick={() => navigate('/control/devices')}>
                   {t('control.jobs.manageDevices')}
+                </Button>
+                <Button variant="secondary" onClick={() => setFieldsOpen(true)}>
+                  {t('control.cinema.fieldsButton')}
                 </Button>
                 <Button variant="secondary" onClick={openCinema}>
                   {t('control.cinema.enter')}
@@ -1756,10 +1847,69 @@ export default function WebControlJobs() {
         </Stack>
       </Dialog>
 
+      <Dialog
+        open={fieldsOpen}
+        onClose={() => setFieldsOpen(false)}
+        title={t('control.cinema.fieldsTitle')}
+        closeLabel={t('common.close')}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setCinemaFields([])}
+              disabled={cinemaFields.length === 0}
+            >
+              {t('control.cinema.fieldsClear')}
+            </Button>
+            <Button variant="primary" onClick={() => setFieldsOpen(false)}>
+              {t('common.close')}
+            </Button>
+          </>
+        }
+      >
+        <Stack gap="md">
+          <Text size="body" tone="muted">
+            {formatMsg(t('control.cinema.fieldsHint'), { max: CINEMA_MAX_FIELDS })}
+          </Text>
+          <Text size="label" weight="semibold" tone="muted">
+            {formatMsg(t('control.cinema.fieldsLimit'), {
+              count: cinemaFields.length,
+              max: CINEMA_MAX_FIELDS,
+            })}
+          </Text>
+          {cinemaFieldChoices.length === 0 ? (
+            <Text tone="muted">{t('control.cinema.fieldsEmpty')}</Text>
+          ) : (
+            <Stack gap="xs">
+              {cinemaFieldChoices.map((option) => {
+                const checked = cinemaFields.includes(option.key);
+                return (
+                  <Checkbox
+                    key={option.key}
+                    checked={checked}
+                    disabled={!checked && cinemaFields.length >= CINEMA_MAX_FIELDS}
+                    onChange={() => toggleCinemaField(option.key)}
+                    label={<Mono size="label">{option.key}</Mono>}
+                    description={
+                      option.count === 0
+                        ? t('control.cinema.fieldsMissing')
+                        : `${option.sample} · ${formatMsg(t('control.cinema.fieldsCount'), {
+                            count: option.count,
+                          })}`
+                    }
+                  />
+                );
+              })}
+            </Stack>
+          )}
+        </Stack>
+      </Dialog>
+
       {cinemaOpen && !(selectedDeviceId && !selectedDevice) && (
         <CinemaBoard
           stations={cinemaStations}
           jobs={scopeJobs}
+          displayFields={cinemaFields}
           scopeLabel={
             selectedDevice ? stationTitle(selectedDevice) : t('control.jobs.allStations')
           }

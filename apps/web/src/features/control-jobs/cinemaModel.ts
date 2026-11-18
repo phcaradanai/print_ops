@@ -21,6 +21,7 @@
 
 import { countStatusBuckets } from '../../lib/controlJobsView.js';
 import { jobNeedsAttention } from '../../lib/jobQueueView.js';
+import { extractJobPayload } from '../../lib/jobPayload.js';
 
 export const CINEMA_MINUTE_MS = 60_000;
 
@@ -33,6 +34,10 @@ export interface CinemaJob {
   printerId: string;
   requestId?: string;
   printerCode?: string;
+  /** Incoming data, so the board can show a value the operator recognises. */
+  payload?: Record<string, unknown>;
+  payloadSnapshot?: string;
+  metadata?: Record<string, unknown>;
 }
 
 /** One station as the board lists it. Station names are display strings. */
@@ -262,4 +267,67 @@ export function formatClockTime(timestamp: string | number, locale: string, seco
     ...(seconds ? { second: '2-digit' } : {}),
     hour12: false,
   });
+}
+
+/**
+ * The incoming values an operator can put on the board instead of the job
+ * reference, ordered by how many jobs actually carry them.
+ *
+ * A reference like `REQ-UNVERIFIED-0001` means nothing to the person watching
+ * the screen; `HN 123456` or a patient name does. This is the list behind the
+ * display-field picker, and it deliberately reads the same flattened payload the
+ * job drawer and the payload filters use (`extractJobPayload`), so the board
+ * cannot offer a key the rest of the page cannot show.
+ */
+export interface CinemaFieldOption {
+  key: string;
+  /** Jobs in scope that carry a non-empty value for this key. */
+  count: number;
+  /** First non-empty value, for the picker's preview. */
+  sample: string;
+}
+
+export function describeCinemaFields(jobs: readonly CinemaJob[]): CinemaFieldOption[] {
+  const options = new Map<string, CinemaFieldOption>();
+
+  for (const job of jobs) {
+    for (const [key, value] of Object.entries(extractJobPayload(job))) {
+      const text = value?.trim();
+      if (!text) continue;
+      const existing = options.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        options.set(key, { key, count: 1, sample: text });
+      }
+    }
+  }
+
+  return [...options.values()].sort(
+    (a, b) => b.count - a.count || a.key.localeCompare(b.key),
+  );
+}
+
+/**
+ * The operator-facing label for one job: the chosen payload values joined with
+ * a middot. Returns an empty string when the job carries none of them, so the
+ * caller can fall back to the reference instead of showing a blank row.
+ *
+ * Key matching is case-insensitive, mirroring the payload filters: an incoming
+ * system may send `HN` and `hn` in the same feed.
+ */
+export function cinemaJobLabel(job: CinemaJob, fields: readonly string[]): string {
+  if (fields.length === 0) return '';
+  const payload = extractJobPayload(job);
+  const lower = new Map(
+    Object.entries(payload).map(([key, value]) => [key.toLocaleLowerCase(), value]),
+  );
+
+  const values: string[] = [];
+  for (const field of fields) {
+    const value = payload[field] ?? lower.get(field.toLocaleLowerCase());
+    const text = value?.trim();
+    if (text) values.push(text);
+  }
+  return values.join(' · ');
 }

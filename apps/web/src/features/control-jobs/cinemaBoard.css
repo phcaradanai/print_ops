@@ -658,12 +658,40 @@
 }
 
 .cinema-feed-ref {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
   min-width: 0;
   overflow: hidden;
   font-family: var(--font-mono-family);
   font-size: var(--cinema-text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.cinema-feed-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cinema-text);
+  font-family: var(--font-body-family);
+  font-size: var(--cinema-text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cinema-feed-id {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cinema-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cinema-feed-fields {
+  color: var(--cinema-accent);
+  font-family: var(--font-mono-family);
 }
 
 .cinema-feed-where {

@@ -30,6 +30,7 @@ import {
   buildCinemaKpis,
   buildStationRows,
   buildThroughput,
+  cinemaJobLabel,
   cinemaTone,
   flowPeak,
   formatClockTime,
@@ -169,6 +170,11 @@ export interface CinemaBoardProps {
   jobs: readonly CinemaJob[];
   /** "JOHN" or "All stations" - already localised by the page. */
   scopeLabel: string;
+  /**
+   * Incoming payload keys to show as the row label, in order. Empty means the
+   * row falls back to the job reference, which is the pre-picker behaviour.
+   */
+  displayFields?: readonly string[];
   lastSuccessAt: number | null;
   /** True until the first feed response arrives; the board must not claim "Live". */
   loading: boolean;
@@ -187,8 +193,18 @@ function ToneBar({ tone }: { tone: CinemaTone | 'neutral' }) {
 
 export function CinemaBoard(props: CinemaBoardProps) {
   const { locale, t } = useLocale();
-  const { stations, jobs, scopeLabel, lastSuccessAt, loading, refreshing, stale, failed, onExit } =
-    props;
+  const {
+    stations,
+    jobs,
+    scopeLabel,
+    displayFields = [],
+    lastSuccessAt,
+    loading,
+    refreshing,
+    stale,
+    failed,
+    onExit,
+  } = props;
 
   const now = useNow(BOARD_TICK_MS);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -537,6 +553,9 @@ export function CinemaBoard(props: CinemaBoardProps) {
           <div className="cinema-card-head">
             <h2 className="cinema-card-title">{t('control.cinema.feedTitle')}</h2>
             <div className="cinema-card-meta">
+              {displayFields.length > 0 && (
+                <span className="cinema-feed-fields">{displayFields.join(' · ')}</span>
+              )}
               <span>{t('control.cinema.feedHint')}</span>
             </div>
           </div>
@@ -549,11 +568,23 @@ export function CinemaBoard(props: CinemaBoardProps) {
               {feed.map((job) => {
                 const tone = toneOf(job);
                 const fresh = isNewArrival(job.createdAt, now);
+                const reference = job.requestId ?? job.id;
+                const label = cinemaJobLabel(job, displayFields);
                 return (
                   <li key={job.id} className={`cinema-feed-row cinema-feed-row--${tone}${fresh ? ' is-new' : ''}`}>
                     <span className="cinema-feed-time">{formatClockTime(job.createdAt, locale)}</span>
-                    <span className="cinema-feed-ref" title={job.requestId ?? job.id}>
-                      {job.requestId ?? job.id}
+                    <span
+                      className="cinema-feed-ref"
+                      title={label ? `${label} · ${reference}` : reference}
+                    >
+                      {label ? (
+                        <>
+                          <span className="cinema-feed-label">{label}</span>
+                          <span className="cinema-feed-id">{reference}</span>
+                        </>
+                      ) : (
+                        reference
+                      )}
                     </span>
                     <span className="cinema-feed-where">
                       <span className="cinema-feed-station">
@@ -579,7 +610,9 @@ export function CinemaBoard(props: CinemaBoardProps) {
           {[...ticker, ...ticker].map((job, index) => (
             <span className={`cinema-ticker-item cinema-ticker-item--${toneOf(job)}`} key={`${job.id}-${index}`}>
               <span className="cinema-ticker-time">{formatClockTime(job.createdAt, locale)}</span>
-              <span className="cinema-ticker-ref">{job.requestId ?? job.id}</span>
+              <span className="cinema-ticker-ref">
+                {cinemaJobLabel(job, displayFields) || (job.requestId ?? job.id)}
+              </span>
               <span className="cinema-ticker-station">{stationNames.get(job.deviceId) ?? job.deviceId}</span>
               <span className="cinema-ticker-status">{job.status}</span>
             </span>
