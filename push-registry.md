@@ -1,3 +1,38 @@
+# Web Control 1.0.24
+
+Published for `linux/amd64` from `eae831a` (2026-11-18), with the `1.0.24` version
+defaults in the accompanying release commit.
+
+- **Web Control**: the fields the drawer keeps under "Technical details" (internal
+  job id, source reference, error code and message, raw snapshot) can now be left
+  out of the search. They stay searchable by default - that is how support finds a
+  job from a log line - and a checkbox in the advanced panel, **Search technical
+  details too**, turns them off for the session. While it is off it behaves like
+  any other condition: a removable **Technical details excluded** chip, and Clear
+  all restores it. The filter and the "Matched: ..." row explanation read the same
+  tagged candidate list, so they drop those fields together.
+- **API**: rebuilt for version parity; its source is unchanged since 1.0.18.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.24` | `sha256:6c1be1135446ff93a0162a8f821793e1d861055193f75de9a357ab27b7dcaa57` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.24` | `sha256:ad54f3b3dd449997a8113ebeff3bc67c12f3c6ff12db40c8eb3999ced1e9f4fc` |
+
+`docker buildx imagetools inspect` returns those digests. The web image was checked
+from the inside: the entry bundle carries `1.0.24` and the `Search technical
+details too` copy, and its 63 asset names match a local Control build with
+`VITE_CONTROL_APP=true VITE_CONTROL_PLANE_VERSION=1.0.24` exactly.
+
+Deploy with `PRINTOPS_CONTROL_PLANE_VERSION=1.0.24`; the PrintOps app image stays
+`0.1.50`. Search scope only - no station update, database migration, or
+configuration change is involved.
+
+```powershell
+$env:PRINTOPS_IMAGE_PREFIX = "registry.pg.xenex.io/printops-control-plane"
+$env:PRINTOPS_CONTROL_PLANE_VERSION = "1.0.24"
+node scripts/publish-control-plane-images.mjs
+```
+
 # Web Control 1.0.23
 
 Published for `linux/amd64` from `09ded34` (2026-11-18), with the `1.0.23` version
