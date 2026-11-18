@@ -1,3 +1,35 @@
+# Web Control 1.0.20
+
+Published for `linux/amd64` from `0b6f44d` (2026-11-18), with the `1.0.20` version
+defaults in the accompanying release commit.
+
+- **Web Control**: **Reviewed only** and **Needs review** are mutually exclusive.
+  The two filters are disjoint by definition - a reviewed row is never waiting for
+  a human - so having both on could only ever produce an empty list. Turning the
+  reviewed view on now drops the triage filter, and picking Needs review leaves the
+  reviewed view.
+- **API**: rebuilt for version parity; its source is unchanged since 1.0.18.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.20` | `sha256:a9ed20234d52efed08c0be1a0967775b413362abff59f73ee4fee22ca864bf2d` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.20` | `sha256:dc514d5e15e0d141715cb9835a0c3afa0e14d72cf592e024da30f54851422ace` |
+
+`docker buildx imagetools inspect` returns those digests. The web image was checked
+from the inside: the entry bundle carries `1.0.20`, and its 62 asset names match a
+local Control build with
+`VITE_CONTROL_APP=true VITE_CONTROL_PLANE_VERSION=1.0.20` exactly.
+
+Deploy with `PRINTOPS_CONTROL_PLANE_VERSION=1.0.20`; the PrintOps app image stays
+`0.1.50`. Filter logic only - no station update, database migration, or
+configuration change is involved.
+
+```powershell
+$env:PRINTOPS_IMAGE_PREFIX = "registry.pg.xenex.io/printops-control-plane"
+$env:PRINTOPS_CONTROL_PLANE_VERSION = "1.0.20"
+node scripts/publish-control-plane-images.mjs
+```
+
 # Web Control 1.0.19
 
 Published for `linux/amd64` from `390b5d5` (2026-11-18), with the `1.0.19` version

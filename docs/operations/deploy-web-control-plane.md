@@ -166,7 +166,7 @@ token.
 | `PRINTOPS_CONTROL_DISCOVERY_TARGETS` | Optional comma-separated station origins, e.g. `http://app:3001,http://lab-2:3001` | Stations this host can reach but cannot enroll. Stations found by enrollment or announce are pulled from automatically, so this is normally empty. Scheme and port may be omitted. |
 | `PRINTOPS_CLIENT_URL` | Optional station origin | Single-target predecessor of the list above; still honoured. |
 | `PRINTOPS_CONTROL_PULL_TOKEN` | Optional; shared with unenrolled stations only | Shared secret for pulling a station that is not enrolled, which cannot derive a per-device credential. Enrolled stations need no value here. |
-| `PRINTOPS_CONTROL_PLANE_VERSION` | `1.0.19` | Control Plane image tag/version; independent of the PrintOps app version. |
+| `PRINTOPS_CONTROL_PLANE_VERSION` | `1.0.20` | Control Plane image tag/version; independent of the PrintOps app version. |
 | `PRINTOPS_IMAGE_PREFIX` | Optional for source builds; required by registry stack | Registry/repository prefix for API and Web images. |
 | `PRINTOPS_API_UPSTREAM` | `api:3001` | API service DNS name and port reachable by the web container; override when its Docker network alias differs. |
 | `PRINTOPS_RELEASE_IMPORT_MAX_MIB` | Positive whole number; default `128` | Maximum Base64 JSON import request size in MiB, shared by API and Web. |
@@ -243,7 +243,7 @@ Run from the repository root on a machine with Docker Buildx. Authenticate to th
 ```sh
 docker login ghcr.io
 PRINTOPS_IMAGE_PREFIX=ghcr.io/my-org/printops-control-plane \
-PRINTOPS_CONTROL_PLANE_VERSION=1.0.19 \
+PRINTOPS_CONTROL_PLANE_VERSION=1.0.20 \
 node scripts/publish-control-plane-images.mjs
 ```
 
