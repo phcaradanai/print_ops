@@ -1642,6 +1642,34 @@ test('M. incoming payload keys can become list columns', async ({ page }) => {
   await expect(page.locator('thead tr').first()).toContainText('prescription');
 });
 
+test('L. the two cinema controls read as one framed group, apart from page actions', async ({
+  page,
+}) => {
+  await loadJobs(page, { viewport: { width: 1440, height: 900 }, deviceId: 'dev-john' });
+  await waitForList(page);
+
+  const group = page.getByRole('group', { name: 'Cinema display' });
+  await expect(group).toBeVisible();
+  await expect(group.getByRole('button', { name: 'Display data', exact: true })).toBeVisible();
+  await expect(group.getByRole('button', { name: 'Cinema mode', exact: true })).toBeVisible();
+  // Columns changes this page's list, so it stays outside the group.
+  await expect(group.getByRole('button', { name: 'Columns', exact: true })).toHaveCount(0);
+
+  const styling = await group.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      border: style.borderTopWidth,
+      radius: style.borderTopLeftRadius,
+      background: style.backgroundColor,
+    };
+  });
+  expect(parseFloat(styling.border), 'group has no frame').toBeGreaterThan(0);
+  expect(parseFloat(styling.radius), 'group has no radius').toBeGreaterThan(0);
+  expect(styling.background, 'group has no tint').not.toBe('rgba(0, 0, 0, 0)');
+
+  await group.screenshot({ path: `${ARTIFACTS}/cinema-group-en.png` });
+});
+
 // ---------------------------------------------------------------------------
 // Screenshots + measured evidence
 // ---------------------------------------------------------------------------

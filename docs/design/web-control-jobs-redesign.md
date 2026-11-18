@@ -7,8 +7,10 @@ Lead, and this document records it and the copy deck.
 **Cinema mode:** the page also has a fullscreen presentation mode, documented
 separately in `incoming-jobs-cinema-mode.md` (it does not change this page's
 light layout or its filters). It adds three secondary controls to the station
-bar: **Columns** (which list columns the page shows), **Display data** (which
-incoming values the cinema rows show) and **Cinema mode**.
+bar: **Columns** (which list columns the page shows), and a framed **Cinema
+display** group holding **Display data** (which incoming values the cinema rows
+show) and **Cinema mode**. The two cinema controls share a hairline frame and a
+light tint because they configure the wall board rather than this list.
 **Scope of this change:** this document plus `control.jobs.*` strings in
 `apps/web/src/i18n/controlTranslations.ts`. Page code, tests, styles and E2E
 specs are changed separately.

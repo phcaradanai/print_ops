@@ -1313,12 +1313,23 @@ export default function WebControlJobs() {
                 <Button variant="secondary" onClick={() => setColumnsOpen(true)}>
                   {t('control.jobs.columnsButton')}
                 </Button>
-                <Button variant="secondary" onClick={() => setFieldsOpen(true)}>
-                  {t('control.cinema.fieldsButton')}
-                </Button>
-                <Button variant="secondary" onClick={openCinema}>
-                  {t('control.cinema.enter')}
-                </Button>
+                {/*
+                  Cinema controls are one group: they configure the wall board
+                  and never change this page's own list, so they sit inside a
+                  hairline frame instead of reading as two more page actions.
+                */}
+                <div
+                  className="wcj-cinema-group"
+                  role="group"
+                  aria-label={t('control.cinema.groupLabel')}
+                >
+                  <Button variant="secondary" onClick={() => setFieldsOpen(true)}>
+                    {t('control.cinema.fieldsButton')}
+                  </Button>
+                  <Button variant="secondary" onClick={openCinema}>
+                    {t('control.cinema.enter')}
+                  </Button>
+                </div>
               </Inline>
             </Panel>
 

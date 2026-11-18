@@ -22,3 +22,18 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
+
+/* Cinema controls configure the fullscreen board, not this list. A hairline and
+   a light tint set them apart from the page's own actions without adding another
+   card to the station bar. */
+.wcj-cinema-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+  max-width: 100%;
+  padding: 3px;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-md);
+  background: color-mix(in srgb, var(--primary) 5%, var(--neutral-paper));
+}

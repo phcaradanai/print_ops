@@ -303,6 +303,18 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
 - Verified: 786 web unit tests, typecheck, Control build, 38/38 Incoming Jobs
   Playwright tests (2 new column cases: job fields and incoming payload keys).
 
+## 2026-11-18 — Station bar: cinema controls are one group
+
+- "Display data" and "Cinema mode" now sit in one hairline-framed, lightly tinted
+  group (`role="group"`, "Cinema display"): they configure the fullscreen board
+  and never change this page's list. "Columns" stays outside the group because it
+  does change the list.
+- Page-scoped CSS only (`wcj-cinema-group` in `WebControlJobs.css`), tokens plus
+  `color-mix`, no new shared component and no global override.
+- Verified: typecheck, 786 web unit tests, Control build, 39/39 Incoming Jobs
+  Playwright tests (1 new check for the frame, radius, tint and group role), full
+  suite 141 passed with the Control-only spec skipped.
+
 ## Next, in order
 
 1. **Fold the paper-profile hotfix layers** (`paperProfilesLayoutHotfix`, `Closure`, `Completion`, `LibraryGeometryHotfix`) into `paperProfilesLibrary.css` / `paperProfilesEditor.css`, deleting `!important` as you go. Gate: `paper-profile-ux` and `paper-profile-layout-regression` e2e, which first need their pre-existing failures fixed so they can detect a regression. Then delete the entries from the hotfix list in `designTokens.test.ts`.
