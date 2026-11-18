@@ -1,24 +1,33 @@
 # Web Control 1.0.14
 
-Published for `linux/amd64` from `65fa810` (2026-11-18), with the `1.0.14` version
+Published for `linux/amd64` from `0167ea2` (2026-11-18), with the `1.0.14` version
 defaults in the accompanying release commit.
 
 - **Web Control**: Incoming Jobs gains **cinema mode** - a fullscreen wall board
   with live totals, a 30-minute inflow ladder, station health, the newest jobs and
   a ticker. Entry is the station-bar button or `?cinema=1`; exit is any key, a tap
-  that did not drag, or leaving fullscreen. No API contract change.
+  that did not drag, or leaving fullscreen. The board also ticks at the feed
+  cadence instead of every second, and its timers pause while the tab is hidden.
+  No API contract change.
 - **API**: rebuilt for version parity; its source is unchanged since 1.0.13
   (retention and control routes are identical).
 
+The tag was rebuilt once: the first publish was `65fa810`, then the board-tick
+change landed immediately after and the same version was rebuilt from `0167ea2`
+so the deployed tag matches the pushed source. No deployment had been recorded
+against the earlier digest.
+
 | Image | Verified registry digest |
 | --- | --- |
-| `registry.pg.xenex.io/printops-control-plane-api:1.0.14` | `sha256:bce37ba9a9ddbbd6682661f75e33efd45ae9ff411b1c980d4f952c5ee669d23f` |
-| `registry.pg.xenex.io/printops-control-plane-web:1.0.14` | `sha256:7e9d257a254b0bda6117441d7038e10acd206f3c01bc83a5b729a8e0b9090c4d` |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.14` | `sha256:5db22af3686c99e7934829ab4c001a454b5699620689f7fa97d381fbd74872e2` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.14` | `sha256:d81d6bc5e5adb2e2face6dee8aae0ae27b21e5eb60411f01fa3b4e2f76446ca8` |
 
 `docker buildx imagetools inspect` returns those digests. The web image was also
 checked from the inside: `/usr/share/nginx/html` carries `Cinema board` in the
-entry bundle and `cinema-kpi` in the Web Control stylesheet, so the tag really
-does contain the feature.
+entry bundle and `cinema-kpi` in the Web Control stylesheet, and its asset names
+(`index-DkVByf_t.js`, `WebControlJobs-DDqyaGaG.js`) match a local Control build of
+`0167ea2` made with `VITE_CONTROL_APP=true VITE_CONTROL_PLANE_VERSION=1.0.14`. So
+the tag really does contain the pushed source.
 
 Deploy with `PRINTOPS_CONTROL_PLANE_VERSION=1.0.14`; the PrintOps app image stays
 `0.1.50`. Cinema mode is a Web Control UI feature - no station update, database
