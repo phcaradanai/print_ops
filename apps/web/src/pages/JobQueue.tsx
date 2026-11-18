@@ -502,10 +502,14 @@ export default function JobQueue() {
       />
 
       {availablePayloadKeys.length > 0 && (
-        <Toolbar label={t('page.jobQueue.keyFilterKey')}>
+        <Toolbar label={t('page.jobQueue.keyFilterKey')} className="job-queue-keyfilters">
           <Stack gap="sm" style={{ width: '100%' }}>
-            <Grid columns={4} gap="md">
-              <FormField label={t('page.jobQueue.keyFilterKey')}>
+            {/* Fields flex and wrap; the actions stay bottom-aligned with the
+                inputs instead of dropping to a line of their own when the
+                four-column grid collapses. */}
+            <Inline gap="md" className="job-queue-keyfilters__row">
+              <div className="job-queue-keyfilters__field">
+                <FormField label={t('page.jobQueue.keyFilterKey')}>
                 {(control) => (
                   <Select
                     {...control}
@@ -522,8 +526,10 @@ export default function JobQueue() {
                     ))}
                   </Select>
                 )}
-              </FormField>
-              <FormField label={t('page.jobQueue.keyFilterValue')}>
+                </FormField>
+              </div>
+              <div className="job-queue-keyfilters__field">
+                <FormField label={t('page.jobQueue.keyFilterValue')}>
                 {(control) => (
                   <Select
                     {...control}
@@ -550,8 +556,10 @@ export default function JobQueue() {
                     ))}
                   </Select>
                 )}
-              </FormField>
-              <FormField label={t('page.jobQueue.keyFilterValue')}>
+                </FormField>
+              </div>
+              <div className="job-queue-keyfilters__field">
+                <FormField label={t('page.jobQueue.keyFilterValue')}>
                 {(control) => (
                   <Input
                     {...control}
@@ -570,8 +578,9 @@ export default function JobQueue() {
                     }}
                   />
                 )}
-              </FormField>
-              <Inline gap="sm" style={{ alignItems: 'flex-end' }}>
+                </FormField>
+              </div>
+              <div className="job-queue-keyfilters__actions">
                 <Button
                   variant="secondary"
                   disabled={!pendingKey || !pendingValue.trim()}
@@ -591,8 +600,8 @@ export default function JobQueue() {
                     {t('page.jobQueue.keyFilterClear')}
                   </Button>
                 )}
-              </Inline>
-            </Grid>
+              </div>
+            </Inline>
             {keyFilters.length > 0 && (
               <Inline gap="xs">
                 <Text size="label" tone="muted">{t('page.jobQueue.keyFilterActive')}:</Text>

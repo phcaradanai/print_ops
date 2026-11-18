@@ -6,6 +6,8 @@ The Printers page on Linux offers **Add CUPS printer**. It tests and saves
 the CUPS server address, then lists queues for registration. A registered
 queue can be selected in Sandbox and printer bindings. The dialog reuses
 shared form controls. Queues must already be configured and shared in CUPS.
+The setup dialog links to a Thai and English guide for sharing a queue and
+choosing the server address, with the connection form preserved on return.
 
 ## 2026-11-18 — Web Control job-mirror retention and paging
 
@@ -368,6 +370,39 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   acknowledgement), typecheck for both workspaces, Control build, 43/43 Incoming
   Jobs Playwright tests (1 new: reviewed job leaves Needs review with its status
   intact), full suite 141 passed.
+
+## 2026-11-18 — Job Queue: the rows finally line up
+
+Reported: uneven padding on the queue page, inputs flush against the card edge,
+and buttons that were not on the same line as the fields they belonged to.
+
+Measured before touching anything (Playwright, computed boxes at 1440/1024/390):
+
+- the search row inset its content by 16px, the key-filter row below it inset by
+  **0** - so the two toolbars inside one card started at different x positions and
+  the second one's inputs touched the border;
+- the key filter used a four-column `Grid`, and `.ui-grid--4` collapses to one
+  column at 1024px, so on a laptop the three fields stacked full width and the
+  action buttons dropped onto a line of their own;
+- the two header actions were 44px and 29px tall (freshness used a `sm` button),
+  leaving the pair visibly ragged.
+
+Fixes, all scoped and measured:
+
+- `.job-queue-keyfilters` now insets `0.75rem 1rem` and carries a top divider, so
+  both rows of the card align to the same 16px grid.
+- the fields became a wrapping flex row (`flex: 1 1 10rem; min-width: 9rem`) with
+  the actions in their own bottom-aligned box, so fields and buttons share one
+  line at 1440 and 1024 and wrap cleanly at 390 instead of splitting the row.
+- the freshness refresh button is a normal-size button now, so every page header
+  with a page action beside it has one honest line.
+
+New guard: `apps/web/e2e/job-queue-layout.spec.ts` asserts both toolbars inset
+their content identically and symmetrically, that the action group's bottom edge
+matches the inputs' in the key-filter row, that the two header actions share a
+centre line from 1024 up, and that the card never scrolls sideways - at 1440,
+1024 and 390. Verified: 816 web unit tests, the affected dashboard specs 25/25,
+full suite in the release log.
 
 ## 2026-11-18 — Incoming Jobs: confirm what happened, and filter by it
 

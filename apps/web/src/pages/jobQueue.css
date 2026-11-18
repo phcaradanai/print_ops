@@ -7,3 +7,32 @@
 .job-row--selectable {
   cursor: pointer;
 }
+
+/* The key-filter row is a second toolbar inside the queue card. Without these
+   rules its fields sat flush against the card edge while the search row above was
+   inset by 1rem, so the two rows looked like they belonged to different layouts. */
+.job-queue-keyfilters {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--neutral-border);
+}
+
+/* Fields share the row and wrap when they run out of width; the actions keep their
+   own box and stay bottom-aligned, so they line up with the inputs instead of
+   dropping to a line of their own when the four-column grid collapses. */
+.job-queue-keyfilters__row {
+  align-items: flex-end;
+}
+
+.job-queue-keyfilters__field {
+  /* Narrow enough that fields and actions still share one line on a 1024px
+     laptop, which is where the four-column grid used to drop the buttons. */
+  flex: 1 1 10rem;
+  min-width: 9rem;
+}
+
+.job-queue-keyfilters__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  gap: var(--spacing-sm);
+}

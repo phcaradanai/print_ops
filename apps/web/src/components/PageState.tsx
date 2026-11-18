@@ -308,7 +308,9 @@ export function Freshness({
         <span className="freshness-complete-note">{t('state.finalRefreshFailed')}</span>
       )}
       {onRefresh && (
-        <Button variant="ghost" size="sm" onClick={onRefresh} busy={refreshing}>
+        // Same size as the page-header actions beside it: a small ghost button next
+        // to a 44px action left the two on visibly different lines.
+        <Button variant="ghost" onClick={onRefresh} busy={refreshing}>
           {t('common.refresh')}
         </Button>
       )}
