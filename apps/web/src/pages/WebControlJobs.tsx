@@ -69,6 +69,8 @@ import {
   type StatusTone,
 } from '../components/ui/index.js';
 
+import './WebControlJobs.css';
+
 export interface ControlSyncedJobItem extends FilterableJob {
   deviceId: string;
   paperProfileId?: string;
@@ -1381,6 +1383,7 @@ export default function WebControlJobs() {
         onClose={() => setDrawerJobId(null)}
         title={t('control.jobs.detailTitle')}
         closeLabel={t('common.close')}
+        className="wcj-detail-drawer"
         footer={
           <>
             <Button variant="secondary" onClick={() => setDrawerJobId(null)}>

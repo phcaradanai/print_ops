@@ -28,6 +28,8 @@ file).
 - The Incoming Jobs list is paged at 50 rows per page (`Pagination`), so a full
   1,000-row station window no longer creates a 1,000-row DOM at once. Filters
   reset to page 1; a shrinking feed clamps an open page.
+- The job-details drawer uses **50vw** on desktop (720px at 1440px) so wide
+  payload/evidence values have room; at 1024px and below it stays full width.
 - Tests: `apps/api/src/tests/retention.test.ts` covers age cleanup across
   stations, per-station cap, control audit cleanup, archive content, archive
   file expiry, and "no delete when archiving fails"; web unit tests cover the
@@ -35,8 +37,8 @@ file).
 
 **Verification:** API and web typecheck; `npm run test -w apps/web` — 745
 passed; `npm run test -w apps/api` — 733 passed, 1 skipped (86 files);
-`npx playwright test apps/web/e2e/web-control-jobs.spec.ts` — 23 passed after a
-Web Control build; serial full Playwright — 141 passed, 23 skipped, 0 failed.
+`npx playwright test apps/web/e2e/web-control-jobs.spec.ts` — 24 passed after a
+Web Control build; serial full Playwright — 141 passed, 24 skipped, 0 failed.
 
 **Remaining gap:** the 1,000-rows-per-station API limit is still a single
 payload for the list; paging only reduces the rendered DOM. Server-side list

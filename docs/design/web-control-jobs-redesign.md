@@ -137,8 +137,8 @@ actions so the header stays one line of text.
      `syncAll` for All stations).
    - Jobs exist in scope but the conditions exclude them: `emptyNoMatchTitle`,
      `emptyNoMatchHint`, action `clearAllFilters`.
-10. **Drawer.** Opened by View job, the existing `Drawer` (`end`, full width at
-    1024 and below) with `control.jobs.detailTitle` as its title:
+10. **Drawer.** Opened by View job: **50vw on desktop** (720px at 1440px) and
+    full width at 1024px and below, with `control.jobs.detailTitle` as its title:
     - Summary: reference in mono; `CardDetail` with destination
       (`destinationOnStation`), status (`StatusBadge`), received
       (`detailReceived`) and copies (`detailCopies`).

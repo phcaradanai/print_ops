@@ -1,0 +1,14 @@
+/* Scoped to WebControlJobs.tsx. The job drawer is an inspection surface: give
+   it half the desktop viewport so wide payload/evidence values do not force
+   horizontal reading, while tablet/mobile keep the shared full-width drawer. */
+.ui-drawer.wcj-detail-drawer {
+  width: 50vw;
+  max-width: 50vw;
+}
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .ui-drawer.wcj-detail-drawer {
+    width: 100%;
+    max-width: none;
+  }
+}

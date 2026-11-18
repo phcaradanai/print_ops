@@ -1006,6 +1006,31 @@ test('F. FAILED details expose error code and the multiline error message', asyn
   expect(drawerOverflow).toBeLessThanOrEqual(1);
 });
 
+test('F. details drawer is half the desktop viewport and full width on tablet/mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await loadJobs(page, { deviceId: 'dev-john' });
+  await waitForList(page);
+
+  let drawer = await openDetails(page, 'REQ-UNVERIFIED-0001');
+  let box = await drawer.boundingBox();
+  expect(box?.width).toBeGreaterThanOrEqual(718);
+  expect(box?.width).toBeLessThanOrEqual(722);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  await page.setViewportSize({ width: 1024, height: 768 });
+  drawer = await openDetails(page, 'REQ-UNVERIFIED-0001');
+  box = await drawer.boundingBox();
+  expect(box?.width).toBe(1024);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  drawer = await openDetails(page, 'REQ-UNVERIFIED-0001');
+  box = await drawer.boundingBox();
+  expect(box?.width).toBe(390);
+});
+
 // ---------------------------------------------------------------------------
 // G. Reprint safety
 // ---------------------------------------------------------------------------
