@@ -1,3 +1,37 @@
+# Web Control 1.0.16
+
+Published for `linux/amd64` from `8e1326e` (2026-11-18), with the `1.0.16` version
+defaults in the accompanying release commit.
+
+- **Web Control**: the Incoming Jobs column picker now also offers the incoming
+  payload keys as list columns (up to three, in click order), and the two cinema
+  controls sit in one framed group so they read as a set that does not change the
+  page's own list. No API contract change.
+- **API**: rebuilt for version parity; its source is unchanged since 1.0.13.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.16` | `sha256:3e092af538fa7d036d321eff6c87091923e4e28f01fd295206d415917bd1dae4` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.16` | `sha256:784ff231822615d9eb260c045dbbc285d333678500bc902291674553c61b112f` |
+
+`docker buildx imagetools inspect` returns those digests. The web image was also
+checked from the inside: the entry bundle carries the `1.0.16` version and the
+`Incoming values` copy, the Web Control stylesheet carries `wcj-cinema-group`, and
+the asset names (`index-BCLNwA8D.js`, `WebControlJobs-CpfsI10-.js`,
+`WebControlJobs-dPj5RzKX.css`) match a local Control build with
+`VITE_CONTROL_APP=true VITE_CONTROL_PLANE_VERSION=1.0.16`. So the tag contains the
+pushed source.
+
+Deploy with `PRINTOPS_CONTROL_PLANE_VERSION=1.0.16`; the PrintOps app image stays
+`0.1.50`. These are Web Control UI features - no station update, database
+migration, or configuration change is involved.
+
+```powershell
+$env:PRINTOPS_IMAGE_PREFIX = "registry.pg.xenex.io/printops-control-plane"
+$env:PRINTOPS_CONTROL_PLANE_VERSION = "1.0.16"
+node scripts/publish-control-plane-images.mjs
+```
+
 # Web Control 1.0.15
 
 Published for `linux/amd64` from `8c67b34` (2026-11-18), with the `1.0.15` version
