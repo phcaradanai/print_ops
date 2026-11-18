@@ -6,9 +6,9 @@ Lead, and this document records it and the copy deck.
 **Evidence:** `artifacts/browser/web-control-jobs/verification.md`.
 **Cinema mode:** the page also has a fullscreen presentation mode, documented
 separately in `incoming-jobs-cinema-mode.md` (it does not change this page's
-light layout or its filters). It adds two secondary controls to the station bar:
-**Display data** (which incoming values the cinema rows show) and **Cinema
-mode**.
+light layout or its filters). It adds three secondary controls to the station
+bar: **Columns** (which list columns the page shows), **Display data** (which
+incoming values the cinema rows show) and **Cinema mode**.
 **Scope of this change:** this document plus `control.jobs.*` strings in
 `apps/web/src/i18n/controlTranslations.ts`. Page code, tests, styles and E2E
 specs are changed separately.
@@ -191,6 +191,29 @@ At 1440x900 the station bar stays on one line, so the first row starts no lower.
 An open advanced panel or active-condition row adds 40 to 80px; even then the
 first row remains above the 768px fold. Verify in the rendered app, in both
 languages, at both target sizes.
+
+### 3.3 Column picker (2026-11-18)
+
+The five-column row above is the shipped default, not a hard constraint. A
+**Columns** control in the station bar opens a picker for the optional columns:
+Destination, Station, Received, Copies, Template, Source, Runner and Error code.
+Defaults stay Destination + Received, so the page looks unchanged until someone
+opts in, which also keeps the "no template column" decision above intact by
+default.
+
+- **Fixed columns.** Job, Status and Actions are not offered: a row without its
+  identity, its verdict, or a way into the drawer is not a row.
+- **Canonical order.** Optional columns render in a fixed order between Status
+  and Actions, never in click order, so toggling cannot reshuffle the table.
+- **Station duplication.** When All stations shows the station under the printer
+  in the Destination cell, adding the Station column removes that second line
+  instead of printing it twice.
+- **Empty values.** An optional column with no value renders an em dash, not a
+  blank cell.
+- **Persistence.** The choice is a workstation preference stored in
+  `localStorage` (`printops-control-jobs-columns`), like the locale. It is not a
+  filter, so it never enters the URL; unreadable or unknown stored ids fall back
+  to the shipped default.
 
 ### 3.2 390px
 

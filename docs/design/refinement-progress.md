@@ -282,6 +282,23 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
 - Verified: 776 web unit tests (10 new), typecheck, Control build, 36/36 Incoming
   Jobs Playwright tests (1 new display-field case).
 
+## 2026-11-18 — Incoming Jobs list columns
+
+- The list's five columns were fixed. A **Columns** picker now toggles Destination,
+  Station, Received, Copies, Template, Source, Runner and Error code; Job, Status
+  and Actions stay fixed. Order is canonical (never click order), an empty value
+  renders an em dash, and adding the Station column stops the destination cell
+  from repeating the station.
+- New pure module `lib/jobColumns.ts` with 7 unit tests. The row and the head now
+  render from one column list, so the two cannot drift.
+- The choice is a workstation preference in `localStorage`
+  (`printops-control-jobs-columns`), like the locale - not URL state, because it
+  is presentation rather than a filter. Unreadable stored ids fall back to the
+  shipped default (Destination + Received).
+- Verified: 783 web unit tests, typecheck, Control build, 37/37 Incoming Jobs
+  Playwright tests (1 new column case: add, persist across reload, remove a
+  default, reset).
+
 ## Next, in order
 
 1. **Fold the paper-profile hotfix layers** (`paperProfilesLayoutHotfix`, `Closure`, `Completion`, `LibraryGeometryHotfix`) into `paperProfilesLibrary.css` / `paperProfilesEditor.css`, deleting `!important` as you go. Gate: `paper-profile-ux` and `paper-profile-layout-regression` e2e, which first need their pre-existing failures fixed so they can detect a regression. Then delete the entries from the hotfix list in `designTokens.test.ts`.

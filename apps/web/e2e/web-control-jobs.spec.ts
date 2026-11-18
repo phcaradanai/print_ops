@@ -420,6 +420,9 @@ const STRINGS = {
     connectionOnline: 'Online',
     fieldsButton: 'Display data',
     fieldsTitle: 'Data shown in cinema mode',
+    columnsButton: 'Columns',
+    columnsTitle: 'List columns',
+    columnsReset: 'Reset to default',
     staleCopy: ['Fleet Errors & Warnings', 'Total incoming jobs', 'Select a PrintOps Station'],
   },
   th: {
@@ -483,6 +486,9 @@ const STRINGS = {
     connectionOnline: 'ออนไลน์',
     fieldsButton: 'ข้อมูลที่แสดง',
     fieldsTitle: 'ข้อมูลที่แสดงในโหมดจอใหญ่',
+    columnsButton: 'คอลัมน์',
+    columnsTitle: 'คอลัมน์ในรายการงาน',
+    columnsReset: 'กลับค่าเริ่มต้น',
     staleCopy: ['สรุป Error ที่พบในระบบ', 'เลือกเครื่อง PrintOps เพื่อดูข้อมูล'],
   },
 } as const;
@@ -1537,6 +1543,62 @@ test('K. display fields put incoming values on the cinema rows, reference stays'
   await expect(
     deepBoard.getByRole('list', { name: s('en').cinemaFeed }).getByRole('listitem').first(),
   ).toContainText('Somchai Dee');
+});
+
+// ---------------------------------------------------------------------------
+// L. List columns
+// ---------------------------------------------------------------------------
+
+test('L. the column picker adds, removes and remembers list columns', async ({ page }) => {
+  await loadJobs(page, { viewport: { width: 1440, height: 900 }, deviceId: 'dev-john' });
+  await waitForList(page);
+
+  const head = page.locator('thead tr').first();
+  // Shipped default: the redesigned four-field row.
+  await expect(head).toContainText('Destination');
+  await expect(head).toContainText('Received');
+  await expect(head).not.toContainText('Copies');
+
+  const openPicker = async () => {
+    await page.getByRole('button', { name: s('en').columnsButton, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: s('en').columnsTitle });
+    await expect(dialog).toBeVisible();
+    return dialog;
+  };
+
+  let dialog = await openPicker();
+  await dialog.getByRole('checkbox', { name: 'Copies', exact: true }).check();
+  await dialog.getByRole('checkbox', { name: 'Template', exact: true }).check();
+  await page.keyboard.press('Escape');
+
+  await expect(head).toContainText('Copies');
+  await expect(head).toContainText('Template');
+  const row = rowFor(page, 'REQ-SUCCESS-0003');
+  await expect(row.locator('td[data-label="Copies"]')).toHaveText('2');
+  await expect(row.locator('td[data-label="Template"]')).toHaveText('PATIENT_LABEL');
+
+  // It is a workstation preference, so a reload keeps it.
+  await page.reload();
+  await waitForList(page);
+  await expect(page.locator('thead tr').first()).toContainText('Copies');
+
+  // A default column can be turned off; the fixed ones cannot.
+  dialog = await openPicker();
+  await dialog.getByRole('checkbox', { name: 'Received', exact: true }).uncheck();
+  await expect(dialog.getByRole('checkbox', { name: 'Job', exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('checkbox', { name: 'Status', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('thead tr').first()).not.toContainText('Received');
+
+  // Reset returns to the shipped set.
+  dialog = await openPicker();
+  await dialog.getByRole('button', { name: s('en').columnsReset, exact: true }).click();
+  await page.keyboard.press('Escape');
+  const restored = page.locator('thead tr').first();
+  await expect(restored).toContainText('Destination');
+  await expect(restored).toContainText('Received');
+  await expect(restored).not.toContainText('Copies');
+  await expect(restored).not.toContainText('Template');
 });
 
 // ---------------------------------------------------------------------------

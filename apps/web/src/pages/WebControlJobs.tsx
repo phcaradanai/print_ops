@@ -32,6 +32,15 @@ import {
   type StatusBucket,
 } from '../lib/controlJobsView.js';
 import {
+  DEFAULT_JOB_COLUMNS,
+  OPTIONAL_JOB_COLUMNS,
+  normalizeJobColumns,
+  readStoredJobColumns,
+  visibleJobColumns,
+  writeStoredJobColumns,
+  type JobColumnId,
+} from '../lib/jobColumns.js';
+import {
   Alert,
   Button,
   CardDetail,
@@ -303,6 +312,12 @@ export default function WebControlJobs() {
   const [page, setPage] = useState(1);
   const [drawerJobId, setDrawerJobId] = useState<string | null>(null);
   const [fieldsOpen, setFieldsOpen] = useState(false);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  /**
+   * Which list columns to show. A workstation preference (like the locale), so
+   * it lives in localStorage, not the URL - it is presentation, not a filter.
+   */
+  const [jobColumns, setJobColumns] = useState<JobColumnId[]>(() => readStoredJobColumns());
   const [reprintTargets, setReprintTargets] = useState<ControlSyncedJobItem[]>([]);
   const [reprintCopies, setReprintCopies] = useState(1);
   const [reprintReason, setReprintReason] = useState('');
@@ -591,6 +606,27 @@ export default function WebControlJobs() {
       );
     },
     [setSearchParams],
+  );
+
+  const visibleColumns = useMemo(() => visibleJobColumns(jobColumns), [jobColumns]);
+  /** All stations shows the station under the printer unless it has its own column. */
+  const showStationInDestination = isAllStations && !jobColumns.includes('station');
+
+  const updateJobColumns = useCallback((next: JobColumnId[]) => {
+    const normalized = normalizeJobColumns(next);
+    setJobColumns(normalized);
+    writeStoredJobColumns(normalized);
+  }, []);
+
+  const toggleJobColumn = useCallback(
+    (id: JobColumnId) => {
+      updateJobColumns(
+        jobColumns.includes(id)
+          ? jobColumns.filter((entry) => entry !== id)
+          : [...jobColumns, id],
+      );
+    },
+    [jobColumns, updateJobColumns],
   );
 
   // `deviceId` is the only URL state, so reaching another station through the
@@ -887,9 +923,137 @@ export default function WebControlJobs() {
     ? formatMsg(t('control.jobs.stationSubtitle'), { name: stationTitle(selectedDevice) })
     : t('control.jobs.description');
 
+  const jobColumnLabel = (id: JobColumnId): string => {
+    switch (id) {
+      case 'job':
+        return t('control.jobs.colJob');
+      case 'destination':
+        return t('control.jobs.colDestination');
+      case 'station':
+        return t('control.jobs.colStation');
+      case 'status':
+        return t('control.jobs.colStatus');
+      case 'received':
+        return t('control.jobs.colReceived');
+      case 'copies':
+        return t('control.jobs.detailCopies');
+      case 'template':
+        return t('control.jobs.detailTemplate');
+      case 'source':
+        return t('control.jobs.detailSource');
+      case 'runner':
+        return t('control.jobs.detailRunner');
+      case 'error':
+        return t('control.jobs.detailErrorCode');
+      case 'actions':
+        return t('control.jobs.colActions');
+    }
+  };
+
+  const emptyCell = (
+    <Text size="label" tone="muted">
+      —
+    </Text>
+  );
+
+  /**
+   * One cell per visible column. The optional columns are the only place a job
+   * value can be blank; they render an em dash rather than an empty cell so a
+   * column never looks broken.
+   */
+  const renderJobCell = (job: ControlSyncedJobItem, column: JobColumnId): ReactNode => {
+    switch (column) {
+      case 'job':
+        return (
+          <Mono size="label" weight="semibold" wrap title={job.requestId || job.id}>
+            {job.requestId || job.id}
+          </Mono>
+        );
+      case 'destination':
+        return (
+          <Stack gap="xs">
+            <Mono size="label" wrap>
+              {job.printerCode || job.printerId}
+            </Mono>
+            {showStationInDestination && (
+              <Text size="label" tone="muted" wrap>
+                {stationNameFor(job.deviceId)}
+              </Text>
+            )}
+          </Stack>
+        );
+      case 'station':
+        return (
+          <Text size="label" wrap>
+            {stationNameFor(job.deviceId)}
+          </Text>
+        );
+      case 'status': {
+        const verdict = getJobVerdict(job.status);
+        return (
+          <Stack gap="xs">
+            <StatusBadge status={job.status} size="sm" />
+            {jobNeedsAttention(job.status) && (
+              <Text size="label" tone="muted" wrap>
+                {t(verdictHeadlineKey(verdict))}
+              </Text>
+            )}
+          </Stack>
+        );
+      }
+      case 'received':
+        return (
+          <Text size="label" tone="muted" title={job.createdAt}>
+            {formatCreatedAt(job.createdAt)}
+          </Text>
+        );
+      case 'copies':
+        return <Text size="label">{job.copies}</Text>;
+      case 'template': {
+        const template = job.resolvedTemplateCode || job.templateCode;
+        return template ? (
+          <Mono size="label" wrap>
+            {template}
+          </Mono>
+        ) : (
+          emptyCell
+        );
+      }
+      case 'source':
+        return job.sourceSystem ? (
+          <Mono size="label" wrap>
+            {job.sourceSystem}
+          </Mono>
+        ) : (
+          emptyCell
+        );
+      case 'runner':
+        return job.runnerId ? (
+          <Mono size="label" wrap>
+            {job.runnerId}
+          </Mono>
+        ) : (
+          emptyCell
+        );
+      case 'error':
+        return job.errorCode ? (
+          <Text size="label" tone="danger" title={job.errorMessage}>
+            {job.errorCode}
+          </Text>
+        ) : (
+          emptyCell
+        );
+      case 'actions':
+        return (
+          <Button size="sm" variant="secondary" onClick={() => setDrawerJobId(job.id)}>
+            {t('control.jobs.viewJob')}
+          </Button>
+        );
+    }
+  };
+
   const renderJobRow = (job: ControlSyncedJobItem): ReactNode => {
     const isSelected = selectedJobIds.includes(job.id);
-    const verdict = getJobVerdict(job.status);
     const reference = job.requestId || job.id;
     return (
       <tr key={job.id} className={isSelected ? 'is-selected' : undefined}>
@@ -903,43 +1067,11 @@ export default function WebControlJobs() {
             />
           </DataCell>
         )}
-        <DataCell label={t('control.jobs.colJob')}>
-          <Mono size="label" weight="semibold" wrap title={reference}>
-            {reference}
-          </Mono>
-        </DataCell>
-        <DataCell label={t('control.jobs.colDestination')}>
-          <Stack gap="xs">
-            <Mono size="label" wrap>
-              {job.printerCode || job.printerId}
-            </Mono>
-            {isAllStations && (
-              <Text size="label" tone="muted" wrap>
-                {stationNameFor(job.deviceId)}
-              </Text>
-            )}
-          </Stack>
-        </DataCell>
-        <DataCell label={t('control.jobs.colStatus')}>
-          <Stack gap="xs">
-            <StatusBadge status={job.status} size="sm" />
-            {jobNeedsAttention(job.status) && (
-              <Text size="label" tone="muted" wrap>
-                {t(verdictHeadlineKey(verdict))}
-              </Text>
-            )}
-          </Stack>
-        </DataCell>
-        <DataCell label={t('control.jobs.receivedLabel')}>
-          <Text size="label" tone="muted" title={job.createdAt}>
-            {formatCreatedAt(job.createdAt)}
-          </Text>
-        </DataCell>
-        <DataCell label={t('control.jobs.colActions')} actions>
-          <Button size="sm" variant="secondary" onClick={() => setDrawerJobId(job.id)}>
-            {t('control.jobs.viewJob')}
-          </Button>
-        </DataCell>
+        {visibleColumns.map((column) => (
+          <DataCell key={column} label={jobColumnLabel(column)} actions={column === 'actions'}>
+            {renderJobCell(job, column)}
+          </DataCell>
+        ))}
       </tr>
     );
   };
@@ -959,11 +1091,9 @@ export default function WebControlJobs() {
               />
             </DataHead>
           )}
-          <DataHead>{t('control.jobs.colJob')}</DataHead>
-          <DataHead>{t('control.jobs.colDestination')}</DataHead>
-          <DataHead>{t('control.jobs.colStatus')}</DataHead>
-          <DataHead>{t('control.jobs.colReceived')}</DataHead>
-          <DataHead>{t('control.jobs.colActions')}</DataHead>
+          {visibleColumns.map((column) => (
+            <DataHead key={column}>{jobColumnLabel(column)}</DataHead>
+          ))}
         </tr>
       </thead>
     );
@@ -1126,6 +1256,9 @@ export default function WebControlJobs() {
                 </Button>
                 <Button variant="secondary" onClick={() => navigate('/control/devices')}>
                   {t('control.jobs.manageDevices')}
+                </Button>
+                <Button variant="secondary" onClick={() => setColumnsOpen(true)}>
+                  {t('control.jobs.columnsButton')}
                 </Button>
                 <Button variant="secondary" onClick={() => setFieldsOpen(true)}>
                   {t('control.cinema.fieldsButton')}
@@ -1844,6 +1977,39 @@ export default function WebControlJobs() {
             checked={reprintConfirmed}
             onChange={(event) => setReprintConfirmed(event.target.checked)}
           />
+        </Stack>
+      </Dialog>
+
+      <Dialog
+        open={columnsOpen}
+        onClose={() => setColumnsOpen(false)}
+        title={t('control.jobs.columnsTitle')}
+        closeLabel={t('common.close')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => updateJobColumns([...DEFAULT_JOB_COLUMNS])}>
+              {t('control.jobs.columnsReset')}
+            </Button>
+            <Button variant="primary" onClick={() => setColumnsOpen(false)}>
+              {t('common.close')}
+            </Button>
+          </>
+        }
+      >
+        <Stack gap="md">
+          <Text size="body" tone="muted">
+            {t('control.jobs.columnsHint')}
+          </Text>
+          <Stack gap="xs">
+            {OPTIONAL_JOB_COLUMNS.map((option) => (
+              <Checkbox
+                key={option.id}
+                checked={jobColumns.includes(option.id)}
+                onChange={() => toggleJobColumn(option.id)}
+                label={t(option.labelKey)}
+              />
+            ))}
+          </Stack>
         </Stack>
       </Dialog>
 
