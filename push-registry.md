@@ -1,3 +1,42 @@
+# Web Control 1.0.21
+
+Published for `linux/amd64` from `5e243ea` (2026-11-18), with the `1.0.21` version
+defaults in the accompanying release commit.
+
+- **Web Control**: the Incoming Jobs page was split into `SelectionBar`,
+  `JobDetailDrawer` and `JobTable` under `features/control-jobs/` (2,631 -> 2,117
+  lines), with no behaviour change: the batch bar still measures itself, the drawer
+  still owns its copy feedback, and the table still becomes record cards below
+  768px. The three copies of `{name}` interpolation collapsed into
+  `lib/formatMessage.ts`, and `copyTextToClipboard` into `lib/clipboard.ts`.
+- **API**: image slimming only. The build stage now drops `dist/tests`, every
+  `.d.ts` and every `.map`, so the image carries the JavaScript the server
+  executes and nothing else. Runtime source is unchanged since 1.0.17.
+- **Release tooling**: the publish workflow is `workflow_dispatch` only (it no
+  longer republishes a default tag when its own file changes), takes the version
+  with no default, and refuses to publish a tag that already exists.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.21` | `sha256:9b162390da254da46d7e9c45b94e31c9bcded3649a2fc0a6a138efe6aecbe962` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.21` | `sha256:d444caafb27f8d00abb1d64f5c6e3d2f1a46b09c1daf815601227d1371db2830` |
+
+`docker buildx imagetools inspect` returns those digests. Checked from the inside:
+the web entry bundle carries `1.0.21` and its 63 asset names match a local Control
+build with `VITE_CONTROL_APP=true VITE_CONTROL_PLANE_VERSION=1.0.21` exactly; the
+API image's `apps/api/dist` holds only `.js` files - zero `.d.ts`, zero `.map`, no
+`tests/`.
+
+Deploy with `PRINTOPS_CONTROL_PLANE_VERSION=1.0.21`; the PrintOps app image stays
+`0.1.50`. No station update, database migration, or configuration change is
+involved.
+
+```powershell
+$env:PRINTOPS_IMAGE_PREFIX = "registry.pg.xenex.io/printops-control-plane"
+$env:PRINTOPS_CONTROL_PLANE_VERSION = "1.0.21"
+node scripts/publish-control-plane-images.mjs
+```
+
 # Web Control 1.0.20
 
 Published for `linux/amd64` from `0b6f44d` (2026-11-18), with the `1.0.20` version
