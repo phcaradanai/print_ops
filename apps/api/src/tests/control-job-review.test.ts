@@ -103,4 +103,43 @@ describe('control job review acknowledgement', () => {
     await service.setJobReviewed('dev-1', 'missing-job', true, 'operator');
     expect(await audit.findByDeviceId('dev-1')).toHaveLength(0);
   });
+
+  it('records what the operator confirmed without rewriting the station status', async () => {
+    const service = registry();
+    await service.upsertDeviceJobs('dev-1', [job({ id: 'job-1', status: 'UNVERIFIED' })]);
+
+    await service.setJobReviewed('dev-1', 'job-1', true, 'operator', 'PRINTED');
+    let [synced] = await service.getDeviceJobs('dev-1');
+    expect(synced).toMatchObject({ status: 'UNVERIFIED', reviewedOutcome: 'PRINTED' });
+
+    // Confirming the opposite answer replaces it rather than stacking.
+    await service.setJobReviewed('dev-1', 'job-1', true, 'operator', 'NOT_PRINTED');
+    [synced] = await service.getDeviceJobs('dev-1');
+    expect(synced).toMatchObject({ status: 'UNVERIFIED', reviewedOutcome: 'NOT_PRINTED' });
+
+    // A plain acknowledgement carries no answer, and undo clears everything.
+    await service.setJobReviewed('dev-1', 'job-1', true, 'operator');
+    [synced] = await service.getDeviceJobs('dev-1');
+    expect(synced!.reviewedAt).toEqual(expect.any(String));
+    expect(synced!.reviewedOutcome).toBeUndefined();
+
+    await service.setJobReviewed('dev-1', 'job-1', true, 'operator', 'PRINTED');
+    await service.setJobReviewed('dev-1', 'job-1', false, 'operator');
+    [synced] = await service.getDeviceJobs('dev-1');
+    expect(synced!.reviewedAt).toBeUndefined();
+    expect(synced!.reviewedOutcome).toBeUndefined();
+  });
+
+  it('audits the confirmed outcome with the review record', async () => {
+    const audit = new InMemoryControlAuditRepository();
+    const service = registry(audit);
+    await service.upsertDeviceJobs('dev-1', [job({ id: 'job-1', status: 'UNVERIFIED' })]);
+    await service.setJobReviewed('dev-1', 'job-1', true, 'operator', 'NOT_PRINTED');
+
+    const [record] = await audit.findByDeviceId('dev-1');
+    expect(record).toMatchObject({
+      action: 'job.reviewed',
+      metadata: { jobId: 'job-1', status: 'UNVERIFIED', outcome: 'NOT_PRINTED' },
+    });
+  });
 });

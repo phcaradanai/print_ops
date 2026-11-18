@@ -384,15 +384,31 @@ export async function controlRoutes(
     { onRequest: [requirePermission('job:retry')] },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const { id, jobId } = req.params as { id: string; jobId: string };
-      const body = (req.body ?? {}) as { reviewed?: unknown };
+      const body = (req.body ?? {}) as { reviewed?: unknown; outcome?: unknown };
       if (typeof body.reviewed !== 'boolean') {
         return reply.status(400).send({
           error: 'VALIDATION_ERROR',
           message: '`reviewed` must be a boolean',
         });
       }
+      // `outcome` is what the operator confirmed about paper that came out. It is
+      // optional (a plain acknowledgement is still a valid triage note) but must
+      // be one of the two answers a person can actually give.
+      if (
+        body.outcome !== undefined &&
+        body.outcome !== null &&
+        body.outcome !== 'PRINTED' &&
+        body.outcome !== 'NOT_PRINTED'
+      ) {
+        return reply.status(400).send({
+          error: 'VALIDATION_ERROR',
+          message: '`outcome` must be PRINTED or NOT_PRINTED',
+        });
+      }
+      const outcome =
+        body.outcome === 'PRINTED' || body.outcome === 'NOT_PRINTED' ? body.outcome : undefined;
 
-      const found = await deps.registry.setJobReviewed(id, jobId, body.reviewed, actor(req));
+      const found = await deps.registry.setJobReviewed(id, jobId, body.reviewed, actor(req), outcome);
       if (!found) {
         return reply.status(404).send({
           error: 'NOT_FOUND',
@@ -400,7 +416,7 @@ export async function controlRoutes(
         });
       }
 
-      return reply.send({ reviewed: body.reviewed });
+      return reply.send({ reviewed: body.reviewed, outcome: body.reviewed ? outcome ?? null : null });
     },
   );
 

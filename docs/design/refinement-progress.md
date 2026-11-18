@@ -1,5 +1,12 @@
 # Refinement progress
 
+## 2026-11-18 — Import Linux CUPS queues from Printers
+
+The Printers page on Linux offers **Add CUPS printer**. It tests and saves
+the CUPS server address, then lists queues for registration. A registered
+queue can be selected in Sandbox and printer bindings. The dialog reuses
+shared form controls. Queues must already be configured and shared in CUPS.
+
 ## 2026-11-18 — Web Control job-mirror retention and paging
 
 The Incoming Jobs mirror (`control_device_jobs`) had no cleanup. The station's
@@ -361,6 +368,33 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   acknowledgement), typecheck for both workspaces, Control build, 43/43 Incoming
   Jobs Playwright tests (1 new: reviewed job leaves Needs review with its status
   intact), full suite 141 passed.
+
+## 2026-11-18 — Incoming Jobs: confirm what happened, and filter by it
+
+Reported: an UNVERIFIED row only offered a bare "reviewed" mark, the "printed -
+cannot be confirmed" note kept showing after somebody had actually checked, and
+there was no way to filter by status at all - the buckets answer "what needs me?",
+never "show me UNVERIFIED".
+
+- **The drawer asks the real question.** Two buttons, *Confirm: it printed* and
+  *Confirm: it did not print*, store `reviewed_outcome` (`PRINTED` /
+  `NOT_PRINTED`) beside the acknowledgement. Additive column, no schema bump, and
+  the station status is still never rewritten.
+- **The row states the move.** `UNVERIFIED → it printed` under the status badge
+  instead of relabelling the job; the drawer says the same plus who confirmed it.
+- **The unconfirmed warning is shown only while it is still unconfirmed.**
+- **Exact status filter** (any single server status) and **Confirmed outcome
+  filter** (any / not confirmed yet / printed / did not print) in the advanced
+  panel, both applied to the base set so count chips and rows agree, both visible
+  and removable in the active-filters row, both reset by Clear all.
+- **Undo clears both**, and the API ignores an outcome on an un-acknowledgement.
+- API: `POST /control/devices/:id/jobs/:jobId/review` accepts an optional
+  `outcome`, validates it against the two answers, audits it, and reads it back in
+  the fleet payload.
+- Verified: 740 API tests (2 new: outcome stored/replaced/cleared, audited with
+  the review) and 816 web unit tests; 64/64 Incoming Jobs Playwright tests (the
+  review test now proves the transition, the cleared warning and the undo; one new
+  test proves both filters and their chips).
 
 ## 2026-11-18 — Incoming Jobs: the technical details can leave the search
 

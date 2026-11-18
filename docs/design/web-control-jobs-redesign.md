@@ -287,7 +287,6 @@ intact by default.
   layout. It is hidden while the table is untouched, so it never adds noise.
 
 ### 3.4 Acknowledged outcomes (2026-11-18)
-
 `UNVERIFIED`, `TIMEOUT` and `FAILED` mean the operator cannot tell whether paper
 moved. That is a question for a human, but once someone has physically checked
 the printer the row should stop shouting. The acknowledgement is therefore a
@@ -325,6 +324,31 @@ the timestamp.
 - **Audited.** `setJobReviewed` writes a `control/audit` record
   (`job.reviewed` / `job.unreviewed`) with the actor, the job id and the status
   the job carried, like every other mutation on the control plane.
+
+#### 3.4.1 The confirmed outcome (2026-11-18)
+
+A bare "reviewed" mark told the next shift nothing: the question an UNVERIFIED
+row asks is *did paper come out*, and the answer decides whether reprinting is
+safe. The drawer therefore asks that question directly.
+
+- **Two answers, both a person's evidence.** `Confirm: it printed` and
+  `Confirm: it did not print` write `reviewed_outcome` (`PRINTED` /
+  `NOT_PRINTED`) beside the acknowledgement. The station's `status` is still never
+  rewritten - the mirror keeps reporting exactly what the hardware said.
+- **The row states the move, not a new label.** Instead of a badge pretending the
+  job is something else, the row reads `UNVERIFIED → it printed` and the drawer
+  reads the same with who confirmed it. Nothing is drawn over the status word.
+- **The warning stops once answered.** "Print output is unconfirmed - check
+  whether a copy already came out" is advice for an open question, so it is shown
+  only while no outcome is recorded.
+- **Undo clears both.** One button removes the acknowledgement and the outcome;
+  `reviewed: false` ignores any outcome sent with it, because "not reviewed, but
+  printed" is a state nobody can act on.
+- **Both are filterable.** The advanced panel gains **Exact status** (any single
+  server status: `UNVERIFIED`, `FAILED`, `TIMEOUT`, ...) and **Confirmed outcome**
+  (any / not confirmed yet / printed / did not print). Both apply to the base set,
+  so the count chips and the rows agree, and both appear as removable conditions
+  in the active-filters row. Clear all resets them.
 
 ### 3.5 Cinema panels (2026-11-18)
 

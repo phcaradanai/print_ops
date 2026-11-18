@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { JOB_STATUSES, type JobStatus } from '@printerops/domain';
 import { apiFetch } from '../api/client.js';
 import { useHasPermission } from '../api/session.js';
 import { errorMessage } from '../api/errors.js';
@@ -121,9 +122,14 @@ export interface ControlSyncedJobItem extends FilterableJob {
   reprintOfJobId?: string;
   reprintOfRequestId?: string;
   reprintReason?: string;
-  /** Control-plane acknowledgement: checked by an operator, status unchanged. */
+  /**
+   * Control-plane acknowledgement: an operator checked the physical outcome. The
+   * station status is never rewritten, so `reviewedOutcome` is what the person
+   * confirmed (paper came out, or it did not) and the row shows the move.
+   */
   reviewedAt?: string;
   reviewedBy?: string;
+  reviewedOutcome?: 'PRINTED' | 'NOT_PRINTED';
 }
 
 export interface ControlStationErrorBreakdown {
@@ -286,6 +292,17 @@ export default function WebControlJobs() {
   const [keyFilters, setKeyFilters] = useState<JobKeyFilter[]>([]);
   const [pendingKey, setPendingKey] = useState('');
   const [pendingValue, setPendingValue] = useState('');
+  /**
+   * One exact server status (UNVERIFIED, FAILED, TIMEOUT, ...). The bucket chips
+   * answer "what needs me?", this answers "show me that status" - the question an
+   * operator asks once they know what they are hunting.
+   */
+  const [statusFilter, setStatusFilter] = useState<JobStatus | 'ALL'>('ALL');
+  /**
+   * The other half of "what is this job now": what an operator confirmed about
+   * the paper. Kept apart from the server status, which never changes.
+   */
+  const [outcomeFilter, setOutcomeFilter] = useState<'ALL' | 'PRINTED' | 'NOT_PRINTED' | 'AWAITING'>('ALL');
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // Selection, drawer and dialogs.
@@ -429,15 +446,30 @@ export default function WebControlJobs() {
   const baseJobs = useMemo(
     () =>
       filterAndGroupJobs(scopeJobs, {
-        status: 'ALL',
+        status: statusFilter,
         search: jobSearch,
         datePreset,
         dateFrom,
         dateTo,
         keyFilters,
         searchTechnical,
-      }).filteredJobs,
-    [scopeJobs, jobSearch, datePreset, dateFrom, dateTo, keyFilters, searchTechnical],
+      })
+        .filteredJobs.filter((job) => {
+          if (outcomeFilter === 'ALL') return true;
+          if (outcomeFilter === 'AWAITING') return !job.reviewedOutcome;
+          return job.reviewedOutcome === outcomeFilter;
+        }),
+    [
+      scopeJobs,
+      jobSearch,
+      datePreset,
+      dateFrom,
+      dateTo,
+      keyFilters,
+      searchTechnical,
+      statusFilter,
+      outcomeFilter,
+    ],
   );
 
   /**
@@ -612,6 +644,8 @@ export default function WebControlJobs() {
     setReprintTargets([]);
     setReprintConfirmed(false);
     setSearchTechnical(true);
+    setStatusFilter('ALL');
+    setOutcomeFilter('ALL');
   }, []);
 
   /** Station changes rebuild the URL, but the cinema display fields are config, not a filter. */
@@ -959,6 +993,8 @@ export default function WebControlJobs() {
   const clearAllFilters = useCallback(() => {
     setJobSearch('');
     setSearchTechnical(true);
+    setStatusFilter('ALL');
+    setOutcomeFilter('ALL');
     setStatusBucket('ALL');
     setReviewedOnly(false);
     setDatePreset('all');
@@ -996,8 +1032,16 @@ export default function WebControlJobs() {
     setNotice(null);
   };
 
-  const handleToggleReview = async (job: ControlSyncedJobItem) => {
-    const reviewed = !job.reviewedAt;
+  /**
+   * Acknowledge a job, optionally with the answer only a person can give: did
+   * paper come out? The outcome rides beside the acknowledgement - it never
+   * rewrites the station status - and `reviewed: false` clears both.
+   */
+  const handleReview = async (
+    job: ControlSyncedJobItem,
+    reviewed: boolean,
+    outcome?: 'PRINTED' | 'NOT_PRINTED',
+  ) => {
     setReviewBusyJobId(job.id);
     try {
       await apiFetch(
@@ -1005,15 +1049,19 @@ export default function WebControlJobs() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reviewed }),
+          body: JSON.stringify({ reviewed, ...(outcome ? { outcome } : {}) }),
         },
       );
       fleetResource.refresh();
       setNotice({
         tone: 'success',
-        message: reviewed
-          ? t('control.jobs.reviewedNotice')
-          : t('control.jobs.reviewUndoneNotice'),
+        message: !reviewed
+          ? t('control.jobs.reviewUndoneNotice')
+          : outcome === 'PRINTED'
+            ? t('control.jobs.resolvedPrintedNotice')
+            : outcome === 'NOT_PRINTED'
+              ? t('control.jobs.resolvedNotPrintedNotice')
+              : t('control.jobs.reviewedNotice'),
       });
     } catch (err) {
       setNotice({
@@ -1225,9 +1273,24 @@ export default function WebControlJobs() {
    * condition like any other: visible while it is on, removable in one click.
    */
   const technicalCondition = searchTechnical ? '' : t('control.jobs.filterNoTechnical');
+  const statusFilterCondition =
+    statusFilter !== 'ALL' ? formatMsg(t('control.jobs.filterExactStatus'), { value: statusFilter }) : '';
+  const outcomeCondition =
+    outcomeFilter === 'ALL'
+      ? ''
+      : outcomeFilter === 'AWAITING'
+        ? t('control.jobs.filterOutcomeAwaiting')
+        : formatMsg(t('control.jobs.filterOutcome'), {
+            value:
+              outcomeFilter === 'PRINTED'
+                ? t('control.jobs.outcomePrinted')
+                : t('control.jobs.outcomeNotPrinted'),
+          });
   const hasActiveConditions = Boolean(
     searchCondition ||
       statusCondition ||
+      statusFilterCondition ||
+      outcomeCondition ||
       dateCondition ||
       groupCondition ||
       technicalCondition ||
@@ -1431,8 +1494,18 @@ export default function WebControlJobs() {
               </Text>
             )}
             {job.reviewedAt && (
+              /* The move, not a relabelled job: the status stays the station's own
+                 word and this line says what the operator confirmed on top of it. */
               <Text size="label" tone="muted" wrap>
-                {t('control.jobs.reviewedLabel')}
+                {job.reviewedOutcome
+                  ? formatMsg(t('control.jobs.resolvedTransitionShort'), {
+                      from: job.status,
+                      to:
+                        job.reviewedOutcome === 'PRINTED'
+                          ? t('control.jobs.outcomePrinted')
+                          : t('control.jobs.outcomeNotPrinted'),
+                    })
+                  : t('control.jobs.reviewedLabel')}
               </Text>
             )}
           </Stack>
@@ -1752,6 +1825,42 @@ export default function WebControlJobs() {
                   >
                     <Stack gap="md">
                       <Grid columns={3} gap="md">
+                        <FormField label={t('control.jobs.outcomeLabel')}>
+                          {(control) => (
+                            <Select
+                              {...control}
+                              value={outcomeFilter}
+                              onChange={(event) =>
+                                setOutcomeFilter(event.target.value as typeof outcomeFilter)
+                              }
+                            >
+                              <option value="ALL">{t('control.jobs.outcomeAll')}</option>
+                              <option value="AWAITING">{t('control.jobs.outcomeAwaiting')}</option>
+                              <option value="PRINTED">{t('control.jobs.outcomePrinted')}</option>
+                              <option value="NOT_PRINTED">
+                                {t('control.jobs.outcomeNotPrinted')}
+                              </option>
+                            </Select>
+                          )}
+                        </FormField>
+                        <FormField label={t('control.jobs.exactStatusLabel')}>
+                          {(control) => (
+                            <Select
+                              {...control}
+                              value={statusFilter}
+                              onChange={(event) =>
+                                setStatusFilter(event.target.value as JobStatus | 'ALL')
+                              }
+                            >
+                              <option value="ALL">{t('control.jobs.exactStatusAll')}</option>
+                              {JOB_STATUSES.map((status) => (
+                                <option key={status} value={status}>
+                                  {status}
+                                </option>
+                              ))}
+                            </Select>
+                          )}
+                        </FormField>
                         <FormField label={t('control.jobs.dateFromLabel')}>
                           {(control) => (
                             <Input
@@ -1927,6 +2036,24 @@ export default function WebControlJobs() {
                     {groupCondition && (
                       <Chip aria-label={removeLabel(groupCondition)} onClick={() => setGroupBy('none')}>
                         {groupCondition}
+                        <span aria-hidden="true">{' ×'}</span>
+                      </Chip>
+                    )}
+                    {statusFilterCondition && (
+                      <Chip
+                        aria-label={removeLabel(statusFilterCondition)}
+                        onClick={() => setStatusFilter('ALL')}
+                      >
+                        {statusFilterCondition}
+                        <span aria-hidden="true">{' ×'}</span>
+                      </Chip>
+                    )}
+                    {outcomeCondition && (
+                      <Chip
+                        aria-label={removeLabel(outcomeCondition)}
+                        onClick={() => setOutcomeFilter('ALL')}
+                      >
+                        {outcomeCondition}
                         <span aria-hidden="true">{' ×'}</span>
                       </Chip>
                     )}
@@ -2110,7 +2237,8 @@ export default function WebControlJobs() {
         canReprint={canReprint}
         reviewBusy={drawerJob !== null && reviewBusyJobId === drawerJob.id}
         onClose={() => setDrawerJobId(null)}
-        onToggleReview={(job) => void handleToggleReview(job)}
+        onToggleReview={(job) => void handleReview(job, !job.reviewedAt)}
+        onResolve={(job, outcome) => void handleReview(job, true, outcome)}
         onReprint={(job) => {
           setDrawerJobId(null);
           openReprintDialog([job]);

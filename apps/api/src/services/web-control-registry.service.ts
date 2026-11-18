@@ -10,6 +10,7 @@ import type {
   CreateEnrollmentTokenInput,
   EnrollmentTokenRepositoryPort,
   ControlAuditRepositoryPort,
+  ControlReviewOutcome,
 } from '@printerops/domain';
 import { AppError, ConflictError, NotFoundError, ValidationError, generateId } from '@printerops/shared';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -219,7 +220,10 @@ export class WebControlRegistryService {
    * mirror so a station sync never rewrites it; the station's job status and
    * payload are untouched.
    */
-  private readonly reviewedJobs = new Map<string, { reviewedAt: string; reviewedBy: string }>();
+  private readonly reviewedJobs = new Map<
+    string,
+    { reviewedAt: string; reviewedBy: string; reviewedOutcome?: ControlReviewOutcome }
+  >();
   private lastAutoDiscoveryAt = 0;
   private automaticDiscoveryInFlight?: Promise<void>;
   private readonly lastJobSyncAt = new Map<string, number>();
@@ -509,6 +513,12 @@ export class WebControlRegistryService {
    * job is not in the mirror, so the route can answer 404 instead of pretending
    * the acknowledgement landed.
    *
+   * `outcome` is the answer an operator gives about paper that actually came out
+   * when the station could not confirm it. It is stored beside the
+   * acknowledgement and never in `status`: the mirror keeps reporting exactly
+   * what the hardware said, and the page shows the move instead of rewriting the
+   * job's own word.
+   *
    * The acknowledgement is a triage decision an operator made about physical
    * output, so it is audited like every other mutation here: when someone asks
    * later who cleared an UNVERIFIED job and when, `control/audit` has the answer
@@ -519,21 +529,25 @@ export class WebControlRegistryService {
     jobId: string,
     reviewed: boolean,
     reviewedBy: string,
+    outcome?: ControlReviewOutcome,
   ): Promise<boolean> {
     const key = this.reviewKey(deviceId, jobId);
     const job = this.deviceJobs.get(deviceId)?.get(jobId);
     let found = job != null;
+    // Ignore an outcome on an un-acknowledgement: "not reviewed, but printed"
+    // would be a state nobody can act on.
+    const storedOutcome = reviewed ? (outcome ?? null) : null;
 
     if (this.useSqlite) {
       const db = getDb();
       if (reviewed) {
         db.run(
-          'UPDATE control_device_jobs SET reviewed_at = ?, reviewed_by = ? WHERE device_id = ? AND job_id = ?',
-          [new Date().toISOString(), reviewedBy, deviceId, jobId],
+          'UPDATE control_device_jobs SET reviewed_at = ?, reviewed_by = ?, reviewed_outcome = ? WHERE device_id = ? AND job_id = ?',
+          [new Date().toISOString(), reviewedBy, storedOutcome, deviceId, jobId],
         );
       } else {
         db.run(
-          'UPDATE control_device_jobs SET reviewed_at = NULL, reviewed_by = NULL WHERE device_id = ? AND job_id = ?',
+          'UPDATE control_device_jobs SET reviewed_at = NULL, reviewed_by = NULL, reviewed_outcome = NULL WHERE device_id = ? AND job_id = ?',
           [deviceId, jobId],
         );
       }
@@ -542,8 +556,15 @@ export class WebControlRegistryService {
 
     if (!found) return false;
 
-    if (reviewed) this.reviewedJobs.set(key, { reviewedAt: new Date().toISOString(), reviewedBy });
-    else this.reviewedJobs.delete(key);
+    if (reviewed) {
+      this.reviewedJobs.set(key, {
+        reviewedAt: new Date().toISOString(),
+        reviewedBy,
+        ...(storedOutcome ? { reviewedOutcome: storedOutcome } : {}),
+      });
+    } else {
+      this.reviewedJobs.delete(key);
+    }
 
     if (this.audit) {
       await this.audit.record({
@@ -551,7 +572,11 @@ export class WebControlRegistryService {
         deviceId,
         action: reviewed ? 'job.reviewed' : 'job.unreviewed',
         requestedAt: new Date(),
-        metadata: { jobId, status: this.auditStatusFor(deviceId, jobId, job) },
+        metadata: {
+          jobId,
+          status: this.auditStatusFor(deviceId, jobId, job),
+          outcome: storedOutcome,
+        },
       });
     }
     return true;
@@ -590,14 +615,19 @@ export class WebControlRegistryService {
   private withReview(deviceId: string, job: ControlSyncedJob): ControlSyncedJob {
     const review = this.reviewedJobs.get(this.reviewKey(deviceId, job.id));
     if (!review) return job;
-    return { ...job, reviewedAt: review.reviewedAt, reviewedBy: review.reviewedBy };
+    return {
+      ...job,
+      reviewedAt: review.reviewedAt,
+      reviewedBy: review.reviewedBy,
+      ...(review.reviewedOutcome ? { reviewedOutcome: review.reviewedOutcome } : {}),
+    };
   }
 
   async getDeviceJobs(deviceId: string): Promise<ControlSyncedJob[]> {
     if (this.useSqlite) {
       const db = getDb();
       const stmt = db.prepare(
-        'SELECT job_json, reviewed_at, reviewed_by FROM control_device_jobs WHERE device_id = ? ORDER BY created_at DESC LIMIT 1000',
+        'SELECT job_json, reviewed_at, reviewed_by, reviewed_outcome FROM control_device_jobs WHERE device_id = ? ORDER BY created_at DESC LIMIT 1000',
       );
       stmt.bind([deviceId]);
       const rows: ControlSyncedJob[] = [];
@@ -612,9 +642,18 @@ export class WebControlRegistryService {
               if (normalized) {
                 const reviewedAt = typeof row['reviewed_at'] === 'string' ? row['reviewed_at'] : undefined;
                 const reviewedBy = typeof row['reviewed_by'] === 'string' ? row['reviewed_by'] : undefined;
+                const reviewedOutcome =
+                  row['reviewed_outcome'] === 'PRINTED' || row['reviewed_outcome'] === 'NOT_PRINTED'
+                    ? (row['reviewed_outcome'] as ControlReviewOutcome)
+                    : undefined;
                 rows.push(
                   reviewedAt
-                    ? { ...normalized, reviewedAt, ...(reviewedBy ? { reviewedBy } : {}) }
+                    ? {
+                        ...normalized,
+                        reviewedAt,
+                        ...(reviewedBy ? { reviewedBy } : {}),
+                        ...(reviewedOutcome ? { reviewedOutcome } : {}),
+                      }
                     : normalized,
                 );
               }

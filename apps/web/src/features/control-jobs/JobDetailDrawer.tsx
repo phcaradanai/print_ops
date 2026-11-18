@@ -62,6 +62,7 @@ export interface DrawerJob {
   updatedAt?: string;
   reviewedAt?: string;
   reviewedBy?: string;
+  reviewedOutcome?: 'PRINTED' | 'NOT_PRINTED';
   payload?: Record<string, unknown>;
   payloadSnapshot?: string;
 }
@@ -75,6 +76,8 @@ export interface JobDetailDrawerProps {
   reviewBusy: boolean;
   onClose: () => void;
   onToggleReview: (job: DrawerJob) => void;
+  /** Confirm what actually happened to the paper, when the station could not. */
+  onResolve: (job: DrawerJob, outcome: 'PRINTED' | 'NOT_PRINTED') => void;
   onReprint: (job: DrawerJob) => void;
 }
 
@@ -108,6 +111,7 @@ export function JobDetailDrawer({
   reviewBusy,
   onClose,
   onToggleReview,
+  onResolve,
   onReprint,
 }: JobDetailDrawerProps) {
   const { t } = useLocale();
@@ -211,13 +215,31 @@ export function JobDetailDrawer({
       className="wcj-detail-drawer"
       footer={
         <>
-          {job && reviewable && (
+          {job && reviewable && (job.reviewedAt ? (
             <Button variant="secondary" busy={reviewBusy} onClick={() => onToggleReview(job)}>
-              {job.reviewedAt
-                ? t('control.jobs.unmarkReviewed')
-                : t('control.jobs.markReviewed')}
+              {t('control.jobs.unmarkReviewed')}
             </Button>
-          )}
+          ) : (
+            <>
+              {/* The answer only a person can give: did paper come out? Two
+                  buttons, because "reviewed" alone left the operator guessing
+                  what the next shift should do with the row. */}
+              <Button
+                variant="secondary"
+                busy={reviewBusy && job.reviewedOutcome !== 'PRINTED'}
+                onClick={() => onResolve(job, 'PRINTED')}
+              >
+                {t('control.jobs.confirmPrinted')}
+              </Button>
+              <Button
+                variant="secondary"
+                busy={reviewBusy && job.reviewedOutcome !== 'NOT_PRINTED'}
+                onClick={() => onResolve(job, 'NOT_PRINTED')}
+              >
+                {t('control.jobs.confirmNotPrinted')}
+              </Button>
+            </>
+          ))}
           <Button variant="secondary" onClick={onClose}>
             {t('common.close')}
           </Button>
@@ -290,14 +312,25 @@ export function JobDetailDrawer({
           {reviewable && (
             <Text size="label" tone="muted" wrap>
               {job.reviewedAt
-                ? formatMessage(t('control.jobs.reviewedByHint'), {
-                    name: job.reviewedBy ?? '',
-                  })
+                ? job.reviewedOutcome
+                  ? formatMessage(t('control.jobs.resolvedTransition'), {
+                      from: job.status,
+                      to:
+                        job.reviewedOutcome === 'PRINTED'
+                          ? t('control.jobs.outcomePrinted')
+                          : t('control.jobs.outcomeNotPrinted'),
+                      name: job.reviewedBy ?? '',
+                    })
+                  : formatMessage(t('control.jobs.reviewedByHint'), {
+                      name: job.reviewedBy ?? '',
+                    })
                 : t('control.jobs.reviewedHint')}
             </Text>
           )}
 
-          {verdict?.outcomeUnknown && (
+          {/* The warning answers a question the operator has now answered, so it
+              stops being shown once an outcome is confirmed. */}
+          {verdict?.outcomeUnknown && !job.reviewedOutcome && (
             <Alert tone="warning" title={t('control.jobs.detailUnconfirmedTitle')}>
               {t('control.jobs.detailUnconfirmedBody')}
             </Alert>

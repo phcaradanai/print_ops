@@ -177,6 +177,9 @@ function ensureOptionalControlExtensions(db: Database): void {
     // Additive on purpose: the station's status and payload stay untouched.
     ensureColumn(db, 'control_device_jobs', 'reviewed_at', 'TEXT');
     ensureColumn(db, 'control_device_jobs', 'reviewed_by', 'TEXT');
+    // What the operator confirmed (PRINTED / NOT_PRINTED), when they could say.
+    // Also additive: an older mirror simply has no answer recorded.
+    ensureColumn(db, 'control_device_jobs', 'reviewed_outcome', 'TEXT');
   }
 }
 

@@ -431,6 +431,16 @@ const STRINGS = {
     reprintSelected: 'Re-print Selected',
     reprintDialogGeneric: 'Reprint job',
     markReviewed: 'Mark as reviewed',
+    confirmPrinted: 'Confirm: it printed',
+    confirmNotPrinted: 'Confirm: it did not print',
+    resolvedPrintedNotice: 'Confirmed the copy came out at the printer.',
+    detailUnconfirmedTitle: 'Print output is unconfirmed',
+    detailUnconfirmedBody:
+      'Check whether a copy already came out at the destination printer before reprinting.',
+    exactStatusLabel: 'Exact status',
+    outcomeLabel: 'Confirmed outcome',
+    filterExactStatus: 'Status is',
+    filterOutcome: 'Outcome is',
     unmarkReviewed: 'Undo review',
     sortLabel: 'Sort',
     needsReviewFirstHint: 'Jobs that need review are shown first.',
@@ -518,6 +528,16 @@ const STRINGS = {
     reprintSelected: 'สั่งพิมพ์ซ้ำที่เลือก',
     reprintDialogGeneric: 'พิมพ์งานซ้ำ',
     markReviewed: 'ทำเครื่องหมายว่าตรวจสอบแล้ว',
+    confirmPrinted: 'ยืนยัน: พิมพ์ออกมาแล้ว',
+    confirmNotPrinted: 'ยืนยัน: ยังไม่ได้พิมพ์',
+    resolvedPrintedNotice: 'ยืนยันว่าเอกสารพิมพ์ออกมาที่เครื่องพิมพ์แล้ว',
+    detailUnconfirmedTitle: 'ยังไม่ยืนยันผลการพิมพ์',
+    detailUnconfirmedBody:
+      'ตรวจสอบว่ามีสติกเกอร์ออกมาที่เครื่องพิมพ์ปลายทางแล้วหรือไม่ ก่อนสั่งพิมพ์ซ้ำ',
+    exactStatusLabel: 'สถานะที่ต้องการ',
+    outcomeLabel: 'ผลที่ยืนยันแล้ว',
+    filterExactStatus: 'สถานะเป็น',
+    filterOutcome: 'ผลการยืนยัน:',
     unmarkReviewed: 'ยกเลิกเครื่องหมายตรวจสอบ',
     sortLabel: 'เรียงลำดับ',
     needsReviewFirstHint: 'งานที่ต้องตรวจสอบจะแสดงก่อน',
@@ -2072,8 +2092,11 @@ test('P. the multi-action bar still fits a 390px screen', async ({ page }) => {
   expect(spacer!.height).toBeGreaterThanOrEqual(box!.height);
 });
 
-test('Q. a reviewed UNVERIFIED job leaves Needs review and keeps its status', async ({ page }) => {
+test('Q. confirming an UNVERIFIED outcome shows the move and clears the warning', async ({
+  page,
+}) => {
   let reviewed = false;
+  let outcome: string | null = null;
   const fleet = fleetResponse();
 
   await installHarness(page, {
@@ -2085,14 +2108,24 @@ test('Q. a reviewed UNVERIFIED job leaves Needs review and keeps its status', as
         const target = snapshot.devices[0]!.jobs.find(
           (job) => job.requestId === 'REQ-UNVERIFIED-0001',
         );
-        if (target && reviewed) target.reviewedAt = '2026-11-18T09:31:00.000Z';
+        if (target && reviewed) {
+          target.reviewedAt = '2026-11-18T09:31:00.000Z';
+          if (outcome) (target as { reviewedOutcome?: string }).reviewedOutcome = outcome;
+        }
         await route.fulfill({ json: snapshot });
         return true;
       }
-      if (/\/api\/v1\/control\/devices\/[^/]+\/jobs\/[^/]+\/review$/.test(url.pathname) && method === 'POST') {
-        const body = JSON.parse(route.request().postData() ?? '{}') as { reviewed?: boolean };
+      if (
+        /\/api\/v1\/control\/devices\/[^/]+\/jobs\/[^/]+\/review$/.test(url.pathname) &&
+        method === 'POST'
+      ) {
+        const body = JSON.parse(route.request().postData() ?? '{}') as {
+          reviewed?: boolean;
+          outcome?: string;
+        };
         reviewed = body.reviewed === true;
-        await route.fulfill({ json: { reviewed } });
+        outcome = reviewed ? (body.outcome ?? null) : null;
+        await route.fulfill({ json: { reviewed, outcome } });
         return true;
       }
       return false;
@@ -2107,17 +2140,73 @@ test('Q. a reviewed UNVERIFIED job leaves Needs review and keeps its status', as
 
   const drawer = await openDetails(page, 'REQ-UNVERIFIED-0001');
   await expect(drawer.getByText(s('en').reviewedHint, { exact: false })).toBeVisible();
-  await drawer.getByRole('button', { name: s('en').markReviewed, exact: true }).click();
+  // The drawer used to offer a bare "reviewed" mark; it now asks the only
+  // question a person can answer about unconfirmed paper.
+  await drawer.getByRole('button', { name: s('en').confirmPrinted, exact: true }).click();
 
-  await expect(page.getByText(s('en').reviewedNotice)).toBeVisible();
+  await expect(page.getByText(s('en').resolvedPrintedNotice)).toBeVisible();
   await expect(needsReview).toContainText('2');
 
-  // The station's status and verdict stay exactly as reported; only the triage
-  // bucket moved, and the row says why.
+  // The station's status stays its own word; the row states the move instead.
   const row = rowFor(page, 'REQ-UNVERIFIED-0001');
   await expect(row).toContainText('UNVERIFIED');
-  await expect(row).toContainText('Reviewed');
+  await expect(row).toContainText('it printed');
+  // The "printed - cannot be confirmed" warning is answered, so it is gone.
+  await expect(
+    drawer.getByText(s('en').detailUnconfirmedTitle, { exact: false }),
+  ).toHaveCount(0);
+  await expect(
+    drawer.getByText(s('en').detailUnconfirmedBody, { exact: false }),
+  ).toHaveCount(0);
   await expect(drawer.getByRole('button', { name: s('en').unmarkReviewed, exact: true })).toBeVisible();
+});
+
+test('Q. the confirmed outcome and the exact status are both filterable', async ({ page }) => {
+  // Deep copy: `fleetResponse()` hands back the shared fixture arrays, and marking
+  // a job here would change what every later test sees.
+  const fleet = JSON.parse(JSON.stringify(fleetResponse())) as ReturnType<typeof fleetResponse>;
+  const unverified = fleet.devices[0]!.jobs.find((job) => job.requestId === 'REQ-UNVERIFIED-0001');
+  if (unverified) {
+    unverified.reviewedAt = '2026-11-18T09:31:00.000Z';
+    (unverified as { reviewedOutcome?: string }).reviewedOutcome = 'PRINTED';
+  }
+
+  await installHarness(page, {
+    locale: 'en',
+    role: 'OWNER',
+    api: async (url, route, method) => {
+      if (url.pathname === '/api/v1/control/jobs' && method === 'GET') {
+        await route.fulfill({ json: fleet });
+        return true;
+      }
+      return false;
+    },
+  });
+  await page.goto('/control/jobs?deviceId=dev-john');
+  await waitForList(page);
+
+  await page.getByRole('button', { name: s('en').advanced, exact: true }).click();
+
+  // Exact status: only the UNVERIFIED rows.
+  const statusSelect = page.getByLabel(s('en').exactStatusLabel);
+  await statusSelect.selectOption('UNVERIFIED');
+  await expect(rows(page)).toHaveCount(2);
+  const texts = await rowTexts(page);
+  expect(texts.every((text) => text.includes('UNVERIFIED'))).toBe(true);
+
+  // Confirmed outcome: only what an operator confirmed.
+  const outcomeSelect = page.getByLabel(s('en').outcomeLabel);
+  await outcomeSelect.selectOption('PRINTED');
+  await expect(rows(page)).toHaveCount(1);
+  await expect(rows(page).first()).toContainText('REQ-UNVERIFIED-0001');
+  await expect(rows(page).first()).toContainText('it printed');
+
+  // Both conditions are visible and removable on their own.
+  const active = page.getByRole('toolbar', { name: s('en').activeFilters });
+  await expect(active.getByRole('button', { name: `Remove ${s('en').filterExactStatus}`, exact: false })).toBeVisible();
+  await expect(active.getByRole('button', { name: `Remove ${s('en').filterOutcome}`, exact: false })).toBeVisible();
+  await page.getByRole('button', { name: s('en').clearAll, exact: true }).first().click();
+  await expect(rows(page)).toHaveCount(JOHN_JOBS.length);
 });
 
 test('R. the list sorts by received time when asked', async ({ page }) => {

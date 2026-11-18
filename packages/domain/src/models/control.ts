@@ -181,7 +181,20 @@ export interface ControlSyncedJob {
    */
   reviewedAt?: string;
   reviewedBy?: string;
+  /**
+   * What the operator confirmed when they resolved an outcome the station could
+   * not: whether paper actually came out. `PRINTED` and `NOT_PRINTED` are the
+   * only answers a person can give, and neither rewrites `status` - the row
+   * shows the move ("UNVERIFIED -> printed") instead of relabelling the job.
+   */
+  reviewedOutcome?: ControlReviewOutcome;
 }
+
+/**
+ * The two answers an operator can give about an outcome the hardware could not
+ * confirm. Deliberately not a status: it is evidence a human gathered.
+ */
+export type ControlReviewOutcome = 'PRINTED' | 'NOT_PRINTED';
 
 export interface DeviceHeartbeatPayload {
   deviceId: string;
