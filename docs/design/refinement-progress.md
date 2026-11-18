@@ -362,6 +362,45 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   Jobs Playwright tests (1 new: reviewed job leaves Needs review with its status
   intact), full suite 141 passed.
 
+## 2026-11-18 — Incoming Jobs: the page sheds its three biggest regions
+
+`WebControlJobs.tsx` had grown to 2.6k lines, one feature at a time. Three
+regions moved into `features/control-jobs/`, each with the state that only it
+needs:
+
+- **`SelectionBar.tsx`** - the pinned batch bar. It now measures itself and
+  reports its height to the page instead of the page measuring a DOM node it does
+  not own, and it decides which of the four actions exist from three counts.
+- **`JobDetailDrawer.tsx`** - the whole summary drawer: verdict copy, incoming
+  data, technical fields, raw JSON, logs, and its own copy-to-clipboard feedback
+  (the page no longer holds `copiedField` or the two-second timer).
+- **`JobTable.tsx`** - header, group select-all, body rows, column widths and the
+  resize handles, as a `colgroup` + `thead` + `tbody` fragment so the page keeps
+  `<DataTable>` (which is what makes record cards below 768px). Cell *meaning*
+  stays in the page as `renderCell`, and the width limits moved here so the
+  handle's announced range and the clamp cannot disagree.
+
+Supporting moves: `copyTextToClipboard` to `lib/clipboard.ts`, and the three
+copies of `{name}` interpolation (`fill`, `formatMsg`, the paper-profile
+`formatMessage`) now resolve to `lib/formatMessage.ts`.
+
+Result: 2,631 -> 2,117 lines, with 800 unit tests, typecheck, Control build and
+49/49 Incoming Jobs Playwright tests green. What is left in the page is the page's
+own job - URL state, filters, selection and the reprint handshake - plus the
+filters panel and the station bar, which the same split should take next.
+
+## 2026-11-18 — Repository hygiene: three traps that cost real time
+
+- **The publish workflow had a `push` trigger on its own file.** Editing it
+  republished whatever version its default held, which invalidates the digests
+  recorded in `push-registry.md`. It is `workflow_dispatch` only now, the version
+  has no default, and a guard refuses to publish a tag that already exists.
+- **`.delta/` holds the agent harness's throwaway worktrees** - full copies of this
+  repo. A path-filtered `vitest` run matched the stale copy and reported its
+  failures as ours. It is ignored by git and excluded from the web test run.
+- **The API image shipped its compiled tests**, and then its `.d.ts`/`.map` build
+  outputs as well. Both never leave the build stage now.
+
 ## 2026-11-18 — Incoming Jobs: two filters that could only ever be empty
 
 - "Needs review" and "Reviewed only" are disjoint by definition, so having both on

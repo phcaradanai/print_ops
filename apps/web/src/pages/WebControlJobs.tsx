@@ -16,14 +16,11 @@ import { errorMessage } from '../api/errors.js';
 import { useLocale } from '../i18n/index.js';
 import { useApiResource } from '../hooks/useApiResource.js';
 import { formatCreatedAt } from '../lib/formatCreatedAt.js';
-import { formatMessage } from '../lib/formatMessage.js';
+import { formatMessage as formatMsg } from '../lib/formatMessage.js';
 import { jobNeedsAttention } from '../lib/jobQueueView.js';
 import {
   getJobVerdict,
-  offersReprint,
   REPORTED_COMPLETE_COPY,
-  reprintButtonVariant,
-  verdictDetailKey,
   verdictHeadlineKey,
 } from '../lib/jobVerdict.js';
 import {
@@ -58,17 +55,10 @@ import {
 import {
   Alert,
   Button,
-  CardDetail,
-  CardDetailItem,
   Checkbox,
   Chip,
-  CodeBlock,
-  CollapsibleSection,
-  DataCell,
-  DataHead,
   DataTable,
   Dialog,
-  Drawer,
   EmptyState,
   ErrorBanner,
   ErrorState,
@@ -97,6 +87,16 @@ import './WebControlJobs.css';
 import { CinemaBoard } from '../features/control-jobs/CinemaBoard.js';
 import { CinemaDisplayDialog } from '../features/control-jobs/CinemaDisplayDialog.js';
 import { JobColumnsDialog } from '../features/control-jobs/JobColumnsDialog.js';
+import { JobDetailDrawer } from '../features/control-jobs/JobDetailDrawer.js';
+import {
+  JobTable,
+  type JobTableColumn as JobTableView,
+  type JobTableResizer,
+} from '../features/control-jobs/JobTable.js';
+// The resize limits belong to the table: one definition, so the handle's
+// announced range and the clamp can never disagree.
+import { MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH } from '../features/control-jobs/JobTable.js';
+import { SelectionBar } from '../features/control-jobs/SelectionBar.js';
 import {
   CINEMA_PANELS,
   describeCinemaFields,
@@ -198,16 +198,8 @@ const JOB_PAGE_SIZE = 50;
 /** Cinema rows stay readable on a wall display: three values is the ceiling. */
 const CINEMA_MAX_FIELDS = 3;
 
-/** Column resizing: the table keeps its total width, so a column can only grow
- *  by taking space from its right neighbour. Session-only by design - the
- *  operator arranges the table and sees the result immediately. */
-const MIN_COLUMN_WIDTH = 72;
-const MAX_COLUMN_WIDTH = 720;
+/** Arrow-key step for the resize handles; the limits live with the table. */
 const COLUMN_WIDTH_STEP = 16;
-
-function formatMsg(template: string, vars: Record<string, string | number>): string {
-  return formatMessage(template, vars);
-}
 
 function stationTitle(device: { displayName?: string; hostname: string; deviceId: string }): string {
   return device.displayName?.trim() || device.hostname || device.deviceId;
@@ -227,58 +219,6 @@ function statusBucketLabel(t: (key: string) => string, bucket: StatusBucket): st
     default:
       return t('control.jobs.countAll');
   }
-}
-
-/**
- * `navigator.clipboard` with the textarea fallback the rest of the app uses.
- * Resolves `false` instead of throwing so a copy can never break the drawer.
- */
-async function copyTextToClipboard(value: string): Promise<boolean> {
-  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(value);
-      return true;
-    } catch {
-      // Fall through to the legacy path: the API can exist but be denied.
-    }
-  }
-  try {
-    const textarea = document.createElement('textarea');
-    textarea.value = value;
-    textarea.setAttribute('readonly', '');
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    textarea.select();
-    const copied = document.execCommand('copy');
-    textarea.remove();
-    return copied;
-  } catch {
-    return false;
-  }
-}
-
-interface CopyValueButtonProps {
-  value: string;
-  /** Human field name, used verbatim in the accessible name. */
-  label: string;
-  copied: boolean;
-  onCopy: (value: string) => void;
-}
-
-/** Copy affordance for one field. The confirmation is announced by the page. */
-function CopyValueButton({ value, label, copied, onCopy }: CopyValueButtonProps) {
-  const { t } = useLocale();
-  return (
-    <Button
-      size="sm"
-      variant="ghost"
-      aria-label={formatMsg(t('control.jobs.detailCopyField'), { field: label })}
-      onClick={() => onCopy(value)}
-    >
-      {copied ? t('control.jobs.detailCopied') : t('control.jobs.detailCopy')}
-    </Button>
-  );
 }
 
 export default function WebControlJobs() {
@@ -389,17 +329,6 @@ export default function WebControlJobs() {
   const [reprintReason, setReprintReason] = useState('');
   const [reprintConfirmed, setReprintConfirmed] = useState(false);
   const [reprintBusy, setReprintBusy] = useState(false);
-
-  // Copy feedback: one field at a time, cleared after two seconds.
-  const [copiedField, setCopiedField] = useState<string | null>(null);
-  const copyTimerRef = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
-    },
-    [],
-  );
 
   const selectedDevice = useMemo(
     () => (selectedDeviceId ? devices.find((device) => device.deviceId === selectedDeviceId) : undefined),
@@ -671,7 +600,6 @@ export default function WebControlJobs() {
     setDrawerJobId(null);
     setReprintTargets([]);
     setReprintConfirmed(false);
-    setCopiedField(null);
   }, []);
 
   /** Station changes rebuild the URL, but the cinema display fields are config, not a filter. */
@@ -1007,7 +935,7 @@ export default function WebControlJobs() {
   };
 
   /** Header checkbox: selects (or clears) exactly the rows passed in. */
-  const toggleSelectionFor = (jobs: ControlSyncedJobItem[]) => {
+  const toggleSelectionFor = (jobs: readonly ControlSyncedJobItem[]) => {
     const ids = jobs.map((job) => job.id);
     if (ids.length === 0) return;
     setSelectedJobIds((previous) => {
@@ -1016,14 +944,6 @@ export default function WebControlJobs() {
       return Array.from(new Set([...previous, ...ids]));
     });
   };
-
-  const handleCopy = useCallback(async (value: string, field: string) => {
-    const copied = await copyTextToClipboard(value);
-    if (!copied) return;
-    setCopiedField(field);
-    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
-    copyTimerRef.current = window.setTimeout(() => setCopiedField(null), 2_000);
-  }, []);
 
   const openReprintDialog = (jobs: ControlSyncedJobItem[]) => {
     if (!canReprint || jobs.length === 0) return;
@@ -1289,48 +1209,18 @@ export default function WebControlJobs() {
   );
 
   /**
-   * The selection bar is fixed, so the list has to reserve exactly the room the
-   * bar takes. With four actions the bar wraps to four lines on a phone and stays
-   * on one on a desktop, so the height is measured instead of guessed per
-   * breakpoint: the spacer used to be a flat 4.5rem and covered the pagination as
-   * soon as the bar wrapped.
+   * The bar reports its own wrapped height; the list reserves exactly that much.
+   * See `SelectionBar` for why it is measured rather than tokenised.
    */
-  const selectionBarRef = useRef<HTMLDivElement | null>(null);
   const [selectionBarHeight, setSelectionBarHeight] = useState(0);
-  useEffect(() => {
-    const node = selectionBarRef.current;
-    if (!node) {
-      setSelectionBarHeight(0);
-      return;
-    }
-    const measure = () => setSelectionBarHeight(node.getBoundingClientRect().height);
-    measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [selectedCount]);
+  const handleSelectionBarHeight = useCallback((height: number) => {
+    setSelectionBarHeight((previous) => (previous === height ? previous : height));
+  }, []);
 
   const drawerJob = useMemo(
     () => (drawerJobId ? scopeJobs.find((job) => job.id === drawerJobId) ?? null : null),
     [drawerJobId, scopeJobs],
   );
-  const drawerPayload = useMemo(
-    () => (drawerJob ? extractJobPayload(drawerJob) : {}),
-    [drawerJob],
-  );
-  const drawerPayloadEntries = useMemo(() => Object.entries(drawerPayload), [drawerPayload]);
-  const drawerPayloadJson = useMemo(
-    () => JSON.stringify(drawerPayload, null, 2),
-    [drawerPayload],
-  );
-  const drawerLogText = useMemo(() => {
-    if (!drawerJob) return '';
-    return [drawerJob.errorCode, drawerJob.errorMessage]
-      .filter((part): part is string => typeof part === 'string' && part.trim() !== '')
-      .join('\n');
-  }, [drawerJob]);
-
   const onlineDeviceCount = devices.filter((device) => device.connectionState === 'ONLINE').length;
   const allStationsTone: StatusTone =
     devices.length === 0
@@ -1385,7 +1275,7 @@ export default function WebControlJobs() {
    * value can be blank; they render an em dash rather than an empty cell so a
    * column never looks broken.
    */
-  const renderJobCell = (job: ControlSyncedJobItem, column: JobTableColumn): ReactNode => {
+  const renderJobCell = (job: ControlSyncedJobItem, column: JobTableView): ReactNode => {
     if (column.kind === 'payload') {
       const payload = extractJobPayload(job);
       const lower = column.key.toLocaleLowerCase();
@@ -1498,160 +1388,24 @@ export default function WebControlJobs() {
   const hasCustomWidths = Object.keys(columnWidths).length > 0;
   const tableClassName = `wcj-jobs-table${hasCustomWidths ? ' wcj-jobs-table--fixed' : ''}`;
 
-  const renderColgroup = (): ReactNode => (
-    <colgroup>
-      {canSelectRows && <col style={{ width: '2.5rem' }} />}
-      {visibleColumns.map((column) => (
-        <col
-          key={column.id}
-          style={
-            columnWidths[column.id] !== undefined
-              ? { width: `${columnWidths[column.id]}px` }
-              : undefined
-          }
-        />
-      ))}
-    </colgroup>
+  /** Localized column list plus the one adapter the table needs. */
+  const columnViews = useMemo<JobTableView[]>(
+    () =>
+      visibleColumns.map((column) =>
+        column.kind === 'payload'
+          ? { id: column.id, kind: 'payload' as const, key: column.key, label: column.key }
+          : { id: column.id, kind: 'builtin' as const, label: jobColumnLabel(column.id) },
+      ),
+    [visibleColumns],
   );
 
-  const renderJobRow = (job: ControlSyncedJobItem): ReactNode => {
-    const isSelected = selectedJobIds.includes(job.id);
-    const reference = job.requestId || job.id;
-    return (
-      <tr key={job.id} className={isSelected ? 'is-selected' : undefined}>
-        {canSelectRows && (
-          <DataCell label={t('control.jobs.colSelect')}>
-            <Checkbox
-              hideLabel
-              label={formatMsg(t('control.jobs.selectJobRow'), { id: reference })}
-              checked={isSelected}
-              onChange={() => toggleJobSelection(job.id)}
-            />
-          </DataCell>
-        )}
-        {visibleColumns.map((column) => (
-          <DataCell
-            key={column.id}
-            label={column.kind === 'payload' ? column.key : jobColumnLabel(column.id)}
-            actions={column.kind === 'builtin' && column.id === 'actions'}
-          >
-            {renderJobCell(job, column)}
-          </DataCell>
-        ))}
-      </tr>
-    );
+  const resizer: JobTableResizer = {
+    onStart: beginColumnResize,
+    onMove: moveColumnResize,
+    onEnd: endColumnResize,
+    onReset: resetColumnWidth,
+    onNudge: nudgeColumn,
   };
-
-  const renderTableHead = (groupLabel: string, jobs: ControlSyncedJobItem[]): ReactNode => {
-    const allSelected = jobs.length > 0 && jobs.every((job) => selectedJobIds.includes(job.id));
-    return (
-      <thead>
-        <tr>
-          {canSelectRows && (
-            <DataHead>
-              <Checkbox
-                hideLabel
-                label={formatMsg(t('control.jobs.selectAllGroup'), { group: groupLabel })}
-                checked={allSelected}
-                onChange={() => toggleSelectionFor(jobs)}
-              />
-            </DataHead>
-          )}
-          {visibleColumns.map((column, index) => {
-            const label =
-              column.kind === 'payload' ? column.key : jobColumnLabel(column.id);
-            return (
-              <DataHead key={column.id}>
-                {column.kind === 'payload' ? <Mono size="label">{column.key}</Mono> : label}
-                {index < visibleColumns.length - 1 && (
-                  <span
-                    className="wcj-col-resizer"
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label={formatMsg(t('control.jobs.resizeColumn'), { column: label })}
-                    aria-valuemin={MIN_COLUMN_WIDTH}
-                    aria-valuemax={MAX_COLUMN_WIDTH}
-                    {...(columnWidths[column.id] !== undefined
-                      ? { 'aria-valuenow': Math.round(columnWidths[column.id]) }
-                      : {})}
-                    title={t('control.jobs.resizeColumnHint')}
-                    tabIndex={0}
-                    onPointerDown={(event) => beginColumnResize(event, index)}
-                    onPointerMove={moveColumnResize}
-                    onPointerUp={endColumnResize}
-                    onPointerCancel={endColumnResize}
-                    onDoubleClick={() => resetColumnWidth(column.id)}
-                    onKeyDown={(event) => nudgeColumn(event, index)}
-                  />
-                )}
-              </DataHead>
-            );
-          })}
-        </tr>
-      </thead>
-    );
-  };
-
-  const renderTechnicalField = (
-    fieldKey: string,
-    label: string,
-    value: string | undefined | null,
-    copyable = false,
-  ): ReactNode => {
-    if (value == null || value === '') return null;
-    return (
-      <Stack key={fieldKey} gap="xs">
-        <Text size="label" weight="semibold" tone="muted">
-          {label}
-        </Text>
-        <Inline gap="sm">
-          <Mono size="label" wrap style={{ flex: '1 1 14rem', minWidth: 0 }}>
-            {value}
-          </Mono>
-          {copyable && (
-            <CopyValueButton
-              value={value}
-              label={label}
-              copied={copiedField === fieldKey}
-              onCopy={(next) => void handleCopy(next, fieldKey)}
-            />
-          )}
-        </Inline>
-      </Stack>
-    );
-  };
-
-  const drawerVerdict = drawerJob ? getJobVerdict(drawerJob.status) : null;
-  const drawerHeadlineKey =
-    drawerJob?.status === 'SUCCESS'
-      ? REPORTED_COMPLETE_COPY.headline
-      : drawerVerdict
-        ? verdictHeadlineKey(drawerVerdict)
-        : '';
-  const drawerDetailKey =
-    drawerJob?.status === 'SUCCESS'
-      ? REPORTED_COMPLETE_COPY.detail
-      : drawerVerdict
-        ? verdictDetailKey(drawerVerdict)
-        : '';
-  const drawerHasTechnical = drawerJob
-    ? Boolean(
-        drawerJob.id ||
-          drawerJob.requestId ||
-          drawerJob.sourceSystem ||
-          drawerJob.templateCode ||
-          drawerJob.resolvedTemplateCode ||
-          drawerJob.paperProfileId ||
-          drawerJob.printerId ||
-          drawerJob.runnerId ||
-          drawerJob.errorCode ||
-          drawerJob.errorMessage ||
-          drawerJob.createdAt ||
-          drawerJob.finishedAt ||
-          drawerJob.completedAt ||
-          drawerJob.updatedAt,
-      )
-    : false;
 
   return (
     <PageLayout
@@ -2086,54 +1840,17 @@ export default function WebControlJobs() {
                   visible the moment a row is checked, even after scrolling.
                 */}
                 {canSelectRows && selectedCount > 0 && (
-                  <div
-                    ref={selectionBarRef}
-                    className="wcj-selection-bar"
-                    role="region"
-                    aria-label={formatMsg(t('control.jobs.selectedCount'), {
-                      count: selectedCount,
-                    })}
-                  >
-                    <Text weight="semibold">
-                      {formatMsg(t('control.jobs.selectedCount'), { count: selectedCount })}
-                    </Text>
-                    <Inline gap="sm">
-                      <Button size="sm" variant="secondary" onClick={() => setSelectedJobIds([])}>
-                        {t('control.jobs.clearSelection')}
-                      </Button>
-                      {reviewableSelectedJobs.length > 0 && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          busy={bulkReviewBusy}
-                          onClick={() => void handleBulkReview(reviewableSelectedJobs, true)}
-                        >
-                          {formatMsg(t('control.jobs.reviewSelected'), {
-                            count: reviewableSelectedJobs.length,
-                          })}
-                        </Button>
-                      )}
-                      {acknowledgedSelectedJobs.length > 0 && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          busy={bulkReviewBusy}
-                          onClick={() => void handleBulkReview(acknowledgedSelectedJobs, false)}
-                        >
-                          {formatMsg(t('control.jobs.unreviewSelected'), {
-                            count: acknowledgedSelectedJobs.length,
-                          })}
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        onClick={() => openReprintDialog(selectedJobs)}
-                      >
-                        {formatMsg(t('control.jobs.reprintSelected'), { count: selectedCount })}
-                      </Button>
-                    </Inline>
-                  </div>
+                  <SelectionBar
+                    selectedCount={selectedCount}
+                    reviewableCount={reviewableSelectedJobs.length}
+                    acknowledgedCount={acknowledgedSelectedJobs.length}
+                    busy={bulkReviewBusy}
+                    onClear={() => setSelectedJobIds([])}
+                    onMarkReviewed={() => void handleBulkReview(reviewableSelectedJobs, true)}
+                    onUndoReview={() => void handleBulkReview(acknowledgedSelectedJobs, false)}
+                    onReprint={() => openReprintDialog(selectedJobs)}
+                    onHeightChange={handleSelectionBarHeight}
+                  />
                 )}
 
                 {visibleJobs.length === 0 ? (
@@ -2166,9 +1883,18 @@ export default function WebControlJobs() {
                         className={tableClassName}
                         responsive
                       >
-                        {renderColgroup()}
-                        {renderTableHead(t('control.jobs.tableLabel'), pagedVisibleJobs)}
-                        <tbody>{pagedVisibleJobs.map(renderJobRow)}</tbody>
+                        <JobTable
+                          groupLabel={t('control.jobs.tableLabel')}
+                          columns={columnViews}
+                          rows={pagedVisibleJobs}
+                          columnWidths={columnWidths}
+                          selectable={canSelectRows}
+                          selectedIds={selectedJobIds}
+                          onToggleRow={toggleJobSelection}
+                          onToggleAll={toggleSelectionFor}
+                          renderCell={renderJobCell}
+                          resizer={resizer}
+                        />
                       </DataTable>
                     </Panel>
                     {totalPages > 1 && (
@@ -2205,9 +1931,18 @@ export default function WebControlJobs() {
                             className={tableClassName}
                             responsive
                           >
-                            {renderColgroup()}
-                            {renderTableHead(group.groupLabel, group.jobs)}
-                            <tbody>{group.jobs.map(renderJobRow)}</tbody>
+                          <JobTable
+                            groupLabel={group.groupLabel}
+                            columns={columnViews}
+                            rows={group.jobs}
+                            columnWidths={columnWidths}
+                            selectable={canSelectRows}
+                            selectedIds={selectedJobIds}
+                            onToggleRow={toggleJobSelection}
+                            onToggleAll={toggleSelectionFor}
+                            renderCell={renderJobCell}
+                            resizer={resizer}
+                          />
                           </DataTable>
                         </Panel>
                       </Stack>
@@ -2234,271 +1969,18 @@ export default function WebControlJobs() {
       </Stack>
 
       {/* Job summary drawer: short answer first, evidence collapsed. */}
-      <Drawer
-        open={drawerJob !== null}
+      <JobDetailDrawer
+        job={drawerJob}
+        stationName={drawerJob ? stationNameFor(drawerJob.deviceId) : ''}
+        canReprint={canReprint}
+        reviewBusy={drawerJob !== null && reviewBusyJobId === drawerJob.id}
         onClose={() => setDrawerJobId(null)}
-        title={t('control.jobs.detailTitle')}
-        closeLabel={t('common.close')}
-        className="wcj-detail-drawer"
-        footer={
-          <>
-            {drawerJob && (jobNeedsAttention(drawerJob.status) || drawerJob.reviewedAt) && (
-              <Button
-                variant="secondary"
-                busy={reviewBusyJobId === drawerJob.id}
-                onClick={() => void handleToggleReview(drawerJob)}
-              >
-                {drawerJob.reviewedAt
-                  ? t('control.jobs.unmarkReviewed')
-                  : t('control.jobs.markReviewed')}
-              </Button>
-            )}
-            <Button variant="secondary" onClick={() => setDrawerJobId(null)}>
-              {t('common.close')}
-            </Button>
-            {drawerJob && canReprint && offersReprint(getJobVerdict(drawerJob.status)) && (
-              <Button
-                variant={reprintButtonVariant(getJobVerdict(drawerJob.status))}
-                onClick={() => {
-                  const target = drawerJob;
-                  setDrawerJobId(null);
-                  openReprintDialog([target]);
-                }}
-              >
-                {t('control.jobs.reprint')}
-              </Button>
-            )}
-          </>
-        }
-      >
-        {drawerJob && (
-          <Stack gap="lg">
-            <Stack gap="sm">
-              <Inline gap="sm">
-                <Mono
-                  size="body"
-                  weight="semibold"
-                  wrap
-                  style={{ flex: '1 1 12rem', minWidth: 0 }}
-                >
-                  {drawerJob.requestId || drawerJob.id}
-                </Mono>
-                <CopyValueButton
-                  value={drawerJob.requestId || drawerJob.id}
-                  label={
-                    drawerJob.requestId
-                      ? t('control.jobs.detailRequestId')
-                      : t('control.jobs.detailJobId')
-                  }
-                  copied={copiedField === 'reference'}
-                  onCopy={(value) => void handleCopy(value, 'reference')}
-                />
-              </Inline>
-              <CardDetail columns={2}>
-                <CardDetailItem label={t('control.jobs.detailDestination')}>
-                  <Text wrap>
-                    {formatMsg(t('control.jobs.destinationOnStation'), {
-                      printer: drawerJob.printerCode || drawerJob.printerId,
-                      station: stationNameFor(drawerJob.deviceId),
-                    })}
-                  </Text>
-                </CardDetailItem>
-                <CardDetailItem label={t('control.jobs.colStatus')}>
-                  <StatusBadge status={drawerJob.status} size="sm" />
-                </CardDetailItem>
-                <CardDetailItem label={t('control.jobs.detailReceived')}>
-                  <Text title={drawerJob.createdAt}>{formatCreatedAt(drawerJob.createdAt)}</Text>
-                </CardDetailItem>
-                <CardDetailItem label={t('control.jobs.detailCopies')}>
-                  <Text>{drawerJob.copies}</Text>
-                </CardDetailItem>
-              </CardDetail>
-            </Stack>
-
-            <Stack gap="xs">
-              <Text size="label" weight="semibold" tone="muted">
-                {t('control.jobs.detailWhatHappened')}
-              </Text>
-              <Text wrap>{t(drawerHeadlineKey)}</Text>
-            </Stack>
-
-            <Stack gap="xs">
-              <Text size="label" weight="semibold" tone="muted">
-                {t('control.jobs.detailNextStep')}
-              </Text>
-              <Text wrap tone="muted">
-                {t(drawerDetailKey)}
-              </Text>
-            </Stack>
-
-            {drawerJob && (jobNeedsAttention(drawerJob.status) || drawerJob.reviewedAt) && (
-              <Text size="label" tone="muted" wrap>
-                {drawerJob.reviewedAt
-                  ? formatMsg(t('control.jobs.reviewedByHint'), {
-                      name: drawerJob.reviewedBy ?? '',
-                    })
-                  : t('control.jobs.reviewedHint')}
-              </Text>
-            )}
-
-            {drawerVerdict?.outcomeUnknown && (
-              <Alert tone="warning" title={t('control.jobs.detailUnconfirmedTitle')}>
-                {t('control.jobs.detailUnconfirmedBody')}
-              </Alert>
-            )}
-
-            <CollapsibleSection title={t('control.jobs.detailIncomingData')} defaultOpen={false}>
-              {drawerPayloadEntries.length === 0 ? (
-                <Text size="label" tone="muted">
-                  {t('control.jobs.detailNoIncoming')}
-                </Text>
-              ) : (
-                <Stack gap="md">
-                  {drawerPayloadEntries.map(([key, value]) => (
-                    <Stack key={key} gap="xs">
-                      <Mono size="label" tone="muted" wrap>
-                        {key}
-                      </Mono>
-                      <Inline gap="sm">
-                        <Mono size="label" wrap style={{ flex: '1 1 14rem', minWidth: 0 }}>
-                          {value}
-                        </Mono>
-                        <CopyValueButton
-                          value={value}
-                          label={key}
-                          copied={copiedField === `payload:${key}`}
-                          onCopy={(next) => void handleCopy(next, `payload:${key}`)}
-                        />
-                      </Inline>
-                    </Stack>
-                  ))}
-                </Stack>
-              )}
-            </CollapsibleSection>
-
-            <CollapsibleSection title={t('control.jobs.detailTechnical')} defaultOpen={false}>
-              {drawerHasTechnical ? (
-                <Stack gap="md">
-                  {renderTechnicalField(
-                    'jobId',
-                    t('control.jobs.detailJobId'),
-                    drawerJob.id,
-                    true,
-                  )}
-                  {renderTechnicalField(
-                    'requestId',
-                    t('control.jobs.detailRequestId'),
-                    drawerJob.requestId,
-                    true,
-                  )}
-                  {renderTechnicalField(
-                    'source',
-                    t('control.jobs.detailSource'),
-                    drawerJob.sourceSystem,
-                  )}
-                  {renderTechnicalField(
-                    'template',
-                    t('control.jobs.detailTemplate'),
-                    drawerJob.resolvedTemplateCode ?? drawerJob.templateCode,
-                  )}
-                  {renderTechnicalField(
-                    'paperProfile',
-                    t('control.jobs.detailPaperProfile'),
-                    drawerJob.paperProfileId,
-                  )}
-                  {renderTechnicalField(
-                    'printer',
-                    t('control.jobs.detailPrinter'),
-                    drawerJob.printerCode || drawerJob.printerId,
-                  )}
-                  {renderTechnicalField(
-                    'runner',
-                    t('control.jobs.detailRunner'),
-                    drawerJob.runnerId,
-                  )}
-                  {renderTechnicalField(
-                    'errorCode',
-                    t('control.jobs.detailErrorCode'),
-                    drawerJob.errorCode,
-                    true,
-                  )}
-                  {renderTechnicalField(
-                    'errorMessage',
-                    t('control.jobs.detailErrorMessage'),
-                    drawerJob.errorMessage,
-                    true,
-                  )}
-                  {renderTechnicalField(
-                    'created',
-                    t('page.jobDetail.created'),
-                    drawerJob.createdAt,
-                  )}
-                  {renderTechnicalField(
-                    'finished',
-                    t('page.jobDetail.finished'),
-                    drawerJob.finishedAt ?? drawerJob.completedAt,
-                  )}
-                  {renderTechnicalField(
-                    'updated',
-                    t('page.jobDetail.updated'),
-                    drawerJob.updatedAt,
-                  )}
-
-                  <Stack gap="xs">
-                    <Inline gap="sm">
-                      <Text size="label" weight="semibold" tone="muted">
-                        {t('control.jobs.detailRawJson')}
-                      </Text>
-                      <CopyValueButton
-                        value={drawerPayloadJson}
-                        label={t('control.jobs.detailRawJson')}
-                        copied={copiedField === 'rawJson'}
-                        onCopy={(value) => void handleCopy(value, 'rawJson')}
-                      />
-                    </Inline>
-                    <CodeBlock label={t('control.jobs.detailRawJson')} scroll={false}>
-                      {drawerPayloadJson}
-                    </CodeBlock>
-                  </Stack>
-
-                  <Stack gap="xs">
-                    <Inline gap="sm">
-                      <Text size="label" weight="semibold" tone="muted">
-                        {t('control.jobs.detailLogs')}
-                      </Text>
-                      {drawerLogText && (
-                        <CopyValueButton
-                          value={drawerLogText}
-                          label={t('control.jobs.detailLogs')}
-                          copied={copiedField === 'logs'}
-                          onCopy={(value) => void handleCopy(value, 'logs')}
-                        />
-                      )}
-                    </Inline>
-                    {drawerLogText ? (
-                      <CodeBlock label={t('control.jobs.detailLogs')} scroll={false}>
-                        {drawerLogText}
-                      </CodeBlock>
-                    ) : (
-                      <Text size="label" tone="muted">
-                        {t('control.jobs.detailNoLogs')}
-                      </Text>
-                    )}
-                  </Stack>
-                </Stack>
-              ) : (
-                <Text size="label" tone="muted">
-                  {t('control.jobs.detailNoTechnical')}
-                </Text>
-              )}
-            </CollapsibleSection>
-
-            <span className="ui-visually-hidden" role="status" aria-live="polite">
-              {copiedField ? t('control.jobs.detailCopied') : ''}
-            </span>
-          </Stack>
-        )}
-      </Drawer>
+        onToggleReview={(job) => void handleToggleReview(job)}
+        onReprint={(job) => {
+          setDrawerJobId(null);
+          openReprintDialog([job]);
+        }}
+      />
 
       {/* Reprint confirmation: never opened from a row, always explicit. */}
       <Dialog

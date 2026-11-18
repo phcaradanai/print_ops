@@ -1,22 +1,22 @@
 name: Publish Web Control images
 
+# Manual only. This used to also trigger on pushes that touched this file, which
+# meant editing the workflow republished whatever version its default held - and a
+# republished tag invalidates the digests recorded in push-registry.md. Publish by
+# dispatching this workflow with an explicit, never-used version.
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/publish-control-plane-images.yml']
   workflow_dispatch:
     inputs:
       version:
-        description: Web Control image version
+        description: Web Control image version (a version that has not been published before)
         required: true
-        default: '1.0.13'
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: publish-control-plane-${{ inputs.version || '1.0.13' }}
+  group: publish-control-plane-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 30
     env:
       PRINTOPS_IMAGE_PREFIX: registry.pg.xenex.io/printops-control-plane
-      PRINTOPS_CONTROL_PLANE_VERSION: ${{ inputs.version || '1.0.13' }}
+      PRINTOPS_CONTROL_PLANE_VERSION: ${{ inputs.version }}
       PRINTOPS_BUILD_PLATFORMS: linux/amd64
     steps:
       - name: Checkout release source
@@ -36,6 +36,17 @@ jobs:
           node-version: 22
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      # The registry is private: log in before this job, or these steps fail. That
+      # is deliberate - a missing login must not look like a successful publish.
+      - name: Refuse to overwrite a published tag
+        run: |
+          for image in api web; do
+            ref="${PRINTOPS_IMAGE_PREFIX}-${image}:${PRINTOPS_CONTROL_PLANE_VERSION}"
+            if docker buildx imagetools inspect "${ref}" >/dev/null 2>&1; then
+              echo "::error::${ref} already exists. Bump the version: republishing a tag invalidates the digests recorded in push-registry.md and any deployed manifest that pinned them."
+              exit 1
+            fi
+          done
       - name: Build and publish API and Web
         run: node scripts/publish-control-plane-images.mjs
       - name: Verify published images

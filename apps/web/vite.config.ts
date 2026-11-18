@@ -26,6 +26,9 @@ export default defineConfig({
   },
   test: {
     passWithNoTests: true,
-    exclude: ['e2e/**', '**/node_modules/**', '**/dist/**'],
+    // `.delta/` holds the harness's throwaway worktrees - full copies of this repo.
+    // Without this exclude a path filter such as `src/__tests__/i18n.test.ts` also
+    // matches the stale copy and reports its failures as ours.
+    exclude: ['e2e/**', '**/node_modules/**', '**/dist/**', '**/.delta/**'],
   },
 });

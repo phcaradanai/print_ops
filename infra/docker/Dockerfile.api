@@ -20,6 +20,11 @@ RUN npm run build -w apps/api
 # no test runner and no reason to ship them, so they never leave this stage.
 RUN rm -rf apps/api/dist/tests
 
+# Declaration files and source maps are build outputs for developers, not runtime
+# inputs. Dropping them keeps the image to the code the server actually executes.
+RUN find apps/api/dist -name '*.d.ts' -delete \
+    && find apps/api/dist -name '*.map' -delete
+
 # Production stage
 FROM node:22-alpine
 WORKDIR /app

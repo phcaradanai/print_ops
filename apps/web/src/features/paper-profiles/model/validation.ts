@@ -252,14 +252,13 @@ export function validateDynamicFields(form: PaperForm, fields: DynamicField[]): 
   return validateDynamicFieldDiagnostics(form, fields).errors;
 }
 
-/** Fill `{name}` placeholders, the shape the dictionaries already use. */
-export function formatMessage(template: string, params: Record<string, string | number>): string {
-  let message = template;
-  for (const [key, value] of Object.entries(params)) {
-    message = message.split(`{${key}}`).join(String(value));
-  }
-  return message;
-}
+/**
+ * Fill `{name}` placeholders, the shape the dictionaries already use. The one
+ * implementation lives in `lib/formatMessage.ts`; this name is kept because the
+ * paper-profile model has exported it for longer.
+ */
+import { formatMessage } from '../../../lib/formatMessage.js';
+export { formatMessage };
 
 export function formatValidationIssue(translate: (key: string) => string, issue: ValidationIssue): string {
   return formatMessage(translate(issue.messageKey), issue.params ?? {});

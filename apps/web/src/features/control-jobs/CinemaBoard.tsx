@@ -26,6 +26,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom';
 import { useLocale } from '../../i18n/index.js';
 import { formatRelativeTime } from '../../lib/relativeTime.js';
+import { formatMessage as fill } from '../../lib/formatMessage.js';
 import {
   buildCinemaKpis,
   buildStationRows,
@@ -44,14 +45,6 @@ import {
   type CinemaTone,
 } from './cinemaModel.js';
 import './cinemaBoard.css';
-
-/** One placeholder pass, matching the app's `{name}` convention (no ICU). */
-function fill(template: string, vars: Record<string, string | number>): string {
-  return Object.entries(vars).reduce(
-    (text, [key, value]) => text.split(`{${key}}`).join(String(value)),
-    template,
-  );
-}
 
 function prefersReducedMotion(): boolean {
   return (
