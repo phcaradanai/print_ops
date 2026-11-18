@@ -1,3 +1,48 @@
+# Web Control 1.0.17
+
+Published for `linux/amd64` from `9aa6b5f` (2026-11-18), with the `1.0.17` version
+defaults in the accompanying release commit.
+
+- **Web Control**: the Incoming Jobs page can now find what was acknowledged
+  (a **Reviewed (N)** chip), clear a batch in one go (**Mark N as reviewed** in the
+  pinned selection bar), and choose which panels the cinema board carries
+  (throughput chart, station list, ticker - stored in the URL as `cinemaPanels`).
+  A **Reset widths** button appears once a column has been dragged, and changing
+  the sort order returns to page 1.
+- **Cinema fix**: the board now honours the acknowledgement, so an outcome an
+  operator already checked leaves the Needs review tile, the throughput stack, its
+  station's review count and its row tone, exactly as the list does. Before this,
+  the wall and the list disagreed about the same jobs.
+- **API**: `POST /control/devices/:id/jobs/:jobId/review` now writes a
+  `control/audit` record (`job.reviewed` / `job.unreviewed`) with the actor, the
+  job id and the job's status. The acknowledgement columns (`reviewed_at`,
+  `reviewed_by`) are additive and created with `ensureColumn`, so an existing
+  control-plane database needs no migration and no configuration change.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.17` | `sha256:8b3aaf548279215d0e0a6327fe49742526cee915fd87bf527c3bcdf6249eb311` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.17` | `sha256:5fca77bd2b433556987eedfe0362baddf6bf2553b90660bf5b894b8f5624738c` |
+
+`docker buildx imagetools inspect` returns those digests. The web image was also
+checked from the inside: the entry bundle carries the `1.0.17` version, the
+`Mark {count} as reviewed` and `Throughput chart` copy, and the page chunk carries
+`cinemaPanels`; the API image's
+`dist/services/web-control-registry.service.js` carries `job.unreviewed`. Its 62
+asset names match a local Control build with
+`VITE_CONTROL_APP=true VITE_CONTROL_PLANE_VERSION=1.0.17` exactly, so the tag
+contains the pushed source.
+
+Deploy with `PRINTOPS_CONTROL_PLANE_VERSION=1.0.17`; the PrintOps app image stays
+`0.1.50`. This is a Web Control UI release plus one API-side audit write - no
+station update, database migration, or configuration change is involved.
+
+```powershell
+$env:PRINTOPS_IMAGE_PREFIX = "registry.pg.xenex.io/printops-control-plane"
+$env:PRINTOPS_CONTROL_PLANE_VERSION = "1.0.17"
+node scripts/publish-control-plane-images.mjs
+```
+
 # Web Control 1.0.16
 
 Published for `linux/amd64` from `8e1326e` (2026-11-18), with the `1.0.16` version
