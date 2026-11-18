@@ -546,6 +546,26 @@ export default function WebControlJobs() {
     [visibleJobs],
   );
 
+  const toggleReviewedOnly = useCallback(() => {
+    setReviewedOnly((previous) => {
+      const next = !previous;
+      // "Needs review" and "reviewed" are disjoint by definition, so that pair can
+      // only ever produce an empty list. Turning the reviewed view on drops the
+      // triage filter instead of promising rows it cannot show.
+      if (next) setStatusBucket((bucket) => (bucket === 'NEEDS_REVIEW' ? 'ALL' : bucket));
+      return next;
+    });
+  }, []);
+
+  /** The other half of the same rule: picking Needs review leaves the reviewed view. */
+  const selectStatusBucket = useCallback((bucket: StatusBucket) => {
+    setStatusBucket((previous) => {
+      const next = previous === bucket ? 'ALL' : bucket;
+      if (next === 'NEEDS_REVIEW') setReviewedOnly(false);
+      return next;
+    });
+  }, []);
+
   /**
    * The reviewed-only view cannot outlive the acknowledgements it filters on:
    * undo the last one and the toggle would be hidden (its chip is gone) while
@@ -1772,9 +1792,7 @@ export default function WebControlJobs() {
                       <Chip
                         key={bucket}
                         selected={statusBucket === bucket}
-                        onClick={() =>
-                          setStatusBucket((previous) => (previous === bucket ? 'ALL' : bucket))
-                        }
+                        onClick={() => selectStatusBucket(bucket)}
                       >
                         {statusBucketLabel(t, bucket)} ({bucketCounts[bucket]})
                       </Chip>
@@ -1783,9 +1801,7 @@ export default function WebControlJobs() {
                   {bucketCounts.OTHER > 0 && (
                     <Chip
                       selected={statusBucket === 'OTHER'}
-                      onClick={() =>
-                        setStatusBucket((previous) => (previous === 'OTHER' ? 'ALL' : 'OTHER'))
-                      }
+                      onClick={() => selectStatusBucket('OTHER')}
                     >
                       {t('control.jobs.countOther')} ({bucketCounts.OTHER})
                     </Chip>
@@ -1837,7 +1853,7 @@ export default function WebControlJobs() {
                       toolbar where it would read as a fifth bucket. It only
                       exists while the scope carries acknowledgements. */}
                   {reviewedCount > 0 && (
-                    <Chip selected={reviewedOnly} onClick={() => setReviewedOnly((previous) => !previous)}>
+                    <Chip selected={reviewedOnly} onClick={toggleReviewedOnly}>
                       {formatMsg(t('control.jobs.reviewedOnly'), { count: reviewedCount })}
                     </Chip>
                   )}

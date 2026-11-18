@@ -2001,6 +2001,17 @@ test('S. the Reviewed chip narrows the list to the acknowledged outcomes', async
   // The status is still the station's own word, not a rewrite.
   expect(texts.join(' ')).toContain('UNVERIFIED');
 
+  // Reviewed and Needs review are disjoint, so the two can never be on together:
+  // the pair would only ever be an empty list.
+  const needsReview = counts.getByRole('button', { name: /Needs review/ });
+  await needsReview.click();
+  await expect(needsReview).toHaveAttribute('aria-pressed', 'true');
+  await expect(reviewed).toHaveAttribute('aria-pressed', 'false');
+  await reviewed.click();
+  await expect(reviewed).toHaveAttribute('aria-pressed', 'true');
+  await expect(needsReview).toHaveAttribute('aria-pressed', 'false');
+  expect(await rowTexts(page)).toHaveLength(2);
+
   // Turning the chip off restores the whole list.
   await reviewed.click();
   await expect(reviewed).toHaveAttribute('aria-pressed', 'false');

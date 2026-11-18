@@ -362,6 +362,13 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   Jobs Playwright tests (1 new: reviewed job leaves Needs review with its status
   intact), full suite 141 passed.
 
+## 2026-11-18 — Incoming Jobs: two filters that could only ever be empty
+
+- "Needs review" and "Reviewed only" are disjoint by definition, so having both on
+  produced a guaranteed empty list. They are now mutually exclusive: turning the
+  reviewed view on drops the triage filter, and picking Needs review leaves the
+  reviewed view. Verified in the same test that proves the reviewed rows.
+
 ## 2026-11-18 — Incoming Jobs: the selection bar no longer covers the list on a phone
 
 - Four actions (clear, mark, undo, reprint) wrap to four lines at 390px: the bar
