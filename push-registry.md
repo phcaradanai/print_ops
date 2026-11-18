@@ -1,3 +1,64 @@
+# PrintOps App 0.1.51
+
+Published for `linux/amd64` from `2566162` (2026-11-18), with the `0.1.51` version
+defaults in the accompanying release commit.
+
+This is the app-side release for the work that landed since 0.1.50. The Job Queue
+fixes and the CUPS/IPP work live in the **app** image (they are dashboard and
+station features), which is why the control-plane tags 1.0.17-1.0.25 could not
+show them.
+
+- **Job Queue layout (reported)**: the key-filter row now insets `0.75rem 1rem`
+  like the search row above it instead of sitting flush against the card edge, its
+  fields and buttons share one line at 1440 and 1024 instead of the buttons
+  dropping below when the four-column grid collapsed, and the freshness refresh
+  button matches the page-action height so every header row reads as one line.
+- **CUPS/IPP printers**: remote CUPS server setting (`PRINTOPS_CUPS_SERVER`), queue
+  listing and remote queue submission with device delivery confirmation, wired
+  into the Printers page with bilingual copy.
+- **Confirmed outcomes**: the API stores `reviewed_outcome` (`PRINTED` /
+  `NOT_PRINTED`) beside the review acknowledgement, exposed through
+  `POST /control/devices/:id/jobs/:jobId/review`.
+- **Search and list**: the Incoming Jobs list search explains which field matched,
+  incoming keys match whole terms, up to eight incoming columns and eight cinema
+  values, and the technical-details fields can be left out of the search.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-app:0.1.51` | `sha256:6ded41ea68c990dac61c076eab7380b3101fef543840ab7e41faf2e685dc3b9d` |
+
+Verified:
+
+- `node scripts/smoke-app-image.mjs registry.pg.xenex.io/printops-app:0.1.51` -
+  health/version, SPA/assets/deep links, owner/login, SQLite persistence, runner
+  binary, single API worker: **PASS**.
+- real Linux label rendering inside the image (real Chromium, Thai text, 60x30 mm
+  pages, manual/generated profile margins, no extra pages, one submission per job,
+  UNVERIFIED): **PASS**.
+  Run it the way CI does, with a byte-preserving redirect:
+  `cmd /c "docker run --rm -i --entrypoint node <image> --input-type=module < scripts\smoke-cups-render.mjs"`.
+  Piping the script through PowerShell mangles its Thai literal and produces a
+  false failure.
+- `docker compose -f infra/docker/docker-compose.app.yml config --quiet` with
+  `PRINTOPS_APP_JWT_SECRET` set: **PASS**.
+- image contents: `PRINTOPS_APP_VERSION=0.1.51`, `JobQueue-*.css` carries
+  `job-queue-keyfilters`, `apps/api/dist` carries `reviewed_outcome` and
+  `infra/cups-server-settings.js`, and both the API and the Printers bundle carry
+  `printers/cups-queues`.
+
+Deploy with `PRINTOPS_APP_VERSION=0.1.51` and
+`PRINTOPS_CONTROL_PLANE_VERSION=1.0.25`.
+
+```powershell
+docker buildx build --platform linux/amd64 --load `
+  --file infra/docker/Dockerfile.app `
+  --build-arg APP_VERSION=0.1.51 `
+  --build-arg SOURCE_REVISION=$(git rev-parse --short HEAD) `
+  --tag registry.pg.xenex.io/printops-app:0.1.51 .
+node scripts/smoke-app-image.mjs registry.pg.xenex.io/printops-app:0.1.51
+docker push registry.pg.xenex.io/printops-app:0.1.51
+```
+
 # Web Control 1.0.25
 
 Published for `linux/amd64` from `c6cab54` (2026-11-18), with the `1.0.25` version
