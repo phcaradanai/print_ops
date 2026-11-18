@@ -177,7 +177,9 @@ actions so the header stays one line of text.
       accessible `detailCopyField({ field })` label. Long values wrap inside the
       panel. Raw JSON uses `CodeBlock scroll={false}`. `detailNoTechnical` when
       there is nothing to show; `detailNoLogs` when no log is mirrored.
-    - Footer: Close, and Reprint when `job:retry` is permitted.
+    - Footer: review acknowledgement for outcomes that need attention
+      (`markReviewed` / `unmarkReviewed`), Close, and Reprint when `job:retry`
+      is permitted.
 11. **Reprint dialog.** Existing `Dialog`, opened from the drawer or the batch
     bar, never from a row. It keeps the reason field, the explicit confirmation
     checkbox, the copies field, cancel closing without sending, and a busy
@@ -282,10 +284,23 @@ other         = countAll - needsReview - inProgress - printed
 | Bucket | Definition | Notes |
 |---|---|---|
 | All | Every job in `base`. | Never hides a job. |
-| Needs review | `jobNeedsAttention(status)` is true: verdict tone `caution` or `negative`, i.e. `FAILED`, `UNVERIFIED`, `TIMEOUT`, and any status this build does not recognise. | One definition, shared with the rest of the UI through `jobVerdict.ts`. |
+| Needs review | `jobNeedsAttention(status)` is true **and** the job is not reviewed: verdict tone `caution` or `negative`, i.e. `FAILED`, `UNVERIFIED`, `TIMEOUT`, and any status this build does not recognise. | One definition, shared with the rest of the UI through `jobVerdict.ts`. |
 | In progress | `ACCEPTED`, `VALIDATED`, `QUEUED`, `DISPATCHED`, `PRINTING`. | Matches the active-queue set in `jobPayload.ts`. |
 | Printed | `SUCCESS`. | Status-based bucket. The detail verdict does not claim device confirmation (section 5). |
-| Other | The remainder: currently `CANCELLED` and `DUPLICATE_RETURNED`. | Rendered only when the count is above zero. Unknown statuses belong to Needs review, not Other. |
+| Other | The remainder: `CANCELLED`, `DUPLICATE_RETURNED`, and reviewed outcomes. | Rendered only when the count is above zero. Unknown statuses belong to Needs review unless reviewed. |
+
+**Reviewed outcomes.** An operator who has checked the physical result can
+acknowledge a `FAILED`/`UNVERIFIED`/`TIMEOUT`/unknown job from its drawer
+("Mark as reviewed"). The acknowledgement is a control-plane triage fact, not
+print evidence: the station's status, payload and error text are never rewritten,
+so the row still shows `UNVERIFIED` with its verdict and a muted "Reviewed" line.
+It only stops the job satisfying `jobNeedsAttention` for the bucket, counts and
+sort, which is why it moves to Other and disappears from Needs review. The
+acknowledgement is stored on the control plane (`control_device_jobs.reviewed_at`
+/ `reviewed_by`) and survives a station re-sync, because the mirror upsert
+refreshes the job body without touching those columns. "Undo review" puts the job
+back in front of the operator. `POST /api/v1/control/devices/:id/jobs/:jobId/review`
+with `{ reviewed: boolean }`, gated by `job:retry`.
 
 Clicking a bucket filters to exactly those rows; clicking the selected bucket
 returns to All. Counts do not change when the bucket changes.

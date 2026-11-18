@@ -344,6 +344,24 @@ Also verified at 1920, 1280 and 768px (54 more renders, 0 issues), and edge-to-e
   Playwright tests (1 new: cross-station select, fixed position, scroll, dialog
   destinations, clear), full suite 141 passed.
 
+## 2026-11-18 — Incoming Jobs: acknowledge an UNVERIFIED outcome
+
+- Operators can mark a `FAILED`/`UNVERIFIED`/`TIMEOUT`/unknown job as reviewed
+  from its drawer. The control plane stores the acknowledgement
+  (`control_device_jobs.reviewed_at` / `reviewed_by`, additive `ensureColumn`, no
+  schema bump); the station's status, payload and error text are never rewritten.
+  A reviewed job leaves Needs review, counts as Other, sorts after the pending
+  ones, and shows a muted "Reviewed" line with the status unchanged. "Undo
+  review" restores it.
+- The mirror upsert moved from `INSERT OR REPLACE` to `ON CONFLICT DO UPDATE`, so
+  a station re-sync refreshes the job body without deleting the acknowledgement.
+  `POST /api/v1/control/devices/:id/jobs/:jobId/review` (`job:retry`) also
+  excludes reviewed jobs from the server-side attention stat.
+- Verified: 790 web unit tests, 27 control API tests (3 new for the
+  acknowledgement), typecheck for both workspaces, Control build, 43/43 Incoming
+  Jobs Playwright tests (1 new: reviewed job leaves Needs review with its status
+  intact), full suite 141 passed.
+
 ## Next, in order
 
 1. **Fold the paper-profile hotfix layers** (`paperProfilesLayoutHotfix`, `Closure`, `Completion`, `LibraryGeometryHotfix`) into `paperProfilesLibrary.css` / `paperProfilesEditor.css`, deleting `!important` as you go. Gate: `paper-profile-ux` and `paper-profile-layout-regression` e2e, which first need their pre-existing failures fixed so they can detect a regression. Then delete the entries from the hotfix list in `designTokens.test.ts`.

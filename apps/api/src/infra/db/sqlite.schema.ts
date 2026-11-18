@@ -170,6 +170,14 @@ function ensureOptionalControlExtensions(db: Database): void {
     )
   `);
   db.run('CREATE INDEX IF NOT EXISTS idx_control_device_jobs_created ON control_device_jobs(device_id, created_at DESC)');
+
+  const hasDeviceJobs = db.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_device_jobs'")[0]?.values.length === 1;
+  if (hasDeviceJobs) {
+    // Operator acknowledgement of a job whose physical outcome was checked.
+    // Additive on purpose: the station's status and payload stay untouched.
+    ensureColumn(db, 'control_device_jobs', 'reviewed_at', 'TEXT');
+    ensureColumn(db, 'control_device_jobs', 'reviewed_by', 'TEXT');
+  }
 }
 
 /**

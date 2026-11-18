@@ -226,3 +226,45 @@ describe('sortAttentionFirst', () => {
     expect(sortAttentionFirst(only).map((entry) => entry.id)).toEqual(['only']);
   });
 });
+
+describe('review acknowledgement', () => {
+  const reviewed = (status: string, id: string) => ({
+    id,
+    status,
+    createdAt: '2026-11-18T09:00:00.000Z',
+    reviewedAt: '2026-11-18T09:30:00.000Z',
+  });
+  const isAttention = (entry: { status: string; reviewedAt?: string }) =>
+    entry.status !== 'SUCCESS' &&
+    !entry.reviewedAt &&
+    ['FAILED', 'UNVERIFIED', 'TIMEOUT'].includes(entry.status);
+
+  it('moves a reviewed outcome out of Needs review without touching its status', () => {
+    expect(matchesStatusBucket('UNVERIFIED', 'NEEDS_REVIEW', true)).toBe(false);
+    expect(matchesStatusBucket('UNVERIFIED', 'OTHER', true)).toBe(true);
+    expect(matchesStatusBucket('UNVERIFIED', 'NEEDS_REVIEW', false)).toBe(true);
+    // Review never moves a pipeline or printed job.
+    expect(matchesStatusBucket('QUEUED', 'IN_PROGRESS', true)).toBe(true);
+    expect(matchesStatusBucket('QUEUED', 'OTHER', true)).toBe(false);
+    expect(matchesStatusBucket('SUCCESS', 'PRINTED', true)).toBe(true);
+  });
+
+  it('counts reviewed jobs in Other so the buckets still add up', () => {
+    const counts = countStatusBuckets(
+      [reviewed('UNVERIFIED', 'a'), reviewed('TIMEOUT', 'b'), { id: 'c', status: 'UNVERIFIED', createdAt: '2026-11-18T09:00:00.000Z' }],
+      { isAttention },
+    );
+    expect(counts).toEqual({ all: 3, needsReview: 1, inProgress: 0, printed: 0, other: 2 });
+  });
+
+  it('keeps reviewed rows after the unreviewed ones', () => {
+    const ordered = sortAttentionFirst(
+      [
+        reviewed('UNVERIFIED', 'reviewed'),
+        { id: 'pending', status: 'FAILED', createdAt: '2026-11-18T08:00:00.000Z' },
+      ],
+      { isAttention },
+    );
+    expect(ordered.map((entry) => entry.id)).toEqual(['pending', 'reviewed']);
+  });
+});

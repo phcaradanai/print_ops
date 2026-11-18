@@ -214,6 +214,12 @@ export class WebControlRegistryService {
   private readonly useSqlite: boolean;
   private readonly logger?: Pick<Console, 'info' | 'warn' | 'error'>;
   private readonly deviceJobs = new Map<string, Map<string, ControlSyncedJob>>();
+  /**
+   * Control-plane acknowledgement of an UNVERIFIED/timeout job. Kept beside the
+   * mirror so a station sync never rewrites it; the station's job status and
+   * payload are untouched.
+   */
+  private readonly reviewedJobs = new Map<string, { reviewedAt: string; reviewedBy: string }>();
   private lastAutoDiscoveryAt = 0;
   private automaticDiscoveryInFlight?: Promise<void>;
   private readonly lastJobSyncAt = new Map<string, number>();
@@ -470,10 +476,17 @@ export class WebControlRegistryService {
     if (this.useSqlite && normalizedList.length > 0) {
       const db = getDb();
       for (const job of normalizedList) {
+        // ON CONFLICT instead of INSERT OR REPLACE: a re-sync must refresh the
+        // job body without deleting the operator's review acknowledgement.
         db.run(
-          `INSERT OR REPLACE INTO control_device_jobs (
+          `INSERT INTO control_device_jobs (
             device_id, job_id, status, created_at, updated_at, job_json
-          ) VALUES (?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(device_id, job_id) DO UPDATE SET
+            status = excluded.status,
+            created_at = excluded.created_at,
+            updated_at = excluded.updated_at,
+            job_json = excluded.job_json`,
           [
             deviceId,
             job.id,
@@ -487,11 +500,59 @@ export class WebControlRegistryService {
     }
   }
 
+  private reviewKey(deviceId: string, jobId: string): string {
+    return `${deviceId}\u0000${jobId}`;
+  }
+
+  /**
+   * Acknowledge (or un-acknowledge) one mirrored job. Returns false when the
+   * job is not in the mirror, so the route can answer 404 instead of pretending
+   * the acknowledgement landed.
+   */
+  async setJobReviewed(
+    deviceId: string,
+    jobId: string,
+    reviewed: boolean,
+    reviewedBy: string,
+  ): Promise<boolean> {
+    const key = this.reviewKey(deviceId, jobId);
+    const inMemory = this.deviceJobs.get(deviceId)?.has(jobId) ?? false;
+    let found = inMemory;
+
+    if (this.useSqlite) {
+      const db = getDb();
+      if (reviewed) {
+        db.run(
+          'UPDATE control_device_jobs SET reviewed_at = ?, reviewed_by = ? WHERE device_id = ? AND job_id = ?',
+          [new Date().toISOString(), reviewedBy, deviceId, jobId],
+        );
+      } else {
+        db.run(
+          'UPDATE control_device_jobs SET reviewed_at = NULL, reviewed_by = NULL WHERE device_id = ? AND job_id = ?',
+          [deviceId, jobId],
+        );
+      }
+      found = found || db.getRowsModified() > 0;
+    }
+
+    if (!found) return false;
+
+    if (reviewed) this.reviewedJobs.set(key, { reviewedAt: new Date().toISOString(), reviewedBy });
+    else this.reviewedJobs.delete(key);
+    return true;
+  }
+
+  private withReview(deviceId: string, job: ControlSyncedJob): ControlSyncedJob {
+    const review = this.reviewedJobs.get(this.reviewKey(deviceId, job.id));
+    if (!review) return job;
+    return { ...job, reviewedAt: review.reviewedAt, reviewedBy: review.reviewedBy };
+  }
+
   async getDeviceJobs(deviceId: string): Promise<ControlSyncedJob[]> {
     if (this.useSqlite) {
       const db = getDb();
       const stmt = db.prepare(
-        'SELECT job_json FROM control_device_jobs WHERE device_id = ? ORDER BY created_at DESC LIMIT 1000',
+        'SELECT job_json, reviewed_at, reviewed_by FROM control_device_jobs WHERE device_id = ? ORDER BY created_at DESC LIMIT 1000',
       );
       stmt.bind([deviceId]);
       const rows: ControlSyncedJob[] = [];
@@ -503,7 +564,15 @@ export class WebControlRegistryService {
             try {
               const parsed = JSON.parse(rawJson) as ControlSyncedJob;
               const normalized = normalizeSyncedJob(deviceId, parsed);
-              if (normalized) rows.push(normalized);
+              if (normalized) {
+                const reviewedAt = typeof row['reviewed_at'] === 'string' ? row['reviewed_at'] : undefined;
+                const reviewedBy = typeof row['reviewed_by'] === 'string' ? row['reviewed_by'] : undefined;
+                rows.push(
+                  reviewedAt
+                    ? { ...normalized, reviewedAt, ...(reviewedBy ? { reviewedBy } : {}) }
+                    : normalized,
+                );
+              }
             } catch {
               // ignore malformed row
             }
@@ -519,7 +588,9 @@ export class WebControlRegistryService {
 
     const bucket = this.deviceJobs.get(deviceId);
     if (!bucket) return [];
-    return Array.from(bucket.values()).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    return Array.from(bucket.values())
+      .map((job) => this.withReview(deviceId, job))
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
   }
 
   async syncJobsFromReachableDevice(device: DeviceRecord): Promise<ControlSyncedJob[]> {

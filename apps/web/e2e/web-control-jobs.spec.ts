@@ -123,6 +123,7 @@ interface FixtureJob {
   payload: Record<string, unknown>;
   errorCode?: string;
   errorMessage?: string;
+  reviewedAt?: string;
 }
 
 const JOHN_JOBS: FixtureJob[] = [
@@ -426,6 +427,11 @@ const STRINGS = {
     clearSelection: 'Clear selection',
     reprintSelected: 'Re-print Selected',
     reprintDialogGeneric: 'Reprint job',
+    markReviewed: 'Mark as reviewed',
+    unmarkReviewed: 'Undo review',
+    reviewedHint:
+      'Marking this job reviewed clears it from Needs review. Its status and evidence stay exactly as the station reported them.',
+    reviewedNotice: 'Marked this job as reviewed.',
     staleCopy: ['Fleet Errors & Warnings', 'Total incoming jobs', 'Select a PrintOps Station'],
   },
   th: {
@@ -495,6 +501,11 @@ const STRINGS = {
     clearSelection: 'ยกเลิกการเลือก',
     reprintSelected: 'สั่งพิมพ์ซ้ำที่เลือก',
     reprintDialogGeneric: 'พิมพ์งานซ้ำ',
+    markReviewed: 'ทำเครื่องหมายว่าตรวจสอบแล้ว',
+    unmarkReviewed: 'ยกเลิกเครื่องหมายตรวจสอบ',
+    reviewedHint:
+      'การทำเครื่องหมายว่าตรวจสอบแล้วจะเอาตัวนี้ออกจาก Need review โดยสถานะและหลักฐานของงานยังเป็นอย่างที่เครื่องรายงานไว้ทุกอย่าง',
+    reviewedNotice: 'ทำเครื่องหมายว่าตรวจสอบแล้ว',
     staleCopy: ['สรุป Error ที่พบในระบบ', 'เลือกเครื่อง PrintOps เพื่อดูข้อมูล'],
   },
 } as const;
@@ -1782,6 +1793,54 @@ test('P. the reprint bar is pinned in the viewport as soon as rows are selected'
   await bar.screenshot({ path: `${ARTIFACTS}/reprint-bar-en.png` });
   await bar.getByRole('button', { name: s('en').clearSelection, exact: true }).click();
   await expect(bar).toHaveCount(0);
+});
+
+test('Q. a reviewed UNVERIFIED job leaves Needs review and keeps its status', async ({ page }) => {
+  let reviewed = false;
+  const fleet = fleetResponse();
+
+  await installHarness(page, {
+    locale: 'en',
+    role: 'OWNER',
+    api: async (url, route, method) => {
+      if (url.pathname === '/api/v1/control/jobs' && method === 'GET') {
+        const snapshot = JSON.parse(JSON.stringify(fleet)) as ReturnType<typeof fleetResponse>;
+        const target = snapshot.devices[0]!.jobs.find(
+          (job) => job.requestId === 'REQ-UNVERIFIED-0001',
+        );
+        if (target && reviewed) target.reviewedAt = '2026-11-18T09:31:00.000Z';
+        await route.fulfill({ json: snapshot });
+        return true;
+      }
+      if (/\/api\/v1\/control\/devices\/[^/]+\/jobs\/[^/]+\/review$/.test(url.pathname) && method === 'POST') {
+        const body = JSON.parse(route.request().postData() ?? '{}') as { reviewed?: boolean };
+        reviewed = body.reviewed === true;
+        await route.fulfill({ json: { reviewed } });
+        return true;
+      }
+      return false;
+    },
+  });
+  await page.goto('/control/jobs?deviceId=dev-john');
+  await waitForList(page);
+
+  const counts = page.getByRole('toolbar', { name: s('en').countsLabel });
+  const needsReview = counts.getByRole('button', { name: /Needs review/ });
+  await expect(needsReview).toContainText('3');
+
+  const drawer = await openDetails(page, 'REQ-UNVERIFIED-0001');
+  await expect(drawer.getByText(s('en').reviewedHint, { exact: false })).toBeVisible();
+  await drawer.getByRole('button', { name: s('en').markReviewed, exact: true }).click();
+
+  await expect(page.getByText(s('en').reviewedNotice)).toBeVisible();
+  await expect(needsReview).toContainText('2');
+
+  // The station's status and verdict stay exactly as reported; only the triage
+  // bucket moved, and the row says why.
+  const row = rowFor(page, 'REQ-UNVERIFIED-0001');
+  await expect(row).toContainText('UNVERIFIED');
+  await expect(row).toContainText('Reviewed');
+  await expect(drawer.getByRole('button', { name: s('en').unmarkReviewed, exact: true })).toBeVisible();
 });
 
 // ---------------------------------------------------------------------------

@@ -56,18 +56,31 @@ export interface BucketableJob {
  * status), the in-progress set covers the pipeline, `SUCCESS` is Printed, and
  * Other is the remainder — never a catch-all for unknown statuses, which belong
  * to Needs review because the app cannot say whether paper moved.
+ *
+ * `reviewed` is the control-plane acknowledgement of an outcome an operator has
+ * already checked. It removes the row from Needs review without rewriting the
+ * station's status: the acknowledgement is a triage fact, not print evidence.
+ * A reviewed UNVERIFIED job therefore lands in Other, next to the outcomes that
+ * are already closed for the operator.
  */
-export function matchesStatusBucket(status: string, bucket: StatusBucket): boolean {
+export function matchesStatusBucket(
+  status: string,
+  bucket: StatusBucket,
+  reviewed = false,
+): boolean {
   switch (bucket) {
     case 'ALL':
       return true;
     case 'NEEDS_REVIEW':
-      return jobNeedsAttention(status);
+      return !reviewed && jobNeedsAttention(status);
     case 'IN_PROGRESS':
       return IN_PROGRESS_STATUSES.has(status);
     case 'PRINTED':
       return status === 'SUCCESS';
     case 'OTHER':
+      if (reviewed) {
+        return !IN_PROGRESS_STATUSES.has(status) && status !== 'SUCCESS';
+      }
       return (
         status !== 'SUCCESS' &&
         !IN_PROGRESS_STATUSES.has(status) &&
@@ -78,14 +91,23 @@ export function matchesStatusBucket(status: string, bucket: StatusBucket): boole
   }
 }
 
+export interface BucketCountOptions<T extends BucketableJob> {
+  /** Which rows need a human. Defaults to the shared status verdict. */
+  isAttention?: (job: T) => boolean;
+}
+
 /** Counts for every bucket over the already-filtered set (status bucket excluded). */
-export function countStatusBuckets(jobs: readonly BucketableJob[]): StatusBucketCounts {
+export function countStatusBuckets<T extends BucketableJob>(
+  jobs: readonly T[],
+  options: BucketCountOptions<T> = {},
+): StatusBucketCounts {
+  const isAttention = options.isAttention ?? ((job: T) => jobNeedsAttention(job.status));
   let needsReview = 0;
   let inProgress = 0;
   let printed = 0;
 
   for (const job of jobs) {
-    if (jobNeedsAttention(job.status)) needsReview += 1;
+    if (isAttention(job)) needsReview += 1;
     if (IN_PROGRESS_STATUSES.has(job.status)) inProgress += 1;
     if (job.status === 'SUCCESS') printed += 1;
   }
@@ -118,10 +140,14 @@ function createdMs(job: SortableJob): number | null {
  * views share. An unparseable timestamp sorts after every real one and falls
  * through to the same `id` tie-break rather than making the order random.
  */
-export function sortAttentionFirst<T extends SortableJob>(jobs: readonly T[]): T[] {
+export function sortAttentionFirst<T extends SortableJob>(
+  jobs: readonly T[],
+  options: { isAttention?: (job: T) => boolean } = {},
+): T[] {
+  const isAttention = options.isAttention ?? ((job: T) => jobNeedsAttention(job.status));
   return [...jobs].sort((a, b) => {
-    const aNeedsReview = jobNeedsAttention(a.status);
-    const bNeedsReview = jobNeedsAttention(b.status);
+    const aNeedsReview = isAttention(a);
+    const bNeedsReview = isAttention(b);
     if (aNeedsReview !== bNeedsReview) return aNeedsReview ? -1 : 1;
 
     const aMs = createdMs(a);

@@ -110,6 +110,9 @@ export interface ControlSyncedJobItem extends FilterableJob {
   reprintOfJobId?: string;
   reprintOfRequestId?: string;
   reprintReason?: string;
+  /** Control-plane acknowledgement: checked by an operator, status unchanged. */
+  reviewedAt?: string;
+  reviewedBy?: string;
 }
 
 export interface ControlStationErrorBreakdown {
@@ -358,6 +361,7 @@ export default function WebControlJobs() {
     nextStartWidth: number;
   } | null>(null);
   const [reprintTargets, setReprintTargets] = useState<ControlSyncedJobItem[]>([]);
+  const [reviewBusyJobId, setReviewBusyJobId] = useState<string | null>(null);
   const [reprintCopies, setReprintCopies] = useState(1);
   const [reprintReason, setReprintReason] = useState('');
   const [reprintConfirmed, setReprintConfirmed] = useState(false);
@@ -474,7 +478,20 @@ export default function WebControlJobs() {
     [scopeJobs, jobSearch, datePreset, dateFrom, dateTo, keyFilters],
   );
 
-  const counts = useMemo(() => countStatusBuckets(baseJobs), [baseJobs]);
+  /**
+   * A job needs a human when its status says so AND nobody has acknowledged it.
+   * The acknowledgement never rewrites the station's status or payload, it only
+   * clears the triage bucket.
+   */
+  const needsReview = useCallback(
+    (job: ControlSyncedJobItem) => jobNeedsAttention(job.status) && !job.reviewedAt,
+    [],
+  );
+
+  const counts = useMemo(
+    () => countStatusBuckets(baseJobs, { isAttention: needsReview }),
+    [baseJobs, needsReview],
+  );
 
   const bucketCounts = useMemo<Record<StatusBucket, number>>(
     () => ({
@@ -488,7 +505,7 @@ export default function WebControlJobs() {
   );
 
   const visibleJobs = useMemo(
-    () => baseJobs.filter((job) => matchesStatusBucket(job.status, statusBucket)),
+    () => baseJobs.filter((job) => matchesStatusBucket(job.status, statusBucket, Boolean(job.reviewedAt))),
     [baseJobs, statusBucket],
   );
 
@@ -497,7 +514,10 @@ export default function WebControlJobs() {
     [visibleJobs],
   );
 
-  const sortedVisibleJobs = useMemo(() => sortAttentionFirst(visibleJobs), [visibleJobs]);
+  const sortedVisibleJobs = useMemo(
+    () => sortAttentionFirst(visibleJobs, { isAttention: needsReview }),
+    [visibleJobs, needsReview],
+  );
 
   const totalPages = Math.max(1, Math.ceil(sortedVisibleJobs.length / JOB_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -530,7 +550,10 @@ export default function WebControlJobs() {
         dateTo: '',
         keyFilters: [],
         groupBy,
-      }).groups.map((group) => ({ ...group, jobs: sortAttentionFirst(group.jobs) })),
+      }).groups.map((group) => ({
+        ...group,
+        jobs: sortAttentionFirst(group.jobs, { isAttention: needsReview }),
+      })),
     [visibleJobs, groupBy],
   );
 
@@ -913,6 +936,35 @@ export default function WebControlJobs() {
     setNotice(null);
   };
 
+  const handleToggleReview = async (job: ControlSyncedJobItem) => {
+    const reviewed = !job.reviewedAt;
+    setReviewBusyJobId(job.id);
+    try {
+      await apiFetch(
+        `/v1/control/devices/${encodeURIComponent(job.deviceId)}/jobs/${encodeURIComponent(job.id)}/review`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reviewed }),
+        },
+      );
+      fleetResource.refresh();
+      setNotice({
+        tone: 'success',
+        message: reviewed
+          ? t('control.jobs.reviewedNotice')
+          : t('control.jobs.reviewUndoneNotice'),
+      });
+    } catch (err) {
+      setNotice({
+        tone: 'error',
+        message: formatMsg(t('control.jobs.reviewFailed'), { message: errorMessage(err) }),
+      });
+    } finally {
+      setReviewBusyJobId(null);
+    }
+  };
+
   const hasUnknownOutcomeTarget = useMemo(
     () => reprintTargets.some((job) => getJobVerdict(job.status).outcomeUnknown),
     [reprintTargets],
@@ -1191,6 +1243,11 @@ export default function WebControlJobs() {
             {jobNeedsAttention(job.status) && (
               <Text size="label" tone="muted" wrap>
                 {t(verdictHeadlineKey(verdict))}
+              </Text>
+            )}
+            {job.reviewedAt && (
+              <Text size="label" tone="muted" wrap>
+                {t('control.jobs.reviewedLabel')}
               </Text>
             )}
           </Stack>
@@ -1933,6 +1990,17 @@ export default function WebControlJobs() {
         className="wcj-detail-drawer"
         footer={
           <>
+            {drawerJob && (jobNeedsAttention(drawerJob.status) || drawerJob.reviewedAt) && (
+              <Button
+                variant="secondary"
+                busy={reviewBusyJobId === drawerJob.id}
+                onClick={() => void handleToggleReview(drawerJob)}
+              >
+                {drawerJob.reviewedAt
+                  ? t('control.jobs.unmarkReviewed')
+                  : t('control.jobs.markReviewed')}
+              </Button>
+            )}
             <Button variant="secondary" onClick={() => setDrawerJobId(null)}>
               {t('common.close')}
             </Button>
@@ -2010,6 +2078,16 @@ export default function WebControlJobs() {
                 {t(drawerDetailKey)}
               </Text>
             </Stack>
+
+            {drawerJob && (jobNeedsAttention(drawerJob.status) || drawerJob.reviewedAt) && (
+              <Text size="label" tone="muted" wrap>
+                {drawerJob.reviewedAt
+                  ? formatMsg(t('control.jobs.reviewedByHint'), {
+                      name: drawerJob.reviewedBy ?? '',
+                    })
+                  : t('control.jobs.reviewedHint')}
+              </Text>
+            )}
 
             {drawerVerdict?.outcomeUnknown && (
               <Alert tone="warning" title={t('control.jobs.detailUnconfirmedTitle')}>

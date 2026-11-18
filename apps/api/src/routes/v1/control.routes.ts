@@ -380,6 +380,31 @@ export async function controlRoutes(
   );
 
   app.post(
+    '/control/devices/:id/jobs/:jobId/review',
+    { onRequest: [requirePermission('job:retry')] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { id, jobId } = req.params as { id: string; jobId: string };
+      const body = (req.body ?? {}) as { reviewed?: unknown };
+      if (typeof body.reviewed !== 'boolean') {
+        return reply.status(400).send({
+          error: 'VALIDATION_ERROR',
+          message: '`reviewed` must be a boolean',
+        });
+      }
+
+      const found = await deps.registry.setJobReviewed(id, jobId, body.reviewed, actor(req));
+      if (!found) {
+        return reply.status(404).send({
+          error: 'NOT_FOUND',
+          message: 'Job is not in this control plane\'s mirror',
+        });
+      }
+
+      return reply.send({ reviewed: body.reviewed });
+    },
+  );
+
+  app.post(
     '/control/devices/:id/jobs/:jobId/reprint',
     { onRequest: [requirePermission('job:retry')] },
     async (req: FastifyRequest, reply: FastifyReply) => {
@@ -1472,7 +1497,13 @@ async function buildFleetControlJobsPayload(deps: ControlRoutesDeps) {
           devSuccess += 1;
         } else if (job.status === 'FAILED') {
           devFailed += 1;
-        } else if (ATTENTION_STATUSES.has(job.status) || (job.status !== 'CANCELLED' && job.status !== 'DUPLICATE_RETURNED')) {
+        } else if (
+          !job.reviewedAt &&
+          (ATTENTION_STATUSES.has(job.status) ||
+            (job.status !== 'CANCELLED' && job.status !== 'DUPLICATE_RETURNED'))
+        ) {
+          // Acknowledged outcomes stay out of the attention count, exactly like
+          // the web bucket; the job itself keeps its status and evidence.
           devAttention += 1;
         }
 

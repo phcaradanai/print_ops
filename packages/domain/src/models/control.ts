@@ -173,6 +173,14 @@ export interface ControlSyncedJob {
   reprintOfJobId?: string;
   reprintOfRequestId?: string;
   reprintReason?: string;
+  /**
+   * Review acknowledgement, control-plane only. The station's job status is
+   * never rewritten: an acknowledged UNVERIFIED job keeps its status and
+   * evidence, but leaves the "needs review" bucket for the operators who
+   * already checked it.
+   */
+  reviewedAt?: string;
+  reviewedBy?: string;
 }
 
 export interface DeviceHeartbeatPayload {
