@@ -126,9 +126,18 @@ test.describe('all-page interaction state', () => {
         if (type === 'hidden' || type === 'color' || type === 'radio') continue;
         if (type === 'checkbox') {
           const before = await control.isChecked();
-          await control.click();
+          // A switch keeps a visually hidden 1x1 input and paints a decorative
+          // track over it, so an operator clicks the wrapping label. Click the
+          // label here too instead of forcing a click on a clipped input the
+          // track would intercept.
+          const wrapper = control.locator('xpath=ancestor::label[1]');
+          const clickControl = async () => {
+            if (await wrapper.count() > 0) await wrapper.first().click();
+            else await control.click();
+          };
+          await clickControl();
           expect(await control.isChecked(), `${path} checkbox ${index} did not change`).toBe(!before);
-          await control.click();
+          await clickControl();
           continue;
         }
         if (tag === 'select') {
