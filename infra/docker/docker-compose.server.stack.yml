@@ -112,7 +112,7 @@ services:
   # 5. App Service: PrintOps App (UI + API)
   app:
     container_name: printops-app
-    image: registry.node1.ch3.local:80/printops-app:${PRINTOPS_APP_VERSION:-0.1.52}
+    image: registry.node1.ch3.local:80/printops-app:${PRINTOPS_APP_VERSION:-0.1.53}
     init: true
     environment:
       PRINTOPS_DEV_SEED: "true"
@@ -145,7 +145,7 @@ services:
   # 6. Runner Service: Go Runner สำหรับดึงงานพิมพ์จาก App ไปส่งออก CUPS
   runner:
     container_name: printops-runner
-    image: registry.node1.ch3.local:80/printops-app:${PRINTOPS_APP_VERSION:-0.1.52}
+    image: registry.node1.ch3.local:80/printops-app:${PRINTOPS_APP_VERSION:-0.1.53}
     command: ["/usr/local/bin/printops-runner", "run"]
     environment:
       PRINTOPS_API_BASE_URL: "http://app:3001"
