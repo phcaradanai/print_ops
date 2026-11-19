@@ -3,9 +3,31 @@ import type { CreatePrinterService } from '../services/create-printer.service.js
 import type { GetPrinterStatusService } from '../services/get-printer-status.service.js';
 import { evaluatePrinterReadiness, type PrinterRepositoryPort } from '@printerops/domain';
 import type { AdapterRegistry, CupsPrinterAdapter } from '@printerops/adapters';
-import { AppError, ConflictError, NotFoundError } from '@printerops/shared';
-import { normalizeCupsServer, type cupsServerSettings } from '../infra/cups-server-settings.js';
+import { AppError, NotFoundError, ValidationError } from '@printerops/shared';
+import {
+  cupsAdminSettings,
+  normalizeCupsAdminCredentials,
+  normalizeCupsServer,
+  type cupsServerSettings,
+} from '../infra/cups-server-settings.js';
+import { parseNetworkTargets } from '../services/network-printer-search.service.js';
+import type { CupsProvisioningService, CupsQueueInput } from '../services/cups-provisioning.service.js';
 import { requirePermission } from './v1/permission-guard.js';
+
+/** Accept either explicit hosts or the CIDR/range input the scan form uses. */
+function requestedHosts(body: { targets?: string; hosts?: string[] }): string[] {
+  if (Array.isArray(body.hosts) && body.hosts.length > 0) return body.hosts;
+  const targets = (body.targets ?? '').trim();
+  if (!targets) throw new ValidationError('Enter IP addresses, a range or a host name to search');
+  try {
+    return parseNetworkTargets(targets);
+  } catch (error) {
+    // A single DNS name is a legitimate search target even though the IPv4
+    // parser refuses it; anything else keeps the parser's message.
+    if (/^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$/.test(targets)) return [targets];
+    throw error;
+  }
+}
 
 export async function printerRoutes(
   app: FastifyInstance,
@@ -16,6 +38,8 @@ export async function printerRoutes(
     registry: AdapterRegistry;
     cups?: CupsPrinterAdapter;
     cupsSettings?: ReturnType<typeof cupsServerSettings>;
+    cupsAdmin?: ReturnType<typeof cupsAdminSettings>;
+    cupsProvisioning?: CupsProvisioningService;
   }
 ): Promise<void> {
   // Previously guarded only by `app.authenticate` (any logged-in user, incl.
@@ -24,6 +48,7 @@ export async function printerRoutes(
   const read = { onRequest: [requirePermission('printer:read')] };
   const create = { onRequest: [requirePermission('printer:create')] };
   const control = { onRequest: [requirePermission('printer:control')] };
+  const update = { onRequest: [requirePermission('printer:update')] };
 
   app.get('/printers', read, async () => {
     return deps.printers.findAll();
@@ -60,35 +85,118 @@ export async function printerRoutes(
 
   app.get('/printers/cups-queues', read, async () => {
     if (!deps.cups) throw new NotFoundError('CUPS', 'local adapter');
-    const [queues, printers] = await Promise.all([deps.cups.listPrinters(), deps.printers.findAll()]);
+    const [queues, printers, devices] = await Promise.all([
+      deps.cups.listPrinters(),
+      deps.printers.findAll(),
+      deps.cups.listQueueDevices(),
+    ]);
     const registered = new Set(printers.filter((printer) => printer.protocol === 'cups').map((printer) => printer.connectionUri));
-    return queues.map((name) => ({ name, registered: registered.has(`cups://${name}`) }));
+    return queues.map((name) => ({
+      name,
+      registered: registered.has(`cups://${name}`),
+      deviceUri: devices[name],
+    }));
   });
 
+  app.get('/printers/cups-admin', read, async () => {
+    if (!deps.cupsAdmin) throw new NotFoundError('CUPS', 'local adapter');
+    return deps.cupsAdmin.status();
+  });
+
+  // Credentials let PrintOps manage the station's CUPS spooler itself, so an
+  // operator never has to run lpadmin on the host.
+  app.put<{ Body: { user: string; password: string } }>('/printers/cups-admin', {
+    onRequest: [requirePermission('printer:update')],
+    schema: { body: {
+      type: 'object', required: ['user', 'password'], properties: {
+        user: { type: 'string', maxLength: 64 }, password: { type: 'string', maxLength: 256 },
+      },
+    } },
+  }, async (req) => {
+    if (!deps.cupsAdmin || !deps.cups) throw new NotFoundError('CUPS', 'local adapter');
+    const credentials = normalizeCupsAdminCredentials(req.body);
+    await deps.cupsAdmin.save(credentials);
+    deps.cups.setAdminCredentials(credentials);
+    return deps.cupsAdmin.status();
+  });
+
+  app.delete('/printers/cups-admin', update, async () => {
+    if (!deps.cupsAdmin || !deps.cups) throw new NotFoundError('CUPS', 'local adapter');
+    await deps.cupsAdmin.clear();
+    deps.cups.setAdminCredentials(undefined);
+    return deps.cupsAdmin.status();
+  });
+
+  /** Probe candidate hosts for IPP printers CUPS has never seen. */
+  app.post<{ Body: { targets?: string; hosts?: string[] } }>('/printers/cups-scan', {
+    onRequest: [requirePermission('printer:read')],
+    schema: { body: {
+      type: 'object', properties: {
+        targets: { type: 'string', maxLength: 4096 },
+        hosts: { type: 'array', maxItems: 256, items: { type: 'string', maxLength: 260 } },
+      },
+    } },
+  }, async (req) => {
+    if (!deps.cupsProvisioning) throw new NotFoundError('CUPS', 'local adapter');
+    return deps.cupsProvisioning.scan(requestedHosts(req.body));
+  });
+
+  const adminCredentials = async (explicit?: { user?: string; password?: string }) => {
+    if (explicit?.user && explicit.password) return normalizeCupsAdminCredentials(explicit);
+    return deps.cupsAdmin ? deps.cupsAdmin.read() : undefined;
+  };
+
+  // Create the CUPS queue for a device and register it, in one call.
+  app.post<{ Body: CupsQueueInput & { adminUser?: string; adminPassword?: string } }>('/printers/cups-queues', {
+    onRequest: [requirePermission('printer:create')],
+    schema: { body: {
+      type: 'object', properties: {
+        queue: { type: 'string', maxLength: 127 },
+        host: { type: 'string', maxLength: 260 },
+        deviceUri: { type: 'string', maxLength: 512 },
+        info: { type: 'string', maxLength: 127 },
+        location: { type: 'string', maxLength: 127 },
+        adminUser: { type: 'string', maxLength: 64 },
+        adminPassword: { type: 'string', maxLength: 256 },
+      },
+    } },
+  }, async (req, reply) => {
+    if (!deps.cupsProvisioning) throw new NotFoundError('CUPS', 'local adapter');
+    const credentials = await adminCredentials({ user: req.body.adminUser, password: req.body.adminPassword });
+    const result = await deps.cupsProvisioning.createQueue({
+      queue: req.body.queue,
+      host: req.body.host,
+      deviceUri: req.body.deviceUri,
+      info: req.body.info,
+      location: req.body.location,
+    }, (req.user as { sub: string }).sub, credentials);
+    if (req.body.adminUser && req.body.adminPassword && deps.cupsAdmin && deps.cups) {
+      const stored = normalizeCupsAdminCredentials(req.body);
+      await deps.cupsAdmin.save(stored);
+      deps.cups.setAdminCredentials(stored);
+    }
+    return reply.status(result.created ? 201 : 200).send(result);
+  });
+
+  // Register a queue that already exists in CUPS (created by a vendor tool).
   app.post<{ Params: { queue: string } }>('/printers/cups-queues/:queue', create, async (req, reply) => {
     const { queue } = req.params;
-    if (!deps.cups || !(await deps.cups.listPrinters()).includes(queue)) {
-      throw new NotFoundError('CUPS queue', queue);
+    if (!deps.cups) throw new NotFoundError('CUPS', 'local adapter');
+    const actorId = (req.user as { sub: string }).sub;
+    if (deps.cupsProvisioning) {
+      const result = await deps.cupsProvisioning.registerQueue(queue, actorId);
+      return reply.status(result.registered ? 201 : 200).send(result.printer);
     }
+    if (!(await deps.cups.listPrinters()).includes(queue)) throw new NotFoundError('CUPS queue', queue);
     const connectionUri = `cups://${queue}`;
     const existing = (await deps.printers.findAll()).find(
       (printer) => printer.protocol === 'cups' && printer.connectionUri === connectionUri,
     );
     if (existing) return existing;
-
-    const code = `CUPS_${queue}`;
-    try {
-      const printer = await deps.createPrinter.execute(
-        { code, name: queue, protocol: 'cups', connectionUri, metadata: {} },
-        (req.user as { sub: string }).sub,
-      );
-      return reply.status(201).send(printer);
-    } catch (error) {
-      const registered = await deps.printers.findByCode(code);
-      if (registered?.protocol === 'cups' && registered.connectionUri === connectionUri) return registered;
-      if (registered) throw new ConflictError(`Printer code ${code} is already in use`);
-      throw error;
-    }
+    return reply.status(201).send(await deps.createPrinter.execute(
+      { code: `CUPS_${queue}`, name: queue, protocol: 'cups', connectionUri, metadata: {} },
+      actorId,
+    ));
   });
 
   app.get('/printers/:id', read, async (req, reply) => {

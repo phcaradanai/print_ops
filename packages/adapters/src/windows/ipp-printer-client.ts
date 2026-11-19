@@ -30,9 +30,58 @@ export type IppJobsQuery =
   | { ok: true; endpoint: IppEndpoint; jobs: IppRemoteJob[]; statusCode: number }
   | { ok: false; endpoint: IppEndpoint; jobs: []; error: string; statusCode?: number };
 
+/** Value tags defined by RFC 8011 §4.5; only the ones this client sends. */
+export const IPP_TAGS = {
+  integer: 0x21,
+  boolean: 0x22,
+  enumeration: 0x23,
+  text: 0x41,
+  name: 0x42,
+  keyword: 0x44,
+  uri: 0x45,
+  charset: 0x47,
+  naturalLanguage: 0x48,
+} as const;
+
+export const IPP_OPERATIONS = {
+  getJobs: 0x000a,
+  getPrinterAttributes: 0x000b,
+  resumePrinter: 0x0011,
+  cupsAddModifyPrinter: 0x4003,
+  cupsDeletePrinter: 0x4004,
+  cupsAcceptJobs: 0x4008,
+} as const;
+
+export type IppAttributeValue = string | number | boolean;
+
+export type IppAttribute = { tag: number; name: string; value: IppAttributeValue };
+
+export type IppDecodedValue = IppAttributeValue | Buffer;
+export type IppDecodedGroup = { tag: number; attributes: Map<string, IppDecodedValue[]> };
+
+/** Where an IPP request is sent: a TCP endpoint or the local CUPS domain socket. */
+export type IppTarget =
+  | { kind: 'tcp'; hostname: string; port: number; secure?: boolean }
+  | { kind: 'socket'; socketPath: string };
+
+export type IppRequestOptions = {
+  timeoutMs?: number;
+  /** CUPS administrative operations authenticate with HTTP Basic credentials. */
+  credentials?: { user: string; password: string };
+  /** Replaces the TCP destination with the CUPS domain socket when supplied. */
+  socketPath?: string;
+  /** Error text used when the request exceeds timeoutMs. */
+  timeoutError?: string;
+};
+
 const DEFAULT_IPP_PATH = '/ipp/print';
-const GET_JOBS_OPERATION = 0x000a;
-let requestId = 1;
+const GET_JOBS_OPERATION = IPP_OPERATIONS.getJobs;
+const GET_PRINTER_ATTRIBUTES_OPERATION = IPP_OPERATIONS.getPrinterAttributes;
+/**
+ * CUPS rejects a negative request id with "Bad request ID". Draw ids from the
+ * positive int32 range and keep them increasing instead of randomising.
+ */
+let lastRequestId = 0;
 
 /**
  * Return conservative endpoint candidates for a printer host. IPPS is tried
@@ -114,7 +163,7 @@ async function queryIppJobSet(
   whichJobs: 'completed' | 'not-completed',
   timeoutMs: number,
 ): Promise<IppJobsQuery> {
-  const body = encodeGetJobs(endpoint.uri, requestId++, whichJobs);
+  const body = encodeGetJobs(endpoint.uri, nextRequestId(), whichJobs);
   try {
     const response = await postIpp(endpoint, body, timeoutMs);
     if (response.httpStatus < 200 || response.httpStatus >= 300) {
@@ -148,84 +197,147 @@ async function queryIppJobSet(
   }
 }
 
-function postIpp(
+/** Printer identity reported by a device or by a CUPS queue. */
+export type IppPrinterAttributes = {
+  makeModel?: string;
+  info?: string;
+  /** IPP `printer-state`: 3 idle, 4 processing, 5 stopped. */
+  state?: number;
+  acceptingJobs?: boolean;
+  stateReasons: string[];
+  /** Device-advertised URIs, most secure first; used as the CUPS device-uri. */
+  uriSupported: string[];
+  formats: string[];
+  uuid?: string;
+};
+
+export type IppPrinterQuery =
+  | { ok: true; endpoint: IppEndpoint; printer: IppPrinterAttributes; statusCode: number }
+  | { ok: false; endpoint: IppEndpoint; error: string; statusCode?: number; httpStatus?: number };
+
+/**
+ * Read a printer's identity and capabilities with Get-Printer-Attributes.
+ * This is what lets PrintOps find a printer that CUPS has never seen: the
+ * answer comes from the device itself, not from a configured queue.
+ */
+export async function getPrinterAttributes(
   endpoint: IppEndpoint,
-  body: Buffer,
-  timeoutMs: number,
-): Promise<{ httpStatus: number; body: Buffer }> {
-  return new Promise((resolve, reject) => {
-    const transport = endpoint.transport === 'https:' ? https : http;
-    const request = transport.request({
-      protocol: endpoint.transport,
-      hostname: endpoint.hostname,
-      port: endpoint.port,
-      path: endpoint.path,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/ipp',
-        'Content-Length': body.length,
-      },
-      // Embedded printers normally use a self-signed certificate. The IPP
-      // response is only corroborating read-only telemetry and never carries
-      // credentials or print data, so certificate trust is intentionally not
-      // made a deployment prerequisite.
-      rejectUnauthorized: false,
-    }, (response) => {
-      const chunks: Buffer[] = [];
-      response.on('data', (chunk: Buffer | string) => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      });
-      response.on('end', () => {
-        resolve({ httpStatus: response.statusCode ?? 0, body: Buffer.concat(chunks) });
-      });
-      response.on('error', reject);
-    });
-    request.setTimeout(timeoutMs, () => {
-      request.destroy(new Error(`IPP Get-Jobs timed out after ${timeoutMs}ms`));
-    });
-    request.on('error', reject);
-    request.end(body);
-  });
-}
-
-function encodeGetJobs(
-  printerUri: string,
-  id: number,
-  whichJobs: 'completed' | 'not-completed',
-): Buffer {
-  const chunks: Buffer[] = [];
-  const header = Buffer.alloc(9);
-  header[0] = 0x02;
-  header[1] = 0x00;
-  header.writeUInt16BE(GET_JOBS_OPERATION, 2);
-  header.writeUInt32BE(id >>> 0, 4);
-  header[8] = 0x01; // operation-attributes-tag
-  chunks.push(header);
-  chunks.push(encodeAttribute(0x47, 'attributes-charset', 'utf-8'));
-  chunks.push(encodeAttribute(0x48, 'attributes-natural-language', 'en'));
-  chunks.push(encodeAttribute(0x45, 'printer-uri', printerUri));
-  chunks.push(encodeAttribute(0x44, 'which-jobs', whichJobs));
+  options: IppRequestOptions = {},
+): Promise<IppPrinterQuery> {
+  const timeoutMs = options.timeoutMs ?? 3_000;
   const requested = [
-    'job-id',
-    'job-uri',
-    'job-name',
-    'job-state',
-    'job-state-reasons',
-    'job-impressions',
-    'job-impressions-completed',
-    'job-originating-user-name',
-    'time-at-completed',
+    'printer-make-and-model',
+    'printer-info',
+    'printer-state',
+    'printer-state-reasons',
+    'printer-is-accepting-jobs',
+    'printer-uri-supported',
+    'document-format-supported',
+    'printer-uuid',
   ];
-  requested.forEach((attribute, index) => {
-    chunks.push(encodeAttribute(0x44, index === 0 ? 'requested-attributes' : '', attribute));
-  });
-  chunks.push(Buffer.from([0x03])); // end-of-attributes-tag
-  return Buffer.concat(chunks);
+  const body = encodeIppRequest(
+    GET_PRINTER_ATTRIBUTES_OPERATION,
+    [
+      { tag: IPP_TAGS.charset, name: 'attributes-charset', value: 'utf-8' },
+      { tag: IPP_TAGS.naturalLanguage, name: 'attributes-natural-language', value: 'en' },
+      { tag: IPP_TAGS.uri, name: 'printer-uri', value: endpoint.uri },
+      { tag: IPP_TAGS.name, name: 'requesting-user-name', value: 'printops' },
+      ...requestedAttributeList(requested),
+    ],
+  );
+  try {
+    const response = await ippPostRequest(
+      { kind: 'tcp', hostname: endpoint.hostname, port: endpoint.port, secure: endpoint.transport === 'https:' },
+      endpoint.path,
+      body,
+      {
+        timeoutMs,
+        credentials: options.credentials,
+        socketPath: options.socketPath,
+        timeoutError: `IPP Get-Printer-Attributes timed out after ${timeoutMs}ms`,
+      },
+    );
+    if (response.httpStatus < 200 || response.httpStatus >= 300) {
+      return {
+        ok: false,
+        endpoint,
+        httpStatus: response.httpStatus,
+        error: `IPP endpoint returned HTTP ${response.httpStatus}`,
+      };
+    }
+    const decoded = decodeIppResponse(response.body);
+    if (decoded.statusCode >= 0x0400) {
+      return {
+        ok: false,
+        endpoint,
+        statusCode: decoded.statusCode,
+        error:
+          `IPP Get-Printer-Attributes failed with status ` +
+          `0x${decoded.statusCode.toString(16).padStart(4, '0')}` +
+          (decoded.statusMessage ? `: ${decoded.statusMessage}` : ''),
+      };
+    }
+    return {
+      ok: true,
+      endpoint,
+      statusCode: decoded.statusCode,
+      printer: readPrinterAttributes(response.body),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      endpoint,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
-function encodeAttribute(tag: number, name: string, value: string): Buffer {
+function nextRequestId(): number {
+  lastRequestId = (lastRequestId + 1) % 0x7fff_ffff;
+  return lastRequestId;
+}
+
+/** Read printer identity and capabilities out of a Get-Printer-Attributes body. */
+export function readPrinterAttributes(body: Buffer): IppPrinterAttributes {
+  const decoded = decodeIppResponse(body);
+  const attributes = mergedAttributes(decoded.groups.filter((group) => group.tag !== 0x01));
+  return {
+    makeModel: firstString(attributes, 'printer-make-and-model'),
+    info: firstString(attributes, 'printer-info'),
+    state: firstNumber(attributes, 'printer-state'),
+    acceptingJobs: firstBoolean(attributes, 'printer-is-accepting-jobs'),
+    stateReasons: strings(attributes, 'printer-state-reasons'),
+    uriSupported: strings(attributes, 'printer-uri-supported'),
+    formats: strings(attributes, 'document-format-supported'),
+    uuid: firstString(attributes, 'printer-uuid'),
+  };
+}
+
+/**
+ * Build a multi-valued `requested-attributes` list. RFC 8011 says only the
+ * first value carries the attribute name; the rest repeat it with an empty
+ * name. CUPS silently keeps just the first value when every repetition is
+ * named, which reads as "the queue has no state" instead of an error.
+ */
+export function requestedAttributeList(names: string[]): IppAttribute[] {
+  return names.map((name, index) => ({
+    tag: IPP_TAGS.keyword,
+    name: index === 0 ? 'requested-attributes' : '',
+    value: name,
+  }));
+}
+
+/** Encode one IPP attribute: value-tag, name-length, name, value-length, value. */
+export function encodeIppAttribute(tag: number, name: string, value: IppAttributeValue): Buffer {
   const nameBytes = Buffer.from(name, 'utf-8');
-  const valueBytes = Buffer.from(value, 'utf-8');
+  let valueBytes: Buffer;
+  if (tag === IPP_TAGS.boolean) valueBytes = Buffer.from([value ? 1 : 0]);
+  else if (tag === IPP_TAGS.integer || tag === IPP_TAGS.enumeration) {
+    valueBytes = Buffer.alloc(4);
+    valueBytes.writeInt32BE(Number(value), 0);
+  } else {
+    valueBytes = Buffer.from(String(value), 'utf-8');
+  }
   const result = Buffer.alloc(5 + nameBytes.length + valueBytes.length);
   result[0] = tag;
   result.writeUInt16BE(nameBytes.length, 1);
@@ -235,23 +347,52 @@ function encodeAttribute(tag: number, name: string, value: string): Buffer {
   return result;
 }
 
-type DecodedAttribute = string | number | boolean | Buffer;
+/** Encode a complete IPP 2.0 request: header, operation group, optional groups. */
+export function encodeIppRequest(
+  operation: number,
+  operationAttributes: IppAttribute[],
+  groups: Array<{ tag: number; attributes: IppAttribute[] }> = [],
+): Buffer {
+  const chunks: Buffer[] = [];
+  const header = Buffer.alloc(9);
+  header[0] = 0x02;
+  header[1] = 0x00;
+  header.writeUInt16BE(operation, 2);
+  header.writeUInt32BE(nextRequestId(), 4);
+  header[8] = 0x01; // operation-attributes-tag
+  chunks.push(header);
+  for (const attribute of operationAttributes) {
+    chunks.push(encodeIppAttribute(attribute.tag, attribute.name, attribute.value));
+  }
+  for (const group of groups) {
+    chunks.push(Buffer.from([group.tag]));
+    for (const attribute of group.attributes) {
+      chunks.push(encodeIppAttribute(attribute.tag, attribute.name, attribute.value));
+    }
+  }
+  chunks.push(Buffer.from([0x03])); // end-of-attributes-tag
+  return Buffer.concat(chunks);
+}
 
-function decodeIppJobs(body: Buffer): { statusCode: number; jobs: IppRemoteJob[] } {
+/** Decode any IPP response into its delimiter groups and attribute values. */
+export function decodeIppResponse(body: Buffer): {
+  statusCode: number;
+  statusMessage?: string;
+  groups: IppDecodedGroup[];
+} {
   if (body.length < 9) throw new Error('IPP response is shorter than its header');
   const statusCode = body.readUInt16BE(2);
   let offset = 8;
-  let currentGroup: Map<string, DecodedAttribute[]> | undefined;
   let previousName = '';
-  const jobGroups: Array<Map<string, DecodedAttribute[]>> = [];
-
+  let current: IppDecodedGroup | undefined;
+  const groups: IppDecodedGroup[] = [];
   while (offset < body.length) {
     const tag = body[offset++]!;
     if (tag === 0x03) break;
     if (tag <= 0x0f) {
       previousName = '';
-      currentGroup = new Map();
-      if (tag === 0x02) jobGroups.push(currentGroup);
+      current = { tag, attributes: new Map() };
+      groups.push(current);
       continue;
     }
     if (offset + 2 > body.length) throw new Error('IPP response ended inside an attribute name');
@@ -267,15 +408,144 @@ function decodeIppJobs(body: Buffer): { statusCode: number; jobs: IppRemoteJob[]
     if (offset + valueLength > body.length) throw new Error('IPP response contains a truncated attribute value');
     const rawValue = body.subarray(offset, offset + valueLength);
     offset += valueLength;
-    if (!currentGroup || !name) continue;
-    const values = currentGroup.get(name) ?? [];
+    if (!current || !name) continue;
+    const values = current.attributes.get(name) ?? [];
     values.push(decodeAttributeValue(tag, rawValue));
-    currentGroup.set(name, values);
+    current.attributes.set(name, values);
   }
+  const statusMessage = firstString(mergedAttributes(groups), 'status-message');
+  return { statusCode, statusMessage, groups };
+}
 
+/** Merge every group so callers can ask one map for a value or a status message. */
+function mergedAttributes(groups: IppDecodedGroup[]): Map<string, IppDecodedValue[]> {
+  const merged = new Map<string, IppDecodedValue[]>();
+  for (const group of groups) {
+    for (const [name, values] of group.attributes) {
+      const current = merged.get(name) ?? [];
+      current.push(...values);
+      merged.set(name, current);
+    }
+  }
+  return merged;
+}
+
+/**
+ * POST one IPP body. Every request in this module funnels through here so the
+ * timeout, CUPS domain-socket support and Basic credentials stay in one place.
+ */
+export function ippPostRequest(
+  target: IppTarget,
+  path: string,
+  body: Buffer,
+  options: IppRequestOptions = {},
+): Promise<{ httpStatus: number; body: Buffer }> {
+  const timeoutMs = options.timeoutMs ?? 4_000;
+  return new Promise((resolve, reject) => {
+    const headers: Record<string, string | number> = {
+      'Content-Type': 'application/ipp',
+      'Content-Length': body.length,
+    };
+    if (options.credentials) {
+      headers['Authorization'] =
+        `Basic ${Buffer.from(`${options.credentials.user}:${options.credentials.password}`).toString('base64')}`;
+    }
+    const secure = target.kind === 'tcp' && target.secure === true;
+    const transport = secure ? https : http;
+    const request = transport.request({
+      ...(target.kind === 'socket'
+        ? { socketPath: target.socketPath }
+        : { hostname: target.hostname, port: target.port }),
+      ...(options.socketPath ? { socketPath: options.socketPath } : {}),
+      path,
+      method: 'POST',
+      headers,
+      // Embedded printers and LAN CUPS normally use a self-signed certificate.
+      // An administrative request is always authenticated with Basic
+      // credentials, which is what protects it, not the certificate chain; the
+      // alternative would make certificate installation a deployment
+      // prerequisite for a printer that cannot be validated usefully.
+      ...(secure ? { rejectUnauthorized: false } : {}),
+    }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer | string) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+      response.on('end', () => {
+        resolve({ httpStatus: response.statusCode ?? 0, body: Buffer.concat(chunks) });
+      });
+      response.on('error', reject);
+    });
+    request.setTimeout(timeoutMs, () => {
+      request.destroy(new Error(options.timeoutError ?? `IPP request timed out after ${timeoutMs}ms`));
+    });
+    request.on('error', reject);
+    request.end(body);
+  });
+}
+
+function postIpp(
+  endpoint: IppEndpoint,
+  body: Buffer,
+  timeoutMs: number,
+): Promise<{ httpStatus: number; body: Buffer }> {
+  return ippPostRequest(
+    { kind: 'tcp', hostname: endpoint.hostname, port: endpoint.port, secure: endpoint.transport === 'https:' },
+    endpoint.path,
+    body,
+    { timeoutMs, timeoutError: `IPP Get-Jobs timed out after ${timeoutMs}ms` },
+  );
+}
+
+function encodeGetJobs(
+  printerUri: string,
+  id: number,
+  whichJobs: 'completed' | 'not-completed',
+): Buffer {
+  const chunks: Buffer[] = [];
+  const header = Buffer.alloc(9);
+  header[0] = 0x02;
+  header[1] = 0x00;
+  header.writeUInt16BE(GET_JOBS_OPERATION, 2);
+  header.writeUInt32BE(id >>> 0, 4);
+  header[8] = 0x01; // operation-attributes-tag
+  chunks.push(header);
+  chunks.push(encodeIppAttribute(0x47, 'attributes-charset', 'utf-8'));
+  chunks.push(encodeIppAttribute(0x48, 'attributes-natural-language', 'en'));
+  chunks.push(encodeIppAttribute(0x45, 'printer-uri', printerUri));
+  chunks.push(encodeIppAttribute(0x44, 'which-jobs', whichJobs));
+  const requested = [
+    'job-id',
+    'job-uri',
+    'job-name',
+    'job-state',
+    'job-state-reasons',
+    'job-impressions',
+    'job-impressions-completed',
+    'job-originating-user-name',
+    'time-at-completed',
+  ];
+  requested.forEach((attribute, index) => {
+    chunks.push(encodeIppAttribute(0x44, index === 0 ? 'requested-attributes' : '', attribute));
+  });
+  chunks.push(Buffer.from([0x03])); // end-of-attributes-tag
+  return Buffer.concat(chunks);
+}
+
+function encodeAttribute(tag: number, name: string, value: string): Buffer {
+  return encodeIppAttribute(tag, name, value);
+}
+
+type DecodedAttribute = IppDecodedValue;
+
+function decodeIppJobs(body: Buffer): { statusCode: number; jobs: IppRemoteJob[] } {
+  const decoded = decodeIppResponse(body);
   return {
-    statusCode,
-    jobs: jobGroups.map(toRemoteJob).filter((job): job is IppRemoteJob => job !== undefined),
+    statusCode: decoded.statusCode,
+    jobs: decoded.groups
+      .filter((group) => group.tag === 0x02)
+      .map(toRemoteJob)
+      .filter((job): job is IppRemoteJob => job !== undefined),
   };
 }
 
@@ -300,11 +570,11 @@ function decodeAttributeValue(tag: number, value: Buffer): DecodedAttribute {
   return Buffer.from(value);
 }
 
-function toRemoteJob(group: Map<string, DecodedAttribute[]>): IppRemoteJob | undefined {
-  const id = firstNumber(group, 'job-id');
-  const uri = firstString(group, 'job-uri');
-  const uuid = firstString(group, 'job-uuid');
-  const name = firstString(group, 'job-name');
+function toRemoteJob(group: IppDecodedGroup): IppRemoteJob | undefined {
+  const id = firstNumber(group.attributes, 'job-id');
+  const uri = firstString(group.attributes, 'job-uri');
+  const uuid = firstString(group.attributes, 'job-uuid');
+  const name = firstString(group.attributes, 'job-name');
   const key = uuid || uri || (id === undefined ? undefined : `job-id:${id}`);
   if (!key) return undefined;
   return {
@@ -313,22 +583,26 @@ function toRemoteJob(group: Map<string, DecodedAttribute[]>): IppRemoteJob | und
     uri,
     uuid,
     name,
-    state: firstNumber(group, 'job-state'),
-    stateReasons: strings(group, 'job-state-reasons'),
-    impressions: firstNumber(group, 'job-impressions'),
-    impressionsCompleted: firstNumber(group, 'job-impressions-completed'),
-    mediaSheetsCompleted: firstNumber(group, 'job-media-sheets-completed'),
+    state: firstNumber(group.attributes, 'job-state'),
+    stateReasons: strings(group.attributes, 'job-state-reasons'),
+    impressions: firstNumber(group.attributes, 'job-impressions'),
+    impressionsCompleted: firstNumber(group.attributes, 'job-impressions-completed'),
+    mediaSheetsCompleted: firstNumber(group.attributes, 'job-media-sheets-completed'),
   };
 }
 
-function firstNumber(group: Map<string, DecodedAttribute[]>, name: string): number | undefined {
-  return group.get(name)?.find((value): value is number => typeof value === 'number');
+function firstNumber(attributes: Map<string, IppDecodedValue[]>, name: string): number | undefined {
+  return attributes.get(name)?.find((value): value is number => typeof value === 'number');
 }
 
-function firstString(group: Map<string, DecodedAttribute[]>, name: string): string | undefined {
-  return group.get(name)?.find((value): value is string => typeof value === 'string');
+function firstString(attributes: Map<string, IppDecodedValue[]>, name: string): string | undefined {
+  return attributes.get(name)?.find((value): value is string => typeof value === 'string');
 }
 
-function strings(group: Map<string, DecodedAttribute[]>, name: string): string[] {
-  return (group.get(name) ?? []).filter((value): value is string => typeof value === 'string');
+function firstBoolean(attributes: Map<string, IppDecodedValue[]>, name: string): boolean | undefined {
+  return attributes.get(name)?.find((value): value is boolean => typeof value === 'boolean');
+}
+
+function strings(attributes: Map<string, IppDecodedValue[]>, name: string): string[] {
+  return (attributes.get(name) ?? []).filter((value): value is string => typeof value === 'string');
 }

@@ -9,7 +9,22 @@ import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { readRenderTransformOverrides } from '@printerops/shared';
 import { applyHtmlRenderTransform, applyHtmlMarginCompensation, applyHtmlCalibration, resolveHtmlPageSettings } from '../windows/windows-spooler.adapter.js';
-import { parseIppEndpoint, queryIppJobs } from '../windows/ipp-printer-client.js';
+import {
+  buildIppEndpointCandidates,
+  getPrinterAttributes,
+  ippPostRequest,
+  parseIppEndpoint,
+  queryIppJobs,
+  type IppEndpoint,
+  type IppRequestOptions,
+} from '../windows/ipp-printer-client.js';
+import {
+  CupsAdminClient,
+  resolveCupsAdminTarget,
+  type CupsAdminResult,
+  type CupsAdminTarget,
+  type CupsCredentials,
+} from './cups-admin-client.js';
 
 const exec = promisify(execFile);
 export interface CupsPrinterDeps {
@@ -17,12 +32,56 @@ export interface CupsPrinterDeps {
   server?: string;
   queryPrinterJobs: typeof queryIppJobs;
   deviceVerifyTimeoutMs: number;
+  /** Injected CUPS admin transport, so tests never open a socket. */
+  adminPost?: typeof ippPostRequest;
+  /** Injected printer-attribute reader used by network discovery. */
+  probePrinter?: typeof getPrinterAttributes;
+  credentials?: CupsCredentials;
 }
+
+/** A printer found on the network by asking the device itself, not CUPS. */
+export type CupsDiscoveredDevice = {
+  host: string;
+  /** Device URI PrintOps hands to CUPS as the queue's device-uri. */
+  uri: string;
+  secure: boolean;
+  makeModel?: string;
+  info?: string;
+  state?: number;
+  acceptingJobs?: boolean;
+  formats: string[];
+  /** True when the device can print through the driverless IPP Everywhere PPD. */
+  driverless: boolean;
+};
+
+export type CupsProbeResult = { host: string; device?: CupsDiscoveredDevice; error?: string };
+
+/** Printers that expose a raster/stream format CUPS can drive without a vendor PPD. */
+const DRIVERLESS_FORMATS = new Set([
+  'image/urf',
+  'image/pwg-raster',
+  'application/pdf',
+  'application/octet-stream',
+]);
+
 const queueName = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,126}$/;
 const nativeFormats = new Set([
   'application/zpl', 'application/vnd.zebra-zpl', 'application/tspl',
   'application/epl', 'application/pcl', 'application/dpl', 'application/vnd.datamax-dpl',
 ]);
+
+/**
+ * Prefer the URI advertised for the transport that actually answered: printers
+ * commonly advertise both `ipps://…` and `ipp://…`, and a queue created with
+ * the plain URI prints nothing when the device only serves TLS.
+ */
+function preferredDeviceUri(endpoint: IppEndpoint, advertised: string[]): string {
+  if (endpoint.transport === 'https:') {
+    return advertised.find((uri) => /^ipps:/i.test(uri)) ?? endpoint.uri;
+  }
+  return advertised.find((uri) => /^ipp:/i.test(uri)) ?? endpoint.uri;
+}
+
 type DeviceDelivery =
   | { confirmed: true; id?: number; impressionsCompleted: number }
   | { confirmed: false; detail: string };
@@ -37,11 +96,17 @@ export class CupsPrinterAdapter implements PrinterAdapterPort {
   private server: string | undefined;
   private readonly queryPrinterJobs: typeof queryIppJobs;
   private readonly deviceVerifyTimeoutMs: number;
+  private readonly adminPost: typeof ippPostRequest;
+  private readonly probePrinter: typeof getPrinterAttributes;
+  private credentials: CupsCredentials | undefined;
 
   constructor(deps: Partial<CupsPrinterDeps> = {}) {
     this.server = deps.server ?? process.env['CUPS_SERVER'];
     this.queryPrinterJobs = deps.queryPrinterJobs ?? queryIppJobs;
     this.deviceVerifyTimeoutMs = deps.deviceVerifyTimeoutMs ?? 40_000;
+    this.adminPost = deps.adminPost ?? ippPostRequest;
+    this.probePrinter = deps.probePrinter ?? getPrinterAttributes;
+    this.credentials = deps.credentials;
     this.run = deps.run ?? (async (file, args, server, timeoutMs = 60_000) => {
       const { stdout } = await exec(file, args, {
         timeout: timeoutMs, maxBuffer: 2 * 1024 * 1024,
@@ -62,6 +127,124 @@ export class CupsPrinterAdapter implements PrinterAdapterPort {
   async assertServerReachable(server: string): Promise<void> {
     const status = await this.run('lpstat', ['-r', '-p'], server, 8_000);
     if (!/^scheduler is running\s*$/m.test(status)) throw new Error('CUPS scheduler did not respond');
+  }
+
+  /** CUPS runs as a station-local spooler, so PrintOps manages its queues. */
+  setAdminCredentials(credentials: CupsCredentials | undefined): void {
+    this.credentials = credentials;
+  }
+
+  hasAdminCredentials(): boolean {
+    return this.credentials !== undefined;
+  }
+
+  getAdminTarget(): CupsAdminTarget {
+    return resolveCupsAdminTarget(this.server);
+  }
+
+  private adminOptions(credentials?: CupsCredentials): IppRequestOptions {
+    const resolved = credentials ?? this.credentials;
+    return resolved ? { credentials: resolved } : {};
+  }
+
+  private admin(): CupsAdminClient {
+    return new CupsAdminClient(this.getAdminTarget(), this.adminPost);
+  }
+
+  /** Create the CUPS queue for a discovered device, without running lpadmin. */
+  async addQueue(
+    input: { name: string; deviceUri: string; info?: string; location?: string; shared?: boolean },
+    credentials?: CupsCredentials,
+  ): Promise<CupsAdminResult> {
+    return this.admin().addPrinter(input, this.adminOptions(credentials));
+  }
+
+  async removeQueue(name: string, credentials?: CupsCredentials): Promise<CupsAdminResult> {
+    return this.admin().deletePrinter(name, this.adminOptions(credentials));
+  }
+
+  /** Re-enable a queue CUPS stopped, e.g. after an alert during creation. */
+  async resumeQueue(name: string, credentials?: CupsCredentials): Promise<CupsAdminResult> {
+    return this.admin().resumePrinter(name, this.adminOptions(credentials));
+  }
+
+  async acceptQueueJobs(name: string, credentials?: CupsCredentials): Promise<CupsAdminResult> {
+    return this.admin().acceptJobs(name, this.adminOptions(credentials));
+  }
+
+  /** Read the queue's own state; CUPS reports missing filters here. */
+  async queueState(name: string, credentials?: CupsCredentials) {
+    return this.admin().queueAttributes(name, this.adminOptions(credentials));
+  }
+
+  /** Device URIs of every configured queue, keyed by queue name. */
+  async listQueueDevices(): Promise<Record<string, string>> {
+    const output = await this.run('lpstat', ['-v'], this.server, 8_000);
+    const devices: Record<string, string> = {};
+    for (const line of output.split('\n')) {
+      const match = /^device for (\S+): (.+)$/.exec(line.trim());
+      if (match) devices[match[1]!] = match[2]!.trim();
+    }
+    return devices;
+  }
+
+  /**
+   * Ask one host whether it is an IPP printer and how it wants to be addressed.
+   * This is the discovery step that does not need CUPS to know the device yet.
+   */
+  async probeHost(host: string, options: { timeoutMs?: number } = {}): Promise<CupsProbeResult> {
+    const clean = host.trim();
+    if (!clean) return { host: clean, error: 'A host name or IP address is required' };
+    const timeoutMs = options.timeoutMs ?? 2_500;
+    let lastError = 'No IPP printer answered on port 631';
+    for (const endpoint of buildIppEndpointCandidates(clean)) {
+      let failure: string;
+      try {
+        const query = await this.probePrinter(endpoint, { timeoutMs });
+        if (!query.ok) {
+          lastError = query.error;
+          continue;
+        }
+        const advertised = query.printer.uriSupported.filter((uri) => /^ipps?:/i.test(uri));
+        const deviceUri = preferredDeviceUri(endpoint, advertised);
+        return {
+          host: clean,
+          device: {
+            host: clean,
+            uri: deviceUri,
+            secure: /^ipps:/i.test(deviceUri),
+            makeModel: query.printer.makeModel,
+            info: query.printer.info,
+            state: query.printer.state,
+            acceptingJobs: query.printer.acceptingJobs,
+            formats: query.printer.formats,
+            driverless: query.printer.formats.some((format) => DRIVERLESS_FORMATS.has(format)),
+          },
+        };
+      } catch (error) {
+        failure = error instanceof Error ? error.message : String(error);
+      }
+      lastError = failure;
+    }
+    return { host: clean, error: lastError };
+  }
+
+  /** Probe several hosts with bounded concurrency; result order matches input. */
+  async probeHosts(
+    hosts: string[],
+    options: { timeoutMs?: number; concurrency?: number } = {},
+  ): Promise<CupsProbeResult[]> {
+    const concurrency = Math.max(1, options.concurrency ?? 8);
+    const results = new Array<CupsProbeResult>(hosts.length);
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      while (next < hosts.length) {
+        const index = next++;
+        results[index] = await this.probeHost(hosts[index]!, options);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, hosts.length) }, worker));
+    return results;
   }
 
   private queue(uri: string | undefined): string {

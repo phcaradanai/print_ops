@@ -2,7 +2,7 @@ import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import os from 'node:os';
-import { cupsServerSettings } from './infra/cups-server-settings.js';
+import { cupsAdminSettings, cupsServerSettings } from './infra/cups-server-settings.js';
 import { InMemoryPrinterRepository } from './infra/repos/in-memory-printer.repo.js';
 import { InMemoryJobRepository } from './infra/repos/in-memory-job.repo.js';
 import { InMemoryTraceRepository } from './infra/repos/in-memory-trace.repo.js';
@@ -68,6 +68,7 @@ import type { ControlCommandEnvelope, ControlOtaTransitionEvent, DeviceHeartbeat
 import { generateId } from '@printerops/shared';
 
 import { CreatePrinterService } from './services/create-printer.service.js';
+import { CupsProvisioningService } from './services/cups-provisioning.service.js';
 import { GetPrinterStatusService } from './services/get-printer-status.service.js';
 import { CreatePrintJobService } from './services/create-print-job.service.js';
 import { AcceptExternalJobService } from './services/accept-external-job.service.js';
@@ -570,12 +571,21 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   registry.registerAdapter(new FakePrinterAdapter());
   registry.registerAdapter(new WindowsSpoolerAdapter());
   const cupsSettings = process.env['PRINTOPS_RUNTIME_MODE'] === 'linux-server' ? cupsServerSettings() : undefined;
-  const cups = cupsSettings ? new CupsPrinterAdapter({ server: await cupsSettings.read() }) : undefined;
+  const cupsAdmin = cupsSettings ? cupsAdminSettings() : undefined;
+  const cups = cupsSettings
+    ? new CupsPrinterAdapter({
+        server: await cupsSettings.read(),
+        credentials: cupsAdmin ? await cupsAdmin.read() : undefined,
+      })
+    : undefined;
   if (cups) registry.registerAdapter(cups);
 
   // Services
   const createPrinter = new CreatePrinterService(printerRepo, eventBus, auditRepo);
   const getPrinterStatus = new GetPrinterStatusService(printerRepo, registry);
+  const cupsProvisioning = cups
+    ? new CupsProvisioningService(cups, printerRepo, createPrinter, auditRepo)
+    : undefined;
   const createJob = new CreatePrintJobService(jobRepo, printerRepo, queue, traceRepo, auditRepo, eventBus, calibrationRepo, paperRepo, printAdmissionGate);
   const reprintJob = new ReprintJobService(
     jobRepo,
@@ -1313,7 +1323,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
       users: userRepo,
       runnerBootstrapSecret: process.env['PRINTOPS_RUNNER_BOOTSTRAP_SECRET'],
     });
-    await printerRoutes(api, { printers: printerRepo, createPrinter, getPrinterStatus, registry, cups, cupsSettings });
+    await printerRoutes(api, { printers: printerRepo, createPrinter, getPrinterStatus, registry, cups, cupsSettings, cupsAdmin, cupsProvisioning });
     await jobRoutes(api, { jobs: jobRepo, traces: traceRepo, createJob, executeJob, reprintJob });
     await runnerRoutes(api, { runners: runnerRepo, jobs: jobRepo, registerRunner, runnerHeartbeat, runnerLifecycle });
     await auditRoutes(api, { audit: auditRepo });

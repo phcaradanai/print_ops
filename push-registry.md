@@ -753,6 +753,29 @@ can be submitted explicitly as raw jobs through a configured CUPS queue.
 
 ## Deploy the application UI/API
 
+PrintOps manages the CUPS queues of a station itself, the same way it manages
+the Windows spooler on a Windows station, so a fresh Linux station needs no
+host-side `lpadmin` step:
+
+1. Start CUPS on the station. The app Compose files mount
+   `/run/cups/cups.sock`; the server stack sets `CUPS_SERVER=cups:631` for its
+   bundled `printops-cups` service.
+2. Open **Printers → Add CUPS printer**. Keep the default socket (or enter the
+   CUPS address), then save the CUPS administrator account once if CUPS
+   demands one. `CUPS_ADMIN_USER`/`CUPS_ADMIN_PASSWORD` are an environment
+   alternative; otherwise the account is stored in `data/cups-admin.json`
+   (mode 0600) on the station only.
+3. Use **Find a printer and add it to CUPS**: enter the printer IP, a range or
+   a CIDR, press **Search**, then **Create queue**. PrintOps reads the device
+   over IPP, creates the queue with the driverless IPP Everywhere PPD, resumes
+   and accepts the destination, and registers the printer as
+   `cups://<queue>`. A stopped queue or a missing `cups-filters` package is
+   reported as a warning on the same dialog.
+
+A printer with no IPP endpoint (raw 9100 only, or USB without a CUPS backend)
+still needs a vendor PPD that PrintOps cannot choose for the operator; the
+manual path below remains supported for those devices.
+
 Install and start CUPS on the Linux host, then install the compatible printer
 driver and create its network queue (for example `POSTEK_G2000`). Verify that
 `lpstat -p POSTEK_G2000` sees it and `/run/cups/cups.sock` exists. The Compose file

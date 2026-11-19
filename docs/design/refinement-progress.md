@@ -1,5 +1,62 @@
 # Refinement progress
 
+## 2026-11-19 — Zero-command CUPS provisioning (station spooler parity)
+
+Setting up a Linux station used to end in a terminal: CUPS had to be installed,
+a driver chosen and `lpadmin` run on the host before PrintOps could import the
+queue. Network scanning did not help, because it only probes raw JetDirect
+port 9100 and a printer that answers IPP on 631 stayed invisible. CUPS is the
+Linux equivalent of the Windows spooler, so PrintOps now manages it directly.
+
+- **Discovery without CUPS.** `packages/adapters/src/windows/ipp-printer-client.ts`
+  gained a generic IPP encoder/decoder and `getPrinterAttributes()`
+  (operation `0x000B`). `CupsPrinterAdapter.probeHost()/probeHosts()` asks the
+  device itself over IPPS first, then plain IPP, and reports make/model, state,
+  advertised `printer-uri-supported` and whether the device is driverless.
+- **Queue creation over IPP.** New `packages/adapters/src/cups/cups-admin-client.ts`
+  sends `CUPS-Add-Modify-Printer` (`ppd-name=everywhere`), `Resume-Printer`,
+  `CUPS-Accept-Jobs` and `CUPS-Delete-Printer` either over the local CUPS
+  domain socket or to a TCP endpoint with HTTP Basic credentials. CUPS stops a
+  destination while it first probes the device, so creation ends by resuming
+  and accepting jobs; without that step a new queue reads as `disabled`.
+- **Credentials stay on the station.** `apps/api/src/infra/cups-server-settings.ts`
+  stores the CUPS administrator account in `data/cups-admin.json` (mode 0600)
+  with `CUPS_ADMIN_USER`/`CUPS_ADMIN_PASSWORD` as an environment fallback. The
+  status endpoint never returns the password.
+- **API.** `CupsProvisioningService` (`apps/api/src/services/cups-provisioning.service.ts`)
+  scans hosts, creates the queue, registers the printer (`cups://<queue>`),
+  audits `printer.cups_queue_created`, and reports readiness
+  (state stopped, missing/insecure filter, raw device reasons).
+  New routes on `apps/api/src/routes/printer.routes.ts`:
+  `POST /printers/cups-scan`, `POST /printers/cups-queues`,
+  `GET|PUT|DELETE /printers/cups-admin`, and `GET /printers/cups-queues` now
+  carries each queue's device URI.
+- **Printers page.** The CUPS dialog is now three explicit steps — server,
+  administrator account, and *Find a printer and add it to CUPS* — followed by
+  the existing "register a queue that already exists" path for printers set up
+  with a vendor tool. Creating a queue is one click; a stopped queue, a missing
+  cup-filters package or a raw device reason is surfaced as a warning instead of
+  a silent failure.
+- **Fixed a latent IPP bug found while testing against the station CUPS.**
+  Repeated `requested-attributes` carried the attribute name on every value;
+  RFC 8011 requires an empty name on repeats and CUPS silently kept only the
+  first, so a queue appeared to have no state. `requestedAttributeList()` now
+  encodes the empty-name form, and `queueAttributes()` polls briefly because a
+  freshly created destination answers before it finishes loading.
+- Verified live against the station CUPS 2.4 and an EPSON L6580 Series:
+  discovery returned `ipps://192.168.10.11:631/ipp/print`, queue creation via
+  IPP returned `0x0000`, `Resume-Printer` moved the queue from state 5
+  (stopped) to state 3 (idle, accepting), and `CUPS-Delete-Printer` removed it.
+  The probe queue was deleted afterwards.
+- Tests: `packages/adapters/src/cups/cups-discovery.test.ts` (10),
+  `apps/api/src/tests/cups-provisioning.test.ts` (7), and the extended
+  `apps/web/e2e/cups-printers.spec.ts` (7, including a full discover → create →
+  warning → save-account run). Adapters 149, API 747, web 816 unit tests pass.
+- Still manual, by design: a printer that exposes no IPP endpoint at all (raw
+  9100-only or USB without a CUPS backend) needs a vendor driver/PPD, which
+  PrintOps cannot choose for the operator. The manual `lpadmin` path stays
+  documented in `push-registry.md`.
+
 ## 2026-11-18 — Import Linux CUPS queues from Printers
 
 The Printers page on Linux offers **Add CUPS printer**. It tests and saves

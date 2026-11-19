@@ -33,6 +33,8 @@ export type AuditAction =
   | 'permission.denied'
   | 'printer.registered_from_discovery'
   | 'printer.network_search_requested'
+  | 'printer.cups_queue_created'
+  | 'printer.cups_queue_registered'
   | 'template.created'
   | 'template.auto_created'
   | 'template.updated'
