@@ -584,7 +584,10 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   try {
     const reconciled = await new ReconcileDiscoveredPrintersService(discoveredPrinterRepo, runnerRepo).execute();
     if (reconciled.deleted > 0) {
-      app.log.info(reconciled, 'removed discovered printers whose runner registration no longer exists');
+      app.log.info(
+        reconciled,
+        'removed discovered printers whose runner registration no longer exists or was a duplicate record',
+      );
     }
   } catch (error) {
     app.log.warn({ error }, 'discovered-printer reconciliation could not complete');

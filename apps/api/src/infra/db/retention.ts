@@ -264,7 +264,23 @@ function pruneArchiveFiles(archiveDir: string, retentionDays: number): number {
  * to the operator — so no age cutoff is applied to discovered printers at all.
  */
 export function pruneOrphanedDiscoveredPrinters(db: Database): number {
-  db.run('DELETE FROM discovered_printers WHERE runner_id NOT IN (SELECT id FROM runners)');
+  // Two rules in one statement: rows whose runner registration is gone, and rows
+  // held by an older duplicate record of the same logical runner (a Docker
+  // runner's hostname is its container id, so older builds created one record per
+  // redeploy and one copy of every discovered printer with it).
+  db.run(`
+    DELETE FROM discovered_printers
+    WHERE runner_id NOT IN (SELECT id FROM runners)
+       OR runner_id IN (
+            SELECT r.id FROM runners r
+            JOIN (
+              SELECT name, MAX(COALESCE(last_heartbeat_at, registered_at)) AS newest
+              FROM runners GROUP BY name
+            ) newest_same_name
+              ON newest_same_name.name = r.name
+            WHERE COALESCE(r.last_heartbeat_at, r.registered_at) <> newest_same_name.newest
+          )
+  `);
   return db.getRowsModified();
 }
 

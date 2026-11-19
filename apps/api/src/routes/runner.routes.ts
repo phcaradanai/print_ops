@@ -8,18 +8,25 @@ import { ConflictError } from '@printerops/shared';
 import { requirePermission, actor } from './v1/permission-guard.js';
 
 /**
- * Old desktop releases created a new record on every launch. Keep the public
- * runner list to one card per logical runner while the registration service
- * reuses the newest matching record from now on.
+ * One card per logical runner. The runner name is the identity: a Go runner's
+ * hostname is its container id, so hostname-keyed deduplication showed a new
+ * card on every restart/redeploy. The most recently active record wins; the
+ * older duplicates stay in storage for audit but are not listed.
  */
 export function latestRunnersByIdentity(runners: Runner[]): Runner[] {
-  const seen = new Set<string>();
-  return runners.filter((runner) => {
-    const identity = `${runner.hostname}\u0000${runner.name}`;
-    if (seen.has(identity)) return false;
-    seen.add(identity);
-    return true;
-  });
+  const newest = new Map<string, Runner>();
+  for (const runner of runners) {
+    const current = newest.get(runner.name);
+    if (current === undefined || activityTime(runner) > activityTime(current)) newest.set(runner.name, runner);
+  }
+  return [...newest.values()];
+}
+
+function activityTime(runner: Runner): number {
+  const stamp = runner.lastHeartbeatAt instanceof Date
+    ? runner.lastHeartbeatAt.getTime()
+    : new Date(runner.lastHeartbeatAt ?? 0).getTime();
+  return Number.isFinite(stamp) ? stamp : 0;
 }
 
 export async function runnerRoutes(

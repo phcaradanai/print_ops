@@ -1,5 +1,30 @@
 # Refinement progress
 
+## 2026-11-19 — One runner card per logical runner, and its printers once
+
+Deleting a runner no longer leaves its discovered printers behind, but the
+duplicates came back on every restart: registration matched on
+`name + hostname`, and a Docker runner's hostname is its container id. Every
+redeploy therefore created another runner record, another copy of every
+discovered printer, and a second runner card — and the display dedupe could not
+collapse the printer rows because their `computerName` also changed with the
+container.
+
+- The runner **name** is the identity. `RegisterRunnerService` reuses the
+  most recently active record with that name and updates its hostname; a
+  terminated tombstone still blocks re-registration. Two machines must use
+  different `PRINTOPS_RUNNER_NAME` values.
+- `latestRunnersByIdentity()` lists one card per name, preferring the record
+  with the newest heartbeat, so records created by older builds stay in storage
+  (audit) without being shown.
+- Reconciliation (boot and the retention sweep) deletes discovery rows held by
+  a duplicate record of a runner name that has a newer record, in addition to
+  rows whose runner is gone. The runner list and the Discovery page therefore
+  stop accumulating copies after every deploy.
+- Tests: runner-registration (hostname change reuses the record, one card per
+  name, terminated tombstone still refuses), discovery cleanup (shadowed-record
+  rows removed in both storage modes, SQL sweep deletes only the older copy).
+
 ## 2026-11-19 — A runner can no longer report a print it never made
 
 The Go runner accepted `PRINTOPS_EXECUTOR_MODE=cups`, but it has no CUPS

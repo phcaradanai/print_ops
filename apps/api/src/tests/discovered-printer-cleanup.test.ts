@@ -152,6 +152,24 @@ for (const storage of ['memory', 'sqlite'] as const) {
       expect(remaining).toHaveLength(1);
       expect(remaining[0]?.runnerId).toBe('new-runner');
     });
+    it('removes the rows held by an older duplicate record of the same runner name', async () => {
+      // A Docker runner's hostname is its container id, so older builds created one
+      // runner record (and one copy of every discovered printer) per redeploy.
+      await runners.create({ id: 'churn-old', name: 'printops-runner-vm1', hostname: 'container-old', supportedProtocols: [], metadata: {} });
+      await runners.create({ id: 'churn-new', name: 'printops-runner-vm1', hostname: 'container-new', supportedProtocols: [], metadata: {} });
+      await runners.update('churn-old', { lastHeartbeatAt: new Date('2026-11-18T05:00:00Z') });
+      await runners.update('churn-new', { lastHeartbeatAt: new Date('2026-11-19T05:00:00Z') });
+      await discovered.upsert({ runnerId: 'churn-old', ...HP_ITEM, computerName: 'container-old' });
+      await discovered.upsert({ runnerId: 'churn-new', ...HP_ITEM, computerName: 'container-new' });
+
+      const result = await new ReconcileDiscoveredPrintersService(discovered, runners).execute();
+
+      expect(result.shadowedRunnerIds).toEqual(['churn-old']);
+      expect(result.deleted).toBe(1);
+      const remaining = await discovered.findAll();
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0]?.runnerId).toBe('churn-new');
+    });
   });
 }
 
@@ -222,6 +240,24 @@ describe('retention sweep reconciles orphaned discovered printers', () => {
     insertRunner('live-runner');
     const result = pruneOldRecords(getDb(), { retentionDays: 7, maxRows: 0 });
     expect(result.discoveredPrintersDeleted).toBe(0);
+  });
+
+  it('deletes rows held by an older duplicate record of the same runner name', () => {
+    getDb().run(
+      `INSERT INTO runners (id, name, hostname, status, supported_protocols, last_heartbeat_at, registered_at, metadata)
+       VALUES ('churn-old', 'printops-runner-vm1', 'container-old', 'online', '[]', '2026-11-18T05:00:00.000Z', '2026-11-18T00:00:00.000Z', '{}')`,
+    );
+    getDb().run(
+      `INSERT INTO runners (id, name, hostname, status, supported_protocols, last_heartbeat_at, registered_at, metadata)
+       VALUES ('churn-new', 'printops-runner-vm1', 'container-new', 'online', '[]', '2026-11-19T05:00:00.000Z', '2026-11-19T00:00:00.000Z', '{}')`,
+    );
+    insertDiscovered('old-copy', 'churn-old', 'HP LaserJet Pro');
+    insertDiscovered('new-copy', 'churn-new', 'HP LaserJet Pro');
+
+    const result = pruneOldRecords(getDb(), { retentionDays: 7, maxRows: 0 });
+
+    expect(result.discoveredPrintersDeleted).toBe(1);
+    expect(remainingDiscoveredIds()).toEqual(['new-copy']);
   });
 });
 
