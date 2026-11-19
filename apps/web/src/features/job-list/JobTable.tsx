@@ -17,6 +17,7 @@ import type { KeyboardEvent, PointerEvent, ReactNode } from 'react';
 import { Checkbox, DataCell, DataHead, Mono } from '../../components/ui/index.js';
 import { useLocale } from '../../i18n/index.js';
 import { formatMessage } from '../../lib/formatMessage.js';
+import './jobTable.css';
 
 /** Widths an operator can drag into; also the handle's announced min and max. */
 export const MIN_COLUMN_WIDTH = 72;

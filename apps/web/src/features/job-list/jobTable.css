@@ -1,0 +1,60 @@
+/* Owned by JobTable.tsx.
+   Column resizing on the job table. Only the header owns the handle; the width
+   itself moves into a <colgroup> when the operator starts dragging. */
+
+.wcj-jobs-table--fixed {
+  table-layout: fixed;
+}
+
+.wcj-jobs-table th {
+  position: relative;
+}
+
+.wcj-col-resizer {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  z-index: 1;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.wcj-col-resizer::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  left: 4px;
+  width: 1px;
+  background: var(--neutral-border-strong);
+}
+
+.wcj-col-resizer:hover::after,
+.wcj-col-resizer:focus-visible::after {
+  width: 2px;
+  background: var(--primary);
+}
+
+.wcj-col-resizer:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--rounded-sm);
+}
+
+/* Why a row matched the search when the match is not in a visible column: a
+   second line inside the reference cell, quiet enough to ignore once seen. */
+.wcj-search-match {
+  display: block;
+  margin-top: var(--spacing-xs);
+}
+
+/* Below the responsive breakpoint the table becomes record cards: there is no
+   column to resize, so the handles disappear with the table head. */
+@media (max-width: 768px) {
+  .wcj-col-resizer {
+    display: none;
+  }
+}

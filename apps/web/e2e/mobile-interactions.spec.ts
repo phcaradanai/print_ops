@@ -58,20 +58,21 @@ test.describe('mobile interactions outside reprint confirmation', () => {
 
     // One responsive table: on a phone each row is a labelled card and the
     // column header collapses to a screen-reader-only strip.
-    const cards = page.getByRole('region', { name: 'Job Queue' });
+    const cards = page.getByRole('region', { name: 'Jobs on this station' });
     await expect(cards).toBeVisible();
     expect((await cards.locator('thead').boundingBox())?.height ?? 0).toBeLessThanOrEqual(1);
-    await page.getByRole('combobox', { name: 'Filter by status' }).selectOption('FAILED');
-    await expect(cards.getByRole('link', { name: 'MOBILE_LABEL' })).toBeVisible();
-    await expect(cards.getByRole('link', { name: 'OTHER_LABEL' })).toHaveCount(0);
+    // The status buckets are the status filter: Needs review is the triage set.
+    await page.getByRole('button', { name: 'Needs review (1)' }).click();
+    await expect(cards.getByText('mobile-request-1').first()).toBeVisible();
+    await expect(cards.getByText('mobile-request-2')).toHaveCount(0);
 
     await page.getByRole('searchbox', { name: 'Search jobs' }).fill('no matching job');
-    await expect(page.getByText('No jobs match the selected status or search.')).toBeVisible();
-    await page.getByRole('searchbox', { name: 'Search jobs' }).fill('MOBILE_LABEL');
-    await cards.getByRole('checkbox', { name: 'Select job mobile-f' }).check();
-    await expect(page.getByRole('region', { name: 'Batch queue actions' })).toBeVisible();
+    await expect(page.getByText('No jobs match these filters')).toBeVisible();
+    await page.getByRole('searchbox', { name: 'Search jobs' }).fill('mobile-request-1');
+    await cards.getByRole('checkbox', { name: 'Select job mobile-request-1' }).check();
+    await expect(page.getByRole('region', { name: '1 jobs selected' })).toBeVisible();
     await page.getByRole('button', { name: 'Clear selection' }).click();
-    await expect(page.getByRole('region', { name: 'Batch queue actions' })).toHaveCount(0);
+    await expect(page.getByRole('region', { name: '1 jobs selected' })).toHaveCount(0);
   });
 
   test('keeps sandbox controls usable and explains unavailable printer capabilities', async ({ page }) => {

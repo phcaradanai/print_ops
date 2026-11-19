@@ -146,13 +146,24 @@ export function normalizeJobColumns(input: readonly string[]): JobColumnSelectio
   return [...builtins, ...payloads];
 }
 
-/** The full render list for a selection: fixed columns, chosen fields, payload, actions. */
-export function visibleJobColumns(selected: readonly string[]): JobTableColumn[] {
-  const normalized = normalizeJobColumns(selected);
+/** The full render list for a selection: fixed columns, chosen fields, payload, actions.
+ *
+ * `excluded` names built-in columns the caller's page cannot offer. The station
+ * Job Queue passes `['station']`: every row belongs to the station you are
+ * standing at, so the column would repeat one value down the whole table. The
+ * exclusion applies to the selection as well as the render, so a `station` value
+ * already stored in localStorage cannot resurrect a column the page withdrew.
+ */
+export function visibleJobColumns(
+  selected: readonly string[],
+  excluded: readonly JobColumnId[] = [],
+): JobTableColumn[] {
+  const excludedIds: ReadonlySet<string> = new Set(excluded);
+  const normalized = normalizeJobColumns(selected).filter((id) => !excludedIds.has(id));
   const chosen = new Set(normalized.filter((id) => !isPayloadColumnId(id)));
 
   const builtins: JobTableColumn[] = JOB_COLUMN_ORDER.filter(
-    (id) => FIXED_JOB_COLUMNS.includes(id) || chosen.has(id as OptionalColumnId),
+    (id) => !excludedIds.has(id) && (FIXED_JOB_COLUMNS.includes(id) || chosen.has(id as OptionalColumnId)),
   ).map((id) => ({ kind: 'builtin', id }));
 
   const payloads: JobTableColumn[] = normalized
@@ -163,6 +174,14 @@ export function visibleJobColumns(selected: readonly string[]): JobTableColumn[]
   const actionsIndex = builtins.findIndex((column) => column.id === 'actions');
   if (actionsIndex < 0) return [...builtins, ...payloads];
   return [...builtins.slice(0, actionsIndex), ...payloads, ...builtins.slice(actionsIndex)];
+}
+
+/** The optional built-in fields a page can offer, minus the ones it excludes. */
+export function jobColumnOptions(
+  excluded: readonly JobColumnId[] = [],
+): JobColumnOption[] {
+  const excludedIds: ReadonlySet<string> = new Set(excluded);
+  return OPTIONAL_JOB_COLUMNS.filter((option) => !excludedIds.has(option.id));
 }
 
 export function parseStoredJobColumns(raw: string | null): JobColumnSelection[] {

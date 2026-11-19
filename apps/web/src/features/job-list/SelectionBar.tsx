@@ -16,18 +16,23 @@ import { useEffect, useRef } from 'react';
 import { Button, Inline, Text } from '../../components/ui/index.js';
 import { useLocale } from '../../i18n/index.js';
 import { formatMessage } from '../../lib/formatMessage.js';
+import './selectionBar.css';
 
 export interface SelectionBarProps {
   selectedCount: number;
-  /** Selected rows that still need a human, and so can be acknowledged. */
-  reviewableCount: number;
+  /**
+   * Selected rows that still need a human, and so can be acknowledged. Absent or
+   * zero on a page with no acknowledgement (the station queue: reviewing an
+   * outcome is a control-plane triage act, not a station record).
+   */
+  reviewableCount?: number;
   /** Selected rows that already carry the acknowledgement. */
-  acknowledgedCount: number;
+  acknowledgedCount?: number;
   /** A batch review request is in flight. */
-  busy: boolean;
+  busy?: boolean;
   onClear: () => void;
-  onMarkReviewed: () => void;
-  onUndoReview: () => void;
+  onMarkReviewed?: () => void;
+  onUndoReview?: () => void;
   onReprint: () => void;
   /** Reported whenever the wrapped height changes, so the page can reserve it. */
   onHeightChange: (height: number) => void;
@@ -35,9 +40,9 @@ export interface SelectionBarProps {
 
 export function SelectionBar({
   selectedCount,
-  reviewableCount,
-  acknowledgedCount,
-  busy,
+  reviewableCount = 0,
+  acknowledgedCount = 0,
+  busy = false,
   onClear,
   onMarkReviewed,
   onUndoReview,

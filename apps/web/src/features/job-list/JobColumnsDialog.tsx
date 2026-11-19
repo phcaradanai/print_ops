@@ -19,9 +19,10 @@ import {
   OPTIONAL_JOB_COLUMNS,
   isPayloadColumnId,
   payloadColumnId,
+  type JobColumnOption,
 } from '../../lib/jobColumns.js';
 import { formatMessage } from '../../lib/formatMessage.js';
-import type { CinemaFieldOption } from './cinemaModel.js';
+import type { CinemaFieldOption } from '../cinema/cinemaModel.js';
 
 export interface JobColumnsDialogProps {
   open: boolean;
@@ -34,6 +35,12 @@ export interface JobColumnsDialogProps {
   onToggle: (id: string) => void;
   /** Restore the default column set. */
   onReset: () => void;
+  /**
+   * Built-in fields offered as choices. Defaults to every optional column.
+   * A single-station queue passes the same list without `station`: every row is
+   * that station, so the column would repeat one value for the whole table.
+   */
+  options?: readonly JobColumnOption[];
 }
 
 export function JobColumnsDialog({
@@ -43,6 +50,7 @@ export function JobColumnsDialog({
   incomingChoices,
   onToggle,
   onReset,
+  options = OPTIONAL_JOB_COLUMNS,
 }: JobColumnsDialogProps) {
   const { t } = useLocale();
   const payloadSelected = columns.filter((entry) => isPayloadColumnId(entry)).length;
@@ -69,7 +77,7 @@ export function JobColumnsDialog({
           {t('control.jobs.columnsHint')}
         </Text>
         <Stack gap="xs">
-          {OPTIONAL_JOB_COLUMNS.map((option) => (
+          {options.map((option) => (
             <Checkbox
               key={option.id}
               checked={columns.includes(option.id)}

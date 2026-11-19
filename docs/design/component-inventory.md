@@ -17,7 +17,8 @@ The authoritative list of shared components, grouped as atoms / molecules / comp
 | Overlays | `Dialog`, `Drawer`, `ReprintDialog` | `styles.css`, `components/dialogClose.css` | — |
 | Evidence Canvas | `EditorCanvas` / workspace | `components/ui/workspace.css` | — |
 | Feature-owned | Paper profiles, Templates, Webhooks workspaces | `paperProfiles*.css`, `templates*.css`, `features/webhooks/*.css` | Paper profiles: 4 hotfix layers over `paperProfilesLibrary/Editor.css` |
-| Feature-owned | Incoming Jobs cinema board (`CinemaBoard`) | `features/control-jobs/cinemaBoard.css` | — (dark presentation surface, scoped to `.cinema`) |
+| Feature-owned | Incoming Jobs cinema board (`CinemaBoard`, `CinemaDisplayDialog`) | `features/cinema/cinemaBoard.css` | — (dark presentation surface, scoped to `.cinema`) |
+| Feature-owned | Job list (`JobTable`, `JobDetailDrawer`, `JobColumnsDialog`, `SelectionBar`) | `features/job-list/jobTable.css`, `selectionBar.css`, `jobDetailDrawer.css` | Class names keep the historical `wcj-` prefix so the existing Playwright suites keep matching; ownership is per component now, not per page. |
 
 Run the ownership scan in `apps/web/src/__tests__/designTokens.test.ts` (it prints the full list on failure) to get the current split set.
 

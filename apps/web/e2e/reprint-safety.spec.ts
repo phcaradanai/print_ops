@@ -58,8 +58,13 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     await mockApi(page);
     await page.goto('/jobs');
-    await page.getByRole('button', { name: /reprint job/i }).click();
-    const dialog = page.getByRole('dialog');
+    // The queue has no per-row reprint button: reprint lives behind the row's
+    // View action and its confirmation, so one click can never add a physical copy.
+    await page.getByRole('button', { name: 'View job' }).click();
+    const drawer = page.getByRole('dialog', { name: 'Job summary' });
+    await expect(drawer).toBeVisible();
+    await drawer.getByRole('button', { name: 'Reprint' }).click();
+    const dialog = page.getByRole('dialog', { name: /Confirm additional physical copy/ });
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText('synthetic-request-0001');
     await expect(dialog).toContainText('SAFE_FAKE_PRINTER');

@@ -15,8 +15,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { LocaleProvider } from '../i18n/index.js';
 import { t } from '../i18n/translations.js';
-import { CinemaBoard } from '../features/control-jobs/CinemaBoard.js';
-import type { CinemaStation } from '../features/control-jobs/cinemaModel.js';
+import { CinemaBoard } from '../features/cinema/CinemaBoard.js';
+import type { CinemaStation } from '../features/cinema/cinemaModel.js';
 
 function station(deviceId: string, jobs: number, connectionState = 'ONLINE'): CinemaStation {
   return {

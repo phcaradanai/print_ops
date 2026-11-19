@@ -3,196 +3,223 @@ import { expect, test, type Page } from '@playwright/test';
 import { installHarness } from './support.js';
 
 /**
- * Job Queue layout guards.
+ * Station Job Queue guards.
  *
- * The queue page has two toolbars stacked inside one card (search + status, then
- * the incoming-key filter) and a header row with a page action beside the
- * freshness check. Each of those pairs used to drift: the key-filter row had no
- * inset so its inputs sat flush against the card edge, and its buttons dropped to
- * a line of their own once the four-column grid collapsed. These assertions are
- * cheap, measured, and independent of copy or class-name churn beyond the page's
- * own hooks.
+ * The queue was rebuilt on the Web Control "Incoming Jobs" layout, scoped to this
+ * station's own jobs. That shared list brings its own risks, and these assertions
+ * are the cheap structural ones:
+ *
+ *   - the page has exactly one action region, and no station selector: a station
+ *     is one scope, so a selector there would be a lie about the data;
+ *   - a bucket count equals the rows its click shows, with a search and an exact
+ *     status active at the same time;
+ *   - the column picker cannot offer the withdrawn Station column, and a resize
+ *     still moves a real column width;
+ *   - nothing overflows sideways at 1440, 1024 or 390, in either language.
  */
 
 const JOBS = [
   {
-    id: 'j1',
+    id: 'job-unverified-0001',
     requestId: 'REQ-0001',
     printerId: 'p1',
     printerCode: 'ZEBRA_OPD_01',
+    runnerId: 'runner-1',
     status: 'UNVERIFIED',
     copies: 1,
     templateCode: 'PATIENT_LABEL',
     mimeType: 'text/html',
     payload: { hn: '123456', patient_name: 'Somchai Dee' },
-    receivedAt: '2026-11-18T09:00:00.000Z',
+    createdAt: '2026-11-18T09:00:00.000Z',
   },
   {
-    id: 'j2',
+    id: 'job-success-0002',
     requestId: 'REQ-0002',
     printerId: 'p1',
     printerCode: 'ZEBRA_OPD_01',
+    runnerId: 'runner-1',
     status: 'SUCCESS',
     copies: 1,
     templateCode: 'PATIENT_LABEL',
     mimeType: 'text/html',
-    payload: { hn: '998877', patient_name: 'Failed Patient' },
-    receivedAt: '2026-11-18T08:30:00.000Z',
-    finishedAt: '2026-11-18T08:30:02.000Z',
+    payload: { hn: '998877', patient_name: 'Suda Jaidee' },
+    createdAt: '2026-11-18T08:30:00.000Z',
+    completedAt: '2026-11-18T08:30:02.000Z',
+  },
+  {
+    id: 'job-queued-0003',
+    requestId: 'REQ-0003',
+    printerId: 'p2',
+    printerCode: 'RECEIPT_FRONT',
+    status: 'QUEUED',
+    copies: 2,
+    mimeType: 'text/plain',
+    createdAt: '2026-11-18T08:20:00.000Z',
+  },
+  {
+    id: 'job-failed-0004',
+    requestId: 'REQ-0004',
+    printerId: 'p2',
+    printerCode: 'RECEIPT_FRONT',
+    status: 'FAILED',
+    copies: 1,
+    errorCode: 'PAPER_OUT',
+    mimeType: 'text/plain',
+    createdAt: '2026-11-18T08:10:00.000Z',
   },
 ];
 
-async function openQueue(page: Page, width: number, height: number, locale: 'en' | 'th' = 'th') {
+async function openQueue(
+  page: Page,
+  width: number,
+  height: number,
+  locale: 'en' | 'th' = 'th',
+  query = '',
+) {
   await page.setViewportSize({ width, height });
   await installHarness(page, {
     locale,
     role: 'OWNER',
     api: async (url, route, method) => {
-      if (method !== 'GET') return false;
       const path = url.pathname.replace(/^\/api/, '');
-      if (path === '/jobs') {
+      if (path === '/jobs' && method === 'GET') {
         await route.fulfill({ json: JOBS });
+        return true;
+      }
+      if (path === '/jobs/job-unverified-0001' && method === 'GET') {
+        await route.fulfill({ json: JOBS[0] });
         return true;
       }
       await route.fulfill({ json: [] });
       return true;
     },
   });
-  await page.goto('/jobs');
-  // The key-filter row only renders when the scope carries incoming keys.
-  await expect(page.locator('.job-queue-keyfilters')).toBeVisible();
+  await page.goto(`/jobs${query}`);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  // The list is the page: wait for the table before measuring anything.
+  await expect(page.locator('.ui-data-table-frame')).toBeVisible();
   mkdirSync('artifacts/browser/job-queue', { recursive: true });
-  await page.screenshot({ path: `artifacts/browser/job-queue/${width}-${locale}.png`, fullPage: true });
-}
-
-function box(locator: Parameters<Page['locator']>[0]) {
-  return locator;
-}
-
-for (const viewport of [
-  { width: 1440, height: 900 },
-  { width: 1024, height: 768 },
-  { width: 390, height: 844 },
-] as const) {
-  test(`queue rows and actions line up at ${viewport.width}`, async ({ page }) => {
-    await openQueue(page, viewport.width, viewport.height);
-
-    // 1. Both toolbars inset their content the same way: the search row and the
-    //    key-filter row must not start at different x positions.
-    const inset = await page.evaluate(() => {
-      const card = document.querySelector('.ui-table-card');
-      const rows = Array.from(document.querySelectorAll('.ui-table-card > .ui-resource-toolbar, .job-queue-keyfilters'));
-      if (!card || rows.length < 2) return null;
-      return rows.map((row) => {
-        const firstChild = row.firstElementChild;
-        const rowRect = row.getBoundingClientRect();
-        const childRect = (firstChild ?? row).getBoundingClientRect();
-        return { left: Math.round(childRect.left - rowRect.left), right: Math.round(rowRect.right - childRect.right) };
-      });
-    });
-    expect(inset, 'queue card toolbars missing').not.toBeNull();
-    expect(inset![0]).toEqual(inset![1]);
-    expect(inset![0]!.left, 'a toolbar row has no inset').toBeGreaterThanOrEqual(12);
-    expect(inset![0]!.left, 'toolbar insets are not symmetric').toBe(inset![0]!.right);
-
-    // 2. In the key-filter row the action group sits on the same line as the
-    //    inputs: their bottom edges agree, however the fields wrapped.
-    const aligned = await page.evaluate(() => {
-      const actions = document.querySelector('.job-queue-keyfilters__actions');
-      const controls = Array.from(document.querySelectorAll('.job-queue-keyfilters select, .job-queue-keyfilters input'));
-      if (!actions || controls.length === 0) return null;
-      const actionsRect = actions.getBoundingClientRect();
-      const bottoms = controls.map((control) => Math.round(control.getBoundingClientRect().bottom));
-      const nearest = bottoms.reduce((best, value) =>
-        Math.abs(value - actionsRect.bottom) < Math.abs(best - actionsRect.bottom) ? value : best,
-      );
-      return { actionsBottom: Math.round(actionsRect.bottom), nearestControlBottom: nearest };
-    });
-    expect(aligned, 'key-filter actions or controls missing').not.toBeNull();
-    expect(
-      Math.abs(aligned!.actionsBottom - aligned!.nearestControlBottom),
-      'the key-filter buttons are not on the same line as the inputs',
-    ).toBeLessThanOrEqual(2);
-
-    // 3. The header's page action and the freshness check share one centred line -
-    //    on a phone they stack by design, so this only applies from 1024 up.
-    if (viewport.width >= 1024) {
-      const headerCentres = await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll('main button')).filter((button) => {
-          const text = (button.textContent ?? '').trim();
-          return text === 'ส่งออก CSV' || text === 'รีเฟรช' || text === 'Export CSV' || text === 'Refresh';
-        });
-        return buttons.map((button) => {
-          const rect = button.getBoundingClientRect();
-          return Math.round(rect.top + rect.height / 2);
-        });
-      });
-      expect(headerCentres.length, 'header actions missing').toBe(2);
-      expect(
-        Math.abs(headerCentres[0]! - headerCentres[1]!),
-        'the export button and the refresh button are on different lines',
-      ).toBeLessThanOrEqual(2);
-    }
-
-    // 4. Row action buttons (view icon + Reprint) never touch or overlap and
-    //    share the same vertical centre when side-by-side.
-    const rowActionGaps = await page.evaluate(() => {
-      const groups = Array.from(document.querySelectorAll<HTMLElement>('.job-queue-row-actions'));
-      return groups.map((group) => {
-        const items = Array.from(group.children).map((el) => el.getBoundingClientRect());
-        if (items.length < 2) return { count: items.length, minGap: Infinity, centreDelta: 0 };
-        let minGap = Infinity;
-        let maxCentreDelta = 0;
-        for (let i = 1; i < items.length; i += 1) {
-          const prev = items[i - 1]!;
-          const next = items[i]!;
-          const sameLine = Math.abs(prev.top - next.top) < 12;
-          if (sameLine) {
-            minGap = Math.min(minGap, Math.round(next.left - prev.right));
-            const prevCentre = prev.top + prev.height / 2;
-            const nextCentre = next.top + next.height / 2;
-            maxCentreDelta = Math.max(maxCentreDelta, Math.abs(prevCentre - nextCentre));
-          }
-        }
-        return { count: items.length, minGap, centreDelta: Math.round(maxCentreDelta) };
-      });
-    });
-    expect(rowActionGaps.some((g) => g.count >= 2), 'expected at least one row with multiple action buttons').toBe(true);
-    for (const group of rowActionGaps) {
-      if (group.count >= 2 && Number.isFinite(group.minGap)) {
-        expect(group.minGap, 'row action buttons are touching or overlapping').toBeGreaterThanOrEqual(6);
-        expect(group.centreDelta, 'row action buttons are vertically misaligned').toBeLessThanOrEqual(2);
-      }
-    }
-
-    // 5. On desktop (> 1024px), table headers and cells share identical inline
-    //    padding so column text lines up cleanly.
-    if (viewport.width > 1024) {
-      const paddingMatch = await page.evaluate(() => {
-        const head = document.querySelector<HTMLElement>('.ui-data-table thead th:nth-child(2)');
-        const cell = document.querySelector<HTMLElement>('.ui-data-table tbody td:nth-child(2)');
-        if (!head || !cell) return null;
-        return {
-          headLeft: getComputedStyle(head).paddingLeft,
-          cellLeft: getComputedStyle(cell).paddingLeft,
-        };
-      });
-      expect(paddingMatch, 'table header/cell missing').not.toBeNull();
-      expect(paddingMatch!.headLeft, 'table header and cell left padding differ').toBe(paddingMatch!.cellLeft);
-    }
-
-    // 6. Nothing in the card overflows sideways.
-    const overflow = await page.evaluate(() => {
-      const card = document.querySelector('.ui-table-card');
-      if (!card) return null;
-      return card.scrollWidth - card.clientWidth;
-    });
-    expect(overflow, 'the queue card scrolls sideways').not.toBeNull();
-    expect(overflow!).toBeLessThanOrEqual(1);
+  await page.screenshot({
+    path: `artifacts/browser/job-queue/${width}-${locale}${query ? '-deep-link' : ''}.png`,
+    fullPage: true,
   });
 }
 
-test('the queue page still fits an English 1024 layout', async ({ page }) => {
+for (const locale of ['th', 'en'] as const) {
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 1024, height: 768 },
+    { width: 390, height: 844 },
+  ] as const) {
+    test(`queue fits ${viewport.width} ${locale} without a station selector`, async ({ page }) => {
+      await openQueue(page, viewport.width, viewport.height, locale);
+
+      // One frame: a single h1 and a single named action region (the scope bar).
+      await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+      await expect(page.locator('main section[aria-label]')).toHaveCount(1);
+
+      // A station has one scope, so the fleet selector must not be here at all.
+      await expect(page.getByRole('option', { name: /all stations/i })).toHaveCount(0);
+
+      // Nothing scrolls sideways: not the page, not the table frame.
+      const pageOverflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(pageOverflow, 'the queue page scrolls sideways').toBeLessThanOrEqual(1);
+
+      const tableOverflow = await page.evaluate(() => {
+        const frame = document.querySelector<HTMLElement>('.ui-data-table-frame');
+        if (!frame) return null;
+        return frame.scrollWidth - frame.clientWidth;
+      });
+      expect(tableOverflow, 'the job table scrolls sideways inside its frame').not.toBeNull();
+      expect(tableOverflow!).toBeLessThanOrEqual(1);
+    });
+  }
+}
+
+test('a bucket count equals the rows its click shows', async ({ page }) => {
+  await openQueue(page, 1440, 900, 'en');
+  const cards = page.getByRole('region', { name: 'Jobs on this station' });
+  const rows = cards.locator('tbody tr');
+
+  // Unfiltered: every job in scope.
+  await expect(rows).toHaveCount(4);
+
+  // Needs review: UNVERIFIED + FAILED, and the chip says so.
+  await page.getByRole('button', { name: 'Needs review (2)' }).click();
+  await expect(rows).toHaveCount(2);
+
+  // Clicking the selected bucket returns to All.
+  await page.getByRole('button', { name: 'Needs review (2)' }).click();
+  await expect(rows).toHaveCount(4);
+
+  // A search and an exact status stack on top without breaking the count promise.
+  await page.getByRole('searchbox', { name: 'Search jobs' }).fill('REQ-0004');
+  await expect(rows).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Needs review (1)' })).toBeVisible();
+  await page.getByRole('button', { name: 'Needs review (1)' }).click();
+  await expect(rows).toHaveCount(1);
+});
+
+test('a ?status= deep link arrives filtered and stays removable', async ({ page }) => {
+  await openQueue(page, 1440, 900, 'en', '?status=UNVERIFIED');
+  const cards = page.getByRole('region', { name: 'Jobs on this station' });
+  const rows = cards.locator('tbody tr');
+
+  await expect(rows).toHaveCount(1);
+  await expect(cards.getByText('REQ-0001').first()).toBeVisible();
+
+  // The condition is visible and removable on its own.
+  const chip = page.getByRole('button', { name: 'Remove Status is UNVERIFIED' });
+  await expect(chip).toBeVisible();
+  await chip.click();
+  await expect(rows).toHaveCount(4);
+});
+
+test('the column picker withdraws Station and resizing still moves a column', async ({ page }) => {
+  await openQueue(page, 1440, 900, 'en');
+
+  await page.getByRole('button', { name: 'Columns' }).click();
+  const picker = page.getByRole('dialog', { name: 'List columns' });
+  await expect(picker).toBeVisible();
+  await expect(picker.getByRole('checkbox', { name: 'Station' })).toHaveCount(0);
+  await picker.getByRole('button', { name: 'Close' }).last().click();
+
+  const table = page.locator('table.wcj-jobs-table');
+  await expect(table).not.toHaveClass(/wcj-jobs-table--fixed/);
+
+  // The handle is a separator with an announced range; arrow keys resize it, which
+  // is the deterministic path (a pointer drag is the same code).
+  const handle = page.getByRole('separator', { name: /Resize Received column/ });
+  await handle.focus();
+  await handle.press('ArrowLeft');
+  await expect(table).toHaveClass(/wcj-jobs-table--fixed/);
+
+  await page.getByRole('button', { name: 'Reset widths' }).click();
+  await expect(table).not.toHaveClass(/wcj-jobs-table--fixed/);
+});
+
+test('a row selection pins a batch bar that never covers the pagination', async ({ page }) => {
+  await openQueue(page, 1440, 900, 'en');
+  const cards = page.getByRole('region', { name: 'Jobs on this station' });
+
+  await cards.getByRole('checkbox', { name: 'Select job REQ-0001' }).check();
+  const bar = page.getByRole('region', { name: '1 jobs selected' });
+  await expect(bar).toBeVisible();
+
+  // The spacer reserves the bar's height, so the last row and the pagination stay
+  // reachable instead of sitting under a floating bar.
+  const spacer = page.locator('.wcj-selection-spacer');
+  await expect(spacer).toHaveCount(1);
+  const spacerBox = await spacer.boundingBox();
+  expect(spacerBox?.height ?? 0).toBeGreaterThan(24);
+
+  await page.getByRole('button', { name: 'Clear selection' }).click();
+  await expect(bar).toHaveCount(0);
+});
+
+test('the page still fits an English 1024 layout', async ({ page }) => {
   await openQueue(page, 1024, 768, 'en');
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

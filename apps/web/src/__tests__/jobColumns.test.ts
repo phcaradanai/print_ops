@@ -4,6 +4,7 @@ import {
   JOB_COLUMNS_STORAGE_KEY,
   MAX_PAYLOAD_COLUMNS,
   isPayloadColumnId,
+  jobColumnOptions,
   normalizeJobColumns,
   parseStoredJobColumns,
   payloadColumnId,
@@ -143,6 +144,19 @@ describe('job columns', () => {
     writeStoredJobColumns(['runner', 'payload:hn', 'copies'], storage);
     expect(storage.read(JOB_COLUMNS_STORAGE_KEY)).toBe('["copies","runner","payload:hn"]');
     expect(readStoredJobColumns(storage)).toEqual(['copies', 'runner', 'payload:hn']);
+  });
+
+  it('drops a column the caller withdraws, including a stored selection for it', () => {
+    // The station Job Queue has one station, so it withdraws `station`. A value
+    // already stored by a visit to the control plane must not resurrect it.
+    expect(rendered(visibleJobColumns(['station', 'job', 'copies'], ['station']))).toEqual([
+      'job',
+      'status',
+      'copies',
+      'actions',
+    ]);
+    expect(jobColumnOptions(['station']).map((option) => option.id)).not.toContain('station');
+    expect(jobColumnOptions().map((option) => option.id)).toContain('station');
   });
 
   it('reads the default when storage is missing or throws', () => {

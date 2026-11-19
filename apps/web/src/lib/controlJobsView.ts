@@ -23,6 +23,22 @@ import { jobNeedsAttention } from './jobQueueView.js';
 export type StatusBucket = 'ALL' | 'NEEDS_REVIEW' | 'IN_PROGRESS' | 'PRINTED' | 'OTHER';
 
 /**
+ * i18n key for each bucket label.
+ *
+ * The station Job Queue and the control plane's Incoming Jobs page list the
+ * same four buckets, so they read the same keys: a bucket cannot end up called
+ * "Needs review" on one page and "Needs attention" on the other.
+ */
+export const STATUS_BUCKET_LABEL_KEYS: Record<StatusBucket, string> = {
+  ALL: 'control.jobs.countAll',
+  NEEDS_REVIEW: 'control.jobs.countNeedsReview',
+  IN_PROGRESS: 'control.jobs.countInProgress',
+  PRINTED: 'control.jobs.countPrinted',
+  OTHER: 'control.jobs.countOther',
+};
+
+
+/**
  * The active-queue set: a job that is somewhere between intake and the printer
  * head. Mirrors `ACTIVE_QUEUE_STATUSES` in `jobPayload.ts` so "In progress"
  * cannot mean something different from the queue's own definition.

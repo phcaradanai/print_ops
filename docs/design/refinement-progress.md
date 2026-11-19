@@ -1,5 +1,82 @@
 # Refinement progress
 
+## 2026-11-19 — Job Queue rebuilt on the Incoming Jobs layout, station scope only
+
+The station Job Queue (`/jobs`) no longer has its own list. It now reads the same
+page as Web Control's Incoming Jobs, scoped to this station's own jobs, so the two
+views cannot drift into two definitions of a row, a verdict or a status bucket.
+
+**Shared list, extracted.** `features/control-jobs/` became `features/job-list/`
+(`JobTable`, `SelectionBar`, `JobDetailDrawer`, `JobColumnsDialog`) and
+`features/cinema/` (`CinemaBoard`, `CinemaDisplayDialog`, `cinemaModel`,
+`cinemaBoard.css`). Each list component now owns its stylesheet —
+`jobTable.css`, `selectionBar.css`, `jobDetailDrawer.css` — carved out of the
+deleted `pages/WebControlJobs.css`, so a page no longer owns another component's
+rules. Class names were deliberately left alone (`wcj-*`, `cinema-*`) so the
+existing Web Control Playwright suite keeps matching; the `wcj-` prefix is now
+historical rather than positional, which is the debt this entry accepts.
+
+**Generalized rather than forked.** `JobDetailDrawer` takes an optional
+`stationName`, `canReview` (the station passes `false`: acknowledging an outcome is
+a control-plane triage column, not a station record), optional review callbacks and
+an `onOpenFullDetail` action, and is generic over the job type so each page keeps
+its own row type. `JobColumnsDialog` takes an `options` list, `CinemaDisplayDialog`
+takes `panelChoices`, `SelectionBar`'s review props became optional, and
+`visibleJobColumns(selection, excluded)` withdraws a column from the render **and**
+from a stored selection. `STATUS_BUCKET_LABEL_KEYS` moved into
+`lib/controlJobsView.ts` so both pages name a bucket from one mapping.
+
+**Station page.** Same frame as Incoming Jobs: no header actions, one scope bar
+(count, `Freshness`, Export CSV, Columns, framed cinema group), status count chips,
+sort selector, search + date presets, an Advanced panel (exact status, custom
+dates, grouping, technical-search switch, incoming-key filters), a removable
+condition toolbar, a pinned selection bar, column picker + resize + incoming-value
+columns, grouped rendering, pagination at 50 rows, and the summary drawer. The
+fleet concepts are gone: no station selector, station column, Manage devices, Sync
+stations, reviewed-only filter or outcome filter.
+
+**Kept because they are the station's own.** `?status=` deep links from the
+dashboard's attention strip (an exact status arrives as a removable chip; the URL
+is written back so the view stays shareable), CSV export, the `/jobs/:id` detail
+page (now reachable from the drawer), reprint through `POST /jobs/:id/reprint`
+with the runner/request safety gates, the 1,000-row truncation warning, the
+physical-output warning, and 1.5 s polling. Per-row reprint is gone, matching
+Incoming Jobs: reprint lives behind the row's View action, the drawer and one
+confirmation that still demands a reason and an explicit duplicate-risk
+acknowledgement.
+
+**Removed.** `components/JobQueueControls.tsx` and its test, `pages/jobQueue.css`
+(nothing was left in it), and `buildJobQueueView` — its three responsibilities now
+live in `filterAndGroupJobs` (filters), `controlJobsView.ts` (buckets, sort) and the
+page (paging), one module each.
+
+**Copy.** The reused list vocabulary is read straight from the `control.jobs.*`
+keys, deliberately: it is one surface with one vocabulary. Six new
+`page.jobQueue.*` keys cover what only a station says (`scopeBarLabel`,
+`scopeCount`, `tableLabel`, `emptyNoJobsHint`, `cinemaScope`, `reprintBlockedHint`)
+and `subtitle` was reworded to state the scope. All exist in EN and TH.
+
+Validation: web typecheck clean; 830 web unit tests pass (including
+`designTokens.test.ts`, `layoutContract.test.ts`, the rewritten
+`jobQueueFilter.test.ts` and the new excluded-column case in `jobColumns.test.ts`);
+the production web build succeeds; full Playwright on the dashboard build ran 177
+tests (68 skipped by the control-build gate): 176 passed, and one load-dependent
+failure in `delete-flows.spec.ts` (Templates deletion, unrelated to this change)
+that passed on an isolated rerun and in the previous full run. The rebuilt
+`job-queue-layout.spec.ts` guards one action region, the absent station selector,
+bucket count = rows shown, the `?status=` deep link, the withdrawn Station column,
+keyboard resize and reset, the pinned batch bar, and no overflow at 1440/1024/390
+in **both** languages; `reprint-safety.spec.ts` and `mobile-interactions.spec.ts`
+were repointed at the drawer and bucket paths. Measured at 1024x768: the counts row
+lands at y=407 and the first job row at y=614, inside a 768px viewport, with zero
+horizontal overflow in TH and EN.
+
+Remaining debt: the `wcj-` class prefix no longer matches its folder;
+`CinemaBoard` still requires a `deviceId` per job, so the station passes a
+synthetic `'local'` id; and the station queue has no equivalent of the control
+plane's reviewed-outcome history by design, so the two pages differ in that one
+region.
+
 ## 2026-11-19 — Sandbox unverified delivery feedback
 
 `TemplateSandbox` now presents `UNVERIFIED` as a persistent, dismissible warning
@@ -908,3 +985,11 @@ test, the bulk test now covers undo), typecheck, Control build.
   - `apps/api`: `control-jobs.test.ts` (3/3) and `control-api.test.ts` (19/19) passed; 80/83 test files (685/688 tests, 2 skipped) passed, with 1 pre-existing Windows-only path failure in `src/tests/retention.test.ts` (`/dev/null/impossible-archive`).
   - `apps/web`: `jobPayload.test.ts` (5/5), `layoutContract.test.ts` (12/12), `i18n.test.ts` (55/55), `jobQueueFilter.test.tsx` (5/5), `jobDetailEvidence.test.tsx` passed (710/711 tests, 72/73 files); 1 pre-existing Windows backslash failure in `designTokens.test.ts` (`components\ui\ui.css`). Production web build (`npm run build -w apps/web`) passed.
   - Playwright E2E could not launch on this host because Playwright Chromium executable (`headless_shell.exe`) is not installed.
+
+
+## 2026-11-19 — Resize geometry and preview fidelity
+
+- Explicit width/height edits now determine sheet orientation without silently swapping sides when crossing a square. Visual field anchors stay fixed, including imported rotated geometry. Orientation selection swaps both dimensions atomically for undo.
+- HTML previews retain renderer-generated SVG image QR/barcodes and restore only the trusted bundled print font after sanitizing authored HTML. Sandbox paper chrome no longer adds 20px padding plus a border to the physical page; narrow screens scroll the full sheet inside the workbench. Existing stylesheet ownership and tokens are retained.
+- Verification: 829 web unit tests passed; production build passed; final complete Playwright suite: 170 passed, 68 intentionally skipped. Resize and renderer-to-Sandbox geometry/font/QR cases are included. Resize and Sandbox checks cover Thai/English at 1440, 1024 and 390px.
+- Live HAPY inspection confirmed CHG profile and auto-template positions match. Editor label fallbacks differ from actual data: most defaults are empty; the authorized job payload omits some keys and uses drug_unit where the profile expects unit. No patient defaults or remote profiles were changed. Physical TM-L100 cut length remains unmeasured; confirmed local driver setting and remedy are in docs/tm-l100-fixed-length.md. Changes are in the source workspace, not deployed to the running app.

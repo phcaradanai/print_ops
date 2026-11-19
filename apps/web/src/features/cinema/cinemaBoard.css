@@ -1033,3 +1033,18 @@
     font-size: clamp(1.8rem, 2vw, 2.8rem);
   }
 }
+
+/* The two cinema controls share one hairline frame and a light tint in the job
+   page's scope bar: they configure the wall board rather than this list, so they
+   must not read as two more page actions. */
+.wcj-cinema-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+  max-width: 100%;
+  padding: 3px;
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--rounded-md);
+  background: color-mix(in srgb, var(--primary) 5%, var(--neutral-paper));
+}

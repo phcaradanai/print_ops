@@ -17,7 +17,7 @@ import {
   recentJobs,
   type CinemaJob,
   type CinemaStation,
-} from '../features/control-jobs/cinemaModel.js';
+} from '../features/cinema/cinemaModel.js';
 
 const NOW = Date.parse('2026-11-18T10:30:00.000Z');
 const MINUTE = 60_000;

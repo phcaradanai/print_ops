@@ -3,9 +3,13 @@
 **Status:** implemented 2026-11-18, verified in the rendered Control build.
 **Route:** `/control/jobs` (`apps/web/src/pages/WebControlJobs.tsx`), mode flag
 `?cinema=1`.
-**Files:** `apps/web/src/features/control-jobs/CinemaBoard.tsx`,
-`cinemaBoard.css`, `cinemaModel.ts`, `apps/web/src/__tests__/cinemaModel.test.ts`,
-`apps/web/e2e/web-control-jobs.spec.ts` (section J).
+**Files:** `apps/web/src/features/cinema/CinemaBoard.tsx`,
+`CinemaDisplayDialog.tsx`, `cinemaBoard.css`, `cinemaModel.ts`,
+`apps/web/src/__tests__/cinemaModel.test.ts`,
+`apps/web/e2e/web-control-jobs.spec.ts` (section J). Both job pages own it since the
+station Job Queue was given the same list: `/control/jobs` passes every panel, the
+station passes `panelChoices={['flow', 'ticker']}` because a one-row station ladder
+would say nothing (see `job-queue-redesign.md`).
 **Evidence:** `artifacts/browser/web-control-jobs/cinema-{1440,1024,390}-{en,th}.png`.
 **Design authority:** the owner explicitly asked for a cinema-screen mode
 ("เต็มจอ ไม่มี tab/sidebar, เห็นการไหลของข้อมูล, realtime indicator, กดปุ่มใดก็ได้

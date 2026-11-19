@@ -31,6 +31,7 @@ import { formatCreatedAt } from '../../lib/formatCreatedAt.js';
 import { formatMessage } from '../../lib/formatMessage.js';
 import { extractJobPayload } from '../../lib/jobPayload.js';
 import { jobNeedsAttention } from '../../lib/jobQueueView.js';
+import './jobDetailDrawer.css';
 import {
   REPORTED_COMPLETE_COPY,
   getJobVerdict,
@@ -40,11 +41,15 @@ import {
   verdictHeadlineKey,
 } from '../../lib/jobVerdict.js';
 
-/** The subset of a mirrored job the drawer reads. */
+/** The subset of a job the drawer reads. */
 export interface DrawerJob {
   id: string;
   requestId?: string;
-  deviceId: string;
+  /**
+   * The station that mirrored the job. Absent on a station's own queue, where
+   * every row belongs to this installation by definition.
+   */
+  deviceId?: string;
   status: string;
   copies: number;
   createdAt: string;
@@ -67,18 +72,41 @@ export interface DrawerJob {
   payloadSnapshot?: string;
 }
 
-export interface JobDetailDrawerProps {
-  job: DrawerJob | null;
-  /** Already-localized station name for the job's device. */
-  stationName: string;
+/**
+ * The job type is a type parameter so a caller can keep its own richer row type:
+ * the control plane passes its mirrored station job, the station queue passes the
+ * job list row, and both get their own callbacks back without a cast.
+ */
+export interface JobDetailDrawerProps<T extends DrawerJob = DrawerJob> {
+  job: T | null;
+  /**
+   * Already-localized name of the station that mirrored the job. Empty on a
+   * station's own queue, where the destination is simply the printer.
+   */
+  stationName?: string;
   canReprint: boolean;
+  /**
+   * Whether a human can acknowledge the physical outcome from here.
+   *
+   * The acknowledgement is a control-plane triage fact stored on the mirror
+   * (`control_device_jobs.reviewed_at`) and it never rewrites the station's own
+   * status. A station has no such record, so its queue passes `false` and the
+   * drawer offers no review actions at all rather than buttons that do nothing.
+   */
+  canReview?: boolean;
   /** A review request for this job is in flight. */
-  reviewBusy: boolean;
+  reviewBusy?: boolean;
   onClose: () => void;
-  onToggleReview: (job: DrawerJob) => void;
+  onToggleReview?: (job: T) => void;
   /** Confirm what actually happened to the paper, when the station could not. */
-  onResolve: (job: DrawerJob, outcome: 'PRINTED' | 'NOT_PRINTED') => void;
-  onReprint: (job: DrawerJob) => void;
+  onResolve?: (job: T, outcome: 'PRINTED' | 'NOT_PRINTED') => void;
+  onReprint: (job: T) => void;
+  /**
+   * Open the full detail page for this job. The station's queue has one; the
+   * control plane's drawer reads the mirrored summary and stops there.
+   */
+  onOpenFullDetail?: () => void;
+  openFullDetailLabel?: string;
 }
 
 interface CopyValueButtonProps {
@@ -104,16 +132,19 @@ function CopyValueButton({ value, label, copied, onCopy }: CopyValueButtonProps)
   );
 }
 
-export function JobDetailDrawer({
+export function JobDetailDrawer<T extends DrawerJob = DrawerJob>({
   job,
-  stationName,
+  stationName = '',
   canReprint,
-  reviewBusy,
+  canReview = true,
+  reviewBusy = false,
   onClose,
   onToggleReview,
   onResolve,
   onReprint,
-}: JobDetailDrawerProps) {
+  onOpenFullDetail,
+  openFullDetailLabel,
+}: JobDetailDrawerProps<T>) {
   const { t } = useLocale();
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const copyTimerRef = useRef<number | null>(null);
@@ -204,7 +235,7 @@ export function JobDetailDrawer({
     );
   };
 
-  const reviewable = job !== null && (jobNeedsAttention(job.status) || Boolean(job.reviewedAt));
+  const reviewable = canReview && job !== null && (jobNeedsAttention(job.status) || Boolean(job.reviewedAt));
 
   return (
     <Drawer
@@ -215,8 +246,13 @@ export function JobDetailDrawer({
       className="wcj-detail-drawer"
       footer={
         <>
+          {onOpenFullDetail && (
+            <Button variant="secondary" onClick={onOpenFullDetail}>
+              {openFullDetailLabel ?? t('control.jobs.detailOpenFull')}
+            </Button>
+          )}
           {job && reviewable && (job.reviewedAt ? (
-            <Button variant="secondary" busy={reviewBusy} onClick={() => onToggleReview(job)}>
+            <Button variant="secondary" busy={reviewBusy} onClick={() => onToggleReview?.(job)}>
               {t('control.jobs.unmarkReviewed')}
             </Button>
           ) : (
@@ -227,14 +263,14 @@ export function JobDetailDrawer({
               <Button
                 variant="secondary"
                 busy={reviewBusy && job.reviewedOutcome !== 'PRINTED'}
-                onClick={() => onResolve(job, 'PRINTED')}
+                onClick={() => onResolve?.(job, 'PRINTED')}
               >
                 {t('control.jobs.confirmPrinted')}
               </Button>
               <Button
                 variant="secondary"
                 busy={reviewBusy && job.reviewedOutcome !== 'NOT_PRINTED'}
-                onClick={() => onResolve(job, 'NOT_PRINTED')}
+                onClick={() => onResolve?.(job, 'NOT_PRINTED')}
               >
                 {t('control.jobs.confirmNotPrinted')}
               </Button>
@@ -275,10 +311,12 @@ export function JobDetailDrawer({
             <CardDetail columns={2}>
               <CardDetailItem label={t('control.jobs.detailDestination')}>
                 <Text wrap>
-                  {formatMessage(t('control.jobs.destinationOnStation'), {
-                    printer: job.printerCode || job.printerId,
-                    station: stationName,
-                  })}
+                  {stationName
+                    ? formatMessage(t('control.jobs.destinationOnStation'), {
+                        printer: job.printerCode || job.printerId,
+                        station: stationName,
+                      })
+                    : job.printerCode || job.printerId}
                 </Text>
               </CardDetailItem>
               <CardDetailItem label={t('control.jobs.colStatus')}>

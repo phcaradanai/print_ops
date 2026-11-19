@@ -9,7 +9,6 @@ import {
   payloadEntries,
   type FilterableJob,
 } from '../lib/jobPayload.js';
-import { buildJobQueueView } from '../lib/jobQueueView.js';
 
 const NOW = new Date('2026-11-17T10:00:00.000Z');
 
@@ -173,18 +172,13 @@ describe('jobPayload utilities', () => {
     ]);
   });
 
-  it('indexes incoming payload keys and values inside buildJobQueueView search', () => {
-    const view = buildJobQueueView(
-      SAMPLE_JOBS.map((j) => ({ ...j, copies: 1, documentType: 'LABEL' })),
-      {
-        search: 'Somchai',
-        status: 'ALL',
-        page: 1,
-        pageSize: 20,
-      },
-    );
-    expect(view.filteredCount).toBe(1);
-    expect(view.rows[0]?.id).toBe('job_1');
+  it('finds an incoming payload value from the shared search pipeline', () => {
+    const { filteredJobs } = filterAndGroupJobs(SAMPLE_JOBS, {
+      status: 'ALL',
+      search: 'Somchai',
+      now: NOW,
+    });
+    expect(filteredJobs.map((job) => job.id)).toEqual(['job_1']);
   });
 
   it('flattens nested payloads, counts key values, and filters multiple key = value pairs', () => {
@@ -247,19 +241,15 @@ describe('jobPayload utilities', () => {
     });
     expect(filteredControl.filteredJobs.map((j) => j.id)).toEqual(['rx_1']);
 
-    const filteredQueue = buildJobQueueView(
-      nestedJobs.map((j) => ({ ...j, copies: 1, documentType: 'LABEL' })),
-      {
-        status: 'ALL',
-        search: '',
-        keyFilters: [
-          { key: 'hn', value: '123456', exact: true },
-          { key: 'prescription', value: '213', exact: false },
-        ],
-        page: 1,
-        pageSize: 20,
-      },
-    );
-    expect(filteredQueue.rows.map((j) => j.id)).toEqual(['rx_1']);
+    const filteredByKeyFilters = filterAndGroupJobs(nestedJobs, {
+      status: 'ALL',
+      search: '',
+      keyFilters: [
+        { key: 'hn', value: '123456', exact: true },
+        { key: 'prescription', value: '213', exact: false },
+      ],
+      now: NOW,
+    });
+    expect(filteredByKeyFilters.filteredJobs.map((j) => j.id)).toEqual(['rx_1']);
   });
 });

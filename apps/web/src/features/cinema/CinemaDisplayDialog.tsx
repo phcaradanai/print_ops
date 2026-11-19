@@ -33,6 +33,12 @@ export interface CinemaDisplayDialogProps {
   onLabelWidthChange: (next: CinemaLabelWidth) => void;
   /** Optional panels currently switched on. */
   panels: readonly CinemaPanel[];
+  /**
+   * Panels offered as choices. Defaults to every panel. A one-station queue
+   * passes the list without `stations`, where a single-row panel would say
+   * nothing the feed does not already show.
+   */
+  panelChoices?: readonly CinemaPanel[];
   onToggleField: (key: string) => void;
   onClearFields: () => void;
   onTogglePanel: (panel: CinemaPanel) => void;
@@ -49,6 +55,7 @@ export function CinemaDisplayDialog({
   labelWidth,
   onLabelWidthChange,
   panels,
+  panelChoices = CINEMA_PANELS,
   onToggleField,
   onClearFields,
   onTogglePanel,
@@ -137,13 +144,13 @@ export function CinemaDisplayDialog({
           <Text size="label" tone="muted">
             {t('control.cinema.panelsHint')}
           </Text>
-          {CINEMA_PANELS.map((panel) => {
+          {panelChoices.map((panel) => {
             const checked = panels.includes(panel);
             return (
               <Checkbox
                 key={panel}
                 checked={checked}
-                disabled={checked && panels.length === 1}
+                disabled={checked && panelChoices.filter((choice) => panels.includes(choice)).length === 1}
                 onChange={() => onTogglePanel(panel)}
                 label={t(`control.cinema.panel.${panel}`)}
               />

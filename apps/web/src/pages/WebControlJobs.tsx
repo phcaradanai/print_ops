@@ -38,6 +38,7 @@ import {
   type JobSearchMatch,
 } from '../lib/jobPayload.js';
 import {
+  STATUS_BUCKET_LABEL_KEYS,
   countStatusBuckets,
   matchesStatusBucket,
   sortJobs,
@@ -87,27 +88,26 @@ import {
   type StatusTone,
 } from '../components/ui/index.js';
 
-import './WebControlJobs.css';
-import { CinemaBoard } from '../features/control-jobs/CinemaBoard.js';
-import { CinemaDisplayDialog } from '../features/control-jobs/CinemaDisplayDialog.js';
-import { JobColumnsDialog } from '../features/control-jobs/JobColumnsDialog.js';
-import { JobDetailDrawer } from '../features/control-jobs/JobDetailDrawer.js';
+import { CinemaBoard } from '../features/cinema/CinemaBoard.js';
+import { CinemaDisplayDialog } from '../features/cinema/CinemaDisplayDialog.js';
+import { JobColumnsDialog } from '../features/job-list/JobColumnsDialog.js';
+import { JobDetailDrawer } from '../features/job-list/JobDetailDrawer.js';
 import {
   JobTable,
   type JobTableColumn as JobTableView,
   type JobTableResizer,
-} from '../features/control-jobs/JobTable.js';
+} from '../features/job-list/JobTable.js';
 // The resize limits belong to the table: one definition, so the handle's
 // announced range and the clamp can never disagree.
-import { MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH } from '../features/control-jobs/JobTable.js';
-import { SelectionBar } from '../features/control-jobs/SelectionBar.js';
+import { MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH } from '../features/job-list/JobTable.js';
+import { SelectionBar } from '../features/job-list/SelectionBar.js';
 import {
   CINEMA_MAX_FIELDS,
   CINEMA_PANELS,
   describeCinemaFields,
   parseCinemaPanels,
   type CinemaPanel,
-} from '../features/control-jobs/cinemaModel.js';
+} from '../features/cinema/cinemaModel.js';
 
 export interface ControlSyncedJobItem extends FilterableJob {
   deviceId: string;
@@ -214,19 +214,9 @@ function stationTitle(device: { displayName?: string; hostname: string; deviceId
 }
 
 function statusBucketLabel(t: (key: string) => string, bucket: StatusBucket): string {
-  switch (bucket) {
-    case 'NEEDS_REVIEW':
-      return t('control.jobs.countNeedsReview');
-    case 'IN_PROGRESS':
-      return t('control.jobs.countInProgress');
-    case 'PRINTED':
-      return t('control.jobs.countPrinted');
-    case 'OTHER':
-      return t('control.jobs.countOther');
-    case 'ALL':
-    default:
-      return t('control.jobs.countAll');
-  }
+  // One mapping, owned by the shared view module: the station Job Queue reads
+  // the same labels, so a bucket cannot be named two different things.
+  return t(STATUS_BUCKET_LABEL_KEYS[bucket]);
 }
 
 export default function WebControlJobs() {
