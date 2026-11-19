@@ -4656,6 +4656,7 @@ td > .state-panel--empty {
   font-size: var(--font-action-size);
   color: var(--neutral-text-muted);
   flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .freshness--stale {

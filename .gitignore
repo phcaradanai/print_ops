@@ -73,3 +73,6 @@ test-results/
 # The agent harness keeps throwaway worktrees here: full copies of this repo whose
 # tests and sources otherwise show up in searches and path-filtered test runs.
 .delta/
+
+# Python bytecode (cups-epson backend tests)
+__pycache__/

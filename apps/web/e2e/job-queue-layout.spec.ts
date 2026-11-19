@@ -226,3 +226,58 @@ test('the page still fits an English 1024 layout', async ({ page }) => {
   );
   expect(overflow, 'the page scrolls sideways').toBeLessThanOrEqual(1);
 });
+
+test('background polling keeps the refresh button and adjacent actions steady', async ({ page }) => {
+  let jobsRequests = 0;
+  let releaseDelayedPoll!: () => void;
+  const secondPollOpen = new Promise<void>((resolve) => {
+    let resolved = false;
+    releaseDelayedPoll = () => {
+      if (!resolved) {
+        resolved = true;
+        resolve();
+      }
+    };
+  });
+  let secondPollGate!: () => void;
+  const secondPollStarted = new Promise<void>((resolve) => {
+    secondPollGate = resolve;
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installHarness(page, {
+    locale: 'th',
+    role: 'OWNER',
+    api: async (url, route, method) => {
+      const path = url.pathname.replace(/^\/api/, '');
+      if (path === '/jobs' && method === 'GET') {
+        jobsRequests += 1;
+        if (jobsRequests === 2) {
+          secondPollGate();
+          await secondPollOpen;
+        }
+        await route.fulfill({ json: JOBS });
+        return true;
+      }
+      await route.fulfill({ json: [] });
+      return true;
+    },
+  });
+
+  await page.goto('/jobs');
+  await expect(page.locator('.ui-data-table-frame')).toBeVisible();
+
+  const exportButton = page.getByRole('button', { name: 'ส่งออก CSV' });
+  const refreshButton = page.getByRole('button', { name: 'รีเฟรช' });
+  const initialBox = await exportButton.boundingBox();
+  expect(initialBox).not.toBeNull();
+
+  // Wait for the scheduled 1.5s background poll to be actively in flight.
+  await secondPollStarted;
+  await expect(page.locator('.freshness-refreshing')).toHaveCount(0);
+  await expect(refreshButton).not.toHaveAttribute('aria-busy', 'true');
+  const duringPollBox = await exportButton.boundingBox();
+  expect(duringPollBox?.x).toBe(initialBox?.x);
+
+  releaseDelayedPoll();
+});

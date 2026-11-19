@@ -110,7 +110,8 @@ export function createPollController<T>(options: PollControllerOptions<T>): Poll
 
   /**
    * `foreground` attempts (first load, manual refresh) light the global
-   * activity bar; scheduled ticks stay silent so polling never pulses it.
+   * activity bar and surface `refreshing` state; scheduled ticks stay silent
+   * so polling never pulses the header bar or shifts toolbar buttons.
    */
   async function attempt(foreground = false): Promise<void> {
     if (stopped || inFlight) return;
@@ -118,11 +119,14 @@ export function createPollController<T>(options: PollControllerOptions<T>): Poll
     const endActivity = foreground ? beginActivity('load') : null;
     const runGeneration = generation;
     const hasData = snapshot.data !== undefined;
-    emit({
-      paused: false,
-      loading: !hasData,
-      refreshing: hasData,
-    });
+    const shouldShowLoading = !hasData && (foreground || snapshot.error == null);
+    if (foreground || shouldShowLoading || snapshot.paused) {
+      emit({
+        paused: false,
+        loading: shouldShowLoading,
+        refreshing: foreground && hasData,
+      });
+    }
 
     try {
       const data = await fetcher();

@@ -1,5 +1,13 @@
 # Refinement progress
 
+## 2026-11-19 — Silent background polling (no Freshness/toolbar bounce on intervals)
+
+Scheduled background polling ticks in `apps/web/src/lib/pollController.ts` previously emitted `refreshing: true` (and `loading: true` on retries after an initial load failure) on every tick across all polling pages (`JobQueue`, `JobDetail`, `WebControlJobs`, `WebControlDevices`, `WebControlDeviceDetail`, `WebControlReleases`, `WebControlContent`, `Runners`, `LocalDiagnostics`, `CinemaBoard`, `CallbackDeliveryLog`). In `<Freshness>`, that mounted/unmounted `<span className="freshness-refreshing">` and toggled `<Button busy={refreshing}>` with a spinner every 1–30 seconds, shoving sibling buttons (`Export CSV`, `Columns`, `Cinema`, `Sync`, header actions) sideways and back on every interval.
+
+- `pollController.ts`: scheduled background attempts (`foreground = false`) stay silent — `refreshing` is only set for explicit foreground refreshes (`controller.refresh()`), and `loading` is not re-triggered on background retries after an initial failure (`error != null`).
+- `styles.css`: added `font-variant-numeric: tabular-nums` on `.freshness` so ticking relative timestamps keep constant digit widths.
+- Validation: `pollController.test.ts` updated with silent-background-tick and failed-load-retry guards; `job-queue-layout.spec.ts` adds a Playwright guard verifying `Export CSV` keeps its exact `x` position and `Refresh` stays idle during an active 1.5s background poll.
+
 ## 2026-11-19 — Job Queue rebuilt on the Incoming Jobs layout, station scope only
 
 The station Job Queue (`/jobs`) no longer has its own list. It now reads the same

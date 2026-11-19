@@ -220,20 +220,67 @@ describe('createPollController — failure during refresh', () => {
     controller.stop();
   });
 
-  it('marks a refresh as refreshing, not loading, once data exists', async () => {
+  it('marks a manual refresh as refreshing, not loading, once data exists', async () => {
     const second = deferred<string[]>();
     const fetcher = vi.fn().mockResolvedValueOnce(['job-1']).mockReturnValueOnce(second.promise);
 
     const controller = createPollController({ fetcher, intervalMs: 100, onSnapshot: record, ...visibilitySeam() });
     controller.start();
     await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(100);
 
+    controller.refresh();
     expect(latest().refreshing).toBe(true);
     expect(latest().loading).toBe(false);
     second.resolve(['job-2']);
     await vi.advanceTimersByTimeAsync(0);
     expect(latest().refreshing).toBe(false);
+    controller.stop();
+  });
+
+  it('keeps scheduled background polling ticks silent so refreshing stays false', async () => {
+    const second = deferred<string[]>();
+    const fetcher = vi.fn().mockResolvedValueOnce(['job-1']).mockReturnValueOnce(second.promise);
+
+    const controller = createPollController({ fetcher, intervalMs: 100, onSnapshot: record, ...visibilitySeam() });
+    controller.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const countAfterFirstLoad = snapshots.length;
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(snapshots.length).toBe(countAfterFirstLoad);
+    expect(latest().refreshing).toBe(false);
+    expect(latest().loading).toBe(false);
+
+    second.resolve(['job-2']);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(latest().data).toEqual(['job-2']);
+    expect(latest().refreshing).toBe(false);
+    controller.stop();
+  });
+
+  it('keeps loading false during background retries after an initial load failure', async () => {
+    const retry = deferred<string[]>();
+    const fetcher = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('down'))
+      .mockReturnValueOnce(retry.promise);
+
+    const controller = createPollController({ fetcher, intervalMs: 100, onSnapshot: record, ...visibilitySeam() });
+    controller.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(latest().loading).toBe(false);
+    expect(latest().error).toBeInstanceOf(Error);
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(latest().loading).toBe(false);
+    expect(latest().refreshing).toBe(false);
+
+    retry.resolve(['recovered']);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(latest().data).toEqual(['recovered']);
+    expect(latest().error).toBeNull();
     controller.stop();
   });
 });
