@@ -1,3 +1,44 @@
+# PrintOps App 0.1.55
+
+Published for `linux/amd64` from `e4db5cb` (2026-11-19). Current app release; it
+supersedes 0.1.54 (`sha256:2accdd94…`, the runner CUPS guard) and 0.1.53.
+
+- **A runner can no longer report a print it never made**: the Go runner
+  accepted `PRINTOPS_EXECUTOR_MODE=cups` although it has no CUPS executor and
+  used the fake executor as its dispatcher fallback, so a `cups://` job was
+  recorded SUCCESS with "fake print completed" while nothing printed. The
+  fallback now refuses unknown protocols, and a job-executing runner configured
+  with `cups` refuses to start with an explanatory message. Fake printing still
+  works for printers declared with the `fake` protocol. A discovery-only runner
+  (`PRINTOPS_JOBS_ENABLED=false`, the station's normal CUPS setup) still starts.
+- **One runner card and one copy of each discovered printer**: registration
+  matched on `name + hostname`, and a Docker runner's hostname is its container
+  id, so every restart/redeploy created another runner record and another copy
+  of every discovered printer. The runner name is now the logical identity
+  (hostname is updated on re-registration), the runner list shows one card per
+  name, and reconciliation deletes discovery rows held by a duplicate record of
+  a name that has a newer record.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-app:0.1.55` | `sha256:1b388d08228fc8d8b318ccb0dec0b091431accfc60018235fc906035bf4dcd49` |
+| `registry.pg.xenex.io/printops-app:0.1.54` (superseded) | `sha256:2accdd94d7de88c9698ef719f1770abae5be01cf1161ff458ad863227ef7d157` |
+
+Verified:
+- `node scripts/smoke-app-image.mjs registry.pg.xenex.io/printops-app:0.1.55` →
+  PASS, and the same image's runner refuses `cups` + jobs enabled with exit 1
+  ("PRINTOPS_EXECUTOR_MODE=cups has no runner implementation…").
+- `npm run release:verify` → `version:consistency: 0.1.55 across
+  root/API/web/desktop/Cargo/Tauri` (no desktop installer was built for 0.1.55;
+  the run stops at `ota:secret` in this shell).
+- Unit tests: API 779 passed / 1 skipped (runner identity, shadowed-record
+  cleanup in both storage modes and in the SQL sweep), Go runner suites pass
+  including the new `executor_guard_test.go`.
+- Deployed to the station: `/api/health` reports `0.1.55`; `/api/runners` shows a
+  single card for `printops-runner-vm1` with the recreated container hostname;
+  `/api/v1/discovered-printers` shows 3 rows and 0 stale — the duplicate rows
+  left by earlier restarts were pruned at boot.
+
 # PrintOps App 0.1.53
 
 Published for `linux/amd64` from `e37c5bd` (2026-11-19), with the `0.1.53` version
