@@ -49,6 +49,23 @@ Verified:
 Deploy with `PRINTOPS_APP_VERSION=0.1.51` and
 `PRINTOPS_CONTROL_PLANE_VERSION=1.0.25`.
 
+Windows desktop installers, built with `npm run desktop:bundle` on a Windows x64
+host; release verification (including resource freshness and the zero-byte scan of
+81 files) passed and the OTA manifest is `artifacts/prod-01/ota-manifest.json`
+(`applicationVersion 0.1.51`):
+
+| Installer | Size | SHA-256 |
+| --- | --- | --- |
+| `PrintOps_0.1.51_x64_en-US.msi` | 48,660,480 B | `359048ffbc96df9fcbb964ef86da295e3189d9762896c4cf9ede36b592eb3807` |
+| `PrintOps_0.1.51_x64-setup.exe` (NSIS) | 37,478,832 B | `2be7eae61771f58308d26680f81d9334f7af8f0c39f0c87f0906236d72e08f28` |
+
+The first attempt failed preflight with
+`version:consistency {"root":"0.1.51", ..., "cargo":"0.1.50"}`: the Rust crate
+version in `apps/desktop/src-tauri/Cargo.toml` (and its `Cargo.lock` entry) has to
+move with `package.json`, `tauri.conf.json` and the workspace packages. Fixed in
+`5463941`; preflight now reports `version:consistency: 0.1.51 across
+root/API/web/desktop/Cargo/Tauri`.
+
 ```powershell
 docker buildx build --platform linux/amd64 --load `
   --file infra/docker/Dockerfile.app `
