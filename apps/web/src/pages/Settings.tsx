@@ -17,13 +17,17 @@ import { useApiResource } from '../hooks/useApiResource.js';
 import {
   type NatsSettings,
   DEFAULT_NATS_SETTINGS,
-  getNatsSettings,
   enrollControlDevice,
   disconnectControlDevice,
   type ControlEnrollmentResult,
-  saveNatsSettings,
   isTauriAvailable,
 } from '../tauri.js';
+import {
+  loadNatsSettings,
+  persistNatsSettings,
+  resolveNatsSettingsBackend,
+  type NatsSettingsBackend,
+} from '../natsSettings.js';
 
 import type { ClientControlStatus } from '../App.js';
 import { ServiceAccountSettings } from '../components/ServiceAccountSettings.js';
@@ -148,14 +152,19 @@ export default function Settings() {
   const [backingUp, setBackingUp] = useState(false);
   const [downloadingSupport, setDownloadingSupport] = useState(false);
 
-  // NATS client configuration (desktop only)
+  // NATS client configuration. The API owns it in both builds; the desktop bridge
+  // is only the fallback when the local API cannot answer (see src/natsSettings.ts).
   const [nats, setNats] = useState<NatsSettings>(DEFAULT_NATS_SETTINGS);
   const [natsDraft, setNatsDraft] = useState<NatsSettings>(DEFAULT_NATS_SETTINGS);
   const [natsDirty, setNatsDirty] = useState(false);
   const [natsLoading, setNatsLoading] = useState(true);
-  const [natsSupported, setNatsSupported] = useState(false);
+  const [natsBackend, setNatsBackend] = useState<NatsSettingsBackend | null>(null);
+  const [natsSource, setNatsSource] = useState<'file' | 'env' | 'default' | null>(null);
   const [natsStatus, setNatsStatus] = useState<NatsRuntimeStatus | null>(null);
   const [natsTesting, setNatsTesting] = useState(false);
+  const natsSupported = natsBackend === 'api' || natsBackend === 'desktop';
+  // Web Control keeps its current (desktop) gating; NATS no longer uses it.
+  const [desktopShell, setDesktopShell] = useState(false);
 
   // Web Control enrollment (desktop only)
   const [controlStatus, setControlStatus] = useState<ClientControlStatus | null>(null);
@@ -188,20 +197,23 @@ export default function Settings() {
     return () => clearTimeout(id);
   }, [message]);
 
-  // Load NATS settings when running inside the desktop shell.
+  // Load NATS settings wherever they can be managed: the API in every build, with
+  // the desktop bridge as the fallback when the local API does not answer.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const supported = await isTauriAvailable();
+      const backend = await resolveNatsSettingsBackend();
       if (cancelled) return;
-      setNatsSupported(supported);
-      if (!supported) {
+      setNatsBackend(backend);
+      setDesktopShell(await isTauriAvailable());
+      if (backend === 'unavailable') {
         setNatsLoading(false);
         return;
       }
-      const loaded = await getNatsSettings();
+      const loaded = await loadNatsSettings(backend).catch(() => null);
       if (cancelled) return;
-      const value = loaded ?? DEFAULT_NATS_SETTINGS;
+      const value = loaded?.settings ?? DEFAULT_NATS_SETTINGS;
+      setNatsSource(loaded?.source ?? null);
       setNats(value);
       setNatsDraft(value);
       setNatsLoading(false);
@@ -214,7 +226,15 @@ export default function Settings() {
   useEffect(() => {
     if (!natsSupported) return;
     let cancelled = false;
-    const refresh = () => { void getNatsRuntimeStatus().then((value) => { if (!cancelled) setNatsStatus(value); }).catch(() => {}); };
+    // Only a real status object is displayed: a proxy or an older API answering
+    // with something else must not paint a fake "UNAVAILABLE" diagnostics card.
+    const refresh = () => {
+      void getNatsRuntimeStatus()
+        .then((value) => {
+          if (!cancelled && value && typeof value === 'object' && !Array.isArray(value)) setNatsStatus(value);
+        })
+        .catch(() => {});
+    };
     refresh();
     const timer = window.setInterval(refresh, 3000);
     return () => { cancelled = true; window.clearInterval(timer); };
@@ -233,11 +253,11 @@ export default function Settings() {
   }, []);
 
   useEffect(() => {
-    if (!natsSupported) return;
+    if (!desktopShell) return;
     void refreshControlStatus();
     const timer = window.setInterval(() => { void refreshControlStatus(); }, 5000);
     return () => window.clearInterval(timer);
-  }, [natsSupported, refreshControlStatus]);
+  }, [desktopShell, refreshControlStatus]);
 
   const handleNatsTest = useCallback(async () => {
     setNatsTesting(true);
@@ -323,26 +343,37 @@ export default function Settings() {
     [nats, natsDraft],
   );
 
-  // Saving restarts only the backend API process in-place and waits for a
-  // health check before resolving — it does NOT restart the whole desktop app
-  // (a prior version did, which raced with the single-instance guard and could
-  // silently leave the old, unconfigured server running). A successful resolve
-  // here means the new NATS settings are genuinely active, not just written to
-  // disk — which is why the button must stay busy for the whole round trip.
+  // Saving applies the new configuration to the running API: the server build
+  // restarts its NATS intake in place, the desktop bridge restarts only the
+  // backend process. Either way a successful resolve means the settings are
+  // genuinely active, not just written to disk — which is why the button must
+  // stay busy for the whole round trip. An API refusal is shown with the
+  // server's own validation/authorisation message.
   const saveNats = useApiAction(async (settings: NatsSettings) => {
-    await saveNatsSettings(settings);
-    return settings;
+    const backend = natsBackend;
+    if (!backend || backend === 'unavailable') {
+      throw new Error(t('settings.nats.unavailable'));
+    }
+    const applied = await persistNatsSettings(backend, settings);
+    // The API returns the status it applied; the desktop bridge restarts its
+    // server instead, so re-read the status endpoint it just came back on.
+    const live = applied ?? (await getNatsRuntimeStatus().catch(() => null));
+    if (live) setNatsStatus(live);
+    setNatsSource('file');
+    return { settings, status: live };
   });
   const natsSaving = saveNats.pending;
 
   const handleNatsSave = useCallback(async () => {
-    const saved = await saveNats.run(natsDraft);
-    if (saved) {
-      setNats(saved);
+    const applied = await saveNats.run(natsDraft);
+    if (applied) {
+      setNats(applied.settings);
       setNatsDirty(false);
-      const live = await getNatsRuntimeStatus().catch(() => null);
-      if (live) setNatsStatus(live);
-      setMessage({ text: live && live.enabled && !live.connected ? t('settings.nats.notConnectedAfterSave') : t('settings.saved'), kind: live && live.enabled && !live.connected ? 'error' : 'success' });
+      const notConnected = Boolean(applied.status?.enabled && !applied.status.connected);
+      setMessage({
+        text: notConnected ? t('settings.nats.notConnectedAfterSave') : t('settings.saved'),
+        kind: notConnected ? 'error' : 'success',
+      });
     } else {
       setMessage({
         text: `${t('settings.savedError')} ${errorMessage(saveNats.getError())}`,
@@ -658,17 +689,21 @@ export default function Settings() {
           </Stack>
         </Panel>
 
-        {/* NATS client configuration (desktop only) */}
+        {/* NATS print-intake configuration — available in every build */}
         <Panel title={t('settings.nats.title')}>
           {natsLoading && <LoadingState />}
 
           {!natsLoading && !natsSupported && (
-            <Text as="p" tone="muted">{t('settings.nats.desktopOnly')}</Text>
+            <Text as="p" tone="muted">{t('settings.nats.unavailable')}</Text>
           )}
 
           {!natsLoading && natsSupported && (
             <Stack gap="lg">
               <Text as="p" tone="muted">{t('settings.nats.description')}</Text>
+
+              {natsSource && (
+                <Text as="p" tone="muted">{t(`settings.nats.source.${natsSource}`)}</Text>
+              )}
 
               {natsStatus && (
                 <CardDetail aria-label={t('settings.nats.diagnostics')}>
@@ -767,7 +802,7 @@ export default function Settings() {
                   busyLabel={t('common.loading')}
                   onClick={() => handleNatsSave()}
                 >
-                  {t('settings.nats.applyAndRestart')}
+                  {t('settings.nats.apply')}
                 </Button>
                 <Button variant="secondary" disabled={!natsDirty || natsSaving} onClick={handleNatsCancel}>
                   {t('common.cancel')}

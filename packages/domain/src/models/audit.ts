@@ -63,7 +63,8 @@ export type AuditAction =
   | 'sandbox.run'
   | 'sandbox.batch_run'
   | 'connectivity.check'
-  | 'connectivity.report';
+  | 'connectivity.report'
+  | 'nats_settings.updated';
 
 export interface AuditLog {
   id: string;

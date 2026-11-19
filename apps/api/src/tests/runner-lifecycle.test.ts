@@ -5,6 +5,7 @@ import { ConflictError } from '@printerops/shared';
 import { buildApp } from '../app.js';
 import { InMemoryRunnerRepository } from '../infra/repos/in-memory-runner.repo.js';
 import { InMemoryAuditRepository } from '../infra/repos/in-memory-audit.repo.js';
+import { InMemoryDiscoveredPrinterRepository } from '../infra/repos/in-memory-discovered-printer.repo.js';
 import { InMemoryEventBus } from '../infra/eventbus/in-memory-eventbus.js';
 import { RegisterRunnerService } from '../services/register-runner.service.js';
 import { RunnerHeartbeatService } from '../services/runner-heartbeat.service.js';
@@ -17,6 +18,7 @@ describe('RunnerLifecycleService', () => {
   let runners: InMemoryRunnerRepository;
   let audit: InMemoryAuditRepository;
   let events: InMemoryEventBus;
+  let discovered: InMemoryDiscoveredPrinterRepository;
   let published: AnyDomainEvent[];
   let lifecycle: RunnerLifecycleService;
   let register: RegisterRunnerService;
@@ -26,10 +28,11 @@ describe('RunnerLifecycleService', () => {
     runners = new InMemoryRunnerRepository();
     audit = new InMemoryAuditRepository();
     events = new InMemoryEventBus();
+    discovered = new InMemoryDiscoveredPrinterRepository();
     published = [];
     events.subscribe('RunnerTerminated', (event) => { published.push(event); });
     events.subscribe('RunnerDeleted', (event) => { published.push(event); });
-    lifecycle = new RunnerLifecycleService(runners, audit, events);
+    lifecycle = new RunnerLifecycleService(runners, audit, events, discovered);
     register = new RegisterRunnerService(runners, audit, events);
     heartbeat = new RunnerHeartbeatService(runners, events);
   });
@@ -96,6 +99,54 @@ describe('RunnerLifecycleService', () => {
     await runners.create({ ...RUNNER_A, id: 'legacy-duplicate' });
     await lifecycle.terminate(first.id, 'owner-1');
     expect(isRunnerTerminated((await runners.findById('legacy-duplicate'))!)).toBe(false);
+  });
+
+  it('deletes the removed runner\'s discovered printers and audits how many went', async () => {
+    const a = await register.execute({ ...RUNNER_A });
+    const b = await register.execute({ ...RUNNER_B });
+    for (const name of ['HP LaserJet Pro', 'Zebra ZD420']) {
+      await discovered.upsert({
+        runnerId: a.id,
+        localPrinterName: name,
+        connectionType: 'usb',
+        isDefault: false,
+        isShared: false,
+        computerName: 'host-a',
+      });
+    }
+    await discovered.upsert({
+      runnerId: b.id,
+      localPrinterName: 'HP LaserJet Pro',
+      connectionType: 'usb',
+      isDefault: false,
+      isShared: false,
+      computerName: 'host-b',
+    });
+
+    // A terminated runner is the normal path (the operator saw it, then removed it).
+    await lifecycle.terminate(a.id, 'owner-1');
+    await lifecycle.remove(a.id, 'owner-1');
+
+    expect(await discovered.findAll({ runnerId: a.id })).toHaveLength(0);
+    // The surviving runner's identical printer is untouched.
+    expect(await discovered.findAll({ runnerId: b.id })).toHaveLength(1);
+
+    const log = (await audit.findAll()).find(
+      (entry) => entry.action === 'runner.deleted' && entry.resourceId === a.id,
+    );
+    expect(log?.metadata).toMatchObject({ actor: 'owner-1', discoveredPrintersRemoved: 2 });
+  });
+
+  it('still deletes a runner whose discovered printers are already gone', async () => {
+    const a = await register.execute({ ...RUNNER_A });
+    await register.execute({ ...RUNNER_B });
+    await lifecycle.terminate(a.id, 'owner-1');
+    await lifecycle.remove(a.id, 'owner-1');
+
+    const log = (await audit.findAll()).find(
+      (entry) => entry.action === 'runner.deleted' && entry.resourceId === a.id,
+    );
+    expect(log?.metadata).toMatchObject({ discoveredPrintersRemoved: 0 });
   });
 });
 

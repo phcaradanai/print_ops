@@ -2,6 +2,7 @@ import { ApiError, apiErrorFromResponse, networkApiError } from './errors.js';
 import { logError } from '../lib/logError.js';
 import { beginActivity } from '../lib/activity.js';
 import { exportJsonFile } from '../tauri.js';
+import type { NatsSettings } from '../tauri.js';
 
 export { ApiError, errorMessage, errorTechnicalSummary } from './errors.js';
 
@@ -125,6 +126,33 @@ export interface NatsRuntimeStatus {
 
 export function getNatsRuntimeStatus(): Promise<NatsRuntimeStatus> { return apiFetch<NatsRuntimeStatus>('/v1/print-flow/nats-status'); }
 export function testNatsConnection(): Promise<{ ok: boolean; stage: string; code?: string; message: string; durationMs: number }> { return apiFetch('/v1/print-flow/nats-test', { method: 'POST' }); }
+
+/** Where the API took the settings from: a saved file, the environment, or neither. */
+export type ApiNatsSettingsSource = 'file' | 'env' | 'default';
+
+export interface ApiNatsSettingsView {
+  settings: NatsSettings;
+  source: ApiNatsSettingsSource;
+}
+
+export interface ApiNatsSettingsApplied extends ApiNatsSettingsView {
+  status: NatsRuntimeStatus;
+}
+
+/**
+ * The server build's own NATS settings endpoints. The desktop shell answers
+ * these too (it runs the same API), which is why the dashboard prefers them and
+ * keeps the Tauri bridge only as a fallback — see `src/natsSettings.ts`.
+ */
+export function fetchNatsSettings(): Promise<ApiNatsSettingsView> { return apiFetch<ApiNatsSettingsView>('/v1/print-flow/nats-settings'); }
+
+/** Persists and applies settings without restarting the API process. */
+export function updateNatsSettings(settings: NatsSettings): Promise<ApiNatsSettingsApplied> {
+  return apiFetch<ApiNatsSettingsApplied>('/v1/print-flow/nats-settings', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  });
+}
 
 export interface RuntimeArchitecture {
   runtimeMode: 'packaged-windows-desktop' | 'linux-server' | 'server';

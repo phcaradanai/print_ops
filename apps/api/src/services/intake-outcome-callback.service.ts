@@ -27,8 +27,17 @@ export interface IntakeRejectedOutcome {
 export class IntakeOutcomeCallbackService {
   constructor(
     private readonly endpoints: WebhookEndpointRepositoryPort,
-    private readonly callbacks: WebhookCallbackService,
+    private callbacks: WebhookCallbackService,
   ) {}
+
+  /**
+   * Replaces the sender after a runtime NATS configuration change, so a rejected
+   * intake can reach a NATS endpoint on a server install that enabled NATS
+   * through the dashboard instead of an environment variable.
+   */
+  setCallbackService(callbacks: WebhookCallbackService): void {
+    this.callbacks = callbacks;
+  }
 
   async notifyRejected(outcome: IntakeRejectedOutcome): Promise<boolean> {
     if (!outcome.sourceSystem) return false;

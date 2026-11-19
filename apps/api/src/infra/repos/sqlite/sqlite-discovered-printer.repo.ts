@@ -159,4 +159,17 @@ export class SqliteDiscoveredPrinterRepository implements DiscoveredPrinterRepos
 
     return (await this.findById(id))!;
   }
+
+  /** One DELETE keyed on the only lookup that reaches discovery rows: runner_id. */
+  async deleteByRunner(runnerId: string): Promise<number> {
+    const db = getDb();
+    db.run('DELETE FROM discovered_printers WHERE runner_id = ?', [runnerId]);
+    return db.getRowsModified();
+  }
+
+  async deleteById(id: string): Promise<boolean> {
+    const db = getDb();
+    db.run('DELETE FROM discovered_printers WHERE id = ?', [id]);
+    return db.getRowsModified() > 0;
+  }
 }

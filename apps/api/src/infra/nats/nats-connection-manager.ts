@@ -172,18 +172,54 @@ export async function ensurePrintIntakeConsumer(jsm: JetStreamManager, cfg: Prin
   }
   return { consumer: await jsm.jetstream().consumers.get(cfg.stream, cfg.durable), action: 'REUSED' };
 }
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** The status a configuration reports before any connection attempt is made. */
+function statusForConfig(cfg: PrintIntakeConfig | undefined): NatsRuntimeStatus {
+  if (!cfg) {
+    return {
+      enabled: false,
+      state: 'DISABLED',
+      connected: false,
+      intakeReady: false,
+      callbackPublishReady: false,
+      streamReady: false,
+      consumerReady: false,
+      setupGeneration: 0,
+      setupInFlight: false,
+      consumeLoopActive: false,
+    };
+  }
+  return {
+    enabled: true,
+    state: 'CONFIGURED',
+    connected: false,
+    intakeReady: false,
+    callbackPublishReady: false,
+    streamReady: false,
+    consumerReady: false,
+    setupGeneration: 0,
+    setupInFlight: false,
+    consumeLoopActive: false,
+    clientId: cfg.clientId,
+    subject: cfg.subject,
+    stream: cfg.stream,
+    durable: cfg.durable,
+    server: redactNatsUrl(cfg.url),
+  };
 }
 
 export class NatsConnectionManager {
+  private cfg: PrintIntakeConfig | undefined;
   private connection?: NatsConnection;
   private stopRequested = false;
   private runPromise?: Promise<void>;
   private status: NatsRuntimeStatus;
   private messages?: AsyncIterable<JsMsg> & { close?: () => Promise<void | Error> };
+  private retryTimer?: ReturnType<typeof setTimeout>;
+  private retryWake?: () => void;
+  /** Serialises start/stop/applyConfig so two reconfigurations cannot interleave. */
+  private mutations: Promise<unknown> = Promise.resolve();
   constructor(
-    private readonly cfg: PrintIntakeConfig | undefined,
+    cfg: PrintIntakeConfig | undefined,
     private readonly deps: {
       dynamicPrint: DynamicPrintService;
       logger: PrintIntakeLogger;
@@ -191,40 +227,17 @@ export class NatsConnectionManager {
       intakeCallbacks?: IntakeOutcomeCallbackService;
     },
   ) {
-    this.status = cfg
-      ? {
-          enabled: true,
-          state: 'CONFIGURED',
-          connected: false,
-          intakeReady: false,
-          callbackPublishReady: false,
-          streamReady: false,
-          consumerReady: false,
-          setupGeneration: 0,
-          setupInFlight: false,
-          consumeLoopActive: false,
-          clientId: cfg.clientId,
-          subject: cfg.subject,
-          stream: cfg.stream,
-          durable: cfg.durable,
-          server: redactNatsUrl(cfg.url),
-        }
-      : {
-          enabled: false,
-          state: 'DISABLED',
-          connected: false,
-          intakeReady: false,
-          callbackPublishReady: false,
-          streamReady: false,
-          consumerReady: false,
-          setupGeneration: 0,
-          setupInFlight: false,
-          consumeLoopActive: false,
-        };
+    this.cfg = cfg;
+    this.status = statusForConfig(cfg);
   }
 
   getStatus(): NatsRuntimeStatus {
     return { ...this.status };
+  }
+
+  /** The configuration currently driving intake (undefined = disabled). */
+  getConfig(): PrintIntakeConfig | undefined {
+    return this.cfg;
   }
 
   setIntakeCallbacks(service: IntakeOutcomeCallbackService): void {
@@ -240,12 +253,90 @@ export class NatsConnectionManager {
   }
 
   async stop(): Promise<void> {
+    await this.enqueue(() => this.stopInternal());
+  }
+
+  /**
+   * Replaces the active configuration and restarts intake in place.
+   *
+   * Contract:
+   * - serialised with `start()`/`stop()` through one mutation queue, so callers
+   *   may await it and then read `getStatus()` for the new lifecycle state;
+   * - the previous connection and consume loop are fully drained before the new
+   *   one is opened, so at most one connection and one consume loop ever exist;
+   * - passing the same configuration still restarts intake, which is what makes
+   *   "save settings" recover a connection that is parked in a retry backoff;
+   * - passing `undefined` stops intake and reports state `DISABLED`.
+   *
+   * Nothing here restarts the API process: the server build applies operator
+   * settings (PUT /v1/print-flow/nats-settings) without dropping HTTP traffic.
+   */
+  async applyConfig(cfg: PrintIntakeConfig | undefined): Promise<NatsRuntimeStatus> {
+    return this.enqueue(async () => {
+      await this.stopInternal();
+      this.cfg = cfg;
+      // Keep the setup generation monotonic so a caller can tell the consumer
+      // was re-created rather than silently reused.
+      this.status = { ...statusForConfig(cfg), setupGeneration: this.status.setupGeneration };
+      this.start();
+      return this.getStatus();
+    });
+  }
+
+  private enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.mutations.then(task, task);
+    this.mutations = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  private async stopInternal(): Promise<void> {
     this.stopRequested = true;
-    if (this.messages?.close) await this.messages.close().catch(() => {});
-    await this.connection?.drain().catch(() => {});
-    await this.runPromise?.catch(() => {});
+    this.wakeRetryWait();
+    const messages = this.messages;
+    this.messages = undefined;
+    if (messages?.close) await messages.close().catch(() => {});
+    // Drain before awaiting the run loop: a NATS connection only settles its
+    // `closed()` promise after it is drained, and the run loop parks on that
+    // promise. Awaiting the loop first would deadlock and leave the socket open.
+    const connection = this.connection;
     this.connection = undefined;
+    await connection?.drain().catch(() => {});
+    await this.runPromise?.catch(() => {});
     this.runPromise = undefined;
+    this.status = {
+      ...this.status,
+      state: this.cfg ? 'CONFIGURED' : 'DISABLED',
+      connected: false,
+      intakeReady: false,
+      callbackPublishReady: false,
+      streamReady: false,
+      consumerReady: false,
+      consumeLoopActive: false,
+      setupInFlight: false,
+      nextRetryAt: undefined,
+    };
+  }
+
+  /**
+   * Sleep between reconnect attempts, waking immediately on stop/reconfigure.
+   * A fixed `setTimeout` would make `stop()` and a settings save wait up to the
+   * full backoff window (30s at the cap) before the API responded.
+   */
+  private waitForRetry(delayMs: number): Promise<void> {
+    return new Promise((resolve) => {
+      const done = (): void => {
+        if (this.retryTimer !== undefined) clearTimeout(this.retryTimer);
+        this.retryTimer = undefined;
+        this.retryWake = undefined;
+        resolve();
+      };
+      this.retryWake = done;
+      this.retryTimer = setTimeout(done, delayMs);
+    });
+  }
+
+  private wakeRetryWait(): void {
+    this.retryWake?.();
   }
 
   publish(subject: string, payload: Record<string, unknown>): void {
@@ -293,7 +384,10 @@ export class NatsConnectionManager {
     if (!this.cfg) return { ok: false, stage: 'URL_VALIDATION', code: 'NATS_DISABLED', message: 'NATS is disabled', durationMs: 0 };
     let nc: NatsConnection | undefined;
     try {
-      nc = await connect({ servers: this.cfg.url, timeout: 3_000, waitOnFirstConnect: true, name: `printops-test-${this.cfg.clientId}` });
+      // Single attempt with a timeout: a test that waits forever for an
+      // unreachable broker is not a test result. (`waitOnFirstConnect` would make
+      // connect() retry until the broker answers.)
+      nc = await connect({ servers: this.cfg.url, timeout: 3_000, name: `printops-test-${this.cfg.clientId}` });
       const jsm = await nc.jetstreamManager();
       let streamReady = false;
       try {
@@ -331,7 +425,11 @@ export class NatsConnectionManager {
 
   private async run(): Promise<void> {
     let retry = 0;
-    while (!this.stopRequested && this.cfg) {
+    while (!this.stopRequested) {
+      // Snapshot: applyConfig() may swap this.cfg, but only after this loop has
+      // been fully drained, so one iteration always works on one configuration.
+      const cfg = this.cfg;
+      if (!cfg) return;
       retry++;
       const attemptedAt = new Date().toISOString();
       this.status = {
@@ -342,7 +440,19 @@ export class NatsConnectionManager {
         lastErrorStage: 'TCP_CONNECT',
       };
       try {
-        const nc = await connect({ servers: this.cfg.url, timeout: 3_000, waitOnFirstConnect: true, maxReconnectAttempts: 0, name: `printops-${this.cfg.clientId}` });
+        // Deliberately NOT `waitOnFirstConnect`: that option makes the dial loop
+        // retry until the broker answers, so connect() never settles while the
+        // broker is down. The retry/backoff below is the waiting mechanism, and
+        // an unsettled connect() would make stop() (and therefore a settings save
+        // or an API shutdown) unable to cancel an in-flight dial.
+        const nc = await connect({ servers: cfg.url, timeout: 3_000, maxReconnectAttempts: 0, name: `printops-${cfg.clientId}` });
+        if (this.stopRequested) {
+          // stop()/applyConfig() landed while the connect was in flight. Without
+          // this the freshly opened socket would be orphaned: stopInternal() only
+          // drains the connection it can see.
+          await nc.drain().catch(() => {});
+          return;
+        }
         this.connection = nc;
         this.status = {
           ...this.status,
@@ -354,9 +464,9 @@ export class NatsConnectionManager {
           lastErrorStage: undefined,
           lastErrorMessage: undefined,
         };
-        this.deps.logger.info({ server: redactNatsUrl(this.cfg.url), clientId: this.cfg.clientId }, 'NATS core connection ready');
+        this.deps.logger.info({ server: redactNatsUrl(cfg.url), clientId: cfg.clientId }, 'NATS core connection ready');
         this.status = { ...this.status, lastErrorStage: 'JETSTREAM_SETUP' };
-        await this.setupConsumer(nc);
+        await this.setupConsumer(nc, cfg);
         retry = 0;
         await nc.closed();
         if (!this.stopRequested) this.setDisconnected('NATS connection closed');
@@ -371,21 +481,20 @@ export class NatsConnectionManager {
         if (!this.stopRequested) {
           const delay = Math.min(30_000, 500 * 2 ** Math.min(retry - 1, 6)) + Math.floor(Math.random() * 250);
           this.status = { ...this.status, connected: false, callbackPublishReady: false, intakeReady: false, consumerReady: false, streamReady: false, nextRetryAt: new Date(Date.now() + delay).toISOString() };
-          await sleep(delay);
+          await this.waitForRetry(delay);
         }
       }
     }
   }
 
-  private async setupConsumer(nc: NatsConnection): Promise<void> {
-    if (!this.cfg) return;
+  private async setupConsumer(nc: NatsConnection, cfg: PrintIntakeConfig): Promise<void> {
     const generation = this.status.setupGeneration + 1;
     this.status = { ...this.status, setupGeneration: generation, setupInFlight: true };
     const jsm = await nc.jetstreamManager();
-    const ensured = await ensurePrintIntakeConsumer(jsm, this.cfg);
+    const ensured = await ensurePrintIntakeConsumer(jsm, cfg);
     this.status = { ...this.status, consumerAction: ensured.action, setupInFlight: false };
     if (this.stopRequested) return;
-    const consumer = await nc.jetstream().consumers.get(this.cfg.stream, this.cfg.durable);
+    const consumer = await nc.jetstream().consumers.get(cfg.stream, cfg.durable);
     const messages = await consumer.consume();
     this.messages = messages;
     this.status = {
@@ -398,10 +507,10 @@ export class NatsConnectionManager {
       lastErrorStage: undefined,
       lastErrorMessage: undefined,
     };
-    this.deps.logger.info({ stream: this.cfg.stream, subject: this.cfg.subject, durable: this.cfg.durable }, 'NATS print-intake consumer ready');
+    this.deps.logger.info({ stream: cfg.stream, subject: cfg.subject, durable: cfg.durable }, 'NATS print-intake consumer ready');
     void (async () => {
       try {
-        for await (const msg of messages) await handlePrintIntakeMessage(msg, this.deps, nc, this.cfg!);
+        for await (const msg of messages) await handlePrintIntakeMessage(msg, this.deps, nc, cfg);
       } catch (error) {
         this.status = { ...this.status, consumeLoopActive: false };
         if (!this.stopRequested) this.deps.logger.warn({ error: errorDetails(error).message }, 'NATS intake consume loop ended; reconnecting');

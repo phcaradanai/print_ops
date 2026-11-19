@@ -30,6 +30,10 @@ import { TERMINAL_PRINT_STATUSES } from '@printerops/domain';
  * the same age/count rules, and `retention-*.json` archive files older than the
  * age window are removed after a successful sweep so the archive cannot become
  * a permanent second database.
+ *
+ * The sweep also reconciles `discovered_printers` against `runners` (see
+ * `pruneOrphanedDiscoveredPrinters`): discovery rows whose runner was deleted are
+ * unreachable and would otherwise be listed on the Discovery page forever.
  */
 
 /** Only terminal jobs are ever eligible for deletion — in-flight jobs
@@ -72,6 +76,10 @@ export interface RetentionResult {
   controlJobsDeleted: number;
   /** Rows removed from the control-plane command/OTA audit trail. */
   controlAuditLogsDeleted: number;
+  /** Discovered-printer rows removed because their runner registration no longer
+   *  exists. This is referential cleanup rather than history pruning, so it also
+   *  runs when the age and count rules are both disabled. */
+  discoveredPrintersDeleted: number;
   /** Old `retention-*.json` archive files removed after the sweep. */
   archivesDeleted: number;
 }
@@ -240,16 +248,43 @@ function pruneArchiveFiles(archiveDir: string, retentionDays: number): number {
 }
 
 /**
+ * Deletes discovered-printer rows whose runner row no longer exists.
+ *
+ * `discovered_printers.runner_id` has no foreign key (the schema is deliberately
+ * left unchanged), so deleting a runner row does not cascade. A row that outlives its
+ * runner can never be matched to a live runner again — the Discovery page lists it
+ * forever and the printer keeps rendering as a separate device — so the same sweep
+ * that prunes history also cleans up these orphans. It is cheap (single statement)
+ * and deterministic (liveness of the runner row is the only criterion).
+ *
+ * This is referential cleanup, not history pruning: keep it independent of the age
+ * and count rules so a deployment with retention disabled still converges. It also
+ * never deletes a live runner's rows by age — a registered but powered-off runner may
+ * not sync discovery for longer than the window while its rows are still meaningful
+ * to the operator — so no age cutoff is applied to discovered printers at all.
+ */
+export function pruneOrphanedDiscoveredPrinters(db: Database): number {
+  db.run('DELETE FROM discovered_printers WHERE runner_id NOT IN (SELECT id FROM runners)');
+  return db.getRowsModified();
+}
+
+/**
  * Deletes terminal jobs (and their traces) that are either older than
  * `retentionDays` OR rank past the newest `maxRows` terminal jobs — and
  * separately applies the same two rules to `audit_logs` and to the Web Control
  * job mirror (the mirror cap is per station). Pass `0` for either option to
  * disable that rule; pass both as `0` to disable pruning entirely.
+ *
+ * Orphaned discovered-printer rows are always reconciled, regardless of those
+ * two options: they are unreachable data rather than rows past a history window.
  */
 export function pruneOldRecords(db: Database, options: RetentionOptions): RetentionResult {
   const { retentionDays, maxRows } = options;
   const ageEnabled = Number.isFinite(retentionDays) && retentionDays > 0;
   const countEnabled = Number.isFinite(maxRows) && maxRows > 0;
+
+  const discoveredPrintersDeleted = pruneOrphanedDiscoveredPrinters(db);
+
   if (!ageEnabled && !countEnabled) {
     return {
       jobsDeleted: 0,
@@ -258,6 +293,7 @@ export function pruneOldRecords(db: Database, options: RetentionOptions): Retent
       callbackDeliveriesDeleted: 0,
       controlJobsDeleted: 0,
       controlAuditLogsDeleted: 0,
+      discoveredPrintersDeleted,
       archivesDeleted: 0,
     };
   }
@@ -424,6 +460,7 @@ export function pruneOldRecords(db: Database, options: RetentionOptions): Retent
     callbackDeliveriesDeleted,
     controlJobsDeleted,
     controlAuditLogsDeleted: staleControlAuditIds.length,
+    discoveredPrintersDeleted,
     archivesDeleted,
   };
 }

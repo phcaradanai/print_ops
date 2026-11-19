@@ -65,7 +65,7 @@ import { SimpleTemplateRenderer } from './infra/template/simple-template-rendere
 
 import { AdapterRegistry, FakePrinterAdapter, WindowsSpoolerAdapter, CupsPrinterAdapter } from '@printerops/adapters';
 import type { ControlCommandEnvelope, ControlOtaTransitionEvent, DeviceHeartbeatPayload } from '@printerops/domain';
-import { generateId } from '@printerops/shared';
+import { generateId, ValidationError } from '@printerops/shared';
 
 import { CreatePrinterService } from './services/create-printer.service.js';
 import { CupsProvisioningService } from './services/cups-provisioning.service.js';
@@ -80,6 +80,7 @@ import { RunnerLifecycleService } from './services/runner-lifecycle.service.js';
 import { ExportJobsService } from './services/export-jobs.service.js';
 import { CheckPermissionService } from './services/check-permission.service.js';
 import { SyncPrinterDiscoveryService } from './services/sync-printer-discovery.service.js';
+import { ReconcileDiscoveredPrintersService } from './services/reconcile-discovered-printers.service.js';
 import { RegisterDiscoveredPrinterService } from './services/register-discovered-printer.service.js';
 import { DynamicIntakeService } from './services/dynamic-intake.service.js';
 import { ResolvePrinterBindingService } from './services/resolve-printer-binding.service.js';
@@ -122,7 +123,17 @@ import { paperProfileImportRoutes } from './routes/v1/paper-profile-imports.rout
 import { sandboxRoutes } from './routes/v1/sandbox.routes.js';
 import { printerCalibrationRoutes } from './routes/v1/printer-calibration.routes.js';
 import { printIntakeConfigFromEnv, type PrintIntakeConfig } from './infra/nats/print-intake.js';
-import { NatsConnectionManager } from './infra/nats/nats-connection-manager.js';
+import {
+  NatsConnectionManager,
+  type NatsRuntimeStatus,
+} from './infra/nats/nats-connection-manager.js';
+import {
+  DEFAULT_NATS_SETTINGS,
+  createNatsSettingsStore,
+  natsSettingsFromConfig,
+  printIntakeConfigFromSettings,
+  validateNatsSettings,
+} from './infra/nats/nats-settings.js';
 import {
   controlPlaneTransportConfigFromEnv,
   startControlPlaneTransport,
@@ -540,6 +551,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
           || result.auditLogsDeleted > 0
           || result.controlJobsDeleted > 0
           || result.controlAuditLogsDeleted > 0
+          || result.discoveredPrintersDeleted > 0
           || result.archivesDeleted > 0
         ) {
           app.log.info(
@@ -560,6 +572,22 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
         if (retentionRetryTimer) clearTimeout(retentionRetryTimer);
       });
     }
+  }
+
+  // Discovery rows outlive their runner row unless something deletes them: they are
+  // keyed by runnerId and upserted by the runner's own sync, so a runner that was
+  // deleted (by an older build, a crash mid-delete, or a hand-edited database) leaves
+  // printers that nothing can ever match to live hardware. Reconcile once at boot so
+  // the Discovery page starts clean; the daily retention sweep applies the same rule
+  // at the SQL level for sqlite installs, and each discovery sync collapses the
+  // duplicates left by a re-registered runner.
+  try {
+    const reconciled = await new ReconcileDiscoveredPrintersService(discoveredPrinterRepo, runnerRepo).execute();
+    if (reconciled.deleted > 0) {
+      app.log.info(reconciled, 'removed discovered printers whose runner registration no longer exists');
+    }
+  } catch (error) {
+    app.log.warn({ error }, 'discovered-printer reconciliation could not complete');
   }
 
   const exporter = new InMemoryExportAdapter();
@@ -625,7 +653,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   const executeJob = new ExecuteJobService(jobRepo, printerRepo, traceRepo, auditRepo, queue, eventBus, registry);
   const registerRunner = new RegisterRunnerService(runnerRepo, auditRepo, eventBus);
   const runnerHeartbeat = new RunnerHeartbeatService(runnerRepo, eventBus);
-  const runnerLifecycle = new RunnerLifecycleService(runnerRepo, auditRepo, eventBus);
+  const runnerLifecycle = new RunnerLifecycleService(runnerRepo, auditRepo, eventBus, discoveredPrinterRepo);
   const exportJobs = new ExportJobsService(jobRepo, exporter);
   const checkPermission = new CheckPermissionService(permissionPolicy, eventBus);
   const syncDiscovery = new SyncPrinterDiscoveryService(discoveredPrinterRepo, runnerRepo);
@@ -1079,11 +1107,43 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     // the authenticated HTTP API must remain available for recovery.
     app.log.error({ err }, 'print-intake disabled: invalid client-scoped NATS configuration');
   }
+
+  // Operator-saved settings win over the environment. A server install has no
+  // desktop shell to relaunch it with PRINTOPS_NATS_* variables, so the
+  // dashboard writes this file (data/nats-settings.json) and it must still be
+  // honoured after a restart — otherwise "disable NATS" would silently come
+  // back on the next boot. The desktop shell keeps the same file in its
+  // app-data directory and mirrors it into the child's environment, so both
+  // builds read one source of truth.
+  const natsSettingsStore = createNatsSettingsStore();
+  const persistedNatsSettings = await natsSettingsStore.read().catch((err: unknown) => {
+    app.log.warn({ err, file: natsSettingsStore.file }, 'ignoring unreadable NATS settings file');
+    return undefined;
+  });
+  if (persistedNatsSettings) {
+    if (!persistedNatsSettings.enabled) {
+      printIntakeCfg = undefined;
+    } else {
+      try {
+        printIntakeCfg = printIntakeConfigFromSettings(persistedNatsSettings);
+      } catch (err) {
+        app.log.error(
+          { err, file: natsSettingsStore.file },
+          'print-intake disabled: invalid saved NATS settings',
+        );
+        printIntakeCfg = undefined;
+      }
+    }
+  }
+
   const natsManager = new NatsConnectionManager(printIntakeCfg, {
     dynamicPrint,
     logger: app.log,
     intakeLog: intakeAttemptRepo,
   });
+  // Boot-time capability for the webhook "test delivery" endpoint. The live
+  // senders (acceptance and terminal result callbacks) are re-pointed at NATS
+  // whenever settings are applied, including at boot, by applyNatsCallbackWiring.
   const routeNatsPublisher: NatsPublisher | undefined = printIntakeCfg
     ? (subject, payload) => natsManager.publish(subject, payload)
     : undefined;
@@ -1092,11 +1152,81 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     new WebhookCallbackService(
       app.log,
       httpCallbackSender,
-      routeNatsPublisher,
+      undefined,
       webhookCallbackAttemptRepo,
     ),
   );
   natsManager.setIntakeCallbacks(intakeOutcomeCallbacks);
+
+  // A NATS-capable acceptance/result callback sender. It is installed only while
+  // print intake is configured: `!this.nats` is how WebhookCallbackService
+  // reports "skipped — NATS transport not connected" instead of a failing
+  // delivery, so handing it over while NATS is off would turn a clean skip into
+  // a retried failure for every endpoint that targets NATS.
+  const natsCapableCallbacks = new WebhookCallbackService(
+    app.log,
+    httpCallbackSender,
+    (subject, payload) => natsManager.publish(subject, payload),
+    webhookCallbackAttemptRepo,
+  );
+  const httpOnlyCallbacks = new WebhookCallbackService(
+    app.log,
+    httpCallbackSender,
+    undefined,
+    webhookCallbackAttemptRepo,
+  );
+
+  /**
+   * Points every live callback sender at the NATS transport while print intake
+   * is configured. Called at boot and after an operator saves NATS settings, so
+   * a server install enabled through the dashboard behaves like the desktop
+   * build that restarts its server with the new environment.
+   */
+  const applyNatsCallbackWiring = (enabled: boolean): void => {
+    const callbacks = enabled ? natsCapableCallbacks : httpOnlyCallbacks;
+    dynamicIntake.setCallbackService(callbacks);
+    dynamicPrint.setCallbackService(callbacks);
+    intakeOutcomeCallbacks.setCallbackService(callbacks);
+    // Terminal RESULT callbacks are the ones with a durable delivery record and
+    // a retry worker, so they use JetStream and report the guarantee they
+    // actually obtained.
+    resultCallbackNats = enabled
+      ? async (subject, payload, opts) => {
+          if (opts.mode === 'CORE') {
+            natsManager.publish(subject, payload);
+            return { acknowledged: false };
+          }
+          return natsManager.publishJetStream(subject, payload, { msgId: opts.msgId });
+        }
+      : undefined;
+  };
+
+  /**
+   * Applies a NATS intake configuration to the running process: the connection
+   * manager restarts intake in place (no API restart), the env-derived readers
+   * such as the callback envelope's `client_id` stay in step, and the callback
+   * senders follow. Returns the manager's status so a caller can report what
+   * actually happened.
+   */
+  const applyNatsSettings = async (
+    cfg: PrintIntakeConfig | undefined,
+    subjectPrefix?: string,
+  ): Promise<NatsRuntimeStatus> => {
+    const status = await natsManager.applyConfig(cfg);
+    if (cfg) {
+      process.env['PRINTOPS_NATS_URL'] = cfg.url;
+      process.env['PRINTOPS_NATS_CLIENT_ID'] = cfg.clientId;
+      process.env['PRINTOPS_NATS_SUBJECT_PREFIX'] = subjectPrefix
+        ?? cfg.subject.slice(0, Math.max(0, cfg.subject.length - cfg.clientId.length - 1));
+    } else {
+      delete process.env['PRINTOPS_NATS_URL'];
+      delete process.env['PRINTOPS_NATS_CLIENT_ID'];
+      delete process.env['PRINTOPS_NATS_SUBJECT_PREFIX'];
+    }
+    applyNatsCallbackWiring(Boolean(cfg));
+    return status;
+  };
+
   const deviceIdentityStore = new DeviceIdentityStore({
     appVersion: process.env['PRINTOPS_APP_VERSION'] ?? '0.1.32',
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -1336,7 +1466,41 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
   await app.register(async (v1) => {
     await v1PrintJobRoutes(v1, { jobs: jobRepo, traces: traceRepo, dynamicPrint, cancelJob, executeJob, apiKeyHook, intakeLog: intakeAttemptRepo, intakeCallbacks: intakeOutcomeCallbacks });
     await v1PrinterPrintRoutes(v1, { dynamicPrint, apiKeyHook, intakeLog: intakeAttemptRepo, intakeCallbacks: intakeOutcomeCallbacks });
-    await v1PrintFlowRoutes(v1, { printIntake: printIntakeCfg, natsStatus: () => natsManager.getStatus(), natsTest: () => natsManager.testConnection(), intakeLog: intakeAttemptRepo, runtimeArchitecture });
+    await v1PrintFlowRoutes(v1, {
+      printIntake: () => natsManager.getConfig(),
+      natsStatus: () => natsManager.getStatus(),
+      natsTest: () => natsManager.testConnection(),
+      natsSettingsRead: async () => {
+        const stored = await natsSettingsStore.read();
+        if (stored) return { settings: stored, source: 'file' as const };
+        const active = natsManager.getConfig();
+        if (active) return { settings: natsSettingsFromConfig(active), source: 'env' as const };
+        return { settings: DEFAULT_NATS_SETTINGS, source: 'default' as const };
+      },
+      natsSettingsSave: async (input: unknown) => {
+        const settings = validateNatsSettings(input);
+        let cfg: PrintIntakeConfig | undefined;
+        if (settings.enabled) {
+          try {
+            cfg = printIntakeConfigFromSettings(settings);
+          } catch (error) {
+            // printIntakeConfigFor enforces the client-scoped durable/subject
+            // rules; surface its message as the 400 the dashboard shows.
+            throw new ValidationError(error instanceof Error ? error.message : String(error));
+          }
+        }
+        await natsSettingsStore.save(settings);
+        const status = await applyNatsSettings(cfg, settings.subjectPrefix);
+        app.log.info(
+          { file: natsSettingsStore.file, enabled: settings.enabled, state: status.state },
+          'NATS print-intake settings applied at runtime',
+        );
+        return { settings, source: 'file' as const, status };
+      },
+      intakeLog: intakeAttemptRepo,
+      audit: auditRepo,
+      runtimeArchitecture,
+    });
     await v1PrinterRoutes(v1, { printers: printerRepo, getPrinterStatus, apiKeyHook });
     await v1ExportRoutes(v1, { exportJobs, audit: auditRepo, exporter, apiKeyHook });
     await v1RunnerPrinterRoutes(v1, { discoveredPrinters: discoveredPrinterRepo, syncDiscovery, registerDiscovered });
@@ -1541,26 +1705,9 @@ export async function buildApp(opts: { jwtSecret?: string } = {}) {
     });
   }, { prefix: '/api/v1', bodyLimit: 12 * 1024 * 1024 });
 
-  if (printIntakeCfg) {
-    // Acceptance notifications stay on Core publish: they are explicitly
-    // best-effort, single-shot, and have no delivery record or retry worker
-    // behind them, so a PubAck would have nothing to change.
-    const natsPublisherLocal: NatsPublisher = (subject, payload) => natsManager.publish(subject, payload);
-    dynamicIntake.setCallbackService(new WebhookCallbackService(app.log, httpCallbackSender, natsPublisherLocal, webhookCallbackAttemptRepo));
-    // The NATS print-intake consumer submits through dynamicPrint, so its
-    // acceptance callbacks need the same NATS-capable sender.
-    dynamicPrint.setCallbackService(new WebhookCallbackService(app.log, httpCallbackSender, natsPublisherLocal, webhookCallbackAttemptRepo));
-    // Terminal RESULT callbacks are the ones with a durable delivery record and
-    // a retry worker, so they use JetStream and report the guarantee they
-    // actually obtained.
-    resultCallbackNats = async (subject, payload, opts) => {
-      if (opts.mode === 'CORE') {
-        natsManager.publish(subject, payload);
-        return { acknowledged: false };
-      }
-      return natsManager.publishJetStream(subject, payload, { msgId: opts.msgId });
-    };
-  }
+  // Point the acceptance/result callback senders at NATS only when the intake
+  // transport is actually configured for this process.
+  applyNatsCallbackWiring(Boolean(printIntakeCfg));
   natsManager.start();
   app.addHook('onClose', async () => { await natsManager.stop(); });
   otaPolicyWorker.start();

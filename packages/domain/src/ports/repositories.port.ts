@@ -135,6 +135,19 @@ export interface DiscoveredPrinterRepositoryPort {
   findAll(opts?: ListOptions & { runnerId?: string }): Promise<DiscoveredPrinter[]>;
   upsert(input: CreateDiscoveredPrinterInput): Promise<DiscoveredPrinter>;
   update(id: string, patch: Partial<DiscoveredPrinter>): Promise<DiscoveredPrinter>;
+  /**
+   * Removes every discovered printer reported by one runner and returns how many
+   * rows were deleted. Discovery rows are keyed by runnerId and no other lookup
+   * can reach them once the runner registration is gone, so runner deletion is
+   * the only place that can clean them up.
+   */
+  deleteByRunner(runnerId: string): Promise<number>;
+  /**
+   * Removes one discovered printer row. Returns true when a row existed.
+   * Used to collapse duplicates left behind by a runner that re-registered
+   * under a new id without deleting a live runner's rows.
+   */
+  deleteById(id: string): Promise<boolean>;
 }
 
 export interface PrintTemplateRepositoryPort {

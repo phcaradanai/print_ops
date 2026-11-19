@@ -69,4 +69,18 @@ export class InMemoryDiscoveredPrinterRepository implements DiscoveredPrinterRep
     this.store.set(id, updated);
     return updated;
   }
+
+  async deleteByRunner(runnerId: string): Promise<number> {
+    let deleted = 0;
+    for (const [id, printer] of this.store) {
+      if (printer.runnerId !== runnerId) continue;
+      this.store.delete(id);
+      deleted += 1;
+    }
+    return deleted;
+  }
+
+  async deleteById(id: string): Promise<boolean> {
+    return this.store.delete(id);
+  }
 }

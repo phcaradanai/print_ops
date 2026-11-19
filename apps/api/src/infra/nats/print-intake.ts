@@ -52,12 +52,35 @@ export function printIntakeConfigFromEnv(env = process.env): PrintIntakeConfig |
   if (!clientId) {
     throw new Error('PRINTOPS_NATS_CLIENT_ID is required when NATS intake is enabled');
   }
+  return printIntakeConfigFor(
+    { url, clientId, subjectPrefix: env['PRINTOPS_NATS_SUBJECT_PREFIX'] ?? '' },
+    env,
+  );
+}
+
+/**
+ * Builds the effective intake configuration from the three operator-owned
+ * fields (url, client id, subject prefix), keeping the transport tuning
+ * (stream, durable, DLQ prefix, max-deliver) in the environment.
+ *
+ * Shared by the environment path and the dashboard-saved settings path so both
+ * derive the client-scoped subject and durable identically — a divergence here
+ * would let one install consume another install's jobs.
+ */
+export function printIntakeConfigFor(
+  input: { url: string; clientId: string; subjectPrefix: string },
+  env: NodeJS.ProcessEnv = process.env,
+): PrintIntakeConfig {
+  const clientId = input.clientId.trim();
+  if (!clientId) {
+    throw new Error('PRINTOPS_NATS_CLIENT_ID is required when NATS intake is enabled');
+  }
   assertNatsToken('PRINTOPS_NATS_CLIENT_ID', clientId);
 
   // Every local PrintOps install owns exactly one subject token. Never accept a
   // complete unscoped subject here: giving each install a different durable on
   // a shared subject changes a race into cross-site fan-out and duplicate prints.
-  const subjectPrefix = env['PRINTOPS_NATS_SUBJECT_PREFIX']?.trim() || 'medisync.print.intake';
+  const subjectPrefix = input.subjectPrefix.trim() || 'medisync.print.intake';
   assertNatsSubjectPrefix('PRINTOPS_NATS_SUBJECT_PREFIX', subjectPrefix, clientId);
   const durable = env['PRINTOPS_NATS_DURABLE']?.trim() || `printops-print-intake-${clientId}`;
   if (!durable.endsWith(`-${clientId}`)) {
@@ -65,7 +88,7 @@ export function printIntakeConfigFromEnv(env = process.env): PrintIntakeConfig |
   }
   assertNatsToken('PRINTOPS_NATS_DURABLE', durable);
   return {
-    url,
+    url: input.url,
     stream: env['PRINTOPS_NATS_STREAM'] ?? 'MEDISYNC',
     clientId,
     subject: `${subjectPrefix}.${clientId}`,

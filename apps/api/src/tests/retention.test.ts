@@ -114,7 +114,7 @@ describe('pruneOldRecords — age-based cutoff', () => {
     expect(remaining).toEqual(['recent-audit']);
   });
 
-  it('is a no-op when both retentionDays and maxRows are 0', () => {
+  it('is a no-op for history rows when both retentionDays and maxRows are 0', () => {
     insertJob('old-success', 'SUCCESS', OLD_DATE);
     insertAudit('old-audit', OLD_DATE);
 
@@ -127,6 +127,7 @@ describe('pruneOldRecords — age-based cutoff', () => {
       callbackDeliveriesDeleted: 0,
       controlJobsDeleted: 0,
       controlAuditLogsDeleted: 0,
+      discoveredPrintersDeleted: 0,
       archivesDeleted: 0,
     });
     const db = getDb();

@@ -1736,14 +1736,18 @@ const en: TranslationDict = {
   'settings.nats.title': 'NATS Print Intake',
   'settings.nats.description':
     'Connect this workstation to a NATS JetStream broker to receive print jobs for its local printers. Each site must use a unique Client ID so jobs are never delivered to the wrong printer.',
-  'settings.nats.desktopOnly':
-    'NATS configuration is only available in the PrintOps desktop app.',
+  'settings.nats.unavailable':
+    'NATS settings are unavailable because the local PrintOps API did not respond. Check that the PrintOps service is running, then reload this page.',
+  'settings.nats.source.file': 'These settings are stored and active on this station.',
+  'settings.nats.source.env':
+    'These settings come from environment variables. Saving stores them on this station and overrides the environment.',
+  'settings.nats.source.default': 'NATS intake is not configured yet.',
   'settings.nats.enabled': 'Enable NATS print intake',
   'settings.nats.url': 'NATS URL',
   'settings.nats.clientId': 'Client ID',
   'settings.nats.subjectPrefix': 'Subject prefix',
   'settings.nats.subjectPreviewDisabled': 'Enable NATS and set a Client ID to preview the subscription subject.',
-  'settings.nats.applyAndRestart': 'Save & restart',
+  'settings.nats.apply': 'Save & apply',
   'settings.nats.diagnostics': 'NATS diagnostics',
   'settings.nats.state': 'Current state',
   'settings.nats.server': 'Sanitized server',
@@ -3553,14 +3557,18 @@ const th: TranslationDict = {
   'settings.nats.title': 'รับงานพิมพ์ผ่าน NATS',
   'settings.nats.description':
     'เชื่อมต่อเครื่องนี้กับ NATS JetStream เพื่อรับงานพิมพ์ไปยังเครื่องพิมพ์ในเครื่อง ทุกสาขาต้องใช้ Client ID ที่ไม่ซ้ำกัน เพื่อไม่ให้งานส่งไปเครื่องพิมพ์ผิดที่',
-  'settings.nats.desktopOnly':
-    'การตั้งค่า NATS ใช้งานได้ในแอป PrintOps เดสก์ท็อปเท่านั้น',
+  'settings.nats.unavailable':
+    'ไม่สามารถตั้งค่า NATS ได้ เนื่องจาก API ของ PrintOps ในเครื่องนี้ไม่ตอบสนอง ตรวจสอบว่าบริการ PrintOps ทำงานอยู่ แล้วโหลดหน้านี้ใหม่',
+  'settings.nats.source.file': 'การตั้งค่านี้ถูกบันทึกไว้ในเครื่องนี้และมีผลแล้ว',
+  'settings.nats.source.env':
+    'การตั้งค่านี้มาจากตัวแปรสภาพแวดล้อม การบันทึกจะเก็บค่าไว้ในเครื่องนี้และใช้แทนค่าจากสภาพแวดล้อม',
+  'settings.nats.source.default': 'ยังไม่ได้ตั้งค่าการรับงานผ่าน NATS',
   'settings.nats.enabled': 'เปิดใช้งานรับงานพิมพ์ผ่าน NATS',
   'settings.nats.url': 'NATS URL',
   'settings.nats.clientId': 'Client ID',
   'settings.nats.subjectPrefix': 'คำนำหน้า subject',
   'settings.nats.subjectPreviewDisabled': 'เปิด NATS และตั้ง Client ID เพื่อดู subject ที่รับข้อความ',
-  'settings.nats.applyAndRestart': 'บันทึกและเริ่มใหม่',
+  'settings.nats.apply': 'บันทึกและนำไปใช้',
   'settings.nats.diagnostics': 'ข้อมูลวินิจฉัย NATS',
   'settings.nats.state': 'สถานะปัจจุบัน',
   'settings.nats.server': 'เซิร์ฟเวอร์ที่ซ่อนข้อมูลลับ',

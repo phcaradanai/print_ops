@@ -1,5 +1,6 @@
 import type {
   AuditRepositoryPort,
+  DiscoveredPrinterRepositoryPort,
   EventBusPort,
   Runner,
   RunnerRepositoryPort,
@@ -30,6 +31,10 @@ export class RunnerLifecycleService {
     private readonly runners: RunnerRepositoryPort,
     private readonly audit: AuditRepositoryPort,
     private readonly events: EventBusPort,
+    // Required, not optional: unwiring discovery cleanup is exactly the bug this
+    // dependency exists to prevent, and an optional dependency would silently
+    // reintroduce it at the next composition-root refactor.
+    private readonly discoveredPrinters: DiscoveredPrinterRepositoryPort,
   ) {}
 
   /** Stops a runner from taking work while keeping its record for the operator. */
@@ -78,6 +83,13 @@ export class RunnerLifecycleService {
       await this.assertAnotherRunnerRemains(runner, 'delete');
     }
 
+    // Discovery rows are keyed by runnerId, so once the runner row is gone nothing
+    // can ever match them again: they stay on the Discovery page forever and their
+    // printer keeps rendering as a separate device. Clear them as part of the same
+    // deletion, before the runner row, so a failed audit write cannot leave them
+    // behind. The audit row records the count that was removed.
+    const discoveredPrintersRemoved = await this.discoveredPrinters.deleteByRunner(runnerId);
+
     await this.runners.delete(runnerId);
 
     const traceId = generateTraceId();
@@ -87,7 +99,7 @@ export class RunnerLifecycleService {
       resourceType: 'runner',
       resourceId: runner.id,
       before: runner as unknown as Record<string, unknown>,
-      metadata: { actor },
+      metadata: { actor, discoveredPrintersRemoved },
     });
     this.events.publish({
       eventId: generateId(),
