@@ -1,3 +1,67 @@
+# PrintOps App 0.1.58 & Web Control 1.0.27
+
+Published for `linux/amd64` from `bb5e437` on 2026-11-19. Supersedes PrintOps App
+0.1.57. This time the source is committed: the 0.1.57 image was built from a dirty
+working tree and its source is in `653205d`, `f8d34e7` and `4fd43e6`. Web Control
+stays **1.0.27** and its images were not rebuilt: the two job pages now share one
+list implementation, but the control-plane page renders the same DOM (checked by
+`web-control-jobs.spec.ts`, all sections green).
+
+- **Job Queue (คิวงาน)**: rebuilt on the Web Control Incoming Jobs layout and scoped
+  to this station's own jobs. The page keeps no list of its own and gains the
+  scope bar (job count, freshness, Export CSV, Columns, cinema group), status
+  count chips, the sort selector, search with `key = value` and date presets, the
+  Advanced filters panel, removable condition chips, the pinned batch bar, the
+  column picker with drag/keyboard resizing, incoming-value columns, grouped
+  rendering, pagination and cinema mode. The fleet concepts are gone: station
+  selector, All stations, station column, Manage devices, Sync stations,
+  reviewed-only and outcome filters.
+- **Shared list**: `features/control-jobs` became `features/job-list` plus
+  `features/cinema`, each component owns its stylesheet, `JobDetailDrawer` gained
+  optional station/review/full-detail props (the station passes `canReview=false`:
+  acknowledging an outcome is a control-plane triage column, not a station
+  record), `JobColumnsDialog` takes an options list, `SelectionBar`'s review props
+  became optional, and `visibleJobColumns(selection, excluded)` withdraws a column
+  from the render and from a stored selection alike.
+- **Kept because they are the station's own**: `?status=` deep links from the
+  dashboard attention strip (an exact status arrives as a removable chip and the
+  URL stays shareable), CSV export, the `/jobs/:id` detail page reached from the
+  drawer, reprint through `POST /jobs/:id/reprint` behind one confirmation that
+  demands a reason and an explicit duplicate-risk acknowledgement and refuses when
+  `runnerId`/`requestId` are missing, the 1,000-row truncation warning, the
+  physical-output warning, and 1.5 s polling.
+- **Cleanup**: `JobQueueControls`, `jobQueue.css` and `buildJobQueueView` removed;
+  their three responsibilities now live in `filterAndGroupJobs`,
+  `controlJobsView.ts` and the page.
+- Paper-profile anchor and sandbox preview fidelity fixes that shipped inside the
+  0.1.57 image from the dirty tree are now committed in this history; no behaviour
+  changes with them.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-app:0.1.58` | `sha256:311ca199fdeb30035626074cd0f6b1cf589ef7f8634464da39c916c395e24f12` |
+
+Verified for this publish:
+
+- `docker buildx imagetools inspect` returns that digest for the
+  `linux/amd64` manifest of the OCI index; the build used
+  `--build-arg APP_VERSION=0.1.58 --build-arg SOURCE_REVISION=bb5e437`.
+- `node scripts/smoke-app-image.mjs registry.pg.xenex.io/printops-app:0.1.58` →
+  PASS: health/version, SPA/assets/deep links, owner/login, SQLite persistence,
+  runner binary, single API worker.
+- Checked from the inside: `/app/apps/web/dist/assets/JobQueue-DOKI6ztU.js`
+  carries `page.jobQueue.scopeBarLabel`, no stylesheet in the image still carries
+  `job-queue-keyfilters`, and `/app/apps/api/package.json` reports `0.1.58`.
+- Web unit tests: 830 passed (82 files), including `designTokens.test.ts` and
+  `layoutContract.test.ts`. Browser suite on the dashboard build: 176 passed, 68
+  skipped by the control-build gate, with one load-dependent failure in
+  `delete-flows.spec.ts` (Templates deletion) that passes on an isolated rerun.
+- Rendered evidence: `artifacts/browser/job-queue/{1440,1024,390}-{th,en}.png`;
+  at 1024x768 the counts row lands at y=407 and the first job row at y=614 inside
+  the viewport, with no horizontal overflow in either language.
+
+Deploy using `PRINTOPS_APP_VERSION=0.1.58`; Web Control stays
+`PRINTOPS_CONTROL_PLANE_VERSION=1.0.27`. Services have not been redeployed.
 # PrintOps App 0.1.57 & Web Control 1.0.27
 
 Published for `linux/amd64` on 2026-11-19. Supersedes App 0.1.56 and Web
