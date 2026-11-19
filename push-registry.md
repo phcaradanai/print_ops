@@ -1,3 +1,42 @@
+# PrintOps App 0.1.56 & Web Control 1.0.26
+
+Published for `linux/amd64` from `fa46296` (2026-11-19). Supersedes PrintOps App
+0.1.55 and Web Control 1.0.25.
+
+- **Job Queue layout & row-action spacing**: wrapped row action controls (view
+  icon button + Reprint button) in `<Inline gap="sm">` so buttons no longer
+  touch or overlap; aligned `.ui-data-head` and first/last cell padding to
+  `var(--spacing-lg)` (`1rem`) so headers align vertically with cells and table
+  edges match the toolbar inset; expanded the top search bar symmetrically with
+  the key-filter toolbar below; removed the duplicate rule between the two
+  toolbars; centered the Copies column; widened payload chip spacing; and
+  enforced `44px` touch height on `<Select>` at `<= 1024px`.
+- **Web Control Distribute Content (`/control/content`) button alignment**:
+  added `align="end"` support to `Inline` and applied it to the labelled
+  field+button rows (`Read catalog`, `Import copy`, `Manage profiles`/`Manage
+  templates`) so buttons align with the bottom of sibling inputs/selects instead
+  of floating vertically centered.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-app:0.1.56` | `sha256:bf8747b8ffd5027ed5f5a1956efb5275279a81831f2745ee12cda32fec5df403` |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.26` | `sha256:e6bbe94116705f4ac4276b2982425d9bbe32790cb2f0a4ff89413bd87199566f` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.26` | `sha256:dcd1628c93e0bdf322e88d71ec31bca44318bab0dc6508f04f0ed2d1162e347c` |
+
+Verified:
+- `node scripts/smoke-app-image.mjs registry.pg.xenex.io/printops-app:0.1.56` →
+  PASS (health/version, SPA/assets/deep links, owner/login, SQLite persistence,
+  runner binary, single API worker).
+- `docker buildx imagetools inspect` verified all three pushed manifests.
+- Unit tests: `apps/web` 824 passed (including `designTokens.test.ts` and
+  `layoutContract.test.ts`).
+- Playwright E2E: `job-queue-layout.spec.ts` + `control-dimensions.spec.ts` (45
+  passed on dashboard build) and `web-control-content-layout.spec.ts` (4 passed
+  on `VITE_CONTROL_APP=true` build), plus visual inspection at 1440px, 1024px
+  (TH/EN), and 390px (TH).
+
+Deploy with `PRINTOPS_APP_VERSION=0.1.56` and `PRINTOPS_CONTROL_PLANE_VERSION=1.0.26`.
+
 # PrintOps App 0.1.55
 
 Published for `linux/amd64` from `e4db5cb` (2026-11-19). Current app release; it
