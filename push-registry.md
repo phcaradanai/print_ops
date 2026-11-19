@@ -1,3 +1,65 @@
+# PrintOps App 0.1.53
+
+Published for `linux/amd64` from `e37c5bd` (2026-11-19), with the `0.1.53` version
+defaults in the accompanying release commit. 0.1.52 (`sha256:35d036d0…`, built
+from `d6b7694`) was an intermediate build of the CUPS provisioning work that was
+never deployed; treat 0.1.53 as the current app release.
+
+- **Zero-command CUPS provisioning**: the Printers page discovers an IPP printer
+  over IPPS, creates the CUPS queue with the driverless IPP Everywhere PPD,
+  resumes and accepts it, and registers it as `cups://<queue>`. A CUPS
+  administrator account is stored once (`data/cups-admin.json`, 0600, with
+  `CUPS_ADMIN_USER`/`CUPS_ADMIN_PASSWORD` as fallback). New routes:
+  `POST /api/printers/cups-scan`, `POST /api/printers/cups-queues`,
+  `GET|PUT|DELETE /api/printers/cups-admin`.
+- **CUPS verification no longer reports a completed print as UNVERIFIED**: device
+  records are correlated by physical job, the output rule accepts
+  `job-impressions-completed` or `job-media-sheets-completed`, and the polling
+  window is honoured instead of returning after one read. The submission is
+  never repeated.
+- **NATS settings in the server build**: `GET|PUT /api/v1/print-flow/nats-settings`
+  persist `data/nats-settings.json` and apply at runtime through
+  `NatsConnectionManager.applyConfig()`; the Settings panel is available whenever
+  the local API answers, not only inside the desktop shell. A saved file wins
+  over `PRINTOPS_NATS_*` at boot so "disabled" survives a restart.
+- **Discovery cleanup**: deleting a runner removes its discovered printers,
+  boot and retention reconcile rows whose runner no longer exists
+  (`discoveredPrintersDeleted`), and a re-registered runner collapses duplicates
+  instead of adding a second copy of the same printer.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-app:0.1.53` | `sha256:b8d533619a5e27debac9e662cd4ba3ed623d430629e183d0d3ceb2ee5cffe6a9` |
+| `registry.pg.xenex.io/printops-app:0.1.52` (superseded) | `sha256:35d036d03493a932a8bea24a739af8d4c6d4cd8558d6f9701dcffc3b6fe7479e` |
+
+Verified:
+- `node scripts/smoke-app-image.mjs registry.pg.xenex.io/printops-app:0.1.53` →
+  PASS (health/version, SPA/assets/deep links, owner/login, SQLite persistence,
+  runner binary, single API worker).
+- `npm run release:verify` → `version:consistency: 0.1.53 across
+  root/API/web/desktop/Cargo/Tauri` (the run stops at `ota:secret` because this
+  shell has no `PRINTOPS_OTA_SECRET`; no desktop installer was built for 0.1.53).
+- Unit tests: API 774 passed / 1 skipped, web 824, adapters 156, domain 10.
+- Playwright: 152 passed against the dashboard bundle.
+- Deployed to the station and re-checked live on 0.1.53: `GET
+  /api/v1/print-flow/nats-settings` → `{enabled:false, source:"default"}`,
+  `nats-status` → `DISABLED`, `GET /api/printers/cups-queues` →
+  `[{name:"epsonL6580", registered:true, deviceUri:"ipp://192.168.10.11/ipp/print"}]`,
+  and `/api/v1/discovered-printers` now holds 4 rows with 0 whose runner no
+  longer exists.
+
+Known gaps in this release:
+- The Go runner has **no** CUPS executor: `PRINTOPS_EXECUTOR_MODE=cups` is
+  accepted but resolves to the fake executor, which reports SUCCESS without
+  printing (`apps/runner-go/cmd/printops-runner/main.go`,
+  `internal/printer/multi/multi.go:107-114`). Keep `PRINTOPS_JOBS_ENABLED=false`
+  on the runner for CUPS stations until that is implemented.
+- Network-scan discovery rows (`TCP <ip>:9100`) carry no `computerName`, so the
+  global-view dedupe falls back to the runner id for them; a station that is
+  re-registered will show that scan row again until the next reconcile.
+- The Epson keeps only the two most recent completed IPP jobs, so verification
+  evidence must be read inside that window.
+
 # PrintOps App 0.1.51
 
 Published for `linux/amd64` from `2566162` (2026-11-18), with the `0.1.51` version
