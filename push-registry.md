@@ -1,3 +1,44 @@
+# PrintOps App 0.1.57 & Web Control 1.0.27
+
+Published for `linux/amd64` on 2026-11-19. Supersedes App 0.1.56 and Web
+Control 1.0.26. Built locally from the working tree based on
+`fdac986f200a12d0ec10d708f444634d98f6f10e`, including the uncommitted
+paper-profile/preview fixes and version updates. The App OCI revision is
+marked `-dirty`; this publish did not commit, push Git, or deploy services.
+
+- Explicit paper size edits preserve visual field anchors across square sizes;
+  orientation changes swap dimensions atomically and retain undo behavior.
+- Sandbox retains renderer-generated SVG QR images and the bundled print font.
+  Its sheet has no extra 20px padding and preserves intrinsic physical width
+  on narrow screens.
+- CHG payload mapping and the TM-L100 CUPS Paper Reduction setting remain
+  operator configuration work; this release does not change live profiles,
+  printer queues, or print patient data.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-app:0.1.57` | `sha256:0b859c34feb7e074e1c27f3ad53cb7507428af523b54acd33212718bac1c11d0` |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.27` | `sha256:ecc1ff8a45310268a5c2bf048aaa3b7c85c39a4b859bbc6f57e9b165c77c758a` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.27` | `sha256:8d01a3e6a64142caf4de2a9a3a12605609ea93c706184aecaff9da482cb51b3e` |
+
+Verified for this publish:
+- All three Docker builds and pushes succeeded; registry manifests inspected.
+- App image smoke: health/version, SPA/assets/deep links, owner/login,
+  SQLite persistence after recreation, runner binary and single API worker.
+- Real Linux Chromium label rendering: Thai text, 60x30mm pages, margins,
+  one/two-label page counts and mocked spooler boundary; no physical printing.
+- Control API: startup, SQLite, healthy response and package version 0.1.57.
+  Its existing health endpoint reports `development` without an app-version
+  environment override; the independent Control release tag is 1.0.27.
+- Control Web: nginx configuration and embedded UI version 1.0.27.
+- Web unit tests rerun: 829 passed; App Compose config and version consistency
+  checks passed. The preceding fix verification passed 170 browser tests with
+  68 skipped; browser tests were not rerun for this version-only publish step.
+- Trail check: no conflicts; whitespace check passed.
+
+Deploy using `PRINTOPS_APP_VERSION=0.1.57` and
+`PRINTOPS_CONTROL_PLANE_VERSION=1.0.27`. Services have not been redeployed.
+
 # PrintOps App 0.1.56 & Web Control 1.0.26
 
 Published for `linux/amd64` from `fa46296` (2026-11-19). Supersedes PrintOps App
