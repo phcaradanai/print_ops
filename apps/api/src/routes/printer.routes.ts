@@ -237,6 +237,22 @@ export async function printerRoutes(
     }
 
     const adapter = deps.registry.getAdapterForPrinter(printer);
-    return adapter.printTestPage(printer.connectionUri, printer.id);
+    const result = await adapter.printTestPage(printer.connectionUri, printer.id);
+    if (result.errorCode === 'PRINT_NOT_VERIFIABLE'
+      && result.raw && typeof result.raw === 'object'
+      && 'spoolerAccepted' in result.raw && result.raw.spoolerAccepted === true) {
+      return reply.status(202).send(result);
+    }
+    // Command clients use HTTP status to decide whether the test was sent.
+    // Preserve unverified delivery and preparation failures instead of reporting
+    // a successful command merely because the adapter returned normally.
+    if (!result.success) {
+      return reply.status(result.errorCode === 'PAPER_PROFILE_REQUIRED' ? 422 : 502).send({
+        ...result,
+        error: result.errorCode ?? 'TEST_PRINT_FAILED',
+        message: result.message ?? 'Test print failed',
+      });
+    }
+    return result;
   });
 }

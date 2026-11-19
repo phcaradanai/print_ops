@@ -39,6 +39,39 @@ function harness(options: { submitError?: boolean; renderError?: boolean; respon
 }
 
 describe('CUPS Linux printing', () => {
+  it('prints one static test page using the selected queue defaults without a paper profile', async () => {
+    const h = harness();
+    const result = await h.adapter.printTestPage('cups://POSTEK_G2000', 'printer-1');
+    const submissions = h.calls.filter((call) => call.file === 'lp');
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]!.args).toEqual(expect.arrayContaining(['-d', 'POSTEK_G2000', '-n', '1']));
+    expect(submissions[0]!.args.some((arg) => /^(media|printer-resolution|print-color-mode)=/.test(arg))).toBe(false);
+    expect(h.calls.some((call) => call.file === 'chromium')).toBe(false);
+    expect(h.bytes().subarray(0, 5).toString()).toBe('%PDF-');
+    expect(h.bytes().toString()).toContain('PrintOps Test');
+    expect(result).toMatchObject({ jobId: 'POSTEK_G2000-42', raw: { spoolerAccepted: true } });
+  });
+
+  it('sends the static test PDF in one remote Print-Job without overriding queue media or resolution', async () => {
+    let submissions = 0;
+    const adapter = new CupsPrinterAdapter({ server: 'cups:631', run: async (file, args) => {
+      if (file === 'lpstat') return 'printer POSTEK_G2000 is idle. enabled';
+      if (file !== 'ipptool') throw new Error(`Unexpected command: ${file}`);
+      submissions++;
+      const pdf = await readFile(args[args.indexOf('-f') + 1]!);
+      const request = await readFile(args.at(-1)!, 'utf8');
+      expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+      expect(args).toContain('format=application/pdf');
+      expect(request).toContain('OPERATION Print-Job');
+      expect(request).toContain('ATTR integer copies 1');
+      expect(request).not.toMatch(/ATTR (?:name media|resolution printer-resolution|keyword print-color-mode) /);
+      return 'job-id (integer) = 43';
+    } });
+    const result = await adapter.printTestPage('cups://POSTEK_G2000', 'printer-1');
+    expect(submissions).toBe(1);
+    expect(result).toMatchObject({ jobId: 'POSTEK_G2000-43', raw: { spoolerAccepted: true } });
+  });
+
   it('submits a TCP queue with one IPP Print-Job and captures the CUPS job ID', async () => {
     const calls: string[] = [];
     const adapter = new CupsPrinterAdapter({
@@ -271,6 +304,36 @@ describe('CUPS Linux printing', () => {
       raw: { physicalDeliveryConfirmed: true, ippJobId: 7, impressionsCompleted: 2 },
     });
   }, 15_000);
+
+  it('explains why a raw socket queue cannot confirm delivery without reporting print success', async () => {
+    let submissions = 0;
+    const adapter = new CupsPrinterAdapter({
+      run: async (file, args) => {
+        if (file === 'lpstat') {
+          return args[0] === '-v'
+            ? 'device for POSTEK_G2000: socket://192.0.2.164:9100'
+            : 'printer POSTEK_G2000 is idle. enabled';
+        }
+        if (file !== 'lp') throw new Error(`Unexpected command: ${file}`);
+        submissions++;
+        return 'request id is POSTEK_G2000-42 (1 file(s))';
+      },
+      queryPrinterJobs: async () => { throw new Error('A socket URI is not an IPP endpoint'); },
+    });
+    const result = await adapter.executeCommand(command({ mimeType: 'text/plain', copies: 1 }));
+    expect(submissions).toBe(1);
+    expect(result).toMatchObject({
+      success: false,
+      jobId: 'POSTEK_G2000-42',
+      errorCode: 'PRINT_NOT_VERIFIABLE',
+      raw: { spoolerAccepted: true, physicalDeliveryConfirmed: false, retried: false },
+    });
+    // This is the result message consumed by the job UI, not just hidden raw evidence.
+    expect(result.message).toContain('socket://');
+    expect(result.message).toContain('per-job');
+    expect(result.message).toContain('do not auto-reprint');
+    expect(result.message).not.toContain('192.0.2.164');
+  });
 
   it('confirms a completed job that publishes media sheets but no impression counter', async () => {
     let title = '';

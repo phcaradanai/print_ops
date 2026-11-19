@@ -28,6 +28,38 @@ import {
 } from './cups-admin-client.js';
 
 const exec = promisify(execFile);
+
+/** Compact vector artwork; CUPS uses the queue's default media and resolution. */
+function testPagePdf(): Buffer {
+  const artwork = [
+    '0 G 0 g 0.5 w 6 6 130 73 re S',
+    'BT /F1 12 Tf 14 61 Td (PrintOps Test) Tj ET',
+    'BT /F1 7 Tf 14 48 Td (Printer connection test) Tj ET',
+    'BT /F1 6 Tf 14 13 Td (Queue defaults - 1 copy) Tj ET',
+    '0.3 w 14 40 m 128 40 l S',
+    ...Array.from({ length: 30 }, (_, index) => `${14 + index * 2} 25 1 10 re f`),
+    ...Array.from({ length: 5 }, (_, index) => `${index / 4} g ${80 + index * 9} 25 9 10 re f`),
+  ].join('\n');
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 142 85] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${Buffer.byteLength(artwork)} >>\nstream\n${artwork}\nendstream`,
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const [index, object] of objects.entries()) {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const xref = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  pdf += offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('');
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(pdf);
+}
+
 export interface CupsPrinterDeps {
   run: (file: string, args: string[], server?: string, timeoutMs?: number) => Promise<string>;
   server?: string;
@@ -435,7 +467,7 @@ export class CupsPrinterAdapter implements PrinterAdapterPort {
         verificationDetail = delivery.detail;
       }
       return { success: false, jobId: id, errorCode: 'PRINT_NOT_VERIFIABLE',
-        message: `CUPS submission ${id ?? 'receipt unknown'}: physical delivery is unverified; do not auto-reprint`,
+        message: `CUPS submission ${id ?? 'receipt unknown'}: physical delivery is unverified; ${verificationDetail}; do not auto-reprint`,
         raw: { ...evidence, verificationDetail } };
     } catch (error) {
       return { success: false, errorCode: submitting ? 'PRINT_NOT_VERIFIABLE' : 'CUPS_PREPARATION_FAILED',
@@ -464,7 +496,15 @@ export class CupsPrinterAdapter implements PrinterAdapterPort {
       const prefix = `device for ${queue}: `;
       const uri = devices.split('\n').find((line) => line.startsWith(prefix))?.slice(prefix.length).trim();
       let endpoint = uri && /^ipps?:\/\//i.test(uri) ? parseIppEndpoint(uri) : undefined;
-      if (!endpoint) return { confirmed: false, detail: 'The CUPS queue has no direct IPP device URI' };
+      if (!endpoint) {
+        const transport = /^(socket|usb|lpd):\/\//i.exec(uri ?? '')?.[1]?.toLowerCase();
+        return {
+          confirmed: false,
+          detail: transport
+            ? `The CUPS queue uses ${transport}:// without per-job device completion acknowledgements. CUPS acceptance or idle status cannot confirm physical output. Check the physical output before any manual reprint`
+            : 'The CUPS queue has no direct IPP device URI for per-job delivery verification. Check the physical output before any manual reprint',
+        };
+      }
 
       const deadline = performance.now() + this.deviceVerifyTimeoutMs;
       let detail = 'No matching completed IPP job';
@@ -543,8 +583,13 @@ export class CupsPrinterAdapter implements PrinterAdapterPort {
     return { file: 'ipptool', args: ['-tv', '-f', file, '-d', `title=${jobTitle}`, '-d', `format=${format}`, uri.href, testFile] };
   }
 
-  async printTestPage(_uri: string, _id: string): Promise<PrinterAdapterResult> {
-    return { success: false, errorCode: 'PAPER_PROFILE_REQUIRED', message: 'Use Template Sandbox with the selected template and paper profile for a CUPS test label' };
+  async printTestPage(uri: string, id: string): Promise<PrinterAdapterResult> {
+    return this.executeCommand({
+      jobId: `test-${randomUUID()}`, printerId: id, traceId: randomUUID(),
+      connectionUri: uri, mimeType: 'application/pdf',
+      documentBase64: testPagePdf().toString('base64'),
+      copies: 1, duplex: false, colorMode: 'auto', metadata: {},
+    });
   }
 
   async listQueue(uri: string): Promise<QueueEntry[]> {

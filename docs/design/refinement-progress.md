@@ -1,5 +1,27 @@
 # Refinement progress
 
+## 2026-11-19 — Sandbox unverified delivery feedback
+
+`TemplateSandbox` now presents `UNVERIFIED` as a persistent, dismissible warning
+using the shared `Alert` primitive. Thai and English copy explain that output may
+already exist and ask the operator to inspect the printer before printing again.
+Adapter diagnostics remain available in job details rather than being appended
+to the operator banner. Confirmed success and actual failures keep their existing
+feedback. The recorded job status and submission behavior are unchanged.
+
+Browser regression coverage uses synthetic jobs, checks a single submission and
+Thai/English layouts at 1440px, 1024px and 390px. Remaining debt: the existing
+physical-output confirmation dialog and submitted-job link still have English
+copy in Thai mode; this patch does not expand their scope.
+
+Validation: 824 web unit tests and the production build passed. Playwright
+reported 157 passed, 68 skipped and one Job Detail dimension-test timeout;
+that timeout passed on an isolated rerun. All six new warning-layout cases
+passed, including a screenshot pass with the warning scrolled into view.
+The built frontend was copied into the running local `printops-app` container;
+the served index returned HTTP 200 with the updated bundle. No additional
+physical print jobs were submitted during this UI fix.
+
 ## 2026-11-19 — Job Queue layout symmetry and row-action spacing
 
 The Job Queue (`/jobs`) had several visual alignment and spacing issues: the row

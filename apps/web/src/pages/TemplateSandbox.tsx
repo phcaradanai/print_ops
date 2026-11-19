@@ -218,7 +218,7 @@ export default function TemplateSandbox() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loading, setLoading] = useState({ init: true, render: false, print: false });
   const [error, setError] = useState('');
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'warning' | 'error'; msg: string } | null>(null);
   const [confirmPrintOpen, setConfirmPrintOpen] = useState(false);
   const [printAcknowledged, setPrintAcknowledged] = useState(false);
   const [submittedJobId, setSubmittedJobId] = useState<string | null>(null);
@@ -299,7 +299,7 @@ export default function TemplateSandbox() {
 
   // ---- toast auto-dismiss ----
   useEffect(() => {
-    if (!toast) return;
+    if (!toast || toast.type === 'warning') return;
     const timer = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(timer);
   }, [toast]);
@@ -422,6 +422,8 @@ export default function TemplateSandbox() {
       const completed = await waitForSandboxJob(res.jobId);
       if (completed.status === 'SUCCESS') {
         setToast({ type: 'success', msg: t('page.sandbox.printSuccess').replace('{jobId}', res.jobId.slice(0, 8)).replace('{copies}', String(copies)).replace('{printer}', selectedPrinter?.name ?? '') });
+      } else if (completed.status === 'UNVERIFIED') {
+        setToast({ type: 'warning', msg: t('page.sandbox.printUnverified') });
       } else {
         const summary = t('page.sandbox.printFailed').replace('{status}', completed.status);
         setToast({ type: 'error', msg: completed.errorMessage ? `${summary}: ${completed.errorMessage}` : summary });
@@ -482,7 +484,7 @@ export default function TemplateSandbox() {
 
       {/* ===== Result ===== */}
       {toast && (
-        <Alert tone={toast.type === 'success' ? 'success' : 'error'} onDismiss={() => setToast(null)} dismissLabel={t('common.close')}>
+        <Alert tone={toast.type} onDismiss={() => setToast(null)} dismissLabel={t('common.close')}>
           {toast.msg}
         </Alert>
       )}
