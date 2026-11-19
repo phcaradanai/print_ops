@@ -29,8 +29,15 @@ export function Stack({ as: Component = 'div', gap = 'lg', align = 'stretch', cl
   );
 }
 
-export function Inline({ as: Component = 'div', gap = 'sm', className = '', children, ...props }: LayoutProps) {
-  return <Component {...props} className={`ui-inline ui-gap--${gap}${className ? ` ${className}` : ''}`}>{children}</Component>;
+export interface InlineProps extends LayoutProps {
+  /** Cross-axis alignment. Defaults to `center`; use `end` when buttons share a
+   *  row with labelled `FormField` controls so bottoms line up. */
+  align?: Align;
+}
+
+export function Inline({ as: Component = 'div', gap = 'sm', align, className = '', children, ...props }: InlineProps) {
+  const alignClass = align ? ` ui-align--${align}` : '';
+  return <Component {...props} className={`ui-inline ui-gap--${gap}${alignClass}${className ? ` ${className}` : ''}`}>{children}</Component>;
 }
 
 export interface GridProps extends LayoutProps {

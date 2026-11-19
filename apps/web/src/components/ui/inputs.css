@@ -190,4 +190,10 @@
   .ui-input,
   .ui-select,
   .ui-textarea { font-size: max(1rem, 16px); }
+  .ui-input--sm,
+  .ui-input--md,
+  .ui-select--sm,
+  .ui-select--md { min-height: var(--control-height-touch); }
+  .ui-input-group .ui-input--sm,
+  .ui-input-group .ui-input--md { min-height: calc(var(--control-height-touch) - 2px); }
 }

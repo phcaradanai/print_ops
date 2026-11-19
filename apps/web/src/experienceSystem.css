@@ -614,7 +614,7 @@ body {
 
 .ui-data-head {
   height: 42px;
-  padding: 0.62rem var(--spacing-md);
+  padding: 0.625rem var(--spacing-lg);
   border-bottom: 1px solid var(--neutral-border-strong);
   background: var(--neutral-subtle);
   color: var(--neutral-text);
@@ -628,7 +628,7 @@ body {
 .ui-data-head:last-child,
 .ui-data-cell:first-child,
 .ui-data-cell:last-child {
-  padding-inline: var(--spacing-md);
+  padding-inline: var(--spacing-lg);
 }
 
 .ui-data-head:first-child,

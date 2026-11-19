@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { installHarness } from './support.js';
 
@@ -60,6 +61,8 @@ async function openQueue(page: Page, width: number, height: number, locale: 'en'
   await page.goto('/jobs');
   // The key-filter row only renders when the scope carries incoming keys.
   await expect(page.locator('.job-queue-keyfilters')).toBeVisible();
+  mkdirSync('artifacts/browser/job-queue', { recursive: true });
+  await page.screenshot({ path: `artifacts/browser/job-queue/${width}-${locale}.png`, fullPage: true });
 }
 
 function box(locator: Parameters<Page['locator']>[0]) {
@@ -131,7 +134,54 @@ for (const viewport of [
       ).toBeLessThanOrEqual(2);
     }
 
-    // 4. Nothing in the card overflows sideways.
+    // 4. Row action buttons (view icon + Reprint) never touch or overlap and
+    //    share the same vertical centre when side-by-side.
+    const rowActionGaps = await page.evaluate(() => {
+      const groups = Array.from(document.querySelectorAll<HTMLElement>('.job-queue-row-actions'));
+      return groups.map((group) => {
+        const items = Array.from(group.children).map((el) => el.getBoundingClientRect());
+        if (items.length < 2) return { count: items.length, minGap: Infinity, centreDelta: 0 };
+        let minGap = Infinity;
+        let maxCentreDelta = 0;
+        for (let i = 1; i < items.length; i += 1) {
+          const prev = items[i - 1]!;
+          const next = items[i]!;
+          const sameLine = Math.abs(prev.top - next.top) < 12;
+          if (sameLine) {
+            minGap = Math.min(minGap, Math.round(next.left - prev.right));
+            const prevCentre = prev.top + prev.height / 2;
+            const nextCentre = next.top + next.height / 2;
+            maxCentreDelta = Math.max(maxCentreDelta, Math.abs(prevCentre - nextCentre));
+          }
+        }
+        return { count: items.length, minGap, centreDelta: Math.round(maxCentreDelta) };
+      });
+    });
+    expect(rowActionGaps.some((g) => g.count >= 2), 'expected at least one row with multiple action buttons').toBe(true);
+    for (const group of rowActionGaps) {
+      if (group.count >= 2 && Number.isFinite(group.minGap)) {
+        expect(group.minGap, 'row action buttons are touching or overlapping').toBeGreaterThanOrEqual(6);
+        expect(group.centreDelta, 'row action buttons are vertically misaligned').toBeLessThanOrEqual(2);
+      }
+    }
+
+    // 5. On desktop (> 1024px), table headers and cells share identical inline
+    //    padding so column text lines up cleanly.
+    if (viewport.width > 1024) {
+      const paddingMatch = await page.evaluate(() => {
+        const head = document.querySelector<HTMLElement>('.ui-data-table thead th:nth-child(2)');
+        const cell = document.querySelector<HTMLElement>('.ui-data-table tbody td:nth-child(2)');
+        if (!head || !cell) return null;
+        return {
+          headLeft: getComputedStyle(head).paddingLeft,
+          cellLeft: getComputedStyle(cell).paddingLeft,
+        };
+      });
+      expect(paddingMatch, 'table header/cell missing').not.toBeNull();
+      expect(paddingMatch!.headLeft, 'table header and cell left padding differ').toBe(paddingMatch!.cellLeft);
+    }
+
+    // 6. Nothing in the card overflows sideways.
     const overflow = await page.evaluate(() => {
       const card = document.querySelector('.ui-table-card');
       if (!card) return null;

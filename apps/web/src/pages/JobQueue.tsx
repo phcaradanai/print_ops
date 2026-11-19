@@ -642,7 +642,7 @@ export default function JobQueue() {
                 <DataHead>{t('page.jobQueue.document')}</DataHead>
                 <DataHead>{t('page.jobQueue.printer')}</DataHead>
                 <DataHead>{t('page.jobQueue.source')}</DataHead>
-                <DataHead>{t('page.jobQueue.copies')}</DataHead>
+                <DataHead align="center">{t('page.jobQueue.copies')}</DataHead>
                 <DataHead>{t('page.jobQueue.latencyMs')}</DataHead>
                 <DataHead>{t('page.jobQueue.created')}</DataHead>
                 <DataHead><span className="ui-visually-hidden">{t('page.jobQueue.batchActions')}</span></DataHead>
@@ -700,7 +700,7 @@ export default function JobQueue() {
                             </Text>
                           )}
                           {entries.length > 0 ? (
-                            <Inline gap="xs">
+                            <Inline gap="sm" className="job-queue-payload-chips">
                               {visibleEntries.map((entry) => {
                                 const active = keyFilters.some(
                                   (kf) =>
@@ -742,7 +742,7 @@ export default function JobQueue() {
                       <DataCell label={t('page.jobQueue.source')}>
                         <Text tone="muted" truncate title={j.sourceSystem ?? undefined}>{j.sourceSystem ?? t('common.noData')}</Text>
                       </DataCell>
-                      <DataCell label={t('page.jobQueue.copies')}>
+                      <DataCell label={t('page.jobQueue.copies')} align="center">
                         <Mono>{j.copies}</Mono>
                       </DataCell>
                       <DataCell label={t('page.jobQueue.latencyMs')}>
@@ -757,23 +757,25 @@ export default function JobQueue() {
                       </DataCell>
                       <DataCell label={t('page.jobQueue.batchActions')} actions>
                         {/* Keyboard parity for the row-click drawer. */}
-                        <IconButton
-                          size="sm"
-                          label={t('page.jobQueue.viewDetails')}
-                          onClick={() => setDrawerJobId(j.id)}
-                        >
-                          <ActionIcon name="eye" />
-                        </IconButton>
-                        {isReprintable && <Button
-                          variant={reprintButtonVariant(getJobVerdict(j.status))}
-                          size="sm"
-                          onClick={() => openReprint(j)}
-                          busy={openingJobId === j.id || reprintingId === j.id}
-                          busyLabel={t('page.jobQueue.reprintSubmitting')}
-                          aria-label={t('page.jobQueue.reprintJob').replace('{id}', j.id.slice(0, 8))}
-                        >
-                          {t('page.jobQueue.reprint')}
-                        </Button>}
+                        <Inline gap="sm" className="job-queue-row-actions">
+                          <IconButton
+                            size="sm"
+                            label={t('page.jobQueue.viewDetails')}
+                            onClick={() => setDrawerJobId(j.id)}
+                          >
+                            <ActionIcon name="eye" />
+                          </IconButton>
+                          {isReprintable && <Button
+                            variant={reprintButtonVariant(getJobVerdict(j.status))}
+                            size="sm"
+                            onClick={() => openReprint(j)}
+                            busy={openingJobId === j.id || reprintingId === j.id}
+                            busyLabel={t('page.jobQueue.reprintSubmitting')}
+                            aria-label={t('page.jobQueue.reprintJob').replace('{id}', j.id.slice(0, 8))}
+                          >
+                            {t('page.jobQueue.reprint')}
+                          </Button>}
+                        </Inline>
                       </DataCell>
                     </tr>
                   );

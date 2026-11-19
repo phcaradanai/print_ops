@@ -1,5 +1,22 @@
 # Refinement progress
 
+## 2026-11-19 — Job Queue layout symmetry and row-action spacing
+
+The Job Queue (`/jobs`) had several visual alignment and spacing issues: the row
+action buttons (view details icon button and Reprint button) sat directly inside
+`DataCell` with no flex wrapper or gap so they touched/overlapped, table headers
+used `12px` inline padding while data cells used `16px` (shifting every header
+4px left of its column), the top search toolbar left half the card width empty
+while the key-filter toolbar below spanned 100%, a redundant border doubled the
+rule between the two toolbars, and at `1024px` `<Select>` controls stayed 38px
+tall beside 44px `<Input>` and `<Button>` controls.
+
+- `JobQueue.tsx` / `jobQueue.css`: wrapped row actions in `<Inline gap="sm" className="job-queue-row-actions">` (right-aligned non-wrapping on desktop, left-aligned wrapping `<= 1024px`), widened `.job-queue-toolbar__search` to fill the top toolbar symmetrically with `.job-queue-keyfilters`, removed the duplicate `border-top` on `.job-queue-keyfilters`, centered the `copies` column header/cell, and widened payload chip gaps (`gap="sm"`).
+- `experienceSystem.css`: aligned `.ui-data-head` and first/last table cell inline padding to `var(--spacing-lg)` (`1rem`) so column headers line up with cells and table edges align with the card's `1rem` toolbar inset.
+- `inputs.css`: enforced `var(--control-height-touch)` (`44px`) on `.ui-input--sm/md`, `.ui-select--sm/md`, and `.ui-input-group .ui-input--sm/md` at `<= 1024px` / coarse pointers so selects, inputs, and buttons share one height on tablet viewports.
+- `layout.tsx` / `WebControlContent.tsx`: added optional `align` prop (`'stretch' | 'start' | 'center' | 'end'`) to `Inline` and applied `align="end"` on the labelled field+button rows in Web Control Distribute Content (`Read catalog`, `Import copy`, and `Manage profiles`/`Manage templates`) so buttons sit flush with their sibling inputs/selects instead of floating vertically centered.
+- Verified across 1440px, 1024px (TH/EN), and 390px (TH) screenshots, `apps/web` unit tests (824 tests including `designTokens.test.ts` and `layoutContract.test.ts`), Playwright `job-queue-layout.spec.ts` + `control-dimensions.spec.ts` (dashboard build), and `web-control-content-layout.spec.ts` (`VITE_CONTROL_APP=true` build).
+
 ## 2026-11-19 — One runner card per logical runner, and its printers once
 
 Deleting a runner no longer leaves its discovered printers behind, but the

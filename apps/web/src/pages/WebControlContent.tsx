@@ -441,7 +441,7 @@ export default function WebControlContent() {
               title={t('control.content.readTitle')}
               description={t('control.content.readDesc')}
               actions={
-                <Inline gap="sm">
+                <Inline gap="sm" align="end">
                   <Stack gap="xs" className="wc-field-wide">
                     <FormField label={t('control.content.onlineClient')}>
                       {(control) => (
@@ -533,7 +533,7 @@ export default function WebControlContent() {
                 <Alert tone="info" title={t('control.content.importCopyTitle')}>
                   {t('control.content.importCopyBody')}
                 </Alert>
-                <Inline gap="md">
+                <Inline gap="md" align="end">
                   <Stack gap="xs" className="wc-field-wide">
                     <FormField label={t('control.content.importCodeLabel')}>
                       {(control) => (
@@ -578,7 +578,7 @@ export default function WebControlContent() {
 
         <Panel padding="md">
           <Stack gap="md">
-            <Inline gap="md">
+            <Inline gap="md" align="end">
               <Stack gap="xs" className="wc-field-narrow">
                 <FormField label={t('control.content.typeLabel')}>
                   {(control) => (
