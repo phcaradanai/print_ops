@@ -125,14 +125,7 @@ export function DimensionsSection({ editor, t, anchorRef }: {
                 onChange={(event) => {
                   const orientation = event.target.value as typeof form.orientation;
                   if (orientation === form.orientation) return;
-                  // Rotating the sheet swaps the sides rather than leaving the
-                  // label claiming an orientation its dimensions contradict.
-                  const natural = form.widthMm > form.heightMm ? 'landscape' : 'portrait';
                   editor.patchForm('orientation', orientation);
-                  if (orientation !== natural) {
-                    editor.patchForm('widthMm', form.heightMm);
-                    editor.patchForm('heightMm', form.widthMm);
-                  }
                 }}
               >
                 <option value="portrait">{t('page.paperProfiles.portrait')}</option>

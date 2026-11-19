@@ -1,5 +1,6 @@
 import { DEFAULT_FORM, DEFAULT_UX } from '../model/defaults.js';
 import { resolveSelectionAfterDelete } from '../model/fieldGeometry.js';
+import { getDesignPaperGeometry, mapPrintablePointToVisual, mapVisualPointToPrintable } from '../model/geometry.js';
 import type { DynamicField, PaperForm, PaperProfile, PaperProfileUx, SaveStatus } from '../model/types.js';
 import type { EditorSnapshot, EditorState, SectionKey } from './editorState.js';
 
@@ -156,8 +157,29 @@ function baseReducer(state: EditorState, action: EditorAction): EditorState {
         saveStatus: 'idle',
         saveError: null,
       };
-    case 'PATCH_FORM':
-      return { ...state, form: { ...state.form, ...action.patch }, saveStatus: nextSaveStatus(state.saveStatus, 'dirty') };
+    case 'PATCH_FORM': {
+      const form = { ...state.form, ...action.patch };
+      const resizing = 'widthMm' in action.patch || 'heightMm' in action.patch;
+      if (resizing && !('orientation' in action.patch)) {
+        // The entered sides are authoritative. Crossing a square must not
+        // silently rotate the sheet and every printable-relative anchor.
+        // For multi-column media the design surface is the unchanged cell;
+        // changing the roll dimensions must not rotate that cell.
+        if (!form.layout || form.layout.columns <= 1) {
+          form.orientation = form.widthMm > form.heightMm ? 'landscape' : 'portrait';
+        }
+      } else if ('orientation' in action.patch && !resizing) {
+        const natural = form.widthMm > form.heightMm ? 'landscape' : 'portrait';
+        if (natural !== form.orientation) [form.widthMm, form.heightMm] = [form.heightMm, form.widthMm];
+      }
+      const before = getDesignPaperGeometry(state.form);
+      const after = getDesignPaperGeometry(form);
+      const dynamicFields = resizing ? state.ux.dynamicFields.map((field) => {
+        const visual = mapPrintablePointToVisual(field.xMm, field.yMm, before);
+        return { ...field, ...mapVisualPointToPrintable(visual.xMm, visual.yMm, after) };
+      }) : state.ux.dynamicFields;
+      return { ...state, form, ux: { ...state.ux, dynamicFields }, saveStatus: nextSaveStatus(state.saveStatus, 'dirty') };
+    }
     case 'PATCH_UX':
       return { ...state, ux: { ...state.ux, ...action.patch } };
     case 'ADD_FIELD':

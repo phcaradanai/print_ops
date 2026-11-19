@@ -65,6 +65,30 @@ const MIXED_FIELDS: MockField[] = [
   field(10, { label: 'ชื่อผู้ป่วย', defaultValue: 'นายทดสอบ ระบบพิมพ์' }),
 ];
 
+for (const locale of ['en', 'th'] as const) {
+  for (const width of [1440, 1024, 390]) {
+    test(`resizing through a square preserves anchors ${locale} ${width}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 1000 });
+      await openEditor(page, { profiles: [profile({ widthMm: 80, heightMm: 81, orientation: 'portrait' })] }, locale);
+      await editMixedProfile(page);
+      const fields = page.locator('[data-field-id]');
+      const positions = () => fields.evaluateAll((elements) => elements.map((el) => {
+        const style = (el as HTMLElement).style;
+        return { left: style.left, top: style.top };
+      }));
+      const before = await positions();
+      const height = page.locator('.pp-props').getByRole('spinbutton', { name: locale === 'en' ? 'Height (mm)' : 'ความสูง (mm)', exact: true });
+      for (const value of ['80', '79', '81']) {
+        await height.fill(value);
+        await height.press('Enter');
+        await expect(height).toHaveValue(value);
+        expect(await positions()).toEqual(before);
+      }
+      await page.screenshot({ path: `artifacts/browser/resize-square-${locale}-${width}.png`, fullPage: true });
+    });
+  }
+}
+
 function profile(overrides: Record<string, unknown> = {}) {
   return {
     id: 'pp-mixed-0001',

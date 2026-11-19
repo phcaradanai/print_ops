@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { editorReducer } from '../state/editorReducer.js';
 import { createEditorState } from '../state/editorState.js';
 import type { DynamicField, PaperProfile } from '../model/types.js';
+import { getDesignPaperGeometry, mapPrintablePointToVisual } from '../model/geometry.js';
 
 const field = (id: string): DynamicField => ({
   id,
@@ -18,6 +19,47 @@ const field = (id: string): DynamicField => ({
 });
 
 describe('editorReducer', () => {
+  it('resizes across a square without swapping the sheet or collapsing field positions', () => {
+    const initial = createEditorState();
+    let state: ReturnType<typeof createEditorState> = { ...initial, form: { ...initial.form, widthMm: 80, heightMm: 81, orientation: 'portrait' },
+      ux: { ...initial.ux, dynamicFields: [{ ...field('a'), xMm: 10, yMm: 20 }, { ...field('b'), xMm: 60, yMm: 65 }] } };
+    const before = state.ux.dynamicFields.map((f) => mapPrintablePointToVisual(f.xMm, f.yMm, getDesignPaperGeometry(state.form)));
+    for (const heightMm of [80, 79, 81]) {
+      state = editorReducer(state, { type: 'PATCH_FORM', patch: { heightMm } });
+      const geometry = getDesignPaperGeometry(state.form);
+      expect([geometry.widthMm, geometry.heightMm]).toEqual([80, heightMm]);
+      expect(state.ux.dynamicFields.map((f) => mapPrintablePointToVisual(f.xMm, f.yMm, geometry))).toEqual(before);
+    }
+  });
+
+  it('changes orientation and swaps dimensions atomically in one undo step', () => {
+    const initial = createEditorState();
+    const state = { ...initial, form: { ...initial.form, widthMm: 80, heightMm: 79, orientation: 'landscape' as const } };
+    const changed = editorReducer(state, { type: 'PATCH_FORM', patch: { orientation: 'portrait' } });
+    expect(changed.form).toMatchObject({ widthMm: 79, heightMm: 80, orientation: 'portrait' });
+    expect(editorReducer(changed, { type: 'UNDO' }).form).toEqual(state.form);
+  });
+
+  it('keeps the label-cell orientation when only multi-column media dimensions change', () => {
+    const initial = createEditorState();
+    const state = { ...initial, form: { ...initial.form, widthMm: 80, heightMm: 81, orientation: 'portrait' as const,
+      layout: { columns: 2, cellWidthMm: 30, cellHeightMm: 40, columnGapMm: 0, rowPitchMm: 40 } } };
+    const before = getDesignPaperGeometry(state.form);
+    const changed = editorReducer(state, { type: 'PATCH_FORM', patch: { heightMm: 79 } });
+    expect(getDesignPaperGeometry(changed.form)).toEqual(before);
+  });
+
+  it('keeps visible anchors when resizing an imported profile with rotated stored dimensions', () => {
+    const initial = createEditorState();
+    const state = { ...initial, form: { ...initial.form, widthMm: 100, heightMm: 50, orientation: 'portrait' as const },
+      ux: { ...initial.ux, dynamicFields: [{ ...field('a'), xMm: 10, yMm: 20 }] } };
+    const before = mapPrintablePointToVisual(10, 20, getDesignPaperGeometry(state.form));
+    const changed = editorReducer(state, { type: 'PATCH_FORM', patch: { widthMm: 101 } });
+    const moved = changed.ux.dynamicFields[0]!;
+    expect(mapPrintablePointToVisual(moved.xMm, moved.yMm, getDesignPaperGeometry(changed.form))).toEqual(before);
+    expect(editorReducer(changed, { type: 'UNDO' }).ux.dynamicFields).toEqual(state.ux.dynamicFields);
+  });
+
   it('undoes a whole drag as one step, then redoes it', () => {
     let state = editorReducer(createEditorState(), { type: 'ADD_FIELD', field: field('a') });
     for (const xMm of [1, 2, 3]) state = editorReducer(state, { type: 'UPDATE_FIELD', id: 'a', patch: { xMm, yMm: 0 } });
