@@ -230,4 +230,144 @@ describe('CUPS Linux printing', () => {
     expect(await h.adapter.executeCommand(command({ copies: 0 }))).toMatchObject({ errorCode: 'CUPS_PREPARATION_FAILED' });
     expect(h.calls.filter(c => c.file === 'lp')).toHaveLength(0);
   });
+
+  it('confirms a device job that appears only on a later poll and is listed twice, without job-impressions', async () => {
+    let title = '';
+    let submissions = 0;
+    let checks = 0;
+    const adapter = new CupsPrinterAdapter({
+      server: 'cups:631',
+      deviceVerifyTimeoutMs: 6_000,
+      run: async (file, args) => {
+        if (file === 'lpstat') {
+          return args[0] === '-v'
+            ? 'device for POSTEK_G2000: ipp://epson.local/ipp/print'
+            : 'printer POSTEK_G2000 is idle. enabled';
+        }
+        submissions++;
+        title = args.find((arg) => arg.startsWith('title='))?.slice('title='.length) ?? '';
+        return '        job-id (integer) = 42\n';
+      },
+      queryPrinterJobs: async (endpoint) => {
+        checks++;
+        // The device has not recorded the attempt yet on the first read.
+        if (checks === 1) return { ok: true, endpoint, statusCode: 0, jobs: [] };
+        // It then reports the attempt as active and as completed: the active set
+        // and the completed set are separate reads, and only the completed record
+        // carries output. job-impressions is absent; job-impressions-completed is not.
+        return { ok: true, endpoint, statusCode: 0, jobs: [
+          { key: 'job-id:7', id: 7, name: title, state: 5, stateReasons: ['job-printing'], impressionsCompleted: 0 },
+          { key: 'ipp://epson.local/jobs/7', id: 7, uri: 'ipp://epson.local/jobs/7',
+            name: title, state: 9, stateReasons: ['completed-successfully'], impressionsCompleted: 2 },
+        ] };
+      },
+    });
+    const result = await adapter.executeCommand(command({ mimeType: 'text/plain', copies: 2, renderedPrintPayload: 'PrintOps test' }));
+    expect(checks).toBe(2);
+    expect(submissions).toBe(1);
+    expect(result).toMatchObject({
+      success: true,
+      jobId: 'POSTEK_G2000-42',
+      raw: { physicalDeliveryConfirmed: true, ippJobId: 7, impressionsCompleted: 2 },
+    });
+  }, 15_000);
+
+  it('confirms a completed job that publishes media sheets but no impression counter', async () => {
+    let title = '';
+    const adapter = new CupsPrinterAdapter({
+      server: 'cups:631',
+      deviceVerifyTimeoutMs: 0,
+      run: async (file, args) => {
+        if (file === 'lpstat') {
+          return args[0] === '-v'
+            ? 'device for POSTEK_G2000: ipp://queue.local/ipp/print'
+            : 'printer POSTEK_G2000 is idle. enabled';
+        }
+        title = args.find((arg) => arg.startsWith('title='))?.slice('title='.length) ?? '';
+        return '        job-id (integer) = 42\n';
+      },
+      queryPrinterJobs: async (endpoint) => ({ ok: true, endpoint, statusCode: 0, jobs: [{
+        key: 'current', id: 9, name: title, state: 9, stateReasons: ['completed-successfully'],
+        mediaSheetsCompleted: 1,
+      }] }),
+    });
+    const result = await adapter.executeCommand(command({ mimeType: 'text/plain', copies: 1, renderedPrintPayload: 'PrintOps test' }));
+    expect(result).toMatchObject({
+      success: true,
+      raw: { physicalDeliveryConfirmed: true, ippJobId: 9, impressionsCompleted: 1 },
+    });
+  });
+
+  it('keeps polling when a completed job reports its output counters before they settle', async () => {
+    let title = '';
+    let checks = 0;
+    const adapter = new CupsPrinterAdapter({
+      server: 'cups:631',
+      deviceVerifyTimeoutMs: 6_000,
+      run: async (file, args) => {
+        if (file === 'lpstat') {
+          return args[0] === '-v'
+            ? 'device for POSTEK_G2000: ipp://epson.local/ipp/print'
+            : 'printer POSTEK_G2000 is idle. enabled';
+        }
+        title = args.find((arg) => arg.startsWith('title='))?.slice('title='.length) ?? '';
+        return '        job-id (integer) = 42\n';
+      },
+      queryPrinterJobs: async (endpoint) => {
+        checks++;
+        // The Epson publishes job-impressions-completed = 0 for a job that has
+        // already ended cleanly while it is finalizing its counters.
+        return { ok: true, endpoint, statusCode: 0, jobs: [{
+          key: 'current', id: 7, name: title, state: 9, stateReasons: ['completed-successfully'],
+          impressionsCompleted: checks < 3 ? 0 : 1,
+        }] };
+      },
+    });
+    const result = await adapter.executeCommand(command({ mimeType: 'text/plain', copies: 1, renderedPrintPayload: 'PrintOps test' }));
+    expect(checks).toBe(3);
+    expect(result).toMatchObject({ success: true, raw: { physicalDeliveryConfirmed: true, ippJobId: 7 } });
+  }, 15_000);
+
+  it.each([
+    { outcome: 'the device reports completion without any output counter',
+      jobs: [{ id: 7, state: 9, stateReasons: ['completed-successfully'] }] },
+    { outcome: 'the device reports fewer sheets than requested copies',
+      jobs: [{ id: 7, state: 9, stateReasons: ['completed-successfully'], mediaSheetsCompleted: 1 }] },
+    { outcome: 'the device reports the job as canceled',
+      jobs: [{ id: 7, state: 7, stateReasons: ['job-canceled-by-user'], impressionsCompleted: 0 }] },
+    { outcome: 'the device lists two distinct jobs under the same attempt name',
+      jobs: [
+        { id: 7, state: 9, stateReasons: ['completed-successfully'], impressionsCompleted: 1 },
+        { id: 8, state: 9, stateReasons: ['completed-successfully'], impressionsCompleted: 1 },
+      ] },
+  ])('keeps an ambiguous device answer unverified when $outcome', async ({ jobs }) => {
+    let title = '';
+    let submissions = 0;
+    const adapter = new CupsPrinterAdapter({
+      server: 'cups:631',
+      deviceVerifyTimeoutMs: 0,
+      run: async (file, args) => {
+        if (file === 'lpstat') {
+          return args[0] === '-v'
+            ? 'device for POSTEK_G2000: ipp://epson.local/ipp/print'
+            : 'printer POSTEK_G2000 is idle. enabled';
+        }
+        submissions++;
+        title = args.find((arg) => arg.startsWith('title='))?.slice('title='.length) ?? '';
+        return '        job-id (integer) = 42\n';
+      },
+      queryPrinterJobs: async (endpoint) => ({
+        ok: true, endpoint, statusCode: 0,
+        jobs: jobs.map((job) => ({ ...job, key: `id:${job.id}`, name: title })),
+      }),
+    });
+    const result = await adapter.executeCommand(command({ mimeType: 'text/plain', copies: 2, renderedPrintPayload: 'PrintOps test' }));
+    expect(submissions).toBe(1);
+    expect(result).toMatchObject({
+      success: false,
+      jobId: 'POSTEK_G2000-42',
+      errorCode: 'PRINT_NOT_VERIFIABLE',
+      raw: { physicalDeliveryConfirmed: false },
+    });
+  });
 });

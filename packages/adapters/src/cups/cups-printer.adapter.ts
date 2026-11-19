@@ -16,6 +16,7 @@ import {
   parseIppEndpoint,
   queryIppJobs,
   type IppEndpoint,
+  type IppRemoteJob,
   type IppRequestOptions,
 } from '../windows/ipp-printer-client.js';
 import {
@@ -85,6 +86,63 @@ function preferredDeviceUri(endpoint: IppEndpoint, advertised: string[]): string
 type DeviceDelivery =
   | { confirmed: true; id?: number; impressionsCompleted: number }
   | { confirmed: false; detail: string };
+
+/** IPP `job-state-reasons` values that mean the device finished the job cleanly. */
+const DEVICE_SUCCESS_REASONS = new Set(['completed-successfully', 'job-completed-successfully']);
+
+/**
+ * The counter a device actually published for output it produced. IPP defines
+ * both impressions (sides) and media sheets; devices are free to publish only
+ * one of them, and Epson leaves `job-impressions` empty while reporting
+ * `job-impressions-completed`. Requiring an attribute a printer never sends
+ * would reject a print that physically succeeded, so take the best available.
+ */
+function completedOutput(job: IppRemoteJob): number | undefined {
+  const counters = [job.impressionsCompleted, job.mediaSheetsCompleted]
+    .filter((value): value is number => value !== undefined);
+  return counters.length === 0 ? undefined : Math.max(...counters);
+}
+
+/** A job only counts as delivered when the device's own reason says so. */
+function succeededAtDevice(job: IppRemoteJob): boolean {
+  return job.stateReasons.some((reason) => DEVICE_SUCCESS_REASONS.has(reason));
+}
+
+/** Stable identity of one physical device job, independent of how it is reported. */
+function jobIdentity(job: IppRemoteJob): string {
+  if (job.id !== undefined) return `id:${job.id}`;
+  const fromUri = /\/jobs\/(\d+)\/?$/.exec(job.uri ?? '')?.[1];
+  if (fromUri) return `id:${fromUri}`;
+  if (job.uuid) return `uuid:${job.uuid}`;
+  return `key:${job.key}`;
+}
+
+type AttemptMatch =
+  | { kind: 'none' }
+  | { kind: 'one'; job: IppRemoteJob }
+  | { kind: 'ambiguous'; detail: string };
+
+/**
+ * Correlate the records carrying this attempt's name. An active job set and a
+ * completed job set are two separate reads, so a device can legitimately return
+ * the same physical job in both; those records collapse to one job. Only
+ * genuinely distinct device jobs make the attempt ambiguous, because printing
+ * one document twice is exactly what UNVERIFIED exists to prevent.
+ */
+function matchAttempt(jobs: IppRemoteJob[], jobTitle: string): AttemptMatch {
+  const matched = jobs.filter((job) => job.name === jobTitle);
+  if (matched.length === 0) return { kind: 'none' };
+  const byIdentity = new Map<string, IppRemoteJob>();
+  for (const job of matched) {
+    const identity = jobIdentity(job);
+    const seen = byIdentity.get(identity);
+    // The most advanced state wins: a completed record supersedes a stale
+    // in-flight copy of the same job.
+    if (!seen || (job.state ?? 0) > (seen.state ?? 0)) byIdentity.set(identity, job);
+  }
+  if (byIdentity.size > 1) return { kind: 'ambiguous', detail: 'Multiple IPP jobs matched the print attempt' };
+  return { kind: 'one', job: [...byIdentity.values()][0]! };
+}
 
 /** CUPS is the driver boundary: a queue must have a compatible Linux driver.
  * Only a correlated job completed at the device confirms delivery.
@@ -387,6 +445,19 @@ export class CupsPrinterAdapter implements PrinterAdapterPort {
     }
   }
 
+  /**
+   * Confirm delivery from the printer's own IPP job history. The CUPS receipt
+   * only proves spooler acceptance, so this read is the whole evidence base:
+   * it never repeats the submission.
+   *
+   * A device publishes completion evidence in its own dialect. The Epson L6580
+   * reports a completed job with `job-impressions-completed` while sending an
+   * empty `job-impressions`, and it drops already-completed counters to zero
+   * while it is busy with another job, so a single read is not trustworthy:
+   * the window below keeps polling until the device reports a matching,
+   * terminally completed job with at least the requested copies of output, or
+   * until the window honestly expires. Anything short of that stays unverified.
+   */
   private async confirmDeviceDelivery(queue: string, jobTitle: string, copies: number, server?: string): Promise<DeviceDelivery> {
     try {
       const devices = await this.run('lpstat', ['-v', queue], server, 8_000);
@@ -406,23 +477,23 @@ export class CupsPrinterAdapter implements PrinterAdapterPort {
           response = await this.queryPrinterJobs(endpoint);
         }
         if (!response.ok) {
+          // A read that failed says nothing about the paper: keep polling.
           detail = response.error;
         } else {
-          const jobs = response.jobs.filter((job) => job.name === jobTitle);
-          if (jobs.length > 1) return { confirmed: false, detail: 'Multiple IPP jobs matched the print attempt' };
-          const job = jobs[0];
+          const attempt = matchAttempt(response.jobs, jobTitle);
+          if (attempt.kind === 'ambiguous') return { confirmed: false, detail: attempt.detail };
+          const job = attempt.kind === 'one' ? attempt.job : undefined;
           if (job?.state === 7 || job?.state === 8) {
             return { confirmed: false, detail: `Device job ended in IPP state ${job.state}` };
           }
           detail = 'No matching completed IPP job';
           if (job?.state === 9) {
-            const count = job.impressionsCompleted;
-            const succeeded = job.stateReasons.some(
-              (reason) => reason === 'completed-successfully' || reason === 'job-completed-successfully',
-            );
-            if (succeeded && count !== undefined && count >= Math.max(copies, job.impressions ?? 0)) {
-              return { confirmed: true, id: job.id, impressionsCompleted: count };
+            const required = Math.max(copies, job.impressions ?? 0);
+            const completed = completedOutput(job);
+            if (completed !== undefined && completed >= required && succeededAtDevice(job)) {
+              return { confirmed: true, id: job.id, impressionsCompleted: completed };
             }
+            // The device may still be finalizing this job's counters.
             detail = 'The completed IPP job has not reported successful output for all requested copies';
           }
         }
