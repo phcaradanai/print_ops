@@ -1,0 +1,179 @@
+#!/usr/bin/python3
+"""CUPS backend: ESC/POS over raw TCP that only succeeds on a printer acknowledgement.
+
+The stock ``socket://`` backend reports success as soon as the bytes are
+written, so CUPS "completed" on such a queue says nothing about paper. This
+backend sends the job, then appends ESC/POS ``GS ( H`` Function 48 ("transmit
+process ID response") on the SAME connection. An Epson TM printer answers
+``37 22 d1 d2 d3 d4 00`` only after it has processed (printed) every byte that
+preceded the request, so the backend exits CUPS_BACKEND_OK only when the
+printer echoes this job's own process ID.
+
+Device URI: ``escposack://host[:port][?ack-timeout=SECONDS&connect-timeout=SECONDS]``
+(port defaults to 9100).
+
+Without an acknowledgement after data was sent the job is cancelled, never
+retried: the paper may or may not have come out, and resending would risk a
+duplicate print. PrintOps reports such jobs as UNVERIFIED.
+"""
+
+import os
+import socket
+import sys
+import time
+import urllib.parse
+
+CUPS_BACKEND_OK = 0
+CUPS_BACKEND_FAILED = 1
+CUPS_BACKEND_CANCEL = 5
+
+DEFAULT_PORT = 9100
+DEFAULT_ACK_TIMEOUT = 25.0
+DEFAULT_CONNECT_TIMEOUT = 10.0
+CHUNK = 64 * 1024
+
+
+def log(level, message):
+    sys.stderr.write(f"{level}: {message}\n")
+    sys.stderr.flush()
+
+
+def process_id(job_id):
+    """Four ASCII digits (0x30-0x39) derived from the CUPS job id."""
+    try:
+        number = int(job_id)
+    except ValueError:
+        number = 0
+    return f"{number % 10000:04d}".encode("ascii")
+
+
+def ack_request(pid):
+    # GS ( H pL=6 pH=0 fn=48 m=48 d1..d4
+    return b"\x1d\x28\x48\x06\x00\x30\x30" + pid
+
+
+def ack_response(pid):
+    return b"\x37\x22" + pid + b"\x00"
+
+
+def parse_uri(uri):
+    parsed = urllib.parse.urlsplit(uri)
+    if parsed.scheme.lower() != "escposack" or not parsed.hostname:
+        raise ValueError(f"Unsupported device URI: {uri}")
+    query = urllib.parse.parse_qs(parsed.query)
+
+    def seconds(name, default):
+        try:
+            value = float(query.get(name, [default])[0])
+        except ValueError:
+            return default
+        return value if value > 0 else default
+
+    return (
+        parsed.hostname,
+        parsed.port or DEFAULT_PORT,
+        seconds("ack-timeout", DEFAULT_ACK_TIMEOUT),
+        seconds("connect-timeout", DEFAULT_CONNECT_TIMEOUT),
+    )
+
+
+def connect(host, port, timeout):
+    """Retry while the printer is busy; nothing has been sent yet, so this is safe."""
+    deadline = time.monotonic() + timeout
+    last = None
+    while True:
+        try:
+            return socket.create_connection((host, port), timeout=max(1.0, min(5.0, timeout)))
+        except OSError as error:
+            last = error
+            if time.monotonic() >= deadline:
+                raise last
+            log("INFO", f"Printer busy or unreachable ({error}); retrying")
+            time.sleep(1.0)
+
+
+def wait_for_ack(sock, pid, timeout):
+    """Read until this job's process-ID response arrives; ignore ASB and other bytes."""
+    expected = ack_response(pid)
+    deadline = time.monotonic() + timeout
+    buffer = b""
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        sock.settimeout(remaining)
+        try:
+            data = sock.recv(256)
+        except socket.timeout:
+            return False
+        if not data:
+            return False
+        buffer += data
+        if expected in buffer:
+            return True
+        # Keep only a tail long enough to hold a split response.
+        buffer = buffer[-(len(expected) - 1):]
+
+
+def documents(argv, copies):
+    if len(argv) > 6:
+        for _ in range(copies):
+            with open(argv[6], "rb") as handle:
+                yield handle
+    else:
+        yield sys.stdin.buffer
+
+
+def main(argv):
+    if len(argv) == 1:
+        print('network escposack "Unknown" "ESC/POS TCP with print-completion acknowledgement"')
+        return CUPS_BACKEND_OK
+    if len(argv) not in (6, 7):
+        log("ERROR", "Usage: escposack job-id user title copies options [file]")
+        return CUPS_BACKEND_FAILED
+
+    try:
+        host, port, ack_timeout, connect_timeout = parse_uri(os.environ.get("DEVICE_URI") or argv[0])
+    except ValueError as error:
+        log("ERROR", str(error))
+        return CUPS_BACKEND_FAILED
+    try:
+        copies = max(1, int(argv[4]))
+    except ValueError:
+        copies = 1
+    pid = process_id(argv[1])
+
+    try:
+        sock = connect(host, port, connect_timeout)
+    except OSError as error:
+        log("ERROR", f"Unable to connect to the printer; nothing was sent: {error}")
+        return CUPS_BACKEND_CANCEL
+
+    sent = 0
+    try:
+        with sock:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            sock.settimeout(max(ack_timeout, 30.0))
+            for source in documents(argv, copies):
+                while True:
+                    chunk = source.read(CHUNK)
+                    if not chunk:
+                        break
+                    sock.sendall(chunk)
+                    sent += len(chunk)
+            sock.sendall(ack_request(pid))
+            log("DEBUG", f"Sent {sent} bytes; waiting for process ID {pid.decode()}")
+            if wait_for_ack(sock, pid, ack_timeout):
+                log("INFO", f"Printer acknowledged process ID {pid.decode()} after printing")
+                return CUPS_BACKEND_OK
+    except OSError as error:
+        log("ERROR", f"Connection to the printer failed after {sent} bytes: {error}")
+        return CUPS_BACKEND_CANCEL
+
+    log("ERROR", f"No printer acknowledgement for process ID {pid.decode()} within {ack_timeout:g}s; "
+                 "output is unverified, check the paper before any manual reprint")
+    return CUPS_BACKEND_CANCEL
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

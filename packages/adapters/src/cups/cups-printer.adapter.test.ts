@@ -335,6 +335,73 @@ describe('CUPS Linux printing', () => {
     expect(result.message).not.toContain('192.0.2.164');
   });
 
+  describe('escposack:// queues (ESC/POS process-ID acknowledgement)', () => {
+    function ackAdapter(jobs: (poll: number) => Array<{ id: number; state: number; stateReasons: string[] }>, server?: string) {
+      let submissions = 0;
+      let polls = 0;
+      const endpoints: string[] = [];
+      const adapter = new CupsPrinterAdapter({
+        server,
+        deviceVerifyTimeoutMs: 2_500,
+        run: async (file, args) => {
+          if (file === 'lpstat') {
+            return args[0] === '-v'
+              ? 'device for epsonTM-L100: escposack://192.0.2.164:9100'
+              : 'printer epsonTM-L100 is idle. enabled';
+          }
+          submissions++;
+          return file === 'ipptool' ? '        job-id (integer) = 17\n' : 'request id is epsonTM-L100-17 (1 file(s))';
+        },
+        queryPrinterJobs: async (endpoint) => {
+          endpoints.push(endpoint.uri);
+          return { ok: true, endpoint, statusCode: 0,
+            jobs: jobs(polls++).map((job) => ({ key: String(job.id), ...job })) };
+        },
+      });
+      return { adapter, submissions: () => submissions, polls: () => polls, endpoints };
+    }
+    const tmCommand = () => command({ connectionUri: 'cups://epsonTM-L100', mimeType: 'text/plain', copies: 1 });
+
+    it('confirms delivery from this exact CUPS job once the printer acknowledged it', async () => {
+      const h = ackAdapter((poll) => [
+        { id: 16, state: 9, stateReasons: ['job-completed-successfully'] },
+        { id: 17, state: poll === 0 ? 5 : 9, stateReasons: poll === 0 ? ['job-printing'] : ['job-completed-successfully'] },
+      ], 'cups:631');
+      const result = await h.adapter.executeCommand(tmCommand());
+      expect(h.submissions()).toBe(1);
+      expect(h.polls()).toBe(2);
+      expect(h.endpoints[0]).toBe('ipp://cups:631/printers/epsonTM-L100');
+      expect(result).toMatchObject({
+        success: true,
+        jobId: 'epsonTM-L100-17',
+        raw: { spoolerAccepted: true, physicalDeliveryConfirmed: true, deviceConfirmed: true, deviceConfirmation: 'escpos-process-id' },
+      });
+      expect(result.message).toContain('acknowledged');
+    }, 10_000);
+
+    it('does not borrow another job\'s completion and stays unverified when the window expires', async () => {
+      const h = ackAdapter(() => [
+        { id: 16, state: 9, stateReasons: ['job-completed-successfully'] },
+        { id: 17, state: 5, stateReasons: ['job-printing'] },
+      ]);
+      const result = await h.adapter.executeCommand(tmCommand());
+      expect(h.submissions()).toBe(1);
+      expect(h.endpoints[0]).toBe('ipp://localhost:631/printers/epsonTM-L100');
+      expect(result).toMatchObject({ success: false, errorCode: 'PRINT_NOT_VERIFIABLE',
+        raw: { physicalDeliveryConfirmed: false, retried: false } });
+    }, 10_000);
+
+    it('reports a backend cancellation (no printer acknowledgement) as unverified without retrying', async () => {
+      const h = ackAdapter(() => [{ id: 17, state: 7, stateReasons: ['job-canceled-at-device'] }]);
+      const result = await h.adapter.executeCommand(tmCommand());
+      expect(h.submissions()).toBe(1);
+      expect(h.polls()).toBe(1);
+      expect(result).toMatchObject({ success: false, errorCode: 'PRINT_NOT_VERIFIABLE' });
+      expect(result.message).toContain('did not acknowledge CUPS job 17');
+      expect(result.message).toContain('do not auto-reprint');
+    });
+  });
+
   it('confirms a completed job that publishes media sheets but no impression counter', async () => {
     let title = '';
     const adapter = new CupsPrinterAdapter({

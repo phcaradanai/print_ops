@@ -1,0 +1,2 @@
+# CUPS runs these inside Linux containers; a CRLF shebang breaks them.
+cups-epson/backend/* text eol=lf

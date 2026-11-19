@@ -117,7 +117,22 @@ function preferredDeviceUri(endpoint: IppEndpoint, advertised: string[]): string
 
 type DeviceDelivery =
   | { confirmed: true; id?: number; impressionsCompleted: number }
+  | { confirmed: true; escposAcknowledged: true; cupsJobNumber: number }
   | { confirmed: false; detail: string };
+
+/**
+ * PrintOps' `escposack` CUPS backend (cups-epson/backend/escposack) exits
+ * successfully only after the printer answers this job's ESC/POS process-ID
+ * request on the same connection, so on such a queue a CUPS job that completed
+ * successfully is a device acknowledgement, not just spooler bookkeeping.
+ */
+const ESCPOS_ACK_URI = /^escposack:\/\//i;
+
+/** Endpoint of the queue on the CUPS scheduler itself, for its own job records. */
+function cupsQueueEndpoint(server: string | undefined, queue: string): IppEndpoint | undefined {
+  const host = !server || server.startsWith('/') ? 'localhost:631' : server;
+  return parseIppEndpoint(`ipp://${host}/printers/${encodeURIComponent(queue)}`);
+}
 
 /** IPP `job-state-reasons` values that mean the device finished the job cleanly. */
 const DEVICE_SUCCESS_REASONS = new Set(['completed-successfully', 'job-completed-successfully']);
@@ -448,7 +463,21 @@ export class CupsPrinterAdapter implements PrinterAdapterPort {
       let verificationDetail = 'CUPS did not return a job ID';
       if (id) {
         await command.onProgress?.({ stage: 'SPOOLER_ACCEPTED', occurredAt: new Date(), evidence });
-        const delivery = await this.confirmDeviceDelivery(queue, jobTitle, command.copies, server);
+        const cupsJobNumber = Number(id.slice(id.lastIndexOf('-') + 1));
+        const delivery = await this.confirmDeviceDelivery(queue, jobTitle, command.copies, server, cupsJobNumber);
+        if (delivery.confirmed && 'escposAcknowledged' in delivery) {
+          return {
+            success: true,
+            jobId: id,
+            message: `Printer acknowledged CUPS job ${id} after printing it (ESC/POS process-ID response)`,
+            raw: {
+              ...evidence,
+              physicalDeliveryConfirmed: true,
+              deviceConfirmed: true,
+              deviceConfirmation: 'escpos-process-id',
+            },
+          };
+        }
         if (delivery.confirmed) {
           return {
             success: true,
@@ -490,18 +519,21 @@ export class CupsPrinterAdapter implements PrinterAdapterPort {
    * terminally completed job with at least the requested copies of output, or
    * until the window honestly expires. Anything short of that stays unverified.
    */
-  private async confirmDeviceDelivery(queue: string, jobTitle: string, copies: number, server?: string): Promise<DeviceDelivery> {
+  private async confirmDeviceDelivery(
+    queue: string, jobTitle: string, copies: number, server?: string, cupsJobNumber?: number,
+  ): Promise<DeviceDelivery> {
     try {
       const devices = await this.run('lpstat', ['-v', queue], server, 8_000);
       const prefix = `device for ${queue}: `;
       const uri = devices.split('\n').find((line) => line.startsWith(prefix))?.slice(prefix.length).trim();
+      if (uri && ESCPOS_ACK_URI.test(uri)) return await this.confirmEscposAcknowledgement(queue, server, cupsJobNumber);
       let endpoint = uri && /^ipps?:\/\//i.test(uri) ? parseIppEndpoint(uri) : undefined;
       if (!endpoint) {
         const transport = /^(socket|usb|lpd):\/\//i.exec(uri ?? '')?.[1]?.toLowerCase();
         return {
           confirmed: false,
           detail: transport
-            ? `The CUPS queue uses ${transport}:// without per-job device completion acknowledgements. CUPS acceptance or idle status cannot confirm physical output. Check the physical output before any manual reprint`
+            ? `The CUPS queue uses ${transport}:// without per-job device completion acknowledgements. CUPS acceptance or idle status cannot confirm physical output${transport === 'socket' ? ' (for Epson ESC/POS printers, point the queue at escposack:// instead)' : ''}. Check the physical output before any manual reprint`
             : 'The CUPS queue has no direct IPP device URI for per-job delivery verification. Check the physical output before any manual reprint',
         };
       }
@@ -544,6 +576,49 @@ export class CupsPrinterAdapter implements PrinterAdapterPort {
     } catch (error) {
       return { confirmed: false, detail: error instanceof Error ? error.message : String(error) };
     }
+  }
+
+  /**
+   * An `escposack://` queue completes a job only after the printer's ESC/POS
+   * process-ID response, so read the scheduler's record of exactly this CUPS
+   * job id. Job names are private to the owner on a stock CUPS, but job id,
+   * state and reasons are public, and the id is exact. Read-only: never
+   * resubmits.
+   */
+  private async confirmEscposAcknowledgement(
+    queue: string, server: string | undefined, cupsJobNumber: number | undefined,
+  ): Promise<DeviceDelivery> {
+    if (cupsJobNumber === undefined || !Number.isInteger(cupsJobNumber) || cupsJobNumber < 1) {
+      return { confirmed: false, detail: 'No CUPS job id to correlate with the printer acknowledgement' };
+    }
+    const endpoint = cupsQueueEndpoint(server, queue);
+    if (!endpoint) return { confirmed: false, detail: 'Unable to address the CUPS queue for its job record' };
+    const deadline = performance.now() + this.deviceVerifyTimeoutMs;
+    let detail = `CUPS job ${cupsJobNumber} has not been acknowledged by the printer yet`;
+    do {
+      const response = await this.queryPrinterJobs(endpoint);
+      if (!response.ok) {
+        detail = response.error;
+      } else {
+        const job = response.jobs.find((candidate) => candidate.id === cupsJobNumber);
+        if (job?.state === 9) {
+          if (job.stateReasons.includes('job-completed-successfully')) {
+            return { confirmed: true, escposAcknowledged: true, cupsJobNumber };
+          }
+          return { confirmed: false, detail: `CUPS job ${cupsJobNumber} completed without a successful printer acknowledgement` };
+        }
+        if (job?.state === 7 || job?.state === 8) {
+          return {
+            confirmed: false,
+            detail: `The printer did not acknowledge CUPS job ${cupsJobNumber} (IPP state ${job.state}). Check the physical output before any manual reprint`,
+          };
+        }
+        if (!job) detail = `CUPS job ${cupsJobNumber} is not in the queue's job history`;
+      }
+      const remaining = deadline - performance.now();
+      if (remaining > 0) await delay(Math.min(1_000, remaining));
+    } while (performance.now() < deadline);
+    return { confirmed: false, detail };
   }
 
   private async prepareRemoteSubmission(
