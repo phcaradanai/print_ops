@@ -1,5 +1,92 @@
 # Refinement progress
 
+## 2026-11-19 — NATS settings are configurable in the server build too
+
+The Linux server build could only reach NATS through `PRINTOPS_NATS_*`
+environment variables: the Settings panel called `isTauriAvailable()` and told
+every browser user that NATS was desktop-only, so a Docker station could not be
+pointed at a broker without editing Compose. Both builds now behave the same.
+
+- `apps/api/src/infra/nats/nats-settings.ts` mirrors the desktop shell's schema
+  and validation (`nats://` URL, token-safe client id, dotted subject prefix)
+  and persists `nats-settings.json` (0600) in the data directory, resolving the
+  same path the desktop shell uses.
+- `GET`/`PUT /api/v1/print-flow/nats-settings` read and apply the settings at
+  runtime: `NatsConnectionManager` gained `applyConfig()` (serialised, drains
+  the previous connection and consume loop before reconnecting, `undefined`
+  disables intake) plus `getConfig()`, and `start()`/`stop()` are idempotent.
+  Retry sleeps are interruptible, so saving during backoff returns in
+  milliseconds. Callback senders are re-pointed on apply, and a saved file wins
+  over environment variables at boot so "disabled" survives a restart.
+- The panel is shown whenever the local API answers (server, Docker and desktop
+  alike) and falls back to the Tauri bridge only for a desktop shell; save
+  failures surface the API's own message and the source (file/env/default).
+- Also fixed on the way: `connect()` no longer retries forever, which used to
+  hang API shutdown and the connection-test request while the broker was down.
+- Tests: `nats-connection-manager-config.test.ts` (4), `nats-settings-api.test.ts`
+  (5, including VIEWER 403 and a redacted audit row) and web
+  `natsSettings.test.ts` (8). Verified live against a real `dist/server.js` in
+  `linux-server` mode: PUT applied at runtime (status went `CONNECTING` →
+  `DEGRADED/CONNECTION_REFUSED` with a retry timestamp, no process restart).
+
+## 2026-11-19 — Stop reporting a completed print as UNVERIFIED
+
+A sandbox test print on the station's EPSON L6580 reached the device and printed,
+yet the job was stored `UNVERIFIED` with `PRINT_NOT_VERIFIABLE`. The evidence
+recorded by the old image showed the verification read happening once
+(`runnerExecMs` 1208 ms against a 40 s window), so the loop gave up instead of
+polling.
+
+- `matchAttempt()` correlates device records by physical job (job-id, else the
+  id inside job-uri, else uuid) and keeps the most advanced state, so one job
+  listed in both the active and the completed set is one job. Only genuinely
+  distinct device jobs stay ambiguous (and stay UNVERIFIED).
+- `completedOutput()` accepts whichever counter the device publishes
+  (`job-impressions-completed` or `job-media-sheets-completed`) instead of
+  requiring an attribute this printer never sends.
+- `confirmDeviceDelivery()` polls honestly: a failed read or an unsettled
+  counter keeps polling, and it returns early only for a real reason (no IPP
+  device URI, distinct duplicate jobs, terminal state 7/8) or when the window
+  expires. The submission is never repeated.
+- Tests: the CUPS adapter suite grew 19 → 27 cases, and the two new regression
+  cases fail on the pre-fix adapter. Live proof: one sandbox print through the
+  station path came back `SUCCESS` with `ippJobId 13`, `impressionsCompleted 1`;
+  read-only checks against the real device confirm the matching job and still
+  reject an unknown attempt and an overstated copy count.
+- Known gaps reported, not changed: the Go runner has no CUPS executor at all
+  (`apps/runner-go/cmd/printops-runner/main.go` registers only
+  fake/raw-tcp/zpl/tspl/windows-spooler, so `PRINTOPS_EXECUTOR_MODE=cups` is
+  accepted but resolves to the fake executor, which reports SUCCESS without
+  printing), and the Epson keeps only the two most recent completed jobs in its
+  IPP history.
+
+## 2026-11-19 — Discovered printers of deleted runners are removed
+
+Printer Discovery kept listing printers whose runner had been deleted, and the
+same physical printer could appear several times. `discovered_printers` rows are
+keyed by `runner_id`, but the repository port had no delete and
+`RunnerLifecycleService.remove()` only deleted the runner record, so every row
+survived forever; a runner that re-registered under a new id produced a second
+copy, and the global-view dedupe could not collapse rows with a blank
+`computerName` (their host key falls back to `runnerId`).
+
+- The port gained `deleteByRunner()`/`deleteById()`, implemented in both the
+  in-memory and SQLite repositories (schema unchanged).
+- `remove()` deletes the runner's discovery rows and records
+  `discoveredPrintersRemoved` in the existing `runner.deleted` audit row.
+- New `ReconcileDiscoveredPrintersService` deletes rows whose runner no longer
+  exists; it runs at boot and in the retention sweep
+  (`pruneOrphanedDiscoveredPrinters`, reported as `discoveredPrintersDeleted`),
+  independent of the age/count retention settings because it is referential
+  cleanup. No age rule is applied on purpose: a registered runner may be
+  powered off for longer than any window and still own meaningful printers.
+- `SyncPrinterDiscoveryService` collapses duplicates left by a re-registered
+  runner (same normalised host + printer name, dead runner only) and never
+  merges rows of two live runners.
+- Tests: `discovered-printer-cleanup.test.ts` (16, both storage modes, route
+  level `GET /v1/discovered-printers` after a delete, reconcile, re-registration
+  collapse, retention sweep) plus extended lifecycle/retention suites.
+
 ## 2026-11-19 — Zero-command CUPS provisioning (station spooler parity)
 
 Setting up a Linux station used to end in a terminal: CUPS had to be installed,
