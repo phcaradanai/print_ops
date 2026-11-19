@@ -50,6 +50,9 @@ func runRunner(ctx context.Context) error {
 
 	log := logging.New(cfg.LogLevel)
 	log.Info("printops-go-runner starting", "config", cfg.Redacted())
+	if err := validateExecutorSupport(cfg); err != nil {
+		return fmt.Errorf("executor: %w", err)
+	}
 
 	metrics := telemetry.NewMetrics()
 	client := api.NewClient(cfg.APIBaseURL)
@@ -171,6 +174,23 @@ func effectiveExecutorMode(cfg *config.Config) string {
 	return string(cfg.ExecutorMode)
 }
 
+// validateExecutorSupport refuses a job-executing runner whose configured
+// executor has no implementation. `cups` is accepted by the config parser but
+// no CUPS executor exists yet; without this guard the runner would claim jobs
+// for `cups://` printers and hand them to a fallback executor, reporting a
+// success that never reached paper. A discovery-only runner (the station's
+// normal setting) is still allowed.
+func validateExecutorSupport(cfg *config.Config) error {
+	if cfg.ExecutorMode != config.ExecutorCUPS || !cfg.JobsEnabled {
+		return nil
+	}
+	return fmt.Errorf(
+		"PRINTOPS_EXECUTOR_MODE=cups has no runner implementation; keep " +
+			"PRINTOPS_JOBS_ENABLED=false so the station API executes CUPS jobs, " +
+			"or use fake|windows-spooler|raw-tcp-9100",
+	)
+}
+
 func supportedProtocols(cfg *config.Config) []string {
 	if !cfg.JobsEnabled {
 		return []string{}
@@ -220,7 +240,11 @@ func buildDispatcher(cfg *config.Config, log *logging.Logger) *multi.Dispatcher 
 	winSpoolerExec.SNMPEnabled = cfg.SNMPEnabled
 	winSpoolerExec.SNMPCommunity = cfg.SNMPCommunity
 
-	dispatcher := multi.New(fakeExec)
+	// No executor is the fallback: an unknown protocol must fail loudly. The
+	// dispatcher used to default to the fake executor, so a `cups://` job on a
+	// runner without a CUPS implementation reported SUCCESS without printing.
+	dispatcher := multi.New(nil)
+	dispatcher.Register("fake", fakeExec)
 	dispatcher.Register("raw-tcp-9100", rawTCPExec)
 	dispatcher.Register("raw_tcp_9100", rawTCPExec)
 	dispatcher.Register("rawtcp", rawTCPExec)
@@ -230,8 +254,13 @@ func buildDispatcher(cfg *config.Config, log *logging.Logger) *multi.Dispatcher 
 	dispatcher.Register("windows_spooler", winSpoolerExec)
 	dispatcher.Register("winspool", winSpoolerExec)
 
+	if !cfg.JobsEnabled && cfg.ExecutorMode == config.ExecutorCUPS {
+		log.Warn("PRINTOPS_EXECUTOR_MODE=cups is not implemented in the runner; this runner only discovers printers",
+			"jobs_enabled", false)
+	}
 	log.Info("executor dispatcher configured",
 		"protocols", []string{"fake", "raw-tcp-9100", "windows-spooler", "zpl", "tspl"},
+		"unsupported_protocols_fail", true,
 		"snmp_enabled", cfg.SNMPEnabled)
 
 	return dispatcher

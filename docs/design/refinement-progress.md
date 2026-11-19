@@ -1,5 +1,31 @@
 # Refinement progress
 
+## 2026-11-19 — A runner can no longer report a print it never made
+
+The Go runner accepted `PRINTOPS_EXECUTOR_MODE=cups`, but it has no CUPS
+executor: the dispatcher registered only fake/raw-tcp/zpl/tspl/windows-spooler
+and used the fake executor as its fallback. A `cups://` job claimed by such a
+runner therefore came back SUCCESS with "fake print completed" while nothing
+reached paper — a false positive, which is worse than UNVERIFIED because an
+operator is invited to trust it.
+
+- `buildDispatcher()` no longer uses the fake executor as the fallback; the
+  fallback is the dispatcher's own refusing executor, so an unknown protocol
+  fails with `no executor for protocol "..."`. Fake printing still works for
+  printers that are explicitly declared with the `fake` protocol.
+- `validateExecutorSupport()` refuses to start a job-executing runner configured
+  with `PRINTOPS_EXECUTOR_MODE=cups` and states what to do instead. A
+  discovery-only runner (`PRINTOPS_JOBS_ENABLED=false`, the station's normal
+  CUPS configuration) still starts and logs that cups execution is absent.
+- Tests: `cmd/printops-runner/executor_guard_test.go` proves the refusal, the
+  loud failure for `cups`/`ipp`/unknown protocols, that the fake protocol still
+  runs when it is explicit, and that a discovery-only runner advertises no
+  protocols. Verified by running the binary: `cups` + jobs enabled exits 1 with
+  the explanatory message before any login attempt.
+- Still open by design: implementing a real CUPS executor (submit through `lp`
+  and verify through the IPP job history) is a separate feature; until then the
+  station's API executes CUPS jobs and the runner must stay discovery-only.
+
 ## 2026-11-19 — NATS settings are configurable in the server build too
 
 The Linux server build could only reach NATS through `PRINTOPS_NATS_*`
