@@ -45,8 +45,20 @@ Verified for this publish:
   run (`network-printer-search`, `paper-profile-layout-regression`,
   `webhooks-final-visual`) and all 13 tests in those specs pass on an isolated
   rerun with `--workers=1`.
-- Version consistency: `0.1.59` across root/API/web/desktop/Cargo/Tauri. No
-  desktop installer was built for 0.1.59.
+- Version consistency: `0.1.59` across root/API/web/desktop/Cargo/Tauri.
+
+Desktop installers (`npm run desktop:bundle` from `8c3cac3`, Tauri v2, signed
+stable OTA envelope; `release:verify --post-bundle` passed and confirmed each
+installer contains the current resource build):
+
+| Installer | Size | SHA-256 |
+| --- | --- | --- |
+| `PrintOps_0.1.59_x64_en-US.msi` | 48,721,920 B | `848250bd82976ef38c81443e1db55234e50acbdae9cb06443159f8d433d96db0` |
+| `PrintOps_0.1.59_x64-setup.exe` (NSIS) | 37,519,156 B | `ec80abb89bddb6ba174867d56986825e49cf159e84f438610bdbb5065f6d27f1` |
+
+`artifacts/prod-01/release-manifest.json` records the post-bundle checks and
+`artifacts/prod-01/ota-manifest.json` the signed stable envelope (min supported
+0.1.31, schema v11); the OTA manifest has not been uploaded to a release host.
 
 Deploy using `PRINTOPS_APP_VERSION=0.1.59` and
 `PRINTOPS_CONTROL_PLANE_VERSION=1.0.28`. Services have not been redeployed.
