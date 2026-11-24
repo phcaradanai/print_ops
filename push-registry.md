@@ -1,3 +1,56 @@
+# PrintOps App 0.1.59 & Web Control 1.0.28
+
+Published for `linux/amd64` from `bae2104` on 2026-11-24. Supersedes PrintOps App
+0.1.58 and Web Control 1.0.27. This is the first release whose source contains
+both fixes committed after the 0.1.58 image was built (`70edc72`, `eeca903`):
+
+- **CUPS delivery confirmation**: a receipt job through the vendored ESC/POS
+  filter now ends `SUCCESS` only when the filter reports the printed job's
+  process-ID acknowledgement; a CUPS receipt without that acknowledgement stays
+  `UNVERIFIED`. The filter, PPDs and backend live in `cups-epson/`; the adapter
+  change is in `packages/adapters/src/cups/cups-printer.adapter.ts`.
+- **Silent background polling**: `apps/web/src/lib/pollController.ts` no longer
+  reports background refreshes, so toolbars stop shifting during the 1.5 s
+  polling. The station pages and the control-plane pages both use it through
+  `useApiResource`.
+
+Web Control 1.0.28 rebuilds both images because the shared web bundle changed;
+the control-plane page still renders the same DOM. Version defaults move
+together across root/API/web/desktop/Cargo/Tauri, the Compose files and the env
+examples.
+
+| Image | Verified registry digest |
+| --- | --- |
+| `registry.pg.xenex.io/printops-app:0.1.59` | `sha256:f0520d06873130d233c62275d660fb4ae74f64e3b1aef9040ab49e3b4503cc6f` |
+| `registry.pg.xenex.io/printops-control-plane-api:1.0.28` | `sha256:47283c4fc719d475442eecc453153eeccce355f49a24b9041403da67c9a24c8c` |
+| `registry.pg.xenex.io/printops-control-plane-web:1.0.28` | `sha256:678b97db32f2242ac18ed774984846cdd4daf2fda4adab7e626b5b4268d57f33` |
+
+Verified for this publish:
+
+- `docker buildx imagetools inspect` returns those digests for the
+  `linux/amd64` manifest of each OCI index; the app build used
+  `--build-arg APP_VERSION=0.1.59 --build-arg SOURCE_REVISION=bae2104`.
+- `node scripts/smoke-app-image.mjs registry.pg.xenex.io/printops-app:0.1.59` →
+  PASS: health/version, SPA/assets/deep links, owner/login, SQLite persistence,
+  runner binary, single API worker.
+- Control API: startup with `PORT=3001` and `DB_MODE=sqlite`, healthy
+  `/api/health`, bootstrap `READY`, `/data/printops.db` created, and
+  `/app/apps/api/package.json` reports `0.1.59`.
+- Control Web: nginx serves the SPA and the built bundle embeds `1.0.28`.
+- Unit tests: API 784 passed / 1 skipped (92 files); web 832 passed (82 files);
+  packages 223 passed (domain 10, shared 51, adapters 162); Go runner and
+  updater suites pass.
+- Browser suite on the dashboard build: 175 passed, 68 skipped by the
+  control-build gate; 3 tests failed only under the parallel load of the full
+  run (`network-printer-search`, `paper-profile-layout-regression`,
+  `webhooks-final-visual`) and all 13 tests in those specs pass on an isolated
+  rerun with `--workers=1`.
+- Version consistency: `0.1.59` across root/API/web/desktop/Cargo/Tauri. No
+  desktop installer was built for 0.1.59.
+
+Deploy using `PRINTOPS_APP_VERSION=0.1.59` and
+`PRINTOPS_CONTROL_PLANE_VERSION=1.0.28`. Services have not been redeployed.
+
 # PrintOps App 0.1.58 & Web Control 1.0.27
 
 Published for `linux/amd64` from `bb5e437` on 2026-11-19. Supersedes PrintOps App
