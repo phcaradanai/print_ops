@@ -1,3 +1,25 @@
+# PrintOps App 0.1.61 (desktop bundle)
+
+Desktop installers built from `5aa2c5a` on 2026-11-25 with `npm run desktop:bundle`
+(Tauri v2, signed stable OTA envelope). The app version moved 0.1.59 → 0.1.61 across
+root/API/web/desktop/Cargo/Tauri with no application code change; Web Control stays
+**1.0.28** and the container images were not rebuilt in this step.
+
+| Installer | Size | SHA-256 |
+| --- | --- | --- |
+| `PrintOps_0.1.61_x64_en-US.msi` | 49,762,304 B | `0a17e97b268aa816aefeb07213a30904467f1a606b8b989ab5487d3f23518871` |
+| `PrintOps_0.1.61_x64-setup.exe` (NSIS) | 38,724,491 B | `86e34871743a097c152efac104783acfa93a0bb5339b40a98f1e71919c36d326` |
+
+`release:verify --post-bundle` passed and confirmed each installer contains the
+current resource build. `artifacts/prod-01/release-manifest.json` records the checks,
+and the signed stable envelope (min supported 0.1.31, schema v11) is in
+`artifacts/prod-01/ota-manifest.json`; that envelope has not been uploaded to a
+release host.
+
+Build note: the bundle host needs the .NET SDK 8 `dotnet` on `PATH` for the WebView2
+print helper; on this machine it lives in `%LOCALAPPDATA%\Microsoft\dotnet` and is not
+on `PATH` by default, so `release:verify` reports `tool:dotnet` FAIL until it is added.
+
 # PrintOps App 0.1.59 & Web Control 1.0.28
 
 Published for `linux/amd64` from `bae2104` on 2026-11-24. Supersedes PrintOps App
